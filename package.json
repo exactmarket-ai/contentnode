@@ -7,6 +7,8 @@
     "pnpm": ">=10"
   },
   "scripts": {
+    "dev": "pnpm --filter @contentnode/api dev",
+    "dev:api": "pnpm --filter @contentnode/api dev",
     "db:generate": "pnpm --filter @contentnode/database generate",
     "db:migrate": "pnpm --filter @contentnode/database migrate:dev",
     "db:migrate:deploy": "pnpm --filter @contentnode/database migrate:deploy",
