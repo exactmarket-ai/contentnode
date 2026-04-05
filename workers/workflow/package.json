@@ -1,0 +1,23 @@
+{
+  "name": "@contentnode/workflow-worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/worker.ts",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "start": "node dist/worker.js"
+  },
+  "dependencies": {
+    "@contentnode/ai": "workspace:*",
+    "@contentnode/database": "workspace:*",
+    "bullmq": "^5.12.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5"
+  }
+}

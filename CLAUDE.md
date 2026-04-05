@@ -48,5 +48,23 @@ Full spec is in docs/contentnode-spec-v4.md
   - Start with: pnpm dev (from repo root)
   - Env vars: see apps/api/.env.example
 
+## What has been built (continued)
+- Session 3 complete: workflow execution engine
+  - packages/ai: callModel(config, prompt) abstraction for Anthropic + Ollama
+    - api_key_ref resolves from env vars; keys never logged or exposed
+    - Ollama base URL configurable via OLLAMA_BASE_URL (default: localhost:11434)
+  - packages/database: auditService moved here (shared by API + workers)
+  - workers/workflow: BullMQ worker entry point (pnpm dev:worker)
+    - 4 queues: workflow-runs, node-execution, transcription, asset-generation
+    - WorkflowRunner: loads graph, topological sort, parallel wave execution,
+      real-time per-node status updates in WorkflowRun.output JSON,
+      token usage recorded to UsageRecord, audit logs on start/node/end
+    - NodeExecutors: SourceNodeExecutor, LogicNodeExecutor, OutputNodeExecutor
+  - apps/api: POST /api/v1/runs (create + enqueue), GET /api/v1/runs/:id (poll),
+    GET /api/v1/runs (list), POST /api/v1/runs/:id/cancel
+    - Per-node statuses and partial outputs returned in GET /:id response
+  - Env vars needed in workers/workflow: DATABASE_URL, REDIS_URL,
+    ANTHROPIC_API_KEY (or named ref), OLLAMA_BASE_URL (optional)
+
 ## Current session
-- Session 2 done. Ready for Session 3.
+- Session 3 done. Ready for Session 4.
