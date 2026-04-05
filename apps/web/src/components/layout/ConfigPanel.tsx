@@ -198,6 +198,29 @@ function ConditionConfig({ config, onChange }: { config: Record<string, unknown>
   )
 }
 
+function HumanReviewConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
+  return (
+    <>
+      <FieldGroup label="Review Instructions">
+        <Textarea
+          placeholder="Describe what the reviewer should check..."
+          className="min-h-[80px] resize-none text-xs"
+          value={(config.instructions as string) ?? ''}
+          onChange={(e) => onChange('instructions', e.target.value)}
+        />
+      </FieldGroup>
+      <FieldGroup label="Assignee Email (optional)">
+        <Input
+          placeholder="reviewer@example.com"
+          className="text-xs"
+          value={(config.assignee_email as string) ?? ''}
+          onChange={(e) => onChange('assignee_email', e.target.value)}
+        />
+      </FieldGroup>
+    </>
+  )
+}
+
 function WebhookConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
     <FieldGroup label="Webhook URL">
@@ -276,6 +299,7 @@ function NodeConfigForm({ subtype, config, onChange, workflowModel }: {
     case 'ai-generate':  return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} />
     case 'transform':    return <TransformConfig config={config} onChange={onChange} />
     case 'condition':    return <ConditionConfig config={config} onChange={onChange} />
+    case 'human-review': return <HumanReviewConfig config={config} onChange={onChange} />
     case 'webhook':      return <WebhookConfig config={config} onChange={onChange} />
     case 'email':        return <EmailConfig config={config} onChange={onChange} />
     case 'file-export':  return <FileExportConfig config={config} onChange={onChange} />

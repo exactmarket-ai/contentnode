@@ -92,13 +92,45 @@
 .react-flow__handle {
   width: 10px;
   height: 10px;
-  border: 2px solid hsl(0 0% 25%);
-  background: hsl(0 0% 10%);
+  border: 2px solid hsl(0 0% 45%);
+  background: hsl(0 0% 28%);
+  border-radius: 50%;
   transition: border-color 0.15s, background 0.15s;
 }
 
 .react-flow__handle:hover,
 .react-flow__handle.connecting {
   border-color: hsl(217 91% 60%);
-  background: hsl(217 91% 60% / 0.2);
+  background: hsl(217 91% 60% / 0.4);
+}
+
+/* Category-specific handle colors */
+.react-flow__node-source .react-flow__handle {
+  background: rgba(16, 185, 129, 0.8);
+  border-color: rgb(52, 211, 153);
+}
+.react-flow__node-source .react-flow__handle:hover,
+.react-flow__node-source .react-flow__handle.connecting {
+  background: rgba(16, 185, 129, 1);
+  border-color: rgb(110, 231, 183);
+}
+
+.react-flow__node-logic .react-flow__handle {
+  background: rgba(59, 130, 246, 0.8);
+  border-color: rgb(96, 165, 250);
+}
+.react-flow__node-logic .react-flow__handle:hover,
+.react-flow__node-logic .react-flow__handle.connecting {
+  background: rgba(59, 130, 246, 1);
+  border-color: rgb(147, 197, 253);
+}
+
+.react-flow__node-output .react-flow__handle {
+  background: rgba(168, 85, 247, 0.8);
+  border-color: rgb(192, 132, 252);
+}
+.react-flow__node-output .react-flow__handle:hover,
+.react-flow__node-output .react-flow__handle.connecting {
+  background: rgba(168, 85, 247, 1);
+  border-color: rgb(216, 180, 254);
 }

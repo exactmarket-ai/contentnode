@@ -95,6 +95,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'logic', icon: 'Merge',
     defaultConfig: { strategy: 'concat' },
   },
+  {
+    type: 'logic', subtype: 'human-review',
+    label: 'Human Review', description: 'Pause for human approval before continuing',
+    category: 'logic', icon: 'UserCheck',
+    defaultConfig: { instructions: '', assignee_email: '' },
+  },
   // Output
   {
     type: 'output', subtype: 'webhook',

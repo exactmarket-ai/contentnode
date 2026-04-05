@@ -13,7 +13,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   return (
     <div
       className={cn(
-        'min-w-[160px] rounded-lg border bg-card transition-all',
+        'relative min-w-[160px] rounded-lg border bg-card transition-all',
         selected
           ? 'border-emerald-500/70 shadow-[0_0_0_1px_rgba(16,185,129,0.3)]'
           : 'border-border hover:border-emerald-500/40',
@@ -48,7 +48,8 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
       <Handle
         type="source"
         position={Position.Right}
-        className="!border-emerald-500/50 !bg-card"
+        id="output"
+        style={{ top: '50%' }}
       />
     </div>
   )
