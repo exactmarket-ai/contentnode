@@ -854,30 +854,21 @@ function ContentOutputConfig({
 // ─── Config dispatcher ────────────────────────────────────────────────────────
 
 function NodeConfigForm({
-  subtype,
+  nodeType,
   config,
   onChange,
   workflowModel,
 }: {
-  subtype: string
+  nodeType: string
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
   workflowModel: { provider: string; model: string; temperature?: number }
 }) {
-  switch (subtype) {
-    case 'text-input':      return <TextInputConfig config={config} onChange={onChange} />
-    case 'file-upload':     return <DocumentSourceConfig config={config} onChange={onChange} />
-    case 'api-fetch':       return <ApiFetchConfig config={config} onChange={onChange} />
-    case 'web-scrape':      return <WebScrapeConfig config={config} onChange={onChange} />
-    case 'ai-generate':     return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} />
-    case 'transform':       return <TransformConfig config={config} onChange={onChange} />
-    case 'condition':       return <ConditionConfig config={config} onChange={onChange} />
-    case 'human-review':    return <HumanReviewConfig config={config} onChange={onChange} />
-    case 'webhook':         return <WebhookConfig config={config} onChange={onChange} />
-    case 'email':           return <EmailConfig config={config} onChange={onChange} />
-    case 'file-export':     return <FileExportConfig config={config} onChange={onChange} />
-    case 'content-output':  return <ContentOutputConfig config={config} onChange={onChange} />
-    default:                return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
+  switch (nodeType) {
+    case 'source': return <DocumentSourceConfig config={config} onChange={onChange} />
+    case 'logic':  return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} />
+    case 'output': return <ContentOutputConfig config={config} onChange={onChange} />
+    default:       return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
   }
 }
 
@@ -911,6 +902,7 @@ export function ConfigPanel() {
     )
   }
 
+  const nodeType = node.type ?? ''
   const subtype = node.data.subtype as string
   const config = (node.data.config as Record<string, unknown>) ?? {}
 
@@ -923,7 +915,7 @@ export function ConfigPanel() {
     logic: 'text-blue-400',
     output: 'text-purple-400',
   }
-  const colorClass = CATEGORY_COLOR[node.type ?? ''] ?? 'text-foreground'
+  const colorClass = CATEGORY_COLOR[nodeType] ?? 'text-foreground'
 
   return (
     <div className="flex h-full w-[320px] shrink-0 flex-col border-l border-border bg-card">
@@ -963,7 +955,7 @@ export function ConfigPanel() {
 
           {/* Type-specific config */}
           <NodeConfigForm
-            subtype={subtype}
+            nodeType={nodeType}
             config={config}
             onChange={onConfigChange}
             workflowModel={workflow.default_model_config}
