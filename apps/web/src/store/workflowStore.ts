@@ -143,6 +143,8 @@ interface WorkflowState {
   selectedNodeId: string | null
   runStatus: RunStatus
   nodeRunStatuses: Record<string, NodeRunStatus>
+  /** True once the workflow has been run at least once — locks connectivity_mode */
+  hasBeenRun: boolean
 
   // Actions — graph
   onNodesChange: (changes: NodeChange[]) => void
@@ -181,6 +183,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   selectedNodeId: null,
   runStatus: 'idle',
   nodeRunStatuses: {},
+  hasBeenRun: false,
 
   // Graph actions
   onNodesChange: (changes) =>
@@ -206,7 +209,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // UI actions
   setSelectedNodeId: (id) => set({ selectedNodeId: id }),
 
-  setRunStatus: (status) => set({ runStatus: status }),
+  setRunStatus: (status) =>
+    set((state) => ({
+      runStatus: status,
+      hasBeenRun: status === 'running' ? true : state.hasBeenRun,
+    })),
 
   setNodeRunStatuses: (statuses) => set({ nodeRunStatuses: statuses }),
 

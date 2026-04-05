@@ -27,7 +27,7 @@ const RUN_STATUS_CONFIG = {
 }
 
 export function TopBar() {
-  const { workflow, setWorkflowName, setWorkflow, runStatus } = useWorkflowStore()
+  const { workflow, setWorkflowName, setWorkflow, runStatus, hasBeenRun } = useWorkflowStore()
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState(workflow.name)
@@ -55,7 +55,8 @@ export function TopBar() {
 
   const handleSave = () => {
     // TODO: wire to API PUT /api/v1/workflows/:id
-    console.log('save', useWorkflowStore.getState().nodes, useWorkflowStore.getState().edges)
+    const { nodes, edges, workflow: wf } = useWorkflowStore.getState()
+    console.log('save', { workflow: wf, nodes, edges })
   }
 
   return (
@@ -92,17 +93,46 @@ export function TopBar() {
         </button>
       )}
 
-      {/* Connectivity badge */}
-      <Badge
-        variant={workflow.connectivity_mode === 'online' ? 'online' : 'offline'}
-        className="gap-1 cursor-default"
-        title={workflow.connectivity_mode === 'online' ? 'Online — uses external AI APIs' : 'Offline — uses local Ollama models'}
+      {/* Connectivity toggle */}
+      <button
+        onClick={() => {
+          if (hasBeenRun) return
+          setWorkflow({
+            connectivity_mode: workflow.connectivity_mode === 'online' ? 'offline' : 'online',
+          })
+        }}
+        disabled={hasBeenRun}
+        title={
+          hasBeenRun
+            ? 'Connectivity mode cannot be changed after the first run'
+            : workflow.connectivity_mode === 'online'
+              ? 'Online — click to switch to Offline (local Ollama)'
+              : 'Offline — click to switch to Online (external APIs)'
+        }
+        className={cn(
+          'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+          hasBeenRun && 'cursor-not-allowed opacity-60',
+          !hasBeenRun && 'cursor-pointer',
+          workflow.connectivity_mode === 'online'
+            ? 'border-emerald-700 bg-emerald-950 text-emerald-400 hover:bg-emerald-900'
+            : 'border-amber-700 bg-amber-950 text-amber-400 hover:bg-amber-900',
+          hasBeenRun && 'hover:bg-transparent',
+        )}
       >
         {workflow.connectivity_mode === 'online'
           ? <><Icons.Wifi className="h-3 w-3" />Online</>
           : <><Icons.WifiOff className="h-3 w-3" />Offline</>
         }
-      </Badge>
+        {hasBeenRun && <Icons.Lock className="h-3 w-3 opacity-60" />}
+      </button>
+
+      {/* Persistent OFFLINE badge */}
+      {workflow.connectivity_mode === 'offline' && (
+        <Badge className="gap-1 bg-amber-900 text-amber-300 border border-amber-700 pointer-events-none select-none">
+          <Icons.WifiOff className="h-3 w-3" />
+          OFFLINE
+        </Badge>
+      )}
 
       {/* Default model picker */}
       <div className="flex items-center gap-1.5">
