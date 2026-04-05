@@ -1,0 +1,372 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Agency — top-level tenant
+// ─────────────────────────────────────────────
+model Agency {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  clerkOrgId String? @unique @map("clerk_org_id")
+  plan      String   @default("starter")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clients            Client[]
+  stakeholders       Stakeholder[]
+  users              User[]
+  workflows          Workflow[]
+  documents          Document[]
+  usageRecords       UsageRecord[]
+  auditLogs          AuditLog[]
+  transcriptSessions TranscriptSession[]
+  insights           Insight[]
+
+  @@map("agencies")
+}
+
+// ─────────────────────────────────────────────
+// Client — an agency's end-client
+// ─────────────────────────────────────────────
+model Client {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  name      String
+  slug      String
+  industry  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  stakeholders Stakeholder[]
+  workflows    Workflow[]
+  documents    Document[]
+  transcriptSessions TranscriptSession[]
+  insights     Insight[]
+
+  @@unique([agencyId, slug])
+  @@index([agencyId])
+  @@map("clients")
+}
+
+// ─────────────────────────────────────────────
+// Stakeholder — client-side contacts
+// ─────────────────────────────────────────────
+model Stakeholder {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  clientId  String   @map("client_id")
+  name      String
+  email     String
+  role      String?
+  magicLinkToken     String?   @unique @map("magic_link_token")
+  magicLinkExpiresAt DateTime? @map("magic_link_expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  feedbacks Feedback[]
+  transcriptSessions TranscriptSession[]
+
+  @@unique([clientId, email])
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("stakeholders")
+}
+
+// ─────────────────────────────────────────────
+// User — agency team member (authenticated via Clerk)
+// ─────────────────────────────────────────────
+model User {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clerkUserId String  @unique @map("clerk_user_id")
+  email      String
+  name       String?
+  role       String   @default("member") // owner | admin | member
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  workflowRuns WorkflowRun[]
+
+  @@index([agencyId])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// Workflow — a node-based automation graph
+// ─────────────────────────────────────────────
+model Workflow {
+  id               String   @id @default(cuid())
+  agencyId         String   @map("agency_id")
+  clientId         String   @map("client_id")
+  name             String
+  description      String?
+  connectivityMode String   @default("online") @map("connectivity_mode") // online | offline — locked after first run
+  status           String   @default("draft") // draft | active | archived
+  version          Int      @default(1)
+  firstRunAt       DateTime? @map("first_run_at") // connectivity_mode locked after this is set
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nodes    Node[]
+  edges    Edge[]
+  runs     WorkflowRun[]
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("workflows")
+}
+
+// ─────────────────────────────────────────────
+// Node — a single node in a workflow graph
+// ─────────────────────────────────────────────
+model Node {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  workflowId String   @map("workflow_id")
+  type       String   // e.g. "ai-generate", "human-review", "transform"
+  label      String?
+  config     Json     @default("{}")
+  positionX  Float    @default(0) @map("position_x")
+  positionY  Float    @default(0) @map("position_y")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  workflow       Workflow      @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceEdges    Edge[]        @relation("source")
+  targetEdges    Edge[]        @relation("target")
+
+  @@index([agencyId])
+  @@index([workflowId])
+  @@map("nodes")
+}
+
+// ─────────────────────────────────────────────
+// Edge — directed connection between two nodes
+// ─────────────────────────────────────────────
+model Edge {
+  id           String   @id @default(cuid())
+  agencyId     String   @map("agency_id")
+  workflowId   String   @map("workflow_id")
+  sourceNodeId String   @map("source_node_id")
+  targetNodeId String   @map("target_node_id")
+  label        String?
+  condition    Json?    // optional conditional routing config
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceNode Node     @relation("source", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode Node     @relation("target", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([workflowId])
+  @@map("edges")
+}
+
+// ─────────────────────────────────────────────
+// Document — content artifact produced or consumed by workflows
+// ─────────────────────────────────────────────
+model Document {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clientId   String   @map("client_id")
+  workflowRunId String? @map("workflow_run_id")
+  name       String
+  mimeType   String?  @map("mime_type")
+  storageKey String?  @map("storage_key") // R2 / local path
+  sizeBytes  Int?     @map("size_bytes")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  agency      Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workflowRun WorkflowRun? @relation(fields: [workflowRunId], references: [id])
+  feedbacks   Feedback[]
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("documents")
+}
+
+// ─────────────────────────────────────────────
+// WorkflowRun — a single execution of a workflow
+// ─────────────────────────────────────────────
+model WorkflowRun {
+  id          String    @id @default(cuid())
+  agencyId    String    @map("agency_id")
+  workflowId  String    @map("workflow_id")
+  triggeredBy String?   @map("triggered_by") // User id or "system"
+  status      String    @default("pending") // pending | running | completed | failed | cancelled
+  input       Json      @default("{}")
+  output      Json      @default("{}")
+  errorMessage String?  @map("error_message")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  workflow  Workflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [triggeredBy], references: [id])
+  documents Document[]
+  feedbacks Feedback[]
+
+  @@index([agencyId])
+  @@index([workflowId])
+  @@map("workflow_runs")
+}
+
+// ─────────────────────────────────────────────
+// Feedback — stakeholder review of a document or run
+// ─────────────────────────────────────────────
+model Feedback {
+  id             String   @id @default(cuid())
+  agencyId       String   @map("agency_id")
+  documentId     String?  @map("document_id")
+  workflowRunId  String?  @map("workflow_run_id")
+  stakeholderId  String   @map("stakeholder_id")
+  decision       String   // approved | rejected | revision_requested
+  comment        String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Feedback is immutable — no updatedAt
+  document      Document?    @relation(fields: [documentId], references: [id])
+  workflowRun   WorkflowRun? @relation(fields: [workflowRunId], references: [id])
+  stakeholder   Stakeholder  @relation(fields: [stakeholderId], references: [id])
+
+  @@index([agencyId])
+  @@index([documentId])
+  @@index([workflowRunId])
+  @@map("feedbacks")
+}
+
+// ─────────────────────────────────────────────
+// TranscriptSession — a recorded meeting/interview session
+// ─────────────────────────────────────────────
+model TranscriptSession {
+  id            String    @id @default(cuid())
+  agencyId      String    @map("agency_id")
+  clientId      String    @map("client_id")
+  stakeholderId String?   @map("stakeholder_id")
+  title         String?
+  recordingUrl  String?   @map("recording_url")
+  status        String    @default("pending") // pending | processing | ready | failed
+  durationSecs  Int?      @map("duration_secs")
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  agency      Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  stakeholder Stakeholder? @relation(fields: [stakeholderId], references: [id])
+  segments    TranscriptSegment[]
+  insights    Insight[]
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("transcript_sessions")
+}
+
+// ─────────────────────────────────────────────
+// TranscriptSegment — a timestamped chunk of a transcript
+// ─────────────────────────────────────────────
+model TranscriptSegment {
+  id          String  @id @default(cuid())
+  agencyId    String  @map("agency_id")
+  sessionId   String  @map("session_id")
+  speaker     String?
+  startMs     Int     @map("start_ms")
+  endMs       Int     @map("end_ms")
+  text        String
+  embedding   Unsupported("vector(1536)")?  // pgvector embedding
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  session TranscriptSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([sessionId])
+  @@map("transcript_segments")
+}
+
+// ─────────────────────────────────────────────
+// Insight — AI-derived insight from transcripts or workflows
+// ─────────────────────────────────────────────
+model Insight {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  clientId  String   @map("client_id")
+  sessionId String?  @map("session_id")
+  type      String   // theme | action_item | sentiment | risk | opportunity
+  title     String
+  body      String
+  confidence Float?
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agency  Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client  Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  session TranscriptSession? @relation(fields: [sessionId], references: [id])
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("insights")
+}
+
+// ─────────────────────────────────────────────
+// UsageRecord — metered billing / quota tracking
+// ─────────────────────────────────────────────
+model UsageRecord {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  metric     String   // ai_tokens | workflow_runs | storage_bytes | …
+  quantity   Float
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([agencyId, metric, periodStart])
+  @@map("usage_records")
+}
+
+// ─────────────────────────────────────────────
+// AuditLog — append-only compliance trail
+// ─────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  actorType  String   @map("actor_type") // user | stakeholder | system
+  actorId    String?  @map("actor_id")
+  action     String   // e.g. "workflow.run.created", "document.approved"
+  resourceType String? @map("resource_type")
+  resourceId   String? @map("resource_id")
+  metadata   Json     @default("{}")
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Append-only: no updatedAt, no soft-delete
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([agencyId, action])
+  @@index([agencyId, resourceType, resourceId])
+  @@map("audit_logs")
+}

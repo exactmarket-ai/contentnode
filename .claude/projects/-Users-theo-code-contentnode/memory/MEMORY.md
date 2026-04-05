@@ -1,0 +1,1 @@
+- [Session 1 — Monorepo & Database Foundation](project_session1.md) — pnpm workspaces, Prisma schema (15 tables), RLS, seed data; database live

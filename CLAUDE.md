@@ -32,7 +32,10 @@ Full spec is in docs/contentnode-spec-v4.md
 - workers/workflow — BullMQ workers
 
 ## What has been built
-- Nothing yet. Session 1 is next.
+- Session 1 complete: monorepo + database foundation
+  - pnpm workspaces (apps/*, packages/*, workers/*)
+  - packages/database: Prisma schema (15 tables), AsyncLocalStorage middleware,
+    3 migrations (pgvector extension, schema, RLS policies), seed data
 
 ## Current session
-- Ready to start Session 1: monorepo setup and database foundation
+- Session 1 done. Ready for Session 2.

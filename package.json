@@ -1,0 +1,19 @@
+{
+  "name": "contentnode",
+  "private": true,
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "db:generate": "pnpm --filter @contentnode/database generate",
+    "db:migrate": "pnpm --filter @contentnode/database migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @contentnode/database migrate:deploy",
+    "db:seed": "pnpm --filter @contentnode/database seed",
+    "db:studio": "pnpm --filter @contentnode/database studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
