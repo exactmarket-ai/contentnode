@@ -66,5 +66,26 @@ Full spec is in docs/contentnode-spec-v4.md
   - Env vars needed in workers/workflow: DATABASE_URL, REDIS_URL,
     ANTHROPIC_API_KEY (or named ref), OLLAMA_BASE_URL (optional)
 
+## What has been built (continued)
+- Session 4 complete: workflow canvas (apps/web)
+  - Vite + React 18 + TypeScript, TailwindCSS v3, shadcn/ui (dark theme)
+  - Clerk auth: ClerkProvider wraps app; if VITE_CLERK_PUBLISHABLE_KEY is unset,
+    editor renders without auth (local dev)
+  - WorkflowStore (Zustand): nodes[], edges[], viewport, activeWorkflow metadata
+    (id, name, connectivity_mode, default_model_config), selectedNodeId, runStatus,
+    nodeRunStatuses for per-node status display during runs
+  - Node palette (260px left sidebar): 12 node types across 3 categories
+    (source/logic/output), searchable, drag-to-canvas
+  - Canvas (ReactFlow): custom SourceNode/LogicNode/OutputNode with per-category
+    color coding (green/blue/purple), run status badges, grid background,
+    MiniMap, Controls, drag-and-drop drop handler
+  - Config panel (320px right panel): opens on node selection, shows type-specific
+    forms (text input, API fetch, web scrape, AI generate with model override,
+    transform, condition, webhook, email, file export, display)
+  - Top bar: editable workflow name, connectivity badge, provider+model picker,
+    Save and Run buttons with run state feedback
+  - Start with: pnpm dev:web (http://localhost:5173)
+  - Env vars: see apps/web/.env.example
+
 ## Current session
-- Session 3 done. Ready for Session 4.
+- Session 4 done. Ready for Session 5.
