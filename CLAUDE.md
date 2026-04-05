@@ -87,5 +87,25 @@ Full spec is in docs/contentnode-spec-v4.md
   - Start with: pnpm dev:web (http://localhost:5173)
   - Env vars: see apps/web/.env.example
 
+## What has been built (continued)
+- Session 5 complete: rich config panels + workflow creation modal
+  - DocumentSourceConfig (file-upload subtype): document type selector (10 types),
+    drag-and-drop upload zone, multi-file list with remove buttons, text paste area.
+    Calls POST /api/v1/documents; falls back to local ID if auth not available.
+  - AiGenerateConfig (ai-generate subtype): task type selector (Expand/Summarize/Rewrite/
+    Compress/Generate Variations/Generate Headlines/Extract Claims), prompt, model override
+    (provider + model dropdowns + temperature slider), additional instructions textarea.
+  - ContentOutputConfig (content-output subtype): output type selector (Blog Post/Email/
+    Ad Copy/LinkedIn Post/Video Script/Landing Page/Custom), target word count range,
+    type-specific format options (tone, toggles, platform, section count, etc.).
+  - PALETTE_NODES: added "Content Output" (output/content-output) node.
+  - WorkflowCreationModal: shown on every fresh canvas load. Fields: workflow name,
+    connectivity mode toggle (Online/Offline card buttons), default provider + model.
+    Offline mode also shows a persistent floating OFFLINE badge on the canvas.
+  - POST /api/v1/documents: accepts multipart upload, validates extension (pdf/docx/txt/
+    md/csv/json/html), streams file to UPLOAD_DIR (default: ./uploads), returns
+    { id, filename, storageKey, sizeBytes }. Skips DB record (clientId required in
+    schema); future session can wire that up.
+
 ## Current session
-- Session 4 done. Ready for Session 5.
+- Session 5 done. Ready for Session 6.

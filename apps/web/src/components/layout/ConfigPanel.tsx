@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
+
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 
 const ANTHROPIC_MODELS = [
   { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
@@ -23,6 +25,39 @@ const OLLAMA_MODELS = [
   { value: 'gemma2',   label: 'Gemma 2' },
 ]
 
+const SOURCE_DOCUMENT_TYPES = [
+  { value: 'brand-guidelines',       label: 'Brand Guidelines' },
+  { value: 'content-standards',      label: 'Content Standards' },
+  { value: 'source-material',        label: 'Source Material' },
+  { value: 'product-documentation',  label: 'Product Documentation' },
+  { value: 'messaging-framework',    label: 'Messaging Framework' },
+  { value: 'approved-examples',      label: 'Approved Examples' },
+  { value: 'negative-examples',      label: 'Negative Examples' },
+  { value: 'legal-documents',        label: 'Legal Documents' },
+  { value: 'seo-brief',              label: 'SEO Brief' },
+  { value: 'custom',                 label: 'Custom' },
+]
+
+const LOGIC_TASK_TYPES = [
+  { value: 'expand',              label: 'Expand' },
+  { value: 'summarize',           label: 'Summarize' },
+  { value: 'rewrite',             label: 'Rewrite' },
+  { value: 'compress',            label: 'Compress' },
+  { value: 'generate-variations', label: 'Generate Variations' },
+  { value: 'generate-headlines',  label: 'Generate Headlines' },
+  { value: 'extract-claims',      label: 'Extract Claims' },
+]
+
+const OUTPUT_TYPES = [
+  { value: 'blog-post',      label: 'Blog Post' },
+  { value: 'email',          label: 'Email' },
+  { value: 'ad-copy',        label: 'Ad Copy' },
+  { value: 'linkedin-post',  label: 'LinkedIn Post' },
+  { value: 'video-script',   label: 'Video Script' },
+  { value: 'landing-page',   label: 'Landing Page' },
+  { value: 'custom',         label: 'Custom' },
+]
+
 // ─── Field components ─────────────────────────────────────────────────────────
 
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
@@ -34,7 +69,186 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
   )
 }
 
-// ─── Subtype-specific config forms ───────────────────────────────────────────
+// ─── Source / file-upload ─────────────────────────────────────────────────────
+
+interface UploadedFile {
+  id: string
+  name: string
+  size: number
+  uploaded: boolean  // false = upload failed or pending
+}
+
+const ACCEPTED_EXTENSIONS = '.pdf,.docx,.txt,.md,.csv,.json,.html'
+const FILE_SIZE_LIMIT_MB = 100
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function DocumentSourceConfig({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>
+  onChange: (k: string, v: unknown) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const uploadedFiles = (config.uploaded_files as UploadedFile[]) ?? []
+
+  const uploadFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return
+      setUploading(true)
+
+      const results: UploadedFile[] = []
+
+      for (const file of files) {
+        if (file.size > FILE_SIZE_LIMIT_MB * 1024 * 1024) continue
+
+        const fd = new FormData()
+        fd.append('file', file)
+
+        try {
+          const res = await fetch(`${API_URL}/api/v1/documents`, { method: 'POST', body: fd })
+          if (res.ok) {
+            const json = await res.json()
+            results.push({ id: json.data.id, name: file.name, size: file.size, uploaded: true })
+          } else {
+            // Auth not available in dev — keep file with local ID
+            results.push({ id: crypto.randomUUID(), name: file.name, size: file.size, uploaded: false })
+          }
+        } catch {
+          results.push({ id: crypto.randomUUID(), name: file.name, size: file.size, uploaded: false })
+        }
+      }
+
+      onChange('uploaded_files', [...uploadedFiles, ...results])
+      setUploading(false)
+    },
+    [uploadedFiles, onChange],
+  )
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) uploadFiles(Array.from(e.target.files))
+    e.target.value = ''
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    if (e.dataTransfer.files) uploadFiles(Array.from(e.dataTransfer.files))
+  }
+
+  const removeFile = (id: string) => {
+    onChange(
+      'uploaded_files',
+      uploadedFiles.filter((f) => f.id !== id),
+    )
+  }
+
+  return (
+    <>
+      <FieldGroup label="Document Type">
+        <Select
+          value={(config.document_type as string) ?? 'source-material'}
+          onValueChange={(v) => onChange('document_type', v)}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SOURCE_DOCUMENT_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value} className="text-xs">
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Drop zone */}
+      <FieldGroup label="Upload Files">
+        <div
+          className={cn(
+            'flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-5 text-center transition-colors cursor-pointer',
+            isDragging
+              ? 'border-blue-500 bg-blue-950/30 text-blue-300'
+              : 'border-border hover:border-border/60 hover:bg-accent/40',
+          )}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+        >
+          {uploading ? (
+            <Icons.Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          ) : (
+            <Icons.Upload className="h-6 w-6 text-muted-foreground" />
+          )}
+          <div>
+            <p className="text-xs font-medium">
+              {uploading ? 'Uploading…' : 'Drop files here or click to browse'}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              PDF, DOCX, TXT, MD, CSV, JSON, HTML — up to {FILE_SIZE_LIMIT_MB} MB each
+            </p>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPTED_EXTENSIONS}
+            className="hidden"
+            onChange={handleInputChange}
+          />
+        </div>
+      </FieldGroup>
+
+      {/* Uploaded file list */}
+      {uploadedFiles.length > 0 && (
+        <div className="space-y-1">
+          {uploadedFiles.map((f) => (
+            <div
+              key={f.id}
+              className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5"
+            >
+              <Icons.FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="flex-1 truncate text-xs">{f.name}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">{formatBytes(f.size)}</span>
+              {!f.uploaded && (
+                <span title="File not yet synced to server (no auth)">
+                  <Icons.AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                </span>
+              )}
+              <button
+                onClick={() => removeFile(f.id)}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+              >
+                <Icons.X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Text paste area */}
+      <FieldGroup label="Paste Content Directly">
+        <Textarea
+          placeholder="Paste text content here…"
+          className="min-h-[100px] resize-none text-xs"
+          value={(config.pasted_text as string) ?? ''}
+          onChange={(e) => onChange('pasted_text', e.target.value)}
+        />
+      </FieldGroup>
+    </>
+  )
+}
+
+// ─── Source / text-input ──────────────────────────────────────────────────────
 
 function TextInputConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
@@ -48,6 +262,8 @@ function TextInputConfig({ config, onChange }: { config: Record<string, unknown>
     </FieldGroup>
   )
 }
+
+// ─── Source / api-fetch ───────────────────────────────────────────────────────
 
 function ApiFetchConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
@@ -76,6 +292,8 @@ function ApiFetchConfig({ config, onChange }: { config: Record<string, unknown>;
   )
 }
 
+// ─── Source / web-scrape ──────────────────────────────────────────────────────
+
 function WebScrapeConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
     <>
@@ -99,7 +317,13 @@ function WebScrapeConfig({ config, onChange }: { config: Record<string, unknown>
   )
 }
 
-function AiGenerateConfig({ config, onChange, workflowModel }: {
+// ─── Logic / ai-generate ──────────────────────────────────────────────────────
+
+function AiGenerateConfig({
+  config,
+  onChange,
+  workflowModel,
+}: {
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
   workflowModel: { provider: string; model: string; temperature?: number }
@@ -113,20 +337,48 @@ function AiGenerateConfig({ config, onChange, workflowModel }: {
 
   return (
     <>
+      {/* Task type */}
+      <FieldGroup label="Task">
+        <Select
+          value={(config.task_type as string) ?? 'rewrite'}
+          onValueChange={(v) => onChange('task_type', v)}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LOGIC_TASK_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value} className="text-xs">
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Prompt */}
       <FieldGroup label="Prompt">
         <Textarea
           placeholder="Write a summary of {{input}}..."
-          className="min-h-[120px] resize-none text-xs font-mono"
+          className="min-h-[100px] resize-none text-xs font-mono"
           value={(config.prompt as string) ?? ''}
           onChange={(e) => onChange('prompt', e.target.value)}
         />
       </FieldGroup>
 
+      {/* Model override */}
       <div className="flex items-center justify-between">
         <Label className="text-xs text-muted-foreground">Model Override</Label>
         <button
           className="text-xs text-blue-400 hover:text-blue-300"
-          onClick={() => onChange('model_config', useWorkflowDefault ? { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 } : null)}
+          onClick={() =>
+            onChange(
+              'model_config',
+              useWorkflowDefault
+                ? { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 }
+                : null,
+            )
+          }
         >
           {useWorkflowDefault ? 'Override' : 'Use workflow default'}
         </button>
@@ -135,7 +387,16 @@ function AiGenerateConfig({ config, onChange, workflowModel }: {
       {!useWorkflowDefault && (
         <div className="space-y-2 rounded-md border border-border p-2.5">
           <FieldGroup label="Provider">
-            <Select value={provider} onValueChange={(v) => onChange('model_config', { ...modelCfg, provider: v, model: v === 'anthropic' ? 'claude-sonnet-4-5' : 'llama3.2' })}>
+            <Select
+              value={provider}
+              onValueChange={(v) =>
+                onChange('model_config', {
+                  ...modelCfg,
+                  provider: v,
+                  model: v === 'anthropic' ? 'claude-sonnet-4-5' : 'llama3.2',
+                })
+              }
+            >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -146,30 +407,52 @@ function AiGenerateConfig({ config, onChange, workflowModel }: {
             </Select>
           </FieldGroup>
           <FieldGroup label="Model">
-            <Select value={model} onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}>
+            <Select
+              value={model}
+              onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
+            >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {(provider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS).map((m) => (
-                  <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                  <SelectItem key={m.value} value={m.value} className="text-xs">
+                    {m.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </FieldGroup>
           <FieldGroup label={`Temperature: ${temperature.toFixed(1)}`}>
             <input
-              type="range" min="0" max="1" step="0.1"
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
               value={temperature}
-              onChange={(e) => onChange('model_config', { ...modelCfg, temperature: parseFloat(e.target.value) })}
+              onChange={(e) =>
+                onChange('model_config', { ...modelCfg, temperature: parseFloat(e.target.value) })
+              }
               className="w-full accent-blue-500"
             />
           </FieldGroup>
         </div>
       )}
+
+      {/* Additional instructions */}
+      <FieldGroup label="Additional Instructions">
+        <Textarea
+          placeholder="Any extra guidance for the model…"
+          className="min-h-[72px] resize-none text-xs"
+          value={(config.additional_instructions as string) ?? ''}
+          onChange={(e) => onChange('additional_instructions', e.target.value)}
+        />
+      </FieldGroup>
     </>
   )
 }
+
+// ─── Logic / transform ────────────────────────────────────────────────────────
 
 function TransformConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
@@ -180,10 +463,14 @@ function TransformConfig({ config, onChange }: { config: Record<string, unknown>
         value={(config.expression as string) ?? ''}
         onChange={(e) => onChange('expression', e.target.value)}
       />
-      <p className="text-xs text-muted-foreground">Use <code className="text-blue-400">input</code> to reference the incoming value.</p>
+      <p className="text-xs text-muted-foreground">
+        Use <code className="text-blue-400">input</code> to reference the incoming value.
+      </p>
     </FieldGroup>
   )
 }
+
+// ─── Logic / condition ────────────────────────────────────────────────────────
 
 function ConditionConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
@@ -197,6 +484,8 @@ function ConditionConfig({ config, onChange }: { config: Record<string, unknown>
     </FieldGroup>
   )
 }
+
+// ─── Logic / human-review ─────────────────────────────────────────────────────
 
 function HumanReviewConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
@@ -221,6 +510,8 @@ function HumanReviewConfig({ config, onChange }: { config: Record<string, unknow
   )
 }
 
+// ─── Output / webhook ─────────────────────────────────────────────────────────
+
 function WebhookConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
     <FieldGroup label="Webhook URL">
@@ -233,6 +524,8 @@ function WebhookConfig({ config, onChange }: { config: Record<string, unknown>; 
     </FieldGroup>
   )
 }
+
+// ─── Output / email ───────────────────────────────────────────────────────────
 
 function EmailConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
@@ -257,6 +550,8 @@ function EmailConfig({ config, onChange }: { config: Record<string, unknown>; on
   )
 }
 
+// ─── Output / file-export ─────────────────────────────────────────────────────
+
 function FileExportConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   return (
     <>
@@ -267,7 +562,9 @@ function FileExportConfig({ config, onChange }: { config: Record<string, unknown
           </SelectTrigger>
           <SelectContent>
             {['txt', 'md', 'json', 'csv', 'html'].map((f) => (
-              <SelectItem key={f} value={f} className="text-xs">.{f}</SelectItem>
+              <SelectItem key={f} value={f} className="text-xs">
+                .{f}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -284,26 +581,303 @@ function FileExportConfig({ config, onChange }: { config: Record<string, unknown
   )
 }
 
+// ─── Output / content-output ──────────────────────────────────────────────────
+
+function OutputFormatOptions({
+  outputType,
+  options,
+  onOptionsChange,
+}: {
+  outputType: string
+  options: Record<string, unknown>
+  onOptionsChange: (opts: Record<string, unknown>) => void
+}) {
+  const set = (k: string, v: unknown) => onOptionsChange({ ...options, [k]: v })
+
+  switch (outputType) {
+    case 'blog-post':
+      return (
+        <>
+          <FieldGroup label="Tone">
+            <Select value={(options.tone as string) ?? 'professional'} onValueChange={(v) => set('tone', v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="professional" className="text-xs">Professional</SelectItem>
+                <SelectItem value="conversational" className="text-xs">Conversational</SelectItem>
+                <SelectItem value="educational" className="text-xs">Educational</SelectItem>
+              </SelectContent>
+            </Select>
+          </FieldGroup>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Include Table of Contents</Label>
+            <button
+              onClick={() => set('include_toc', !(options.include_toc ?? false))}
+              className={cn(
+                'h-5 w-9 rounded-full border transition-colors',
+                options.include_toc ? 'border-blue-600 bg-blue-600' : 'border-border bg-muted',
+              )}
+            >
+              <span
+                className={cn(
+                  'block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                  options.include_toc ? 'translate-x-4' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          </div>
+        </>
+      )
+
+    case 'email':
+      return (
+        <FieldGroup label="Tone">
+          <Select value={(options.tone as string) ?? 'friendly'} onValueChange={(v) => set('tone', v)}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="formal" className="text-xs">Formal</SelectItem>
+              <SelectItem value="friendly" className="text-xs">Friendly</SelectItem>
+            </SelectContent>
+          </Select>
+        </FieldGroup>
+      )
+
+    case 'ad-copy':
+      return (
+        <>
+          <FieldGroup label="Platform">
+            <Select value={(options.platform as string) ?? 'google'} onValueChange={(v) => set('platform', v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="google" className="text-xs">Google Ads</SelectItem>
+                <SelectItem value="facebook" className="text-xs">Facebook / Instagram</SelectItem>
+                <SelectItem value="twitter" className="text-xs">Twitter / X</SelectItem>
+                <SelectItem value="linkedin" className="text-xs">LinkedIn</SelectItem>
+              </SelectContent>
+            </Select>
+          </FieldGroup>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Include Call to Action</Label>
+            <button
+              onClick={() => set('include_cta', !(options.include_cta ?? true))}
+              className={cn(
+                'h-5 w-9 rounded-full border transition-colors',
+                options.include_cta !== false ? 'border-blue-600 bg-blue-600' : 'border-border bg-muted',
+              )}
+            >
+              <span
+                className={cn(
+                  'block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                  options.include_cta !== false ? 'translate-x-4' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          </div>
+        </>
+      )
+
+    case 'linkedin-post':
+      return (
+        <>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Include Hashtags</Label>
+            <button
+              onClick={() => set('include_hashtags', !(options.include_hashtags ?? true))}
+              className={cn(
+                'h-5 w-9 rounded-full border transition-colors',
+                options.include_hashtags !== false ? 'border-blue-600 bg-blue-600' : 'border-border bg-muted',
+              )}
+            >
+              <span
+                className={cn(
+                  'block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                  options.include_hashtags !== false ? 'translate-x-4' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          </div>
+          <FieldGroup label="Emoji Style">
+            <Select value={(options.emoji_style as string) ?? 'moderate'} onValueChange={(v) => set('emoji_style', v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" className="text-xs">None</SelectItem>
+                <SelectItem value="moderate" className="text-xs">Moderate</SelectItem>
+                <SelectItem value="liberal" className="text-xs">Liberal</SelectItem>
+              </SelectContent>
+            </Select>
+          </FieldGroup>
+        </>
+      )
+
+    case 'video-script':
+      return (
+        <>
+          <FieldGroup label="Style">
+            <Select value={(options.style as string) ?? 'conversational'} onValueChange={(v) => set('style', v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="formal" className="text-xs">Formal</SelectItem>
+                <SelectItem value="conversational" className="text-xs">Conversational</SelectItem>
+              </SelectContent>
+            </Select>
+          </FieldGroup>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Include B-Roll Notes</Label>
+            <button
+              onClick={() => set('include_broll', !(options.include_broll ?? false))}
+              className={cn(
+                'h-5 w-9 rounded-full border transition-colors',
+                options.include_broll ? 'border-blue-600 bg-blue-600' : 'border-border bg-muted',
+              )}
+            >
+              <span
+                className={cn(
+                  'block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                  options.include_broll ? 'translate-x-4' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          </div>
+        </>
+      )
+
+    case 'landing-page':
+      return (
+        <>
+          <FieldGroup label="Number of Sections">
+            <Input
+              type="number"
+              min={3}
+              max={12}
+              className="text-xs h-8"
+              value={(options.section_count as number) ?? 6}
+              onChange={(e) => set('section_count', parseInt(e.target.value) || 6)}
+            />
+          </FieldGroup>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Include FAQ Section</Label>
+            <button
+              onClick={() => set('include_faq', !(options.include_faq ?? true))}
+              className={cn(
+                'h-5 w-9 rounded-full border transition-colors',
+                options.include_faq !== false ? 'border-blue-600 bg-blue-600' : 'border-border bg-muted',
+              )}
+            >
+              <span
+                className={cn(
+                  'block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                  options.include_faq !== false ? 'translate-x-4' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          </div>
+        </>
+      )
+
+    case 'custom':
+      return (
+        <FieldGroup label="Format Instructions">
+          <Textarea
+            placeholder="Describe the desired output format…"
+            className="min-h-[80px] resize-none text-xs"
+            value={(options.instructions as string) ?? ''}
+            onChange={(e) => set('instructions', e.target.value)}
+          />
+        </FieldGroup>
+      )
+
+    default:
+      return null
+  }
+}
+
+function ContentOutputConfig({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>
+  onChange: (k: string, v: unknown) => void
+}) {
+  const outputType = (config.output_type as string) ?? 'blog-post'
+  const formatOptions = (config.format_options as Record<string, unknown>) ?? {}
+
+  return (
+    <>
+      <FieldGroup label="Output Type">
+        <Select value={outputType} onValueChange={(v) => onChange('output_type', v)}>
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {OUTPUT_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value} className="text-xs">
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Target word count range */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Target Length (words)</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={50}
+            placeholder="Min"
+            className="h-8 text-xs"
+            value={(config.min_words as number) ?? ''}
+            onChange={(e) => onChange('min_words', parseInt(e.target.value) || 0)}
+          />
+          <span className="shrink-0 text-xs text-muted-foreground">–</span>
+          <Input
+            type="number"
+            min={50}
+            placeholder="Max"
+            className="h-8 text-xs"
+            value={(config.max_words as number) ?? ''}
+            onChange={(e) => onChange('max_words', parseInt(e.target.value) || 0)}
+          />
+        </div>
+      </div>
+
+      {/* Type-specific format options */}
+      <OutputFormatOptions
+        outputType={outputType}
+        options={formatOptions}
+        onOptionsChange={(opts) => onChange('format_options', opts)}
+      />
+    </>
+  )
+}
+
 // ─── Config dispatcher ────────────────────────────────────────────────────────
 
-function NodeConfigForm({ subtype, config, onChange, workflowModel }: {
+function NodeConfigForm({
+  subtype,
+  config,
+  onChange,
+  workflowModel,
+}: {
   subtype: string
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
   workflowModel: { provider: string; model: string; temperature?: number }
 }) {
   switch (subtype) {
-    case 'text-input':   return <TextInputConfig config={config} onChange={onChange} />
-    case 'api-fetch':    return <ApiFetchConfig config={config} onChange={onChange} />
-    case 'web-scrape':   return <WebScrapeConfig config={config} onChange={onChange} />
-    case 'ai-generate':  return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} />
-    case 'transform':    return <TransformConfig config={config} onChange={onChange} />
-    case 'condition':    return <ConditionConfig config={config} onChange={onChange} />
-    case 'human-review': return <HumanReviewConfig config={config} onChange={onChange} />
-    case 'webhook':      return <WebhookConfig config={config} onChange={onChange} />
-    case 'email':        return <EmailConfig config={config} onChange={onChange} />
-    case 'file-export':  return <FileExportConfig config={config} onChange={onChange} />
-    default:             return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
+    case 'text-input':      return <TextInputConfig config={config} onChange={onChange} />
+    case 'file-upload':     return <DocumentSourceConfig config={config} onChange={onChange} />
+    case 'api-fetch':       return <ApiFetchConfig config={config} onChange={onChange} />
+    case 'web-scrape':      return <WebScrapeConfig config={config} onChange={onChange} />
+    case 'ai-generate':     return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} />
+    case 'transform':       return <TransformConfig config={config} onChange={onChange} />
+    case 'condition':       return <ConditionConfig config={config} onChange={onChange} />
+    case 'human-review':    return <HumanReviewConfig config={config} onChange={onChange} />
+    case 'webhook':         return <WebhookConfig config={config} onChange={onChange} />
+    case 'email':           return <EmailConfig config={config} onChange={onChange} />
+    case 'file-export':     return <FileExportConfig config={config} onChange={onChange} />
+    case 'content-output':  return <ContentOutputConfig config={config} onChange={onChange} />
+    default:                return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
   }
 }
 
@@ -328,7 +902,9 @@ export function ConfigPanel() {
           </div>
           <div>
             <p className="text-sm font-medium">No node selected</p>
-            <p className="mt-1 text-xs text-muted-foreground">Click a node on the canvas to configure it</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Click a node on the canvas to configure it
+            </p>
           </div>
         </div>
       </div>

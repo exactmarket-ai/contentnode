@@ -126,6 +126,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'output', icon: 'Monitor',
     defaultConfig: {},
   },
+  {
+    type: 'output', subtype: 'content-output',
+    label: 'Content Output', description: 'Format and deliver generated content',
+    category: 'output', icon: 'FileText',
+    defaultConfig: { output_type: 'blog-post', min_words: 800, max_words: 1200, format_options: {} },
+  },
 ]
 
 // ─── Store ────────────────────────────────────────────────────────────────────
