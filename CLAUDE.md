@@ -205,3 +205,4 @@ Full spec is in docs/contentnode-spec-v4.md
 
 ## Current session
 - Session 9 done. Ready for Session 10.
+- MVP complete. All 10 sessions done.
