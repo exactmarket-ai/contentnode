@@ -37,4 +37,13 @@ export interface NodeExecutionResult {
   modelUsed?: string
   /** Routing decision for conditional nodes ('pass' | 'fail') */
   routePath?: string
+  /**
+   * If true, this node requires human input before the workflow can continue.
+   * The runner will pause the run (status → 'awaiting_assignment') and stop
+   * processing downstream nodes. The run resumes once the human completes the
+   * required action (e.g. speaker assignment) and the run is re-enqueued.
+   */
+  paused?: boolean
+  /** ID of the TranscriptSession created during transcription (used to resume) */
+  pendingSessionId?: string
 }

@@ -5,7 +5,7 @@ import type { Node, Edge, NodeChange, EdgeChange, Connection, Viewport } from 'r
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ConnectivityMode = 'online' | 'offline'
-export type RunStatus = 'idle' | 'running' | 'completed' | 'failed'
+export type RunStatus = 'idle' | 'running' | 'completed' | 'failed' | 'awaiting_assignment'
 
 export interface ModelConfig {
   provider: 'anthropic' | 'ollama'
@@ -149,6 +149,22 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     },
   },
   // Output
+  // Transcription (source type — produces transcript text from audio)
+  {
+    type: 'source', subtype: 'transcription',
+    label: 'Transcription', description: 'Transcribe audio recordings with speaker diarization',
+    category: 'source', icon: 'Mic',
+    defaultConfig: {
+      subtype: 'transcription',
+      provider: 'deepgram',
+      enable_diarization: true,
+      max_speakers: null,
+      target_node_ids: [],
+      stakeholder_id: null,
+      api_key_ref: 'DEEPGRAM_API_KEY',
+      audio_files: [],
+    },
+  },
   {
     type: 'output', subtype: 'webhook',
     label: 'Webhook', description: 'POST result to an external URL',
@@ -198,6 +214,8 @@ interface WorkflowState {
   nodeRunStatuses: Record<string, NodeRunStatus>
   /** True once the workflow has been run at least once — locks connectivity_mode */
   hasBeenRun: boolean
+  /** Set when a transcription node pauses the run awaiting speaker assignment */
+  pendingTranscriptionSessionId: string | null
 
   // Actions — graph
   onNodesChange: (changes: NodeChange[]) => void
@@ -215,6 +233,9 @@ interface WorkflowState {
   // Actions — metadata
   setWorkflowName: (name: string) => void
   setWorkflow: (meta: Partial<WorkflowMeta>) => void
+
+  // Actions — transcription
+  setPendingTranscriptionSessionId: (id: string | null) => void
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -237,6 +258,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   runStatus: 'idle',
   nodeRunStatuses: {},
   hasBeenRun: false,
+  pendingTranscriptionSessionId: null,
 
   // Graph actions
   onNodesChange: (changes) =>
@@ -287,4 +309,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setWorkflow: (meta) =>
     set({ workflow: { ...get().workflow, ...meta } }),
+
+  // Transcription actions
+  setPendingTranscriptionSessionId: (id) =>
+    set({ pendingTranscriptionSessionId: id }),
 }))

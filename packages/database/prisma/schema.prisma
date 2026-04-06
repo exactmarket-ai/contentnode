@@ -74,7 +74,8 @@ model Stakeholder {
   agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   feedbacks Feedback[]
-  transcriptSessions TranscriptSession[]
+  transcriptSessions   TranscriptSession[]
+  transcriptSegments   TranscriptSegment[]
 
   @@unique([clientId, email])
   @@index([agencyId])
@@ -230,17 +231,22 @@ model WorkflowRun {
 }
 
 // ─────────────────────────────────────────────
-// Feedback — stakeholder review of a document or run
+// Feedback — stakeholder review of a document or run, OR a quote extracted from a transcript
 // ─────────────────────────────────────────────
 model Feedback {
-  id             String   @id @default(cuid())
-  agencyId       String   @map("agency_id")
-  documentId     String?  @map("document_id")
-  workflowRunId  String?  @map("workflow_run_id")
-  stakeholderId  String   @map("stakeholder_id")
-  decision       String   // approved | rejected | revision_requested
-  comment        String?
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                  String   @id @default(cuid())
+  agencyId            String   @map("agency_id")
+  documentId          String?  @map("document_id")
+  workflowRunId       String?  @map("workflow_run_id")
+  stakeholderId       String   @map("stakeholder_id")
+  decision            String?  // approved | rejected | revision_requested | null (for transcript quotes)
+  comment             String?
+  // Transcript quote fields (populated when feedback comes from quote extraction)
+  transcriptSessionId String?  @map("transcript_session_id")
+  transcriptSegmentId String?  @map("transcript_segment_id")
+  quoteText           String?  @map("quote_text")
+  category            String?  // pain_point | desire | objection | insight | action_item | source_material | other
+  createdAt           DateTime @default(now()) @map("created_at")
 
   // Feedback is immutable — no updatedAt
   document      Document?    @relation(fields: [documentId], references: [id])
@@ -250,6 +256,7 @@ model Feedback {
   @@index([agencyId])
   @@index([documentId])
   @@index([workflowRunId])
+  @@index([transcriptSessionId])
   @@map("feedbacks")
 }
 
@@ -261,9 +268,12 @@ model TranscriptSession {
   agencyId      String    @map("agency_id")
   clientId      String    @map("client_id")
   stakeholderId String?   @map("stakeholder_id")
+  workflowRunId String?   @map("workflow_run_id")  // linked workflow run (if triggered via node)
+  nodeId        String?   @map("node_id")           // transcription node that triggered this
+  targetNodeIds Json      @default("[]") @map("target_node_ids") // downstream nodes to receive transcript
   title         String?
   recordingUrl  String?   @map("recording_url")
-  status        String    @default("pending") // pending | processing | ready | failed
+  status        String    @default("pending") // pending | processing | awaiting_assignment | ready | failed
   durationSecs  Int?      @map("duration_secs")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -284,17 +294,22 @@ model TranscriptSession {
 // TranscriptSegment — a timestamped chunk of a transcript
 // ─────────────────────────────────────────────
 model TranscriptSegment {
-  id          String  @id @default(cuid())
-  agencyId    String  @map("agency_id")
-  sessionId   String  @map("session_id")
-  speaker     String?
-  startMs     Int     @map("start_ms")
-  endMs       Int     @map("end_ms")
-  text        String
-  embedding   Unsupported("vector(1536)")?  // pgvector embedding
-  createdAt   DateTime @default(now()) @map("created_at")
+  id                  String   @id @default(cuid())
+  agencyId            String   @map("agency_id")
+  sessionId           String   @map("session_id")
+  speaker             String?  // raw diarization label (e.g. "0", "1")
+  speakerName         String?  @map("speaker_name")          // human-assigned display name
+  stakeholderId       String?  @map("stakeholder_id")        // assigned stakeholder (nullable = unassigned)
+  isAgencyParticipant Boolean  @default(false) @map("is_agency_participant") // agency employee flag
+  audioClipKey        String?  @map("audio_clip_key")        // storage key for 10-second representative clip
+  startMs             Int      @map("start_ms")
+  endMs               Int      @map("end_ms")
+  text                String
+  embedding           Unsupported("vector(1536)")?  // pgvector embedding
+  createdAt           DateTime @default(now()) @map("created_at")
 
-  session TranscriptSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session     TranscriptSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stakeholder Stakeholder?      @relation(fields: [stakeholderId], references: [id])
 
   @@index([agencyId])
   @@index([sessionId])

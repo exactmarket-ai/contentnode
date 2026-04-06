@@ -5,6 +5,7 @@ import { OutputNodeExecutor } from './executors/output.js'
 import { DetectionNodeExecutor } from './executors/detection.js'
 import { HumanizerNodeExecutor } from './executors/humanizer.js'
 import { ConditionalBranchNodeExecutor } from './executors/conditional_branch.js'
+import { TranscriptionNodeExecutor } from './executors/transcription.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,6 +24,8 @@ export interface NodeStatus {
   modelUsed?: string
   /** Set when detection score does not improve after repeated passes */
   warning?: string
+  /** Set when this node is awaiting human input (e.g. speaker assignment) */
+  paused?: boolean
 }
 
 export interface RunOutput {
@@ -30,6 +33,8 @@ export interface RunOutput {
   finalOutput?: unknown
   /** Retry tracking per detection node */
   detectionState?: Record<string, { retryCount: number; lastScore: number }>
+  /** ID of a TranscriptSession awaiting speaker assignment before the run can proceed */
+  pendingTranscriptionSessionId?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +43,7 @@ export interface RunOutput {
 
 const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   source:                      SourceNodeExecutor,
+  'source:transcription':      TranscriptionNodeExecutor,
   logic:                       LogicNodeExecutor,
   'logic:humanizer':           HumanizerNodeExecutor,
   'logic:detection':           DetectionNodeExecutor,
@@ -214,11 +220,28 @@ export class WorkflowRunner {
 
     const { workflow } = run
 
-    // ── Initialise per-node status map ───────────────────────────────────────
-    const runOutput: RunOutput = {
-      nodeStatuses: Object.fromEntries(
-        workflow.nodes.map((n) => [n.id, { status: 'idle' as NodeRunStatus }]),
-      ),
+    // ── Resume or fresh start ────────────────────────────────────────────────
+    // A run with status 'awaiting_assignment' is being resumed after the human
+    // completed speaker assignment. We restore its existing node outputs so
+    // already-passed nodes are skipped.
+    const isResume = run.status === 'awaiting_assignment'
+
+    let runOutput: RunOutput
+    if (isResume && run.output) {
+      runOutput = run.output as unknown as RunOutput
+      // Ensure any newly-added nodes that are not in the saved output get idle status
+      for (const n of workflow.nodes) {
+        if (!runOutput.nodeStatuses[n.id]) {
+          runOutput.nodeStatuses[n.id] = { status: 'idle' }
+        }
+      }
+    } else {
+      // Fresh start
+      runOutput = {
+        nodeStatuses: Object.fromEntries(
+          workflow.nodes.map((n) => [n.id, { status: 'idle' as NodeRunStatus }]),
+        ),
+      }
     }
 
     // ── Mark run as running ──────────────────────────────────────────────────
@@ -226,7 +249,7 @@ export class WorkflowRunner {
       where: { id: this.workflowRunId },
       data: {
         status: 'running',
-        startedAt: new Date(),
+        startedAt: isResume ? run.startedAt : new Date(),
         output: runOutput as unknown as Prisma.InputJsonValue,
       },
     })
@@ -267,16 +290,34 @@ export class WorkflowRunner {
     // Store the routePath result from routing nodes (conditional-branch)
     const nodeRoutePaths = new Map<string, string>()
 
+    // For a resumed run, pre-populate nodeOutputs from previously passed nodes
+    if (isResume) {
+      for (const [nodeId, nodeStatus] of Object.entries(runOutput.nodeStatuses)) {
+        if (nodeStatus.status === 'passed' && nodeStatus.output !== undefined) {
+          nodeOutputs.set(nodeId, nodeStatus.output)
+        }
+      }
+    }
+
     // ── Execute wave by wave, parallel within each wave ──────────────────────
     let failed = false
+    let paused = false  // true = run is awaiting human input, not failed
     let lastOutputNodeResult: unknown
 
     for (const wave of waves) {
-      if (failed) break
+      if (failed || paused) break
 
       await Promise.all(
         wave.map(async (node) => {
-          if (failed) return
+          if (failed || paused) return
+
+          // ── Skip nodes already passed in a resumed run ──────────────────
+          if (runOutput.nodeStatuses[node.id]?.status === 'passed') {
+            if (node.type === 'output') {
+              lastOutputNodeResult = nodeOutputs.get(node.id)
+            }
+            return
+          }
 
           const config = (node.config ?? {}) as Record<string, unknown>
           const ctx: NodeExecutionContext = {
@@ -315,6 +356,43 @@ export class WorkflowRunner {
           try {
             const executor = getExecutor(node.type, config)
             const result = await executor.execute(input, config, ctx)
+
+            // ── Pause: node requires human input before workflow continues ───
+            if (result.paused) {
+              paused = true
+              nodeOutputs.set(node.id, result.output)
+              runOutput.nodeStatuses[node.id] = {
+                status: 'passed',
+                output: result.output,
+                paused: true,
+                startedAt: runOutput.nodeStatuses[node.id]?.startedAt,
+                completedAt: new Date().toISOString(),
+              }
+              if (result.pendingSessionId) {
+                runOutput.pendingTranscriptionSessionId = result.pendingSessionId
+              }
+              await this.persistOutput(runOutput)
+
+              await prisma.workflowRun.update({
+                where: { id: this.workflowRunId },
+                data: {
+                  status: 'awaiting_assignment',
+                  output: runOutput as unknown as Prisma.InputJsonValue,
+                },
+              })
+
+              await auditService.log(this.agencyId, {
+                actorType: 'system',
+                action: 'workflow.run.awaiting_assignment',
+                resourceType: 'WorkflowRun',
+                resourceId: this.workflowRunId,
+                metadata: {
+                  nodeId: node.id,
+                  sessionId: result.pendingSessionId,
+                },
+              })
+              return
+            }
 
             nodeOutputs.set(node.id, result.output)
             if (result.routePath) nodeRoutePaths.set(node.id, result.routePath)
@@ -392,6 +470,10 @@ export class WorkflowRunner {
     }
 
     // ── Finalise run ─────────────────────────────────────────────────────────
+    // If the run is paused (awaiting human input) the status was already updated
+    // inside the wave loop — do not overwrite it here.
+    if (paused) return
+
     const finalStatus = failed ? 'failed' : 'completed'
 
     if (!failed && lastOutputNodeResult !== undefined) {

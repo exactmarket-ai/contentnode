@@ -20,10 +20,11 @@ const OLLAMA_MODELS = [
 ]
 
 const RUN_STATUS_CONFIG = {
-  idle:      { label: 'Run',      icon: Icons.Play,     variant: 'default' as const, spin: false },
-  running:   { label: 'Running…', icon: Icons.Loader2,  variant: 'secondary' as const, spin: true  },
-  completed: { label: 'Run',      icon: Icons.Play,     variant: 'default' as const, spin: false },
-  failed:    { label: 'Retry',    icon: Icons.RotateCcw, variant: 'destructive' as const, spin: false },
+  idle:                { label: 'Run',        icon: Icons.Play,     variant: 'default' as const,      spin: false },
+  running:             { label: 'Running…',   icon: Icons.Loader2,  variant: 'secondary' as const,    spin: true  },
+  completed:           { label: 'Run',        icon: Icons.Play,     variant: 'default' as const,      spin: false },
+  failed:              { label: 'Retry',      icon: Icons.RotateCcw, variant: 'destructive' as const, spin: false },
+  awaiting_assignment: { label: 'Assign…',    icon: Icons.Users,    variant: 'secondary' as const,    spin: false },
 }
 
 export function TopBar() {
@@ -189,6 +190,12 @@ export function TopBar() {
         <span className="flex items-center gap-1 text-xs text-red-400">
           <Icons.XCircle className="h-3.5 w-3.5" />
           Failed
+        </span>
+      )}
+      {runStatus === 'awaiting_assignment' && (
+        <span className="flex items-center gap-1 text-xs text-blue-400">
+          <Icons.Users className="h-3.5 w-3.5" />
+          Awaiting speakers
         </span>
       )}
 
