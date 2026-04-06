@@ -4,6 +4,7 @@ import { useWorkflowStore } from '@/store/workflowStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { apiFetch } from '@/lib/api'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -47,11 +48,84 @@ export function TopBar() {
   const modelLabel = modelList.find((m) => m.value === workflow.default_model_config.model)?.label
     ?? workflow.default_model_config.model
 
-  const handleRun = () => {
+  const handleRun = async () => {
     if (runStatus === 'running') return
-    // TODO: wire to API POST /api/v1/runs
-    useWorkflowStore.getState().setRunStatus('running')
-    setTimeout(() => useWorkflowStore.getState().setRunStatus('idle'), 3000)
+
+    const store = useWorkflowStore.getState()
+    const { nodes, edges, workflow: wf } = store
+
+    console.log('[run] clicked — workflow:', wf.id, 'nodes:', nodes.length, 'edges:', edges.length)
+
+    store.setRunStatus('running')
+    store.setNodeRunStatuses({})
+
+    try {
+      // POST /api/v1/runs to create and enqueue the run
+      const res = await apiFetch('/api/v1/runs', {
+        method: 'POST',
+        body: JSON.stringify({
+          workflow_id: wf.id,
+          graph: { nodes, edges },
+          model_config: wf.default_model_config,
+          connectivity_mode: wf.connectivity_mode,
+        }),
+      })
+
+      if (!res.ok) {
+        const text = await res.text()
+        console.error('[run] POST /api/v1/runs failed:', res.status, text)
+        store.setRunStatus('failed')
+        return
+      }
+
+      const { runId } = await res.json() as { runId: string }
+      console.log('[run] run created:', runId)
+
+      // Poll GET /api/v1/runs/:id until terminal status
+      const POLL_INTERVAL_MS = 1500
+      const MAX_POLLS = 120 // 3 minutes max
+
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+
+        const pollRes = await apiFetch(`/api/v1/runs/${runId}`)
+        if (!pollRes.ok) {
+          console.error('[run] poll failed:', pollRes.status)
+          store.setRunStatus('failed')
+          return
+        }
+
+        const data = await pollRes.json() as {
+          status: string
+          nodeStatuses?: Record<string, unknown>
+          output?: unknown
+        }
+        console.log('[run] poll', i + 1, '— status:', data.status)
+
+        if (data.nodeStatuses) {
+          store.setNodeRunStatuses(data.nodeStatuses as Parameters<typeof store.setNodeRunStatuses>[0])
+        }
+
+        if (data.status === 'completed') {
+          store.setRunStatus('completed')
+          return
+        }
+        if (data.status === 'failed') {
+          store.setRunStatus('failed')
+          return
+        }
+        if (data.status === 'waiting_feedback' || data.status === 'awaiting_assignment') {
+          store.setRunStatus('awaiting_assignment')
+          return
+        }
+      }
+
+      console.warn('[run] timed out after max polls')
+      store.setRunStatus('failed')
+    } catch (err) {
+      console.error('[run] unexpected error:', err)
+      store.setRunStatus('failed')
+    }
   }
 
   const handleSave = () => {
