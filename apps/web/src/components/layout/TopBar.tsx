@@ -62,14 +62,6 @@ export function TopBar() {
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
-      {/* Logo */}
-      <div className="flex items-center gap-2 text-sm font-semibold">
-        <Icons.Workflow className="h-4 w-4 text-blue-400" />
-        <span className="text-blue-400">ContentNode</span>
-      </div>
-
-      <div className="mx-2 h-5 w-px bg-border" />
-
       {/* Workflow name */}
       {editingName ? (
         <input

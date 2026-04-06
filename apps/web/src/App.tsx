@@ -1,17 +1,47 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ClerkProvider, SignIn, SignedIn, SignedOut } from '@clerk/clerk-react'
+import { AppNav } from '@/components/layout/AppNav'
 import { WorkflowEditor } from '@/pages/WorkflowEditor'
+import { ClientListPage } from '@/pages/ClientListPage'
+import { ClientDetailPage } from '@/pages/ClientDetailPage'
+import { UsagePage } from '@/pages/UsagePage'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
-// If no Clerk key is set (e.g. local dev without auth), render the editor directly.
+// Shell layout: side nav + main content
+function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      <AppNav />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function AppRoutes() {
+  return (
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<Navigate to="/workflows" replace />} />
+        <Route path="/workflows" element={<WorkflowEditor />} />
+        <Route path="/clients" element={<ClientListPage />} />
+        <Route path="/clients/:id" element={<ClientDetailPage />} />
+        <Route path="/usage" element={<UsagePage />} />
+      </Routes>
+    </AppShell>
+  )
+}
+
 function AppContent() {
   if (!PUBLISHABLE_KEY) {
-    return <WorkflowEditor />
+    return <AppRoutes />
   }
   return (
     <>
       <SignedIn>
-        <WorkflowEditor />
+        <AppRoutes />
       </SignedIn>
       <SignedOut>
         <div className="flex h-screen items-center justify-center bg-background">
@@ -31,12 +61,13 @@ function AppContent() {
 }
 
 export default function App() {
-  if (!PUBLISHABLE_KEY) {
-    return <AppContent />
-  }
-  return (
+  const content = PUBLISHABLE_KEY ? (
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
       <AppContent />
     </ClerkProvider>
+  ) : (
+    <AppContent />
   )
+
+  return <BrowserRouter>{content}</BrowserRouter>
 }

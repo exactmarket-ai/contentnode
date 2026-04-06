@@ -112,7 +112,7 @@ export function WorkflowEditor() {
         />
       )}
 
-      <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <div className="flex h-full flex-col overflow-hidden bg-background">
         <TopBar />
         <div className="flex flex-1 overflow-hidden">
           <NodePalette />

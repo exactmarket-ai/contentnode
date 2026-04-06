@@ -8,9 +8,10 @@ import { PALETTE_NODES, type NodeCategory, type PaletteNodeDef } from '@/store/w
 import { InsightsSidebar } from '@/components/insights/InsightsSidebar'
 
 const CATEGORY_META: Record<NodeCategory, { label: string; color: string; textColor: string }> = {
-  source: { label: 'Source', color: 'bg-emerald-500/10 border-emerald-500/20', textColor: 'text-emerald-400' },
-  logic:  { label: 'Logic',  color: 'bg-blue-500/10 border-blue-500/20',       textColor: 'text-blue-400'   },
-  output: { label: 'Output', color: 'bg-purple-500/10 border-purple-500/20',   textColor: 'text-purple-400' },
+  source:  { label: 'Source',  color: 'bg-emerald-500/10 border-emerald-500/20', textColor: 'text-emerald-400' },
+  logic:   { label: 'Logic',   color: 'bg-blue-500/10 border-blue-500/20',       textColor: 'text-blue-400'   },
+  output:  { label: 'Output',  color: 'bg-purple-500/10 border-purple-500/20',   textColor: 'text-purple-400' },
+  insight: { label: 'Insight', color: 'bg-yellow-500/10 border-yellow-500/20',   textColor: 'text-yellow-400' },
 }
 
 function PaletteItem({ def }: { def: PaletteNodeDef }) {

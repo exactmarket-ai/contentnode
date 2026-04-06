@@ -13,6 +13,7 @@ import { transcriptionRoutes } from './routes/transcriptions.js'
 import { insightRoutes } from './routes/insights.js'
 import { documentRoutes } from './routes/documents.js'
 import { portalRoutes } from './routes/portal.js'
+import { usageRoutes } from './routes/usage.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -73,6 +74,7 @@ await app.register(transcriptionRoutes, { prefix: '/api/v1/transcriptions' })
 await app.register(insightRoutes, { prefix: '/api/v1/insights' })
 await app.register(documentRoutes, { prefix: '/api/v1/documents' })
 await app.register(portalRoutes,   { prefix: '/portal' })
+await app.register(usageRoutes,    { prefix: '/api/v1/usage' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)
