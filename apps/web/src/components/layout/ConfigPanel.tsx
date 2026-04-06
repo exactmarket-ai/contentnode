@@ -875,31 +875,473 @@ function ContentOutputConfig({
   )
 }
 
-// ─── Config dispatcher ────────────────────────────────────────────────────────
+// ─── Logic / humanizer ────────────────────────────────────────────────────────
 
-function NodeConfigForm({
-  nodeType,
+const HUMANIZER_MODES = [
+  { value: 'executive-natural',  label: 'Executive Natural' },
+  { value: 'conversational',     label: 'Conversational' },
+  { value: 'confident-expert',   label: 'Confident Expert' },
+  { value: 'premium-brand',      label: 'Premium Brand' },
+  { value: 'founder-voice',      label: 'Founder Voice' },
+  { value: 'sales-polished',     label: 'Sales Polished' },
+  { value: 'journalistic-clean', label: 'Journalistic Clean' },
+  { value: 'social-native',      label: 'Social Native' },
+  { value: 'custom',             label: 'Custom' },
+]
+
+const HUMANIZER_SLIDERS: { key: string; label: string }[] = [
+  { key: 'naturalness', label: 'Naturalness' },
+  { key: 'energy',      label: 'Energy' },
+  { key: 'precision',   label: 'Precision' },
+  { key: 'formality',   label: 'Formality' },
+  { key: 'boldness',    label: 'Boldness' },
+  { key: 'compression', label: 'Compression' },
+  { key: 'personality', label: 'Personality' },
+  { key: 'safety',      label: 'Safety' },
+]
+
+const HUMANIZER_MODE_PRESETS: Record<string, Record<string, number>> = {
+  'executive-natural':  { naturalness: 70, energy: 55, precision: 75, formality: 65, boldness: 60, compression: 55, personality: 45, safety: 80 },
+  'conversational':     { naturalness: 85, energy: 65, precision: 50, formality: 25, boldness: 50, compression: 45, personality: 70, safety: 70 },
+  'confident-expert':   { naturalness: 65, energy: 60, precision: 80, formality: 55, boldness: 80, compression: 60, personality: 55, safety: 65 },
+  'premium-brand':      { naturalness: 75, energy: 50, precision: 70, formality: 70, boldness: 55, compression: 60, personality: 50, safety: 85 },
+  'founder-voice':      { naturalness: 80, energy: 80, precision: 55, formality: 35, boldness: 85, compression: 50, personality: 80, safety: 55 },
+  'sales-polished':     { naturalness: 70, energy: 75, precision: 65, formality: 55, boldness: 75, compression: 65, personality: 60, safety: 75 },
+  'journalistic-clean': { naturalness: 80, energy: 55, precision: 85, formality: 60, boldness: 65, compression: 75, personality: 35, safety: 80 },
+  'social-native':      { naturalness: 90, energy: 85, precision: 40, formality: 15, boldness: 80, compression: 80, personality: 85, safety: 60 },
+  'custom':             { naturalness: 70, energy: 60, precision: 65, formality: 50, boldness: 55, compression: 40, personality: 60, safety: 80 },
+}
+
+function HumanizerConfig({
   config,
   onChange,
   workflowModel,
 }: {
-  nodeType: string
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
   workflowModel: { provider: string; model: string; temperature?: number }
 }) {
+  const mode = (config.mode as string) ?? 'executive-natural'
+  const modelCfg = (config.model_config as Record<string, unknown> | null) ?? null
+  const overrideEnabled = modelCfg !== null
+  const targetedRewrite = (config.targeted_rewrite as boolean) ?? true
+
+  const overrideProvider = (modelCfg?.provider as string) ?? 'anthropic'
+  const overrideModel = (modelCfg?.model as string) ?? 'claude-sonnet-4-5'
+  const inheritedLabel = `${modelLabel(workflowModel.provider, workflowModel.model)} (default)`
+
+  const handleModeChange = (newMode: string) => {
+    onChange('mode', newMode)
+    // Apply preset slider values when mode changes
+    const preset = HUMANIZER_MODE_PRESETS[newMode]
+    if (preset) {
+      for (const [key, value] of Object.entries(preset)) {
+        onChange(key, value)
+      }
+    }
+  }
+
+  return (
+    <>
+      {/* Mode */}
+      <FieldGroup label="Voice Mode">
+        <Select value={mode} onValueChange={handleModeChange}>
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {HUMANIZER_MODES.map((m) => (
+              <SelectItem key={m.value} value={m.value} className="text-xs">
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Sliders */}
+      <div className="space-y-3">
+        <Label className="text-xs text-muted-foreground">Style Parameters</Label>
+        {HUMANIZER_SLIDERS.map(({ key, label }) => {
+          const val = (config[key] as number) ?? 50
+          return (
+            <div key={key} className="space-y-0.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground/80">{label}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{val}</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={val}
+                onChange={(e) => onChange(key, parseInt(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Targeted rewrite toggle */}
+      <div className="flex items-center justify-between rounded-md border border-border p-2.5">
+        <div className="space-y-0.5">
+          <Label className="text-xs">Targeted rewriting only</Label>
+          <p className="text-[11px] text-muted-foreground">
+            Rewrites only AI-flagged sentences, not the full piece
+          </p>
+        </div>
+        <button
+          onClick={() => onChange('targeted_rewrite', !targetedRewrite)}
+          className={cn(
+            'ml-3 h-5 w-9 shrink-0 rounded-full border transition-colors',
+            targetedRewrite ? 'border-blue-600 bg-blue-600' : 'border-border bg-muted',
+          )}
+        >
+          <span
+            className={cn(
+              'block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+              targetedRewrite ? 'translate-x-4' : 'translate-x-0.5',
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Model override */}
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Model Override</Label>
+        <p className="text-xs text-muted-foreground/60">Inherited: {inheritedLabel}</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={overrideEnabled}
+            onChange={(e) =>
+              onChange('model_config', e.target.checked ? { provider: 'anthropic', model: 'claude-sonnet-4-5' } : null)
+            }
+            className="accent-blue-500"
+          />
+          <span className="text-xs">Override model for this node</span>
+        </label>
+
+        {overrideEnabled && (
+          <div className="space-y-2 rounded-md border border-border p-2.5">
+            <FieldGroup label="Provider">
+              <Select
+                value={overrideProvider}
+                onValueChange={(v) => onChange('model_config', { provider: v, model: defaultModelForProvider(v) })}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
+                  <SelectItem value="openai" className="text-xs">OpenAI</SelectItem>
+                  <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldGroup>
+            <FieldGroup label="Model">
+              <Select
+                value={overrideModel}
+                onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {modelsForProvider(overrideProvider).map((m) => (
+                    <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FieldGroup>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ─── Logic / detection ────────────────────────────────────────────────────────
+
+const DETECTION_SERVICES = [
+  { value: 'gptzero',      label: 'GPTZero' },
+  { value: 'originality',  label: 'Originality.ai' },
+  { value: 'copyleaks',    label: 'Copyleaks' },
+  { value: 'sapling',      label: 'Sapling' },
+  { value: 'local',        label: 'Local (offline)' },
+]
+
+function DetectionConfig({
+  config,
+  onChange,
+  nodeRunStatus,
+}: {
+  config: Record<string, unknown>
+  onChange: (k: string, v: unknown) => void
+  nodeRunStatus?: { output?: unknown; warning?: string }
+}) {
+  const service = (config.service as string) ?? 'gptzero'
+  const threshold = (config.threshold as number) ?? 20
+  const maxRetries = (config.max_retries as number) ?? 3
+  const apiKeyRef = (config.api_key_ref as string) ?? ''
+
+  // Run-time output
+  const detOutput = nodeRunStatus?.output as Record<string, unknown> | undefined
+  const overallScore = detOutput?.overall_score as number | undefined
+  const flaggedSentences = detOutput?.flagged_sentences as string[] | undefined
+  const warning = nodeRunStatus?.warning
+
+  return (
+    <>
+      {/* Service */}
+      <FieldGroup label="Detection Service">
+        <Select value={service} onValueChange={(v) => onChange('service', v)}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {DETECTION_SERVICES.map((s) => (
+              <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Threshold */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Threshold</Label>
+          <span className="text-xs tabular-nums text-muted-foreground">{threshold}</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={threshold}
+          onChange={(e) => onChange('threshold', parseInt(e.target.value))}
+          className="w-full accent-blue-500"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Scores above this value trigger the humanizer loop
+        </p>
+      </div>
+
+      {/* Max retries */}
+      <FieldGroup label="Max Retries">
+        <Input
+          type="number"
+          min={1}
+          max={10}
+          className="h-8 text-xs"
+          value={maxRetries}
+          onChange={(e) => onChange('max_retries', parseInt(e.target.value) || 3)}
+        />
+      </FieldGroup>
+
+      {/* API key reference */}
+      {service !== 'local' && (
+        <FieldGroup label="API Key Environment Variable">
+          <Input
+            placeholder="e.g. GPTZERO_API_KEY"
+            className="font-mono text-xs"
+            value={apiKeyRef}
+            onChange={(e) => onChange('api_key_ref', e.target.value)}
+          />
+        </FieldGroup>
+      )}
+
+      {/* ── Run-time results ── */}
+      {overallScore !== undefined && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium">Last Run Score</span>
+              <span
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums',
+                  overallScore <= 20  ? 'bg-emerald-900/60 text-emerald-300' :
+                  overallScore <= 50  ? 'bg-amber-900/60  text-amber-300'   :
+                                        'bg-red-900/60    text-red-300',
+                )}
+              >
+                {overallScore}%
+              </span>
+            </div>
+
+            {warning && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-900/20 px-2.5 py-2">
+                <span className="mt-0.5 shrink-0 text-sm text-amber-400">⚠</span>
+                <p className="text-xs text-amber-300">{warning}</p>
+              </div>
+            )}
+
+            {flaggedSentences && flaggedSentences.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Flagged Sentences ({flaggedSentences.length})
+                </Label>
+                <div className="max-h-[200px] space-y-1 overflow-y-auto">
+                  {flaggedSentences.map((sentence, i) => (
+                    <div
+                      key={i}
+                      className="rounded border border-red-500/20 bg-red-900/10 px-2.5 py-1.5 text-xs text-red-300/80"
+                    >
+                      {sentence}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {flaggedSentences?.length === 0 && (
+              <p className="text-xs text-emerald-400">No sentences flagged — content looks human-written.</p>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+// ─── Logic / conditional-branch ───────────────────────────────────────────────
+
+function ConditionalBranchConfig({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>
+  onChange: (k: string, v: unknown) => void
+}) {
+  const conditionType = (config.condition_type as string) ?? 'detection_score'
+  const operator = (config.operator as string) ?? 'above'
+  const value = (config.value as number) ?? 20
+  const passLabel = (config.pass_label as string) ?? 'pass'
+  const failLabel = (config.fail_label as string) ?? 'fail'
+  const fallbackHumanizerId = (config.fallback_humanizer_id as string) ?? ''
+
+  // Get humanizer nodes from the store for the fallback selector
+  const nodes = useWorkflowStore((s) => s.nodes)
+  const humanizerNodes = nodes.filter(
+    (n) => n.data?.subtype === 'humanizer',
+  )
+
+  return (
+    <>
+      {/* Condition type */}
+      <FieldGroup label="Condition Type">
+        <Select value={conditionType} onValueChange={(v) => onChange('condition_type', v)}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="detection_score" className="text-xs">Detection Score</SelectItem>
+            <SelectItem value="word_count"      className="text-xs">Word Count</SelectItem>
+            <SelectItem value="retry_count"     className="text-xs">Retry Count</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Operator */}
+      <FieldGroup label="Operator">
+        <Select value={operator} onValueChange={(v) => onChange('operator', v)}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="above" className="text-xs">Above</SelectItem>
+            <SelectItem value="below" className="text-xs">Below</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Value */}
+      <FieldGroup label="Value">
+        <Input
+          type="number"
+          min={0}
+          className="h-8 text-xs"
+          value={value}
+          onChange={(e) => onChange('value', parseInt(e.target.value) || 0)}
+        />
+      </FieldGroup>
+
+      {/* Port labels */}
+      <div className="grid grid-cols-2 gap-2">
+        <FieldGroup label="Pass label">
+          <Input
+            className="h-8 text-xs"
+            placeholder="pass"
+            value={passLabel}
+            onChange={(e) => onChange('pass_label', e.target.value)}
+          />
+        </FieldGroup>
+        <FieldGroup label="Fail label">
+          <Input
+            className="h-8 text-xs"
+            placeholder="fail"
+            value={failLabel}
+            onChange={(e) => onChange('fail_label', e.target.value)}
+          />
+        </FieldGroup>
+      </div>
+
+      {/* Fallback humanizer selector */}
+      <FieldGroup label="Fallback Humanizer (after max retries)">
+        <Select
+          value={fallbackHumanizerId || '__none__'}
+          onValueChange={(v) => onChange('fallback_humanizer_id', v === '__none__' ? '' : v)}
+        >
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__" className="text-xs text-muted-foreground">None</SelectItem>
+            {humanizerNodes.map((n) => (
+              <SelectItem key={n.id} value={n.id} className="text-xs">
+                {(n.data?.label as string) || n.id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-muted-foreground">
+          Humanizer to use when max retries are exhausted
+        </p>
+      </FieldGroup>
+    </>
+  )
+}
+
+// ─── Config dispatcher ────────────────────────────────────────────────────────
+
+function NodeConfigForm({
+  nodeType,
+  subtype,
+  config,
+  onChange,
+  workflowModel,
+  nodeRunStatus,
+}: {
+  nodeType: string
+  subtype: string
+  config: Record<string, unknown>
+  onChange: (k: string, v: unknown) => void
+  workflowModel: { provider: string; model: string; temperature?: number }
+  nodeRunStatus?: { output?: unknown; warning?: string }
+}) {
   switch (nodeType) {
-    case 'source': return <DocumentSourceConfig config={config} onChange={onChange} />
-    case 'logic':  return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} />
-    case 'output': return <ContentOutputConfig config={config} onChange={onChange} />
-    default:       return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
+    case 'source':
+      return <DocumentSourceConfig config={config} onChange={onChange} />
+    case 'logic':
+      if (subtype === 'humanizer')
+        return <HumanizerConfig config={config} onChange={onChange} workflowModel={workflowModel} />
+      if (subtype === 'detection')
+        return <DetectionConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'conditional-branch')
+        return <ConditionalBranchConfig config={config} onChange={onChange} />
+      return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} />
+    case 'output':
+      return <ContentOutputConfig config={config} onChange={onChange} />
+    default:
+      return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
   }
 }
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export function ConfigPanel() {
-  const { selectedNodeId, nodes, updateNodeData, workflow } = useWorkflowStore()
+  const { selectedNodeId, nodes, updateNodeData, workflow, nodeRunStatuses } = useWorkflowStore()
   const node = nodes.find((n) => n.id === selectedNodeId)
 
   const [localLabel, setLocalLabel] = useState('')
@@ -980,9 +1422,11 @@ export function ConfigPanel() {
           {/* Type-specific config */}
           <NodeConfigForm
             nodeType={nodeType}
+            subtype={subtype}
             config={config}
             onChange={onConfigChange}
             workflowModel={workflow.default_model_config}
+            nodeRunStatus={nodeRunStatuses[node.id]}
           />
         </div>
       </ScrollArea>

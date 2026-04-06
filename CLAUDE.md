@@ -107,5 +107,40 @@ Full spec is in docs/contentnode-spec-v4.md
     { id, filename, storageKey, sizeBytes }. Skips DB record (clientId required in
     schema); future session can wire that up.
 
+## What has been built (continued)
+- Session 6 complete: detection-humanization loop
+  - HumanizerConfig panel: mode selector (8 presets + Custom), 8 style sliders (0-100),
+    model override (same checkbox/provider/model pattern as AI Generate node),
+    "Targeted rewriting only" toggle (default on, description explains it).
+    Selecting a mode applies preset slider values automatically.
+  - DetectionConfig panel: service selector (GPTZero/Originality.ai/Copyleaks/Sapling/Local),
+    threshold slider (0-100, default 20), max retries field, API key env-var reference.
+    After a run: shows score badge (green/amber/red), false positive warning banner,
+    and list of flagged sentences.
+  - ConditionalBranchConfig panel: condition type (detection_score/word_count/retry_count),
+    operator (above/below), value input, pass/fail port labels (shown on node card),
+    fallback humanizer selector (dropdown of humanizer nodes in the workflow).
+  - LogicNode.tsx: added port configs for detection (1 in, pass/fail out) and
+    conditional-branch (1 in, pass/fail out). Detection node card shows score badge
+    post-run. Conditional-branch card shows dynamic port labels from config.
+  - WorkflowStore: added 3 new PALETTE_NODES (humanizer, detection, conditional-branch)
+    each with subtype in defaultConfig so executor registry can dispatch.
+    onConnect now stores sourceHandle as edge label for pass/fail routing.
+  - DetectionNodeExecutor: calls GPTZero API (or Originality.ai/Sapling/local fallback),
+    parses response into overall_score and flagged_sentences array.
+  - HumanizerNodeExecutor: builds prompt from mode + 8 slider values. When
+    targeted_rewrite is on and flagged_sentences exists in input, rewrites only those
+    sentences and preserves the rest exactly.
+  - ConditionalBranchNodeExecutor: evaluates detection_score / word_count / retry_count
+    against threshold; returns routePath ('pass'|'fail') used by runner for edge routing.
+  - WorkflowRunner: getExecutor() now dispatches by "type:subtype" key falling back to
+    "type". findDetectionLoops() detects Detection→Branch→Humanizer→Detection cycles.
+    Loop-managed nodes (branch, humanizer) are excluded from wave execution and handled
+    inline. Runner tracks retry count, detects no-improvement (false positive warning
+    after 3 non-improving passes), and stores detectionState in RunOutput.
+    Edge routing: edges from conditional-branch nodes are filtered by label matching
+    routePath so downstream nodes receive input only from their matched path.
+  - NodeRunStatus: added warning field (propagated from false-positive detection).
+
 ## Current session
-- Session 5 done. Ready for Session 6.
+- Session 6 done. Ready for Session 7.

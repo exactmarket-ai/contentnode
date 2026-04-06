@@ -35,4 +35,6 @@ export interface NodeExecutionResult {
   /** Token usage to record (only set for AI nodes) */
   tokensUsed?: number
   modelUsed?: string
+  /** Routing decision for conditional nodes ('pass' | 'fail') */
+  routePath?: string
 }

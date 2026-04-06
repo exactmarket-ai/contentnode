@@ -48,6 +48,22 @@ function getPortConfig(subtype: string): PortConfig {
           { id: 'flagged',  label: 'flagged',  top: '67%' },
         ],
       }
+    case 'detection':
+      return {
+        inputs:  [{ id: 'input', top: '50%' }],
+        outputs: [
+          { id: 'pass', label: 'pass', top: '33%' },
+          { id: 'fail', label: 'fail', top: '67%' },
+        ],
+      }
+    case 'conditional-branch':
+      return {
+        inputs:  [{ id: 'input', top: '50%' }],
+        outputs: [
+          { id: 'pass', label: 'pass', top: '33%' },
+          { id: 'fail', label: 'fail', top: '67%' },
+        ],
+      }
     default:
       return {
         inputs:  [{ id: 'input',  top: '50%' }],
@@ -101,20 +117,50 @@ export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
       {/* ── Body ───────────────────────────────────────────────────────────── */}
       <div className="px-3 py-2">
         <p className="text-xs text-muted-foreground">{data.description as string}</p>
+
+        {/* AI-generate: show model override */}
         {subtype === 'ai-generate' &&
           data.config &&
           (data.config as Record<string, unknown>).model_config && (
             <p className="mt-1 text-xs text-blue-400/70">
-              {
-                (
-                  (data.config as Record<string, unknown>).model_config as Record<
-                    string,
-                    unknown
-                  >
-                )?.model as string
-              }
+              {((data.config as Record<string, unknown>).model_config as Record<string, unknown>)?.model as string}
             </p>
           )}
+
+        {/* Detection: show score badge after a run */}
+        {subtype === 'detection' && status !== 'idle' && (() => {
+          const detOut = nodeStatuses[id]?.output as Record<string, unknown> | undefined
+          const score = detOut?.overall_score as number | undefined
+          const warning = nodeStatuses[id]?.warning
+          return score !== undefined ? (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
+                  score <= 20  ? 'bg-emerald-900/60 text-emerald-300' :
+                  score <= 50  ? 'bg-amber-900/60  text-amber-300'   :
+                                 'bg-red-900/60    text-red-300',
+                )}
+              >
+                {score}%
+              </span>
+              <span className="text-[10px] text-muted-foreground">AI score</span>
+              {warning && (
+                <span className="text-[10px] text-amber-400" title={warning}>⚠</span>
+              )}
+            </div>
+          ) : null
+        })()}
+
+        {/* Conditional Branch: show pass/fail labels from config */}
+        {subtype === 'conditional-branch' && data.config && (() => {
+          const cfg = data.config as Record<string, unknown>
+          const passLabel = (cfg.pass_label as string) || 'pass'
+          const failLabel = (cfg.fail_label as string) || 'fail'
+          return passLabel !== 'pass' || failLabel !== 'fail' ? (
+            <p className="mt-0.5 text-[10px] text-blue-400/50">{passLabel} / {failLabel}</p>
+          ) : null
+        })()}
       </div>
 
       {/* ── Input handles ──────────────────────────────────────────────────── */}
@@ -152,18 +198,27 @@ export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
         />
       ))}
 
-      {/* Output port labels — shown for condition (pass/fail) and human-review (approved/flagged) */}
+      {/* Output port labels — condition (pass/fail), human-review, detection, conditional-branch */}
       {portConfig.outputs
         .filter((p) => p.label)
-        .map((port) => (
-          <span
-            key={`lbl-out-${port.id}`}
-            className="pointer-events-none absolute right-2 -translate-y-1/2 select-none text-[9px] font-semibold leading-none text-blue-400/60"
-            style={{ top: port.top }}
-          >
-            {port.label}
-          </span>
-        ))}
+        .map((port) => {
+          // For conditional-branch, use dynamic labels from config
+          let displayLabel = port.label
+          if (subtype === 'conditional-branch' && data.config) {
+            const cfg = data.config as Record<string, unknown>
+            if (port.id === 'pass') displayLabel = (cfg.pass_label as string) || 'pass'
+            if (port.id === 'fail') displayLabel = (cfg.fail_label as string) || 'fail'
+          }
+          return (
+            <span
+              key={`lbl-out-${port.id}`}
+              className="pointer-events-none absolute right-2 -translate-y-1/2 select-none text-[9px] font-semibold leading-none text-blue-400/60"
+              style={{ top: port.top }}
+            >
+              {displayLabel}
+            </span>
+          )
+        })}
     </div>
   )
 })

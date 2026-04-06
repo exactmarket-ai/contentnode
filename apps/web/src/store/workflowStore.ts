@@ -28,6 +28,7 @@ export interface NodeRunStatus {
   error?: string
   tokensUsed?: number
   modelUsed?: string
+  warning?: string
 }
 
 // ─── Node palette definition (used by NodePalette + node factories) ───────────
@@ -100,6 +101,52 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     label: 'Human Review', description: 'Pause for human approval before continuing',
     category: 'logic', icon: 'UserCheck',
     defaultConfig: { instructions: '', assignee_email: '' },
+  },
+  // Detection-Humanization loop
+  {
+    type: 'logic', subtype: 'humanizer',
+    label: 'Humanizer', description: 'Rewrite content to reduce AI detection score',
+    category: 'logic', icon: 'PenLine',
+    defaultConfig: {
+      subtype: 'humanizer',
+      mode: 'executive-natural',
+      naturalness: 70,
+      energy: 60,
+      precision: 65,
+      formality: 50,
+      boldness: 55,
+      compression: 40,
+      personality: 60,
+      safety: 80,
+      model_config: null,
+      targeted_rewrite: true,
+    },
+  },
+  {
+    type: 'logic', subtype: 'detection',
+    label: 'Detection', description: 'Score content for AI detection likelihood',
+    category: 'logic', icon: 'ScanSearch',
+    defaultConfig: {
+      subtype: 'detection',
+      service: 'gptzero',
+      threshold: 20,
+      max_retries: 3,
+      api_key_ref: '',
+    },
+  },
+  {
+    type: 'logic', subtype: 'conditional-branch',
+    label: 'Conditional Branch', description: 'Route based on detection score, word count, or retry count',
+    category: 'logic', icon: 'GitFork',
+    defaultConfig: {
+      subtype: 'conditional-branch',
+      condition_type: 'detection_score',
+      operator: 'above',
+      value: 20,
+      pass_label: 'pass',
+      fail_label: 'fail',
+      fallback_humanizer_id: '',
+    },
   },
   // Output
   {
@@ -199,7 +246,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ edges: applyEdgeChanges(changes, get().edges) }),
 
   onConnect: (connection) =>
-    set({ edges: addEdge({ ...connection, animated: false }, get().edges) }),
+    set({
+      edges: addEdge(
+        {
+          ...connection,
+          animated: false,
+          // Preserve the source handle ID as the edge label so the runner
+          // can do port-based routing (e.g. 'pass' / 'fail' for branch nodes)
+          label: connection.sourceHandle ?? undefined,
+        },
+        get().edges,
+      ),
+    }),
 
   setViewport: (viewport) => set({ viewport }),
 
