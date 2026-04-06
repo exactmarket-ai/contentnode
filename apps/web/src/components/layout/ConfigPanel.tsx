@@ -18,12 +18,36 @@ const ANTHROPIC_MODELS = [
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
 ]
 
+const OPENAI_MODELS = [
+  { value: 'gpt-4o',       label: 'GPT-4o' },
+  { value: 'gpt-4o-mini',  label: 'GPT-4o Mini' },
+  { value: 'gpt-4-turbo',  label: 'GPT-4 Turbo' },
+  { value: 'o1-mini',      label: 'o1 Mini' },
+]
+
 const OLLAMA_MODELS = [
   { value: 'llama3.2', label: 'Llama 3.2' },
   { value: 'mistral',  label: 'Mistral 7B' },
   { value: 'phi3',     label: 'Phi-3' },
   { value: 'gemma2',   label: 'Gemma 2' },
 ]
+
+function modelLabel(provider: string, model: string): string {
+  const all = [...ANTHROPIC_MODELS, ...OPENAI_MODELS, ...OLLAMA_MODELS]
+  return all.find((m) => m.value === model)?.label ?? model
+}
+
+function defaultModelForProvider(provider: string): string {
+  if (provider === 'openai') return 'gpt-4o'
+  if (provider === 'ollama') return 'llama3.2'
+  return 'claude-sonnet-4-5'
+}
+
+function modelsForProvider(provider: string) {
+  if (provider === 'openai') return OPENAI_MODELS
+  if (provider === 'ollama') return OLLAMA_MODELS
+  return ANTHROPIC_MODELS
+}
 
 const SOURCE_DOCUMENT_TYPES = [
   { value: 'brand-guidelines',       label: 'Brand Guidelines' },
@@ -329,11 +353,13 @@ function AiGenerateConfig({
   workflowModel: { provider: string; model: string; temperature?: number }
 }) {
   const modelCfg = (config.model_config as Record<string, unknown> | null) ?? null
-  const useWorkflowDefault = modelCfg === null
+  const overrideEnabled = modelCfg !== null
 
-  const provider = (modelCfg?.provider as string) ?? workflowModel.provider
-  const model = (modelCfg?.model as string) ?? workflowModel.model
-  const temperature = (modelCfg?.temperature as number) ?? workflowModel.temperature ?? 0.7
+  const overrideProvider = (modelCfg?.provider as string) ?? 'anthropic'
+  const overrideModel = (modelCfg?.model as string) ?? 'claude-sonnet-4-5'
+  const temperature = (config.temperature as number) ?? workflowModel.temperature ?? 0.7
+
+  const inheritedLabel = `${modelLabel(workflowModel.provider, workflowModel.model)} (default)`
 
   return (
     <>
@@ -356,88 +382,86 @@ function AiGenerateConfig({
         </Select>
       </FieldGroup>
 
-      {/* Prompt */}
-      <FieldGroup label="Prompt">
-        <Textarea
-          placeholder="Write a summary of {{input}}..."
-          className="min-h-[100px] resize-none text-xs font-mono"
-          value={(config.prompt as string) ?? ''}
-          onChange={(e) => onChange('prompt', e.target.value)}
-        />
-      </FieldGroup>
-
       {/* Model override */}
-      <div className="flex items-center justify-between">
+      <div className="space-y-2">
         <Label className="text-xs text-muted-foreground">Model Override</Label>
-        <button
-          className="text-xs text-blue-400 hover:text-blue-300"
-          onClick={() =>
-            onChange(
-              'model_config',
-              useWorkflowDefault
-                ? { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 }
-                : null,
-            )
-          }
-        >
-          {useWorkflowDefault ? 'Override' : 'Use workflow default'}
-        </button>
+        <p className="text-xs text-muted-foreground/60">Inherited: {inheritedLabel}</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={overrideEnabled}
+            onChange={(e) =>
+              onChange(
+                'model_config',
+                e.target.checked
+                  ? { provider: 'anthropic', model: 'claude-sonnet-4-5' }
+                  : null,
+              )
+            }
+            className="accent-blue-500"
+          />
+          <span className="text-xs">Override model for this node</span>
+        </label>
+
+        {overrideEnabled && (
+          <div className="space-y-2 rounded-md border border-border p-2.5">
+            <FieldGroup label="Provider">
+              <Select
+                value={overrideProvider}
+                onValueChange={(v) =>
+                  onChange('model_config', {
+                    provider: v,
+                    model: defaultModelForProvider(v),
+                  })
+                }
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
+                  <SelectItem value="openai" className="text-xs">OpenAI</SelectItem>
+                  <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldGroup>
+            <FieldGroup label="Model">
+              <Select
+                value={overrideModel}
+                onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelsForProvider(overrideProvider).map((m) => (
+                    <SelectItem key={m.value} value={m.value} className="text-xs">
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FieldGroup>
+          </div>
+        )}
       </div>
 
-      {!useWorkflowDefault && (
-        <div className="space-y-2 rounded-md border border-border p-2.5">
-          <FieldGroup label="Provider">
-            <Select
-              value={provider}
-              onValueChange={(v) =>
-                onChange('model_config', {
-                  ...modelCfg,
-                  provider: v,
-                  model: v === 'anthropic' ? 'claude-sonnet-4-5' : 'llama3.2',
-                })
-              }
-            >
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
-                <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
-              </SelectContent>
-            </Select>
-          </FieldGroup>
-          <FieldGroup label="Model">
-            <Select
-              value={model}
-              onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
-            >
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(provider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS).map((m) => (
-                  <SelectItem key={m.value} value={m.value} className="text-xs">
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FieldGroup>
-          <FieldGroup label={`Temperature: ${temperature.toFixed(1)}`}>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={temperature}
-              onChange={(e) =>
-                onChange('model_config', { ...modelCfg, temperature: parseFloat(e.target.value) })
-              }
-              className="w-full accent-blue-500"
-            />
-          </FieldGroup>
+      {/* Temperature */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Temperature</Label>
+          <span className="text-xs text-muted-foreground">{temperature.toFixed(1)}</span>
         </div>
-      )}
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.1"
+          value={temperature}
+          onChange={(e) => onChange('temperature', parseFloat(e.target.value))}
+          className="w-full accent-blue-500"
+        />
+      </div>
 
       {/* Additional instructions */}
       <FieldGroup label="Additional Instructions">
