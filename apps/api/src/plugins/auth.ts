@@ -21,6 +21,8 @@ async function authPluginFn(app: FastifyInstance) {
 
   app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.url === '/health') return
+    // Portal routes use magic link auth — skip Clerk JWT check
+    if (req.url.startsWith('/portal')) return
 
     const authHeader = req.headers.authorization
     if (!authHeader?.startsWith('Bearer ')) {

@@ -46,4 +46,11 @@ export interface NodeExecutionResult {
   paused?: boolean
   /** ID of the TranscriptSession created during transcription (used to resume) */
   pendingSessionId?: string
+  /**
+   * If true, this node is waiting for external stakeholder feedback.
+   * The runner will pause the run (status → 'waiting_feedback').
+   */
+  waitingFeedback?: boolean
+  /** Node ID to store as pendingFeedbackNodeId in run output */
+  pendingFeedbackNodeId?: string
 }

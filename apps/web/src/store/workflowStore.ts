@@ -195,6 +195,28 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'output', icon: 'FileText',
     defaultConfig: { output_type: 'blog-post', min_words: 800, max_words: 1200, format_options: {} },
   },
+  {
+    type: 'output', subtype: 'client-feedback',
+    label: 'Client Feedback', description: 'Request stakeholder feedback via secure portal or manual entry',
+    category: 'output', icon: 'MessageSquare',
+    defaultConfig: {
+      subtype: 'client-feedback',
+      source_type: 'portal',
+      trigger_mode: 'auto',
+      auto_trigger_on: ['needs_revision', 'rejected'],
+      default_reentry_node_id: '',
+      reentry_rules: [],
+      max_auto_retries: 3,
+      stakeholder_ids: [],
+      manual_feedback: {
+        decision: 'needs_revision',
+        star_rating: 3,
+        tone_feedback: '',
+        content_tags: [],
+        comment: '',
+      },
+    },
+  },
 ]
 
 // ─── Store ────────────────────────────────────────────────────────────────────

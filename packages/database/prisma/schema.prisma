@@ -210,15 +210,18 @@ model WorkflowRun {
   id          String    @id @default(cuid())
   agencyId    String    @map("agency_id")
   workflowId  String    @map("workflow_id")
-  triggeredBy String?   @map("triggered_by") // User id or "system"
-  status      String    @default("pending") // pending | running | completed | failed | cancelled
-  input       Json      @default("{}")
-  output      Json      @default("{}")
-  errorMessage String?  @map("error_message")
-  startedAt   DateTime? @map("started_at")
-  completedAt DateTime? @map("completed_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  triggeredBy         String?   @map("triggered_by") // User id or "system"
+  status              String    @default("pending") // pending | running | completed | failed | cancelled | waiting_feedback | awaiting_assignment
+  triggerType         String?   @map("trigger_type") // manual | feedback_auto
+  reentryFromNodeId   String?   @map("reentry_from_node_id")
+  parentRunId         String?   @map("parent_run_id")
+  input               Json      @default("{}")
+  output              Json      @default("{}")
+  errorMessage        String?   @map("error_message")
+  startedAt           DateTime? @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   workflow  Workflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   user      User?      @relation(fields: [triggeredBy], references: [id])
@@ -239,8 +242,13 @@ model Feedback {
   documentId          String?  @map("document_id")
   workflowRunId       String?  @map("workflow_run_id")
   stakeholderId       String   @map("stakeholder_id")
-  decision            String?  // approved | rejected | revision_requested | null (for transcript quotes)
+  decision            String?  // approved | approved_with_changes | needs_revision | rejected | null (for transcript quotes)
   comment             String?
+  // Structured portal feedback fields
+  starRating          Int?     @map("star_rating")           // 1-5
+  toneFeedback        String?  @map("tone_feedback")         // too_formal | too_casual | just_right | too_generic
+  contentTags         Json     @default("[]") @map("content_tags")      // too_long | too_short | missing_points | off_brief | good
+  specificChanges     Json     @default("[]") @map("specific_changes")  // [{text, instruction, startOffset?, endOffset?}]
   // Transcript quote fields (populated when feedback comes from quote extraction)
   transcriptSessionId String?  @map("transcript_session_id")
   transcriptSegmentId String?  @map("transcript_segment_id")

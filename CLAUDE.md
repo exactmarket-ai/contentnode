@@ -142,5 +142,33 @@ Full spec is in docs/contentnode-spec-v4.md
     routePath so downstream nodes receive input only from their matched path.
   - NodeRunStatus: added warning field (propagated from false-positive detection).
 
+## What has been built (continued)
+- Session 8 complete: client feedback node + client portal
+  - Schema migration: WorkflowRun gains trigger_type / reentry_from_node_id / parent_run_id;
+    Feedback gains star_rating / tone_feedback / content_tags (JSON) / specific_changes (JSON).
+    decision field now accepts 'approved_with_changes' in addition to existing values.
+  - FeedbackNodeExecutor (output:client-feedback): refreshes magic link tokens for configured
+    stakeholders, returns waitingFeedback: true. Runner handles this by setting run →
+    'waiting_feedback' and storing pendingFeedbackNodeId in RunOutput.
+    Both 'waiting_feedback' and 'awaiting_assignment' are treated as resume-eligible statuses.
+  - Portal routes at /portal/* — excluded from Clerk auth via check in authPlugin preHandler:
+    POST /portal/auth/send-link (agency-side: generate magic link for stakeholder)
+    GET  /portal/auth/verify (validate token, return stakeholder + client info)
+    GET  /portal/deliverables (list completed/waiting runs for stakeholder's client)
+    GET  /portal/deliverables/:id (run detail + prior feedback + attached documents)
+    POST /portal/deliverables/:id/feedback (submit feedback, auto-triggers child run if
+      trigger_mode=auto and sentiment is in auto_trigger_on and retries < max_auto_retries)
+    GET  /portal/feedback (all feedback history for this stakeholder)
+  - Token auth: magic link token via Authorization: Bearer <token> or ?token= query param.
+    resolveToken() validates uniqueness + expiry; all DB queries scoped via withAgency().
+  - ClientFeedbackConfig panel (output/client-feedback subtype):
+    source_type selector (portal/manual/transcription), trigger_mode toggle (auto/manual),
+    auto-trigger sentiment checkboxes (needs_revision / rejected / etc.),
+    default re-entry node dropdown, per-sentiment conditional re-entry rules,
+    max_auto_retries field, stakeholder_ids textarea (portal mode),
+    inline manual feedback form (sentiment + star rating + tone + content tags + comment).
+  - New 'Client Feedback' palette node in workflowStore PALETTE_NODES (category: output).
+  - Env vars used: PORTAL_BASE_URL (default: http://localhost:5173)
+
 ## Current session
-- Session 6 done. Ready for Session 7.
+- Session 8 done. Ready for Session 9.

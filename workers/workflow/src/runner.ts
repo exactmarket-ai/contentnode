@@ -6,6 +6,7 @@ import { DetectionNodeExecutor } from './executors/detection.js'
 import { HumanizerNodeExecutor } from './executors/humanizer.js'
 import { ConditionalBranchNodeExecutor } from './executors/conditional_branch.js'
 import { TranscriptionNodeExecutor } from './executors/transcription.js'
+import { FeedbackNodeExecutor } from './executors/feedback.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,6 +36,8 @@ export interface RunOutput {
   detectionState?: Record<string, { retryCount: number; lastScore: number }>
   /** ID of a TranscriptSession awaiting speaker assignment before the run can proceed */
   pendingTranscriptionSessionId?: string
+  /** ID of the feedback node whose portal access is being set up */
+  pendingFeedbackNodeId?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +52,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:detection':           DetectionNodeExecutor,
   'logic:conditional-branch':  ConditionalBranchNodeExecutor,
   output:                      OutputNodeExecutor,
+  'output:client-feedback':   FeedbackNodeExecutor,
 }
 
 function getExecutor(nodeType: string, config: Record<string, unknown>): NodeExecutor {
@@ -224,7 +228,7 @@ export class WorkflowRunner {
     // A run with status 'awaiting_assignment' is being resumed after the human
     // completed speaker assignment. We restore its existing node outputs so
     // already-passed nodes are skipped.
-    const isResume = run.status === 'awaiting_assignment'
+    const isResume = run.status === 'awaiting_assignment' || run.status === 'waiting_feedback'
 
     let runOutput: RunOutput
     if (isResume && run.output) {
@@ -390,6 +394,40 @@ export class WorkflowRunner {
                   nodeId: node.id,
                   sessionId: result.pendingSessionId,
                 },
+              })
+              return
+            }
+
+            // ── Waiting feedback: node needs stakeholder portal input ────────
+            if (result.waitingFeedback) {
+              paused = true
+              nodeOutputs.set(node.id, result.output)
+              runOutput.nodeStatuses[node.id] = {
+                status: 'passed',
+                output: result.output,
+                paused: true,
+                startedAt: runOutput.nodeStatuses[node.id]?.startedAt,
+                completedAt: new Date().toISOString(),
+              }
+              if (result.pendingFeedbackNodeId) {
+                runOutput.pendingFeedbackNodeId = result.pendingFeedbackNodeId
+              }
+              await this.persistOutput(runOutput)
+
+              await prisma.workflowRun.update({
+                where: { id: this.workflowRunId },
+                data: {
+                  status: 'waiting_feedback',
+                  output: runOutput as unknown as Prisma.InputJsonValue,
+                },
+              })
+
+              await auditService.log(this.agencyId, {
+                actorType: 'system',
+                action: 'workflow.run.waiting_feedback',
+                resourceType: 'WorkflowRun',
+                resourceId: this.workflowRunId,
+                metadata: { nodeId: node.id },
               })
               return
             }
