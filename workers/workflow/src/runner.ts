@@ -7,7 +7,9 @@ import { HumanizerNodeExecutor } from './executors/humanizer.js'
 import { ConditionalBranchNodeExecutor } from './executors/conditional_branch.js'
 import { TranscriptionNodeExecutor } from './executors/transcription.js'
 import { FeedbackNodeExecutor } from './executors/feedback.js'
+import { InsightNodeExecutor } from './executors/insight.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
+import { trackInsightOutcomes } from './patternDetector.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-node status stored inside WorkflowRun.output
@@ -53,6 +55,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:conditional-branch':  ConditionalBranchNodeExecutor,
   output:                      OutputNodeExecutor,
   'output:client-feedback':   FeedbackNodeExecutor,
+  insight:                     InsightNodeExecutor,
 }
 
 function getExecutor(nodeType: string, config: Record<string, unknown>): NodeExecutor {
@@ -535,6 +538,13 @@ export class WorkflowRunner {
       resourceId: this.workflowRunId,
       metadata: { workflowId: workflow.id },
     })
+
+    // Track insight outcomes after a completed run (non-blocking)
+    if (finalStatus === 'completed' && workflow.clientId) {
+      trackInsightOutcomes(this.agencyId, workflow.clientId, this.workflowRunId).catch((err) => {
+        console.error('[runner] insight outcome tracking failed:', err)
+      })
+    }
   }
 
   // ─── Detection loop execution ──────────────────────────────────────────────

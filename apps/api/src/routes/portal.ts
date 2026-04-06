@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma, withAgency, auditService } from '@contentnode/database'
-import { getWorkflowRunsQueue } from '../lib/queues.js'
+import { getWorkflowRunsQueue, getPatternDetectionQueue } from '../lib/queues.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Client Portal Routes — /portal/*
@@ -279,6 +279,17 @@ export async function portalRoutes(app: FastifyInstance) {
         metadata: { decision, feedbackId: feedback.id },
       })
     )
+
+    // Trigger pattern detection (non-blocking — portal feedback is the primary source)
+    const clientId = run.workflow?.clientId
+    if (clientId) {
+      const patternQueue = getPatternDetectionQueue()
+      patternQueue.add('detect', {
+        feedbackId: feedback.id,
+        clientId,
+        agencyId: stakeholder.agencyId,
+      }).catch(() => { /* non-critical */ })
+    }
 
     // ── Auto re-entry: if the run is waiting_feedback, check if we should
     // enqueue a child run ──────────────────────────────────────────────────

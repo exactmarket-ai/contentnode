@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { PALETTE_NODES, type NodeCategory, type PaletteNodeDef } from '@/store/workflowStore'
+import { InsightsSidebar } from '@/components/insights/InsightsSidebar'
 
 const CATEGORY_META: Record<NodeCategory, { label: string; color: string; textColor: string }> = {
   source: { label: 'Source', color: 'bg-emerald-500/10 border-emerald-500/20', textColor: 'text-emerald-400' },
@@ -41,7 +42,7 @@ function PaletteItem({ def }: { def: PaletteNodeDef }) {
   )
 }
 
-export function NodePalette() {
+function NodesPalette() {
   const [search, setSearch] = useState('')
 
   const filtered = PALETTE_NODES.filter(
@@ -53,13 +54,7 @@ export function NodePalette() {
   const byCategory = (cat: NodeCategory) => filtered.filter((n) => n.category === cat)
 
   return (
-    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-3">
-        <Icons.Layers className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Nodes</span>
-      </div>
-
+    <>
       {/* Search */}
       <div className="px-3 py-2">
         <div className="relative">
@@ -104,6 +99,46 @@ export function NodePalette() {
       <div className="border-t border-border px-3 py-2">
         <p className="text-xs text-muted-foreground">Drag nodes onto the canvas</p>
       </div>
+    </>
+  )
+}
+
+type Tab = 'nodes' | 'insights'
+
+export function NodePalette() {
+  const [tab, setTab] = useState<Tab>('nodes')
+
+  return (
+    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">
+      {/* Header with tabs */}
+      <div className="flex items-center border-b border-border">
+        <button
+          onClick={() => setTab('nodes')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 px-3 py-3 text-sm font-medium transition-colors',
+            tab === 'nodes'
+              ? 'text-foreground border-b-2 border-foreground'
+              : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'
+          )}
+        >
+          <Icons.Layers className="h-3.5 w-3.5" />
+          Nodes
+        </button>
+        <button
+          onClick={() => setTab('insights')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 px-3 py-3 text-sm font-medium transition-colors',
+            tab === 'insights'
+              ? 'text-yellow-400 border-b-2 border-yellow-400'
+              : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'
+          )}
+        >
+          <Icons.Lightbulb className="h-3.5 w-3.5" />
+          Insights
+        </button>
+      </div>
+
+      {tab === 'nodes' ? <NodesPalette /> : <InsightsSidebar />}
     </div>
   )
 }

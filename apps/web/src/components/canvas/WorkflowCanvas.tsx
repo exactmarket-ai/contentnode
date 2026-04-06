@@ -12,11 +12,13 @@ import { useWorkflowStore, PALETTE_NODES } from '@/store/workflowStore'
 import { SourceNode } from './nodes/SourceNode'
 import { LogicNode } from './nodes/LogicNode'
 import { OutputNode } from './nodes/OutputNode'
+import { InsightNode } from './nodes/InsightNode'
 
 const nodeTypes = {
   source: SourceNode,
   logic: LogicNode,
   output: OutputNode,
+  insight: InsightNode,
 }
 
 let nodeIdCounter = 1
@@ -49,16 +51,61 @@ export function WorkflowCanvas() {
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    const subtype = e.dataTransfer.getData('application/contentnode-subtype')
-    if (!subtype || !rfInstanceRef.current) return
-
-    const def = PALETTE_NODES.find((n) => n.subtype === subtype)
-    if (!def) return
+    if (!rfInstanceRef.current) return
 
     const position = rfInstanceRef.current.screenToFlowPosition({
       x: e.clientX,
       y: e.clientY,
     })
+
+    // ── Insight card drop ──────────────────────────────────────────────────
+    const insightJson = e.dataTransfer.getData('application/contentnode-insight')
+    if (insightJson) {
+      try {
+        const insight = JSON.parse(insightJson) as {
+          insightId: string
+          type: string
+          title: string
+          confidence: number | null
+          isCollective: boolean
+          suggestedNodeType: string | null
+          suggestedConfigChange: Record<string, unknown>
+          body: string
+        }
+
+        addNode({
+          id: nextId(),
+          type: 'insight',
+          position,
+          data: {
+            label: insight.title,
+            description: insight.body,
+            icon: 'Lightbulb',
+            subtype: 'insight',
+            confidence: insight.confidence,
+            isCollective: insight.isCollective,
+            patternDescription: insight.title,
+            config: {
+              subtype: 'insight',
+              insight_id: insight.insightId,
+              insight_type: insight.type,
+              suggested_node_type: insight.suggestedNodeType,
+              suggested_config_change: insight.suggestedConfigChange,
+            },
+          },
+        })
+      } catch {
+        // Malformed drag data — ignore
+      }
+      return
+    }
+
+    // ── Palette node drop ──────────────────────────────────────────────────
+    const subtype = e.dataTransfer.getData('application/contentnode-subtype')
+    if (!subtype) return
+
+    const def = PALETTE_NODES.find((n) => n.subtype === subtype)
+    if (!def) return
 
     addNode({
       id: nextId(),
@@ -104,6 +151,7 @@ export function WorkflowCanvas() {
           if (node.type === 'source') return 'rgba(16,185,129,0.4)'
           if (node.type === 'logic') return 'rgba(59,130,246,0.4)'
           if (node.type === 'output') return 'rgba(168,85,247,0.4)'
+          if (node.type === 'insight') return 'rgba(234,179,8,0.5)'
           return 'rgba(255,255,255,0.1)'
         }}
         maskColor="rgba(0,0,0,0.6)"

@@ -1917,9 +1917,78 @@ function NodeConfigForm({
       if (subtype === 'client-feedback')
         return <ClientFeedbackConfig config={config} onChange={onChange} />
       return <ContentOutputConfig config={config} onChange={onChange} />
+    case 'insight':
+      return <InsightNodeConfig config={config} />
     default:
       return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
   }
+}
+
+// ─── Insight node config ──────────────────────────────────────────────────────
+
+const SUGGESTED_NODE_LABELS: Record<string, string> = {
+  'logic:humanizer':       'Humanizer node',
+  'output:content-output': 'Content Output node',
+  'logic:ai-generate':     'AI Generate node',
+  'logic':                 'Logic node',
+  'output':                'Output node',
+}
+
+function InsightNodeConfig({
+  config,
+}: {
+  config: Record<string, unknown>
+}) {
+  const suggestedNodeType = (config.suggested_node_type as string) ?? ''
+  const suggestedConfigChange = (config.suggested_config_change as Record<string, unknown>) ?? {}
+  const insightType = (config.insight_type as string) ?? ''
+  const nodeLabel = SUGGESTED_NODE_LABELS[suggestedNodeType] ?? suggestedNodeType
+
+  return (
+    <div className="space-y-3">
+      {/* Pattern type badge */}
+      <div className="rounded-lg border border-yellow-700/40 bg-yellow-950/20 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <Icons.Lightbulb className="h-4 w-4 text-yellow-400 shrink-0" />
+          <span className="text-xs font-medium text-yellow-300 capitalize">
+            {insightType.replace(/_/g, ' ')} Pattern
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Connect this node's output port to a compatible node. When the workflow runs, the
+          suggested config change below will be applied as an additional modifier to that node.
+        </p>
+      </div>
+
+      {/* Suggested target node */}
+      {nodeLabel && (
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Suggested Connection</Label>
+          <div className="rounded-md border border-border bg-muted/30 px-2.5 py-2 text-xs text-foreground">
+            Connect to: <span className="font-medium text-yellow-300">{nodeLabel}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Config change preview */}
+      {Object.keys(suggestedConfigChange).length > 0 && (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Config Change Preview</Label>
+          <div className="rounded-md border border-yellow-700/30 bg-yellow-950/10 px-2.5 py-2 space-y-1">
+            {Object.entries(suggestedConfigChange).map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{k.replace(/_/g, ' ')}</span>
+                <span className="font-mono text-yellow-300">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            These values will be merged into the connected node's config during each run.
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
@@ -1964,6 +2033,7 @@ export function ConfigPanel() {
     source: 'text-emerald-400',
     logic: 'text-blue-400',
     output: 'text-purple-400',
+    insight: 'text-yellow-400',
   }
   const colorClass = CATEGORY_COLOR[nodeType] ?? 'text-foreground'
 

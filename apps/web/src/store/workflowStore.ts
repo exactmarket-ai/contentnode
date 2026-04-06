@@ -33,7 +33,7 @@ export interface NodeRunStatus {
 
 // ─── Node palette definition (used by NodePalette + node factories) ───────────
 
-export type NodeCategory = 'source' | 'logic' | 'output'
+export type NodeCategory = 'source' | 'logic' | 'output' | 'insight'
 
 export interface PaletteNodeDef {
   type: string         // matches executor registry key prefix
@@ -219,6 +219,16 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   },
 ]
 
+// ─── Insight state for confirmation banner ────────────────────────────────────
+
+export interface InsightConfirmation {
+  insightId: string
+  connectedNodeId: string
+  patternDescription: string
+  stakeholderName: string
+  appliedRunCount: number
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 interface WorkflowState {
@@ -238,6 +248,8 @@ interface WorkflowState {
   hasBeenRun: boolean
   /** Set when a transcription node pauses the run awaiting speaker assignment */
   pendingTranscriptionSessionId: string | null
+  /** Active confirmation prompts for applied insights that have 3+ post-apply runs */
+  insightConfirmations: InsightConfirmation[]
 
   // Actions — graph
   onNodesChange: (changes: NodeChange[]) => void
@@ -258,6 +270,10 @@ interface WorkflowState {
 
   // Actions — transcription
   setPendingTranscriptionSessionId: (id: string | null) => void
+
+  // Actions — insights
+  addInsightConfirmation: (confirmation: InsightConfirmation) => void
+  dismissInsightConfirmation: (insightId: string) => void
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -281,6 +297,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   nodeRunStatuses: {},
   hasBeenRun: false,
   pendingTranscriptionSessionId: null,
+  insightConfirmations: [],
 
   // Graph actions
   onNodesChange: (changes) =>
@@ -335,4 +352,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Transcription actions
   setPendingTranscriptionSessionId: (id) =>
     set({ pendingTranscriptionSessionId: id }),
+
+  // Insight confirmation actions
+  addInsightConfirmation: (confirmation) =>
+    set((state) => ({
+      insightConfirmations: [
+        ...state.insightConfirmations.filter((c) => c.insightId !== confirmation.insightId),
+        confirmation,
+      ],
+    })),
+
+  dismissInsightConfirmation: (insightId) =>
+    set((state) => ({
+      insightConfirmations: state.insightConfirmations.filter((c) => c.insightId !== insightId),
+    })),
 }))

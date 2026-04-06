@@ -8,6 +8,7 @@ export const QUEUE_WORKFLOW_RUNS = 'workflow-runs'
 export const QUEUE_NODE_EXECUTION = 'node-execution'
 export const QUEUE_TRANSCRIPTION = 'transcription'
 export const QUEUE_ASSET_GENERATION = 'asset-generation'
+export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -37,6 +38,12 @@ export interface AssetGenerationJobData {
   nodeId: string
   assetType: 'image' | 'audio' | 'video'
   prompt: string
+}
+
+export interface PatternDetectionJobData {
+  feedbackId: string
+  clientId: string
+  agencyId: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -170,5 +170,38 @@ Full spec is in docs/contentnode-spec-v4.md
   - New 'Client Feedback' palette node in workflowStore PALETTE_NODES (category: output).
   - Env vars used: PORTAL_BASE_URL (default: http://localhost:5173)
 
+## What has been built (continued)
+- Session 9 complete: pattern intelligence layer + insight nodes
+  - Schema migration: Stakeholder gains `seniority` (owner/senior/member/junior);
+    Insight gains `status` (pending/applied/confirmed/dismissed), `instanceCount`,
+    `stakeholderIds`, `isCollective`, `evidenceQuotes`, `suggestedNodeType`,
+    `suggestedConfigChange`, `connectedNodeId`, `baselineScore`,
+    `postApplicationScore`, `appliedRunCount`, `dismissedUntilRun`, `appliedAt`.
+  - BullMQ queue `pattern-detection`: triggered after every Feedback record is
+    created (from both /api/v1/feedback and /portal/deliverables/:id/feedback).
+  - Pattern detector (workers/workflow/src/patternDetector.ts): per-client,
+    detects 5 pattern types (tone, forbidden_term, structure, length, claims).
+    Individual threshold: 3+ instances from one stakeholder.
+    Collective threshold: 2+ weighted instances across stakeholders.
+    Confidence = (instance_count × seniority_weight) / total_runs. De-duplication
+    against existing pending/applied insights. Creates Insight records.
+  - Outcome tracking: trackInsightOutcomes() called after each completed run —
+    records baseline_score from prior 5 runs, updates post_application_score and
+    applied_run_count on all applied insights.
+  - InsightNodeExecutor (output → insight): marks insight as 'applied' on first
+    execution, passes input through to downstream node.
+  - API: GET/PATCH /api/v1/insights with status/client/type filtering;
+    GET /api/v1/insights/pending/count; full CRUD on feedback.
+  - Frontend: NodePalette now has Nodes/Insights tabs. Insights tab shows
+    InsightsSidebar (pending insights grouped by client, live-fetched, refreshable).
+    InsightCard shows pattern type, confidence badge with attention indicator for
+    confidence > 0.6, evidence quotes (collapsed by default), draggable.
+    InsightNode canvas node (gold color, handles pass-through + config preview).
+    InsightConfig panel shows config change preview and suggested connection.
+    InsightConfirmationBanner: non-blocking overlay bottom-right after 3 runs with
+    improvement. "Yes make it permanent" bakes config into connected node + removes
+    insight node + sets status confirmed. "Not yet" dismisses for 2 runs then
+    re-prompts.
+
 ## Current session
-- Session 8 done. Ready for Session 9.
+- Session 9 done. Ready for Session 10.

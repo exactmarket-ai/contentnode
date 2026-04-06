@@ -5,12 +5,15 @@ import {
   QUEUE_NODE_EXECUTION,
   QUEUE_TRANSCRIPTION,
   QUEUE_ASSET_GENERATION,
+  QUEUE_PATTERN_DETECTION,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
   type TranscriptionJobData,
   type AssetGenerationJobData,
+  type PatternDetectionJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
+import { detectPatterns } from './patternDetector.js'
 
 // ── workflow-runs ─────────────────────────────────────────────────────────────
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
@@ -48,6 +51,18 @@ const transcriptionWorker = createWorker<TranscriptionJobData>(
   5
 )
 
+// ── pattern-detection ─────────────────────────────────────────────────────────
+const patternDetectionWorker = createWorker<PatternDetectionJobData>(
+  QUEUE_PATTERN_DETECTION,
+  async (job: Job<PatternDetectionJobData>) => {
+    const { feedbackId, clientId, agencyId } = job.data
+    console.log(`[pattern-detection] analyzing feedback ${feedbackId} for client ${clientId}`)
+    await detectPatterns(feedbackId, clientId, agencyId)
+    console.log(`[pattern-detection] done for client ${clientId}`)
+  },
+  5
+)
+
 // ── asset-generation ──────────────────────────────────────────────────────────
 const assetGenerationWorker = createWorker<AssetGenerationJobData>(
   QUEUE_ASSET_GENERATION,
@@ -66,6 +81,7 @@ async function shutdown() {
     nodeExecutionWorker.close(),
     transcriptionWorker.close(),
     assetGenerationWorker.close(),
+    patternDetectionWorker.close(),
   ])
   process.exit(0)
 }
