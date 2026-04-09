@@ -12,4 +12,4 @@ npx prisma migrate deploy --schema packages/database/prisma/schema.prisma
 echo "Migrations done."
 
 echo "Starting API server..."
-exec node --import tsx/esm apps/api/src/index.ts
+exec node apps/api/dist/index.js
