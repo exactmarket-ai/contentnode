@@ -69,7 +69,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           subtype: 'humanizer-pro',
           config: {
             subtype: 'humanizer-pro',
-            humanizer_service: 'stealthgpt',
+            humanizer_service: 'undetectable',
           },
         },
       },
@@ -183,7 +183,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     description:
       'Turn a text brief into a polished LinkedIn post, then humanize it for a natural tone.',
     category: 'social',
-    icon: 'Linkedin',
+    icon: 'Users',
     nodes: [
       {
         id: 'source-1',
@@ -219,7 +219,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           subtype: 'humanizer-pro',
           config: {
             subtype: 'humanizer-pro',
-            humanizer_service: 'stealthgpt',
+            humanizer_service: 'undetectable',
           },
         },
       },
@@ -284,7 +284,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           subtype: 'humanizer-pro',
           config: {
             subtype: 'humanizer-pro',
-            humanizer_service: 'stealthgpt',
+            humanizer_service: 'undetectable',
           },
         },
       },
@@ -400,7 +400,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           subtype: 'humanizer-pro',
           config: {
             subtype: 'humanizer-pro',
-            humanizer_service: 'stealthgpt',
+            humanizer_service: 'undetectable',
           },
         },
       },
