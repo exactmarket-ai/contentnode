@@ -203,6 +203,34 @@ Full spec is in docs/contentnode-spec-v4.md
     insight node + sets status confirmed. "Not yet" dismisses for 2 runs then
     re-prompts.
 
+## What has been built (continued)
+- Session 11 complete: humanizer hardening + re-run feature + client page fixes
+  - Content chunking: `processInChunks(content, chunkFn)` at sentence boundaries
+    (MAX_CHUNK_WORDS=400) wired into all three humanizer providers (Undetectable,
+    BypassGPT, StealthGPT). Chunks reassembled with single newlines.
+  - StealthGPT removed from UI service selector — API consistently times out
+    (3+ min/chunk at 400 words). Key retained in .env but service not offered.
+  - BypassGPT integration: async submit/poll pattern.
+    POST /generate `{ input, model_type: 'Enhanced' }` →
+    poll GET /retrieval?task_id= until `data.finished && data.bypass_status === 'ok'`.
+    Base URL: https://www.bypassgpt.ai/api/bypassgpt/v1. Key: BYPASSGPT_API_KEY.
+    HUMANIZER_SERVICE=undetectable (default).
+  - Re-run from here: POST /api/v1/runs/:id/rerun-from/:nodeId
+    BFS from startNode finds all descendants. New run is created with upstream nodes
+    pre-seeded as 'passed' in output. Runner's existing resume logic skips passed nodes.
+    ConfigPanel: shows "Re-run from here" (passed nodes) or "Retry from here" (failed)
+    after a run completes/fails. AI Generate shows output preview + Copy button post-run.
+  - All client/stakeholder pages migrated from plain fetch() to apiFetch() for auth.
+  - Workflow loading by ID: /workflows/:workflowId route in App.tsx. WorkflowEditor
+    useEffect loads workflow from API when workflowId param is present; maps DB fields
+    (positionX/positionY) → RF position.x/y; WorkflowCreationModal skipped for existing.
+  - ClientDetailPage: "Stakeholder/contacts" renamed → "Contact/contacts" throughout UI.
+    Safe access `wf._count?.runs ?? 0` prevents crash. Open button navigates to
+    /workflows/:id. PATCH /workflows/:id response includes _count.
+  - TopBar: poll timeout extended to 20 min (MAX_POLLS=600, POLL_INTERVAL_MS=2000).
+    Save button wired to PATCH /api/v1/workflows/:id.
+  - Usage panel: per-service word tracking for Undetectable.ai and BypassGPT (with
+    limit bar); Claude shows word count only; StealthGPT row removed.
+
 ## Current session
-- Session 9 done. Ready for Session 10.
-- MVP complete. All 10 sessions done.
+- All sessions complete. MVP built and running.

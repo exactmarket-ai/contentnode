@@ -4,25 +4,26 @@
 
 @layer base {
   :root {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 95%;
-    --card: 0 0% 8%;
-    --card-foreground: 0 0% 95%;
-    --popover: 0 0% 8%;
-    --popover-foreground: 0 0% 95%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 80%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 50%;
-    --accent: 0 0% 14%;
-    --accent-foreground: 0 0% 95%;
+    /* ContentNodeAI light theme — spec colors */
+    --background: 48 20% 95%;          /* #f5f4ef */
+    --foreground: 60 14% 9%;           /* #1a1a14 */
+    --card: 0 0% 100%;                 /* #ffffff */
+    --card-foreground: 60 14% 9%;      /* #1a1a14 */
+    --popover: 0 0% 100%;              /* #ffffff */
+    --popover-foreground: 60 14% 9%;   /* #1a1a14 */
+    --primary: 280 100% 47%;           /* #a200ee */
+    --primary-foreground: 0 0% 100%;   /* #ffffff */
+    --secondary: 48 14% 93%;           /* warm light */
+    --secondary-foreground: 60 14% 9%;
+    --muted: 60 11% 97%;               /* #fafaf7 */
+    --muted-foreground: 45 3% 36%;     /* #5f5e5a */
+    --accent: 35 14% 93%;              /* #f0ede8 */
+    --accent-foreground: 60 14% 9%;    /* #1a1a14 */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 14%;
-    --input: 0 0% 14%;
-    --ring: 217 91% 60%;
+    --border: 35 9% 87%;               /* #e0deda */
+    --input: 35 9% 87%;                /* #e0deda */
+    --ring: 280 100% 47%;              /* #a200ee */
     --radius: 0.5rem;
   }
 }
@@ -37,37 +38,57 @@
   }
 }
 
-/* React Flow overrides */
+/* ── React Flow ──────────────────────────────────────────────────────────────── */
+
+/* Strip all default node wrapper styling — cards manage their own appearance */
+.react-flow__node {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  border-radius: 0 !important;
+}
+
 .react-flow__background {
-  background-color: hsl(0 0% 4%);
+  background-color: #f5f4ef;
+}
+
+/* Dot pattern on canvas */
+.react-flow__background pattern circle {
+  fill: #c8c5bc;
 }
 
 .react-flow__minimap {
-  background-color: hsl(0 0% 8%) !important;
-  border: 1px solid hsl(0 0% 14%);
+  background-color: #fafaf7 !important;
+  border: 1px solid #e0deda;
   border-radius: 6px;
 }
 
 .react-flow__minimap-mask {
-  fill: hsl(0 0% 12%) !important;
+  fill: rgba(162,0,238,0.06) !important;
+}
+
+.react-flow__minimap-node {
+  fill: #e0deda;
 }
 
 .react-flow__controls {
-  border: 1px solid hsl(0 0% 14%);
+  border: 1px solid #e0deda;
   border-radius: 6px;
   overflow: hidden;
   box-shadow: none;
 }
 
 .react-flow__controls-button {
-  background-color: hsl(0 0% 8%) !important;
-  border-bottom: 1px solid hsl(0 0% 14%) !important;
-  color: hsl(0 0% 60%) !important;
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e0deda !important;
+  color: #5f5e5a !important;
 }
 
 .react-flow__controls-button:hover {
-  background-color: hsl(0 0% 12%) !important;
-  color: hsl(0 0% 90%) !important;
+  background-color: #f0ede8 !important;
+  color: #1a1a14 !important;
 }
 
 .react-flow__controls-button svg {
@@ -75,62 +96,113 @@
 }
 
 .react-flow__edge-path {
-  stroke: hsl(0 0% 35%);
+  stroke: #b4b2a9;
   stroke-width: 1.5;
 }
 
 .react-flow__edge.selected .react-flow__edge-path,
 .react-flow__edge:hover .react-flow__edge-path {
-  stroke: hsl(217 91% 60%);
+  stroke: #a200ee;
 }
 
 .react-flow__connection-line {
-  stroke: hsl(217 91% 60%);
+  stroke: #a200ee;
   stroke-width: 1.5;
 }
 
 .react-flow__handle {
   width: 10px;
   height: 10px;
-  border: 2px solid hsl(0 0% 45%);
-  background: hsl(0 0% 28%);
+  border: 2px solid #b4b2a9;
+  background: #ffffff;
   border-radius: 50%;
   transition: border-color 0.15s, background 0.15s;
 }
 
 .react-flow__handle:hover,
 .react-flow__handle.connecting {
-  border-color: hsl(217 91% 60%);
-  background: hsl(217 91% 60% / 0.4);
+  border-color: #a200ee;
+  background: rgba(162,0,238,0.15);
 }
 
-/* Category-specific handle colors */
+/* Source node handles — blue (input) */
 .react-flow__node-source .react-flow__handle {
-  background: rgba(16, 185, 129, 0.8);
-  border-color: rgb(52, 211, 153);
+  background: #ffffff;
+  border-color: #185fa5;
 }
 .react-flow__node-source .react-flow__handle:hover,
 .react-flow__node-source .react-flow__handle.connecting {
-  background: rgba(16, 185, 129, 1);
-  border-color: rgb(110, 231, 183);
+  background: rgba(24,95,165,0.15);
+  border-color: #185fa5;
 }
 
+/* Logic node handles — neutral, node-specific color applied inline */
 .react-flow__node-logic .react-flow__handle {
-  background: rgba(59, 130, 246, 0.8);
-  border-color: rgb(96, 165, 250);
+  background: #ffffff;
+  border-color: #888780;
 }
 .react-flow__node-logic .react-flow__handle:hover,
 .react-flow__node-logic .react-flow__handle.connecting {
-  background: rgba(59, 130, 246, 1);
-  border-color: rgb(147, 197, 253);
+  background: rgba(136,135,128,0.15);
+  border-color: #5f5e5a;
 }
 
+/* Remove ReactFlow's default node wrapper outline/shadow — cards handle their own selected state */
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.react-flow__node.selected,
+.react-flow__node.selected:hover {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Output node handles — eval gray */
 .react-flow__node-output .react-flow__handle {
-  background: rgba(168, 85, 247, 0.8);
-  border-color: rgb(192, 132, 252);
+  background: #ffffff;
+  border-color: #888780;
 }
 .react-flow__node-output .react-flow__handle:hover,
 .react-flow__node-output .react-flow__handle.connecting {
-  background: rgba(168, 85, 247, 1);
-  border-color: rgb(216, 180, 254);
+  background: rgba(136,135,128,0.15);
+  border-color: #5f5e5a;
+}
+
+/* ── Print styles ──────────────────────────────────────────────────────── */
+@page {
+  margin: 1.5cm;
+  size: A4 portrait;
+}
+
+@media print {
+  /* Hide navigation, sidebars, and interactive chrome */
+  header, nav, aside, .print\:hidden { display: none !important; }
+
+  /* Reset all height/overflow/width constraints so full content prints */
+  html, body, #root,
+  [class*="h-full"], [class*="h-screen"],
+  [class*="overflow-auto"], [class*="overflow-hidden"],
+  [class*="overflow-y-auto"], [class*="overflow-y-hidden"] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Ensure flex columns expand to content */
+  [class*="flex-col"] { flex: none !important; }
+
+  /* Prevent content from being clipped horizontally */
+  * { box-sizing: border-box !important; }
+
+  /* Collapse sidebar so form takes full width */
+  .print-form-only { width: 100% !important; max-width: 100% !important; }
+
+  body { background: white !important; color: black !important; font-size: 10pt; }
+  .border, [class*="border"] { border-color: #ccc !important; }
+  input, textarea, select { border: 1px solid #ddd !important; background: white !important; color: black !important; }
+  button { display: none !important; }
 }

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { apiFetch } from '@/lib/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 
@@ -120,9 +121,8 @@ function AddStakeholderForm({
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/api/v1/transcriptions/${sessionId}/stakeholders`, {
+      const res = await apiFetch(`/api/v1/transcriptions/${sessionId}/stakeholders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), email: email.trim() }),
       })
       if (!res.ok) throw new Error(await res.text())
@@ -157,7 +157,7 @@ function AddStakeholderForm({
           {loading ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.Plus className="h-3 w-3" />}
         </Button>
       </div>
-      {error && <p className="text-[11px] text-red-400">{error}</p>}
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
     </div>
   )
 }
@@ -187,13 +187,13 @@ function SpeakerCard({
   return (
     <div className={cn(
       'rounded-lg border transition-colors',
-      isAssigned ? 'border-emerald-700/50 bg-emerald-950/10' : 'border-border',
+      isAssigned ? 'border-emerald-300 bg-emerald-50/60' : 'border-border',
     )}>
       {/* Speaker header */}
       <div className="flex items-center gap-3 p-3">
         <div className={cn(
           'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-          isAssigned ? 'bg-emerald-900/60 text-emerald-300' : 'bg-muted text-muted-foreground',
+          isAssigned ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground',
         )}>
           {group.speaker}
         </div>
@@ -207,7 +207,7 @@ function SpeakerCard({
           />
         </div>
 
-        {isAssigned && <Icons.CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />}
+        {isAssigned && <Icons.CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />}
       </div>
 
       {/* Audio clip + segments preview */}
@@ -265,7 +265,14 @@ function SpeakerCard({
           <>
             <Select
               value={assignment.stakeholderId ?? '__none__'}
-              onValueChange={(v) => onAssignmentChange(group.speaker, { stakeholderId: v === '__none__' ? null : v })}
+              onValueChange={(v) => {
+                if (v === '__none__') {
+                  onAssignmentChange(group.speaker, { stakeholderId: null })
+                } else {
+                  const s = stakeholders.find((s) => s.id === v)
+                  onAssignmentChange(group.speaker, { stakeholderId: v, speakerName: s?.name ?? assignment.speakerName })
+                }
+              }}
             >
               <SelectTrigger className="h-7 text-xs">
                 <SelectValue placeholder="Assign to stakeholder…" />
@@ -285,7 +292,7 @@ function SpeakerCard({
 
             <button
               onClick={() => setShowAddForm((v) => !v)}
-              className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300"
+              className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700"
             >
               <Icons.Plus className="h-3 w-3" />
               Add new stakeholder
@@ -331,7 +338,7 @@ export function SpeakerAssignmentPanel({
     let cancelled = false
     const load = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/transcriptions/${sessionId}`)
+        const res = await apiFetch(`/api/v1/transcriptions/${sessionId}`)
         if (!res.ok) throw new Error(`Failed to load session (${res.status})`)
         const json = await res.json()
         if (cancelled) return
@@ -380,9 +387,8 @@ export function SpeakerAssignmentPanel({
     setSubmitting(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/api/v1/transcriptions/${sessionId}/assign`, {
+      const res = await apiFetch(`/api/v1/transcriptions/${sessionId}/assign`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignments: Object.values(assignments) }),
       })
       if (!res.ok) throw new Error(await res.text())
@@ -398,7 +404,7 @@ export function SpeakerAssignmentPanel({
       <div className="relative flex w-full max-w-2xl flex-col border-r border-border bg-card shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-6 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-900/50 text-blue-400">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
             <Icons.Users className="h-5 w-5" />
           </div>
           <div>
@@ -425,7 +431,7 @@ export function SpeakerAssignmentPanel({
             )}
 
             {error && (
-              <div className="rounded-md border border-red-500/30 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+              <div className="rounded-md border border-red-200 bg-red-50/60 px-3 py-2 text-xs text-red-700">
                 {error}
               </div>
             )}
@@ -440,7 +446,7 @@ export function SpeakerAssignmentPanel({
                       {Math.floor(session.durationSecs / 60)}m {session.durationSecs % 60}s
                     </span>
                   )}
-                  <span className="ml-auto rounded bg-blue-900/60 px-1.5 py-0.5 text-blue-300">
+                  <span className="ml-auto rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
                     {session.speakers.length} speaker{session.speakers.length !== 1 ? 's' : ''}
                   </span>
                 </div>
@@ -465,11 +471,11 @@ export function SpeakerAssignmentPanel({
         {/* Footer */}
         <div className="border-t border-border px-6 py-4">
           {!allAssigned && session && (
-            <p className="mb-3 text-[11px] text-amber-400">
+            <p className="mb-3 text-[11px] text-amber-600">
               All speakers must be assigned or marked as agency participants before proceeding.
             </p>
           )}
-          {error && <p className="mb-3 text-[11px] text-red-400">{error}</p>}
+          {error && <p className="mb-3 text-[11px] text-red-600">{error}</p>}
           <Button
             onClick={handleSubmit}
             disabled={!allAssigned || submitting || loading}

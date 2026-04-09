@@ -1,6 +1,7 @@
 import { pipeline } from 'node:stream/promises'
 import { createWriteStream, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
@@ -84,6 +85,14 @@ export async function transcriptionRoutes(app: FastifyInstance) {
     const storageKey = `${fileId}-${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`
     const filePath = join(UPLOAD_DIR, storageKey)
 
+    // MEDIUM #8: Prevent path traversal — ensure resolved path stays within UPLOAD_DIR
+    const resolvedUploadDir = path.resolve(UPLOAD_DIR)
+    const resolvedFilePath = path.resolve(filePath)
+    if (!resolvedFilePath.startsWith(resolvedUploadDir + path.sep) && resolvedFilePath !== resolvedUploadDir) {
+      file.resume()
+      return reply.code(400).send({ error: 'Invalid file path' })
+    }
+
     try {
       await pipeline(file, createWriteStream(filePath))
     } catch (err) {
@@ -143,8 +152,9 @@ export async function transcriptionRoutes(app: FastifyInstance) {
         ...(query.clientId ? { clientId: query.clientId } : {}),
       },
       orderBy: { createdAt: 'desc' },
-      take: Math.min(parseInt(query.limit ?? '20', 10), 100),
-      skip: parseInt(query.offset ?? '0', 10),
+      // HIGH #6: Clamp pagination values to prevent negative/zero inputs
+      take: Math.min(Math.max(1, parseInt(query.limit ?? '20', 10)), 100),
+      skip: Math.max(0, parseInt(query.offset ?? '0', 10)),
       select: {
         id: true,
         clientId: true,
@@ -291,6 +301,12 @@ export async function transcriptionRoutes(app: FastifyInstance) {
         where: { id: session.workflowRunId, agencyId },
       })
       if (run && run.status === 'awaiting_assignment') {
+        // Update status to 'running' immediately so the frontend poll doesn't re-show
+        // the assignment panel while the worker is picking up the job
+        await prisma.workflowRun.update({
+          where: { id: session.workflowRunId },
+          data: { status: 'running' },
+        })
         const queue = getWorkflowRunsQueue()
         await queue.add(
           'run-workflow',

@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +9,8 @@ import { apiFetch } from '@/lib/api'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { BatchRunModal } from '@/components/modals/BatchRunModal'
+import { ScheduleModal } from '@/components/modals/ScheduleModal'
 
 const ANTHROPIC_MODELS = [
   { value: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
@@ -15,31 +18,180 @@ const ANTHROPIC_MODELS = [
   { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
 ]
 const OLLAMA_MODELS = [
-  { value: 'llama3.2', label: 'Llama 3.2' },
-  { value: 'mistral',  label: 'Mistral 7B' },
-  { value: 'phi3',     label: 'Phi-3' },
+  { value: 'gemma4:e4b',    label: 'Gemma 4 E4B' },
+  { value: 'llama3.1:70b',  label: 'Llama 3.1 70B' },
+  { value: 'gemma3:12b',    label: 'Gemma 3 12B' },
+  { value: 'gemma3:4b',     label: 'Gemma 3 4B' },
+  { value: 'llama3.1:8b',   label: 'Llama 3.1 8B' },
+  { value: 'llama3.2',      label: 'Llama 3.2 3B' },
+  { value: 'mistral',       label: 'Mistral 7B' },
+  { value: 'phi3',          label: 'Phi-3' },
 ]
+
+export async function pollRunUntilTerminal(runId: string) {
+  const POLL_INTERVAL_MS = 2000
+  const MAX_POLLS = 600 // 20 minutes max
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+
+    const store = useWorkflowStore.getState()
+    // Stop polling if user manually reset status
+    if (store.runStatus === 'idle') return
+
+    const pollRes = await apiFetch(`/api/v1/runs/${runId}`)
+    if (!pollRes.ok) {
+      console.error('[run] poll failed:', pollRes.status)
+      store.setRunError(`Could not fetch run status (HTTP ${pollRes.status})`)
+      store.setRunStatus('failed')
+      return
+    }
+
+    const body = await pollRes.json() as {
+      data: {
+        status: string
+        nodeStatuses?: Record<string, unknown>
+        finalOutput?: unknown
+        pendingSessionId?: string | null
+        pendingReviewNodeId?: string | null
+        pendingReviewContent?: string | null
+        errorMessage?: string | null
+      }
+    }
+    const data = body.data
+    console.log('[run] poll', i + 1, '— status:', data.status)
+
+    if (data.nodeStatuses) {
+      store.setNodeRunStatuses(data.nodeStatuses as Parameters<typeof store.setNodeRunStatuses>[0])
+    }
+
+    if (data.status === 'completed') {
+      if (data.finalOutput !== undefined) store.setFinalOutput(data.finalOutput)
+      store.setRunStatus('completed')
+      return
+    }
+    if (data.status === 'failed') {
+      store.setRunStatus('failed')
+      if (data.errorMessage) store.setRunError(data.errorMessage)
+      return
+    }
+    if (data.status === 'waiting_review') {
+      store.setPendingReview(runId, data.pendingReviewContent ?? '')
+      store.setRunStatus('waiting_review')
+      return
+    }
+    if (data.status === 'waiting_feedback' || data.status === 'awaiting_assignment') {
+      if (data.pendingSessionId) store.setPendingTranscriptionSessionId(data.pendingSessionId)
+      store.setRunStatus('awaiting_assignment')
+      return
+    }
+  }
+
+  console.warn('[run] timed out after max polls')
+  useWorkflowStore.getState().setRunError('Run timed out — the workflow took too long to complete.')
+  useWorkflowStore.getState().setRunStatus('failed')
+}
 
 const RUN_STATUS_CONFIG = {
   idle:                { label: 'Run',        icon: Icons.Play,     variant: 'default' as const,      spin: false },
   running:             { label: 'Running…',   icon: Icons.Loader2,  variant: 'secondary' as const,    spin: true  },
   completed:           { label: 'Run',        icon: Icons.Play,     variant: 'default' as const,      spin: false },
   failed:              { label: 'Retry',      icon: Icons.RotateCcw, variant: 'destructive' as const, spin: false },
-  awaiting_assignment: { label: 'Assign…',    icon: Icons.Users,    variant: 'secondary' as const,    spin: false },
+  awaiting_assignment: { label: 'Assign…',    icon: Icons.Users,       variant: 'secondary' as const,   spin: false },
+  waiting_review:      { label: 'Review…',    icon: Icons.ClipboardCheck, variant: 'secondary' as const, spin: false },
+}
+
+function RunFailedBanner({ error }: { error: string | null }) {
+  const [expanded, setExpanded] = useState(false)
+  const msg = error ?? 'The workflow run failed with no additional details.'
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
+      >
+        <Icons.XCircle className="h-3.5 w-3.5 shrink-0" />
+        Run failed
+        {expanded ? <Icons.ChevronUp className="h-3 w-3" /> : <Icons.ChevronDown className="h-3 w-3" />}
+      </button>
+      {expanded && (
+        <div className="absolute top-14 right-4 z-50 w-[420px] rounded-lg border border-red-200 bg-white shadow-xl p-4">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-red-700">
+              <Icons.XCircle className="h-4 w-4 shrink-0" />
+              Workflow run failed
+            </div>
+            <button onClick={() => setExpanded(false)} className="text-muted-foreground hover:text-foreground">
+              <Icons.X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="text-xs text-red-800 bg-red-50 rounded p-3 font-mono break-words whitespace-pre-wrap leading-relaxed">
+            {msg}
+          </p>
+          <p className="mt-2 text-[11px] text-muted-foreground">Check the failed node on the canvas for more details.</p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function TopBar() {
-  const { workflow, setWorkflowName, setWorkflow, runStatus, hasBeenRun } = useWorkflowStore()
+  const { workflow, setWorkflowName, setWorkflow, runStatus, runError, hasBeenRun, activeRunId } = useWorkflowStore()
+  const navigate = useNavigate()
+  const [batchModalOpen, setBatchModalOpen] = useState(false)
+  const [batchToast, setBatchToast] = useState<string | null>(null)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+
+  // Listen for save dialog trigger from WorkflowEditor's leave-warning modal
+  useEffect(() => {
+    const handler = () => setSaveDialogOpen(true)
+    window.addEventListener('contentnode:open-save-dialog', handler)
+    return () => window.removeEventListener('contentnode:open-save-dialog', handler)
+  }, [])
+  const [saveToast, setSaveToast] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const handleNew = () => {
+    useWorkflowStore.setState({
+      nodes: [],
+      edges: [],
+      selectedNodeId: null,
+      runStatus: 'idle',
+      nodeRunStatuses: {},
+      activeRunId: null,
+      hasBeenRun: false,
+      workflow: {
+        id: null,
+        name: 'Untitled Workflow',
+        clientId: null,
+        connectivity_mode: 'online',
+        default_model_config: { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 },
+      },
+    })
+    navigate('/workflows/new')
+  }
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState(workflow.name)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
 
-  const commitName = () => {
+  const commitName = async () => {
     const trimmed = nameValue.trim() || 'Untitled Workflow'
     setWorkflowName(trimmed)
     setNameValue(trimmed)
     setEditingName(false)
+    // Auto-save name to API immediately
+    const wf = useWorkflowStore.getState().workflow
+    if (wf.id && trimmed !== wf.name) {
+      try {
+        await apiFetch(`/api/v1/workflows/${wf.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: trimmed }),
+        })
+      } catch (err) {
+        console.error('[save-name] failed:', err)
+      }
+    }
   }
 
   const runCfg = RUN_STATUS_CONFIG[runStatus]
@@ -54,13 +206,31 @@ export function TopBar() {
     const store = useWorkflowStore.getState()
     const { nodes, edges, workflow: wf } = store
 
+    // ── Pre-run validation ─────────────────────────────────────────────────
+    const unconfiguredSourceNodes = nodes.filter((n) => {
+      if (n.type !== 'source') return false
+      const cfg = (n.data?.config as Record<string, unknown>) ?? {}
+      const hasText = !!(cfg.text || cfg.inlineText || cfg.pasted_text)
+      const hasFiles = Array.isArray(cfg.uploaded_files) && cfg.uploaded_files.length > 0
+      const hasLibraryRefs = Array.isArray(cfg.library_refs) && cfg.library_refs.length > 0
+      const hasAudioFiles = Array.isArray(cfg.audio_files) && cfg.audio_files.length > 0
+      const hasDocumentId = !!cfg.documentId
+      const hasUrl = !!(cfg.url)
+      const hasRawText = !!(cfg.raw_text)  // instruction-translator
+      return !hasText && !hasFiles && !hasLibraryRefs && !hasAudioFiles && !hasDocumentId && !hasUrl && !hasRawText
+    })
+    if (unconfiguredSourceNodes.length > 0) {
+      const labels = unconfiguredSourceNodes.map((n) => (n.data?.label as string) || n.id).join(', ')
+      alert(`Please configure your source node${unconfiguredSourceNodes.length > 1 ? 's' : ''} before running.\n\nMissing content: ${labels}\n\nOpen the node and upload a file or paste text.`)
+      return
+    }
+
     console.log('[run] clicked — workflow:', wf.id, 'nodes:', nodes.length, 'edges:', edges.length)
 
     store.setRunStatus('running')
     store.setNodeRunStatuses({})
 
     try {
-      // POST /api/v1/runs to create and enqueue the run
       const res = await apiFetch('/api/v1/runs', {
         method: 'POST',
         body: JSON.stringify({
@@ -74,92 +244,96 @@ export function TopBar() {
       if (!res.ok) {
         const text = await res.text()
         console.error('[run] POST /api/v1/runs failed:', res.status, text)
+        let errMsg = `Failed to start run (HTTP ${res.status})`
+        try { const j = JSON.parse(text); if (j.error) errMsg = j.error } catch { /* raw text */ }
+        store.setRunError(errMsg)
         store.setRunStatus('failed')
         return
       }
 
-      const { runId } = await res.json() as { runId: string }
+      const { runId, workflowId: createdWorkflowId } = await res.json() as { runId: string; workflowId: string }
       console.log('[run] run created:', runId)
-
-      // Poll GET /api/v1/runs/:id until terminal status
-      const POLL_INTERVAL_MS = 1500
-      const MAX_POLLS = 120 // 3 minutes max
-
-      for (let i = 0; i < MAX_POLLS; i++) {
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-
-        const pollRes = await apiFetch(`/api/v1/runs/${runId}`)
-        if (!pollRes.ok) {
-          console.error('[run] poll failed:', pollRes.status)
-          store.setRunStatus('failed')
-          return
-        }
-
-        const data = await pollRes.json() as {
-          status: string
-          nodeStatuses?: Record<string, unknown>
-          output?: unknown
-        }
-        console.log('[run] poll', i + 1, '— status:', data.status)
-
-        if (data.nodeStatuses) {
-          store.setNodeRunStatuses(data.nodeStatuses as Parameters<typeof store.setNodeRunStatuses>[0])
-        }
-
-        if (data.status === 'completed') {
-          store.setRunStatus('completed')
-          return
-        }
-        if (data.status === 'failed') {
-          store.setRunStatus('failed')
-          return
-        }
-        if (data.status === 'waiting_feedback' || data.status === 'awaiting_assignment') {
-          store.setRunStatus('awaiting_assignment')
-          return
-        }
+      store.setActiveRunId(runId)
+      // If workflow was auto-created by the run engine (no prior ID), record it
+      if (!wf.id && createdWorkflowId) {
+        store.setWorkflow({ id: createdWorkflowId, autoCreated: true })
       }
+      await pollRunUntilTerminal(runId)
 
-      console.warn('[run] timed out after max polls')
-      store.setRunStatus('failed')
+      // Auto-save graph after successful run so output is never lost due to unsaved config
+      if (useWorkflowStore.getState().runStatus === 'completed' && wf.id) {
+        const latest = useWorkflowStore.getState()
+        apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            nodes: latest.nodes,
+            edges: latest.edges,
+            name: latest.workflow.name,
+            defaultModelConfig: latest.workflow.default_model_config,
+          }),
+        }).then(() => { useWorkflowStore.getState().setWorkflow({ graphSaved: true }); useWorkflowStore.setState({ graphDirty: false }) }).catch(() => {})
+      }
     } catch (err) {
       console.error('[run] unexpected error:', err)
-      store.setRunStatus('failed')
+      useWorkflowStore.getState().setRunError(err instanceof Error ? err.message : 'Unexpected error')
+      useWorkflowStore.getState().setRunStatus('failed')
     }
   }
 
-  const handleSave = () => {
-    // TODO: wire to API PUT /api/v1/workflows/:id
-    const { nodes, edges, workflow: wf } = useWorkflowStore.getState()
-    console.log('save', { workflow: wf, nodes, edges })
+  const handleSave = async (name: string, clientId: string, createNew = false) => {
+    const { workflow: wf, nodes, edges } = useWorkflowStore.getState()
+    if (!wf.id) return
+    try {
+      if (createNew) {
+        // Save As — create a brand new workflow and write this graph into it
+        const r1 = await apiFetch('/api/v1/workflows', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            clientId,
+            connectivityMode: wf.connectivity_mode ?? 'online',
+            defaultModelConfig: wf.default_model_config,
+          }),
+        })
+        if (!r1.ok) throw new Error(`POST workflow ${r1.status}`)
+        const { data: newWf } = await r1.json()
+        const r2 = await apiFetch(`/api/v1/workflows/${newWf.id}/graph`, {
+          method: 'PUT',
+          body: JSON.stringify({ nodes, edges, name, defaultModelConfig: wf.default_model_config }),
+        })
+        if (!r2.ok) throw new Error(`PUT graph ${r2.status}`)
+        setWorkflow({ id: newWf.id, name, clientId, autoCreated: false, graphSaved: true })
+        useWorkflowStore.setState({ graphDirty: false })
+        setWorkflowName(name)
+        // Update React Router's history so useParams() reflects the new ID
+        navigate(`/workflows/${newWf.id}`, { replace: true })
+        setSaveToast({ ok: true, msg: `Saved as new — "${name}"` })
+      } else {
+        // Save over existing workflow
+        const r1 = await apiFetch(`/api/v1/workflows/${wf.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name, clientId }),
+        })
+        if (!r1.ok) throw new Error(`PATCH workflow ${r1.status}`)
+        const r2 = await apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
+          method: 'PUT',
+          body: JSON.stringify({ nodes, edges, name, defaultModelConfig: wf.default_model_config }),
+        })
+        if (!r2.ok) throw new Error(`PUT graph ${r2.status}`)
+        setWorkflow({ name, clientId, autoCreated: false, graphSaved: true })
+        useWorkflowStore.setState({ graphDirty: false })
+        setWorkflowName(name)
+        setSaveToast({ ok: true, msg: `Saved — ${nodes.length} node${nodes.length !== 1 ? 's' : ''}` })
+      }
+    } catch (err) {
+      console.error('[save] failed:', err)
+      setSaveToast({ ok: false, msg: `Save failed: ${err instanceof Error ? err.message : 'unknown error'}` })
+    }
+    setTimeout(() => setSaveToast(null), 3500)
   }
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
-      {/* Workflow name */}
-      {editingName ? (
-        <input
-          ref={nameInputRef}
-          className="h-8 rounded-md border border-input bg-transparent px-2 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-ring"
-          value={nameValue}
-          onChange={(e) => setNameValue(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitName()
-            if (e.key === 'Escape') { setNameValue(workflow.name); setEditingName(false) }
-          }}
-          autoFocus
-        />
-      ) : (
-        <button
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent"
-          onClick={() => { setNameValue(workflow.name); setEditingName(true) }}
-        >
-          {workflow.name}
-          <Icons.Pencil className="h-3 w-3 text-muted-foreground" />
-        </button>
-      )}
-
       {/* Connectivity toggle */}
       <button
         onClick={() => {
@@ -181,8 +355,8 @@ export function TopBar() {
           hasBeenRun && 'cursor-not-allowed opacity-60',
           !hasBeenRun && 'cursor-pointer',
           workflow.connectivity_mode === 'online'
-            ? 'border-emerald-700 bg-emerald-950 text-emerald-400 hover:bg-emerald-900'
-            : 'border-amber-700 bg-amber-950 text-amber-400 hover:bg-amber-900',
+            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+            : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100',
           hasBeenRun && 'hover:bg-transparent',
         )}
       >
@@ -195,7 +369,7 @@ export function TopBar() {
 
       {/* Persistent OFFLINE badge */}
       {workflow.connectivity_mode === 'offline' && (
-        <Badge className="gap-1 bg-amber-900 text-amber-300 border border-amber-700 pointer-events-none select-none">
+        <Badge className="gap-1 bg-amber-100 text-amber-700 border border-amber-300 pointer-events-none select-none">
           <Icons.WifiOff className="h-3 w-3" />
           OFFLINE
         </Badge>
@@ -253,10 +427,7 @@ export function TopBar() {
         </span>
       )}
       {runStatus === 'failed' && (
-        <span className="flex items-center gap-1 text-xs text-red-400">
-          <Icons.XCircle className="h-3.5 w-3.5" />
-          Failed
-        </span>
+        <RunFailedBanner error={runError} />
       )}
       {runStatus === 'awaiting_assignment' && (
         <span className="flex items-center gap-1 text-xs text-blue-400">
@@ -264,12 +435,88 @@ export function TopBar() {
           Awaiting speakers
         </span>
       )}
+      {runStatus === 'waiting_review' && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-8 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+          onClick={() => {
+            const store = useWorkflowStore.getState()
+            if (store.pendingReviewRunId) {
+              store.setPendingReview(store.pendingReviewRunId, store.pendingReviewContent)
+              store.setRunStatus('waiting_review')
+            }
+          }}
+        >
+          <Icons.ClipboardCheck className="mr-1.5 h-3.5 w-3.5" />
+          Review &amp; Approve
+        </Button>
+      )}
+
+      {/* Review — shown whenever there's a known run (persists across navigations) */}
+      {activeRunId && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/review/${activeRunId}`)}
+          className="h-8 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+        >
+          <Icons.ClipboardEdit className="mr-1.5 h-3.5 w-3.5" />
+          {runStatus === 'completed' ? 'Review' : 'Last Run'}
+        </Button>
+      )}
+
+      {/* History — only when workflow is saved */}
+      {workflow.id && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => window.dispatchEvent(new CustomEvent('contentnode:open-history'))}
+          className="h-8 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <Icons.History className="mr-1.5 h-3.5 w-3.5" />
+          History
+        </Button>
+      )}
+
+      {/* New */}
+      <Button variant="ghost" size="sm" onClick={handleNew} className="h-8 text-xs text-muted-foreground hover:text-foreground">
+        <Icons.FilePlus className="mr-1.5 h-3.5 w-3.5" />
+        New
+      </Button>
 
       {/* Save */}
-      <Button variant="outline" size="sm" onClick={handleSave} className="h-8 text-xs">
+      <Button variant="outline" size="sm" onClick={() => setSaveDialogOpen(true)} className="h-8 text-xs">
         <Icons.Save className="mr-1.5 h-3.5 w-3.5" />
         Save
       </Button>
+
+      {/* Schedule — only when workflow is saved */}
+      {workflow.id && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setScheduleOpen(true)}
+          className="h-8 text-xs border-violet-300 text-violet-700 hover:bg-violet-50"
+        >
+          <Icons.Clock className="mr-1.5 h-3.5 w-3.5" />
+          Schedule
+        </Button>
+      )}
+
+      {/* Batch Run — only when workflow is saved */}
+      {workflow.id && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setBatchModalOpen(true)}
+          disabled={runStatus === 'running'}
+          className="h-8 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+        >
+          <Icons.Layers className="mr-1.5 h-3.5 w-3.5" />
+          Batch Run
+        </Button>
+      )}
 
       {/* Run */}
       <Button
@@ -282,6 +529,174 @@ export function TopBar() {
         <RunIcon className={cn('mr-1.5 h-3.5 w-3.5', runCfg.spin && 'animate-spin')} />
         {runCfg.label}
       </Button>
+
+      {/* Schedule modal */}
+      {scheduleOpen && workflow.id && (
+        <ScheduleModal workflowId={workflow.id} onClose={() => setScheduleOpen(false)} />
+      )}
+
+      {/* Batch Run modal */}
+      {batchModalOpen && workflow.id && (
+        <BatchRunModal
+          workflowId={workflow.id}
+          onClose={() => setBatchModalOpen(false)}
+          onStarted={(batchId, count) => {
+            setBatchModalOpen(false)
+            setBatchToast(`Started ${count} run${count !== 1 ? 's' : ''} (batch ${batchId.slice(0, 8)}…)`)
+            setTimeout(() => setBatchToast(null), 4000)
+          }}
+        />
+      )}
+
+      {/* Batch toast */}
+      {batchToast && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-700 shadow-lg">
+          <Icons.CheckCircle2 className="h-3.5 w-3.5 text-blue-500" />
+          {batchToast}
+        </div>
+      )}
+
+      {/* Save toast */}
+      {saveToast && (
+        <div className={cn(
+          'fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs shadow-lg',
+          saveToast.ok
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            : 'border-red-200 bg-red-50 text-red-700',
+        )}>
+          {saveToast.ok
+            ? <Icons.CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+            : <Icons.XCircle className="h-3.5 w-3.5 text-red-500" />}
+          {saveToast.msg}
+        </div>
+      )}
+
+      {/* Save dialog */}
+      {saveDialogOpen && (
+        <SaveWorkflowDialog
+          onClose={() => setSaveDialogOpen(false)}
+          onSave={async (name, clientId, createNew) => {
+            await handleSave(name, clientId, createNew)
+            setSaveDialogOpen(false)
+          }}
+        />
+      )}
     </header>
+  )
+}
+
+// ─── Save Workflow Dialog ──────────────────────────────────────────────────────
+
+interface Client { id: string; name: string }
+
+function SaveWorkflowDialog({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void
+  onSave: (name: string, clientId: string, createNew: boolean) => Promise<void>
+}) {
+  const { workflow } = useWorkflowStore()
+  const originalName = workflow.name
+  const [name, setName] = useState(workflow.name)
+  const [clientId, setClientId] = useState(workflow.clientId ?? '')
+  const [clients, setClients] = useState<Client[]>([])
+  const [saving, setSaving] = useState(false)
+
+  // If the workflow has already been saved before and the name changed → create new
+  const isExisting = !!workflow.graphSaved
+  const nameChanged = name.trim() !== originalName.trim()
+  const createNew = isExisting && nameChanged
+
+  useEffect(() => {
+    apiFetch('/api/v1/clients')
+      .then((r) => r.json())
+      .then(({ data }) => {
+        const active = (data ?? []).filter((c: Client & { status: string }) => c.status !== 'archived')
+        setClients(active)
+        if (!clientId && active.length > 0) setClientId(active[0].id)
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleSubmit = async () => {
+    if (!clientId) return
+    setSaving(true)
+    try {
+      await onSave(name.trim() || 'Untitled Workflow', clientId, createNew)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[440px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+
+        {/* Purple header */}
+        <div className="rounded-t-xl px-6 py-5 flex items-center justify-between" style={{ backgroundColor: '#a200ee' }}>
+          <div className="flex items-center gap-2">
+            <Icons.Save className="h-5 w-5 text-white/80" />
+            <h2 className="text-base font-semibold text-white">Save Workflow</h2>
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Fields */}
+        <div className="space-y-4 px-6 py-5">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Workflow Name</label>
+            <input
+              autoFocus
+              className="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            />
+            {createNew && (
+              <p className="flex items-center gap-1.5 text-[11px]" style={{ color: '#7a00b4' }}>
+                <Icons.Copy className="h-3 w-3 shrink-0" />
+                A new workflow will be created — the original <strong>"{originalName}"</strong> stays unchanged.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Client</label>
+            <Select value={clientId} onValueChange={setClientId}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select a client…" />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-4">
+          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || !clientId}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: '#a200ee' }}
+          >
+            {saving
+              ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : createNew
+                ? <Icons.Copy className="h-3.5 w-3.5" />
+                : <Icons.Check className="h-3.5 w-3.5" />}
+            {saving ? 'Saving…' : createNew ? 'Save as New Workflow' : 'Save Workflow'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

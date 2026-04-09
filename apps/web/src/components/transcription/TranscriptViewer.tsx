@@ -5,8 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { cn } from '@/lib/utils'
-
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
+import { apiFetch } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,7 +54,7 @@ function formatMs(ms: number): string {
 }
 
 function speakerColor(speaker: string | null, idx: number): string {
-  const COLORS = ['text-blue-300', 'text-emerald-300', 'text-purple-300', 'text-amber-300', 'text-pink-300']
+  const COLORS = ['text-blue-700', 'text-emerald-700', 'text-purple-700', 'text-amber-700', 'text-pink-700']
   if (!speaker) return 'text-muted-foreground'
   return COLORS[idx % COLORS.length]
 }
@@ -100,9 +99,8 @@ function SelectionPopover({
     setSubmitting(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/api/v1/transcriptions/${sessionId}/feedback`, {
+      const res = await apiFetch(`/api/v1/transcriptions/${sessionId}/feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           segmentId: state.segmentId,
           quoteText: state.text,
@@ -141,7 +139,7 @@ function SelectionPopover({
             onClick={() => setMode('feedback')}
             className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-accent transition-colors"
           >
-            <Icons.MessageSquarePlus className="h-3.5 w-3.5 text-blue-400" />
+            <Icons.MessageSquarePlus className="h-3.5 w-3.5 text-blue-600" />
             Mark as Feedback
           </button>
           {sourceNodes.length > 0 && (
@@ -149,7 +147,7 @@ function SelectionPopover({
               onClick={() => setMode('source')}
               className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-accent transition-colors"
             >
-              <Icons.FileInput className="h-3.5 w-3.5 text-emerald-400" />
+              <Icons.FileInput className="h-3.5 w-3.5 text-emerald-600" />
               Add to Source Material
             </button>
           )}
@@ -176,7 +174,7 @@ function SelectionPopover({
               ))}
             </SelectContent>
           </Select>
-          {error && <p className="text-[11px] text-red-400">{error}</p>}
+          {error && <p className="text-[11px] text-red-600">{error}</p>}
           <Button size="sm" className="w-full h-7 text-xs" onClick={submitFeedback} disabled={submitting}>
             {submitting ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : 'Save Feedback'}
           </Button>
@@ -243,7 +241,7 @@ export function TranscriptViewer({
     let cancelled = false
     const load = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/transcriptions/${sessionId}`)
+        const res = await apiFetch(`/api/v1/transcriptions/${sessionId}`)
         if (!res.ok) throw new Error(`Failed to load transcript (${res.status})`)
         const json = await res.json()
         if (!cancelled) {
@@ -307,7 +305,7 @@ export function TranscriptViewer({
       <div className="relative flex w-full max-w-2xl flex-col border-r border-border bg-card shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-6 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-900/50 text-purple-400">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 text-purple-600">
             <Icons.FileText className="h-5 w-5" />
           </div>
           <div>
@@ -318,7 +316,7 @@ export function TranscriptViewer({
           </div>
           <div className="ml-auto flex items-center gap-2">
             {savedQuotes.length > 0 && (
-              <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[11px] text-emerald-300">
+              <span className="rounded bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-700">
                 {savedQuotes.length} quote{savedQuotes.length !== 1 ? 's' : ''} saved
               </span>
             )}
@@ -340,7 +338,7 @@ export function TranscriptViewer({
               </div>
             )}
             {error && (
-              <div className="rounded-md border border-red-500/30 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+              <div className="rounded-md border border-red-200 bg-red-50/60 px-3 py-2 text-xs text-red-700">
                 {error}
               </div>
             )}
@@ -355,7 +353,7 @@ export function TranscriptViewer({
                   key={seg.id}
                   className={cn(
                     'group flex gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/30',
-                    savedQuotes.includes(seg.id) && 'bg-emerald-950/20',
+                    savedQuotes.includes(seg.id) && 'bg-emerald-50/60',
                   )}
                 >
                   {/* Timestamp */}

@@ -1,11 +1,41 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import { prisma, auditService } from '@contentnode/database'
 import { getPatternDetectionQueue } from '../lib/queues.js'
+
+// MEDIUM #7: Zod schema for POST /api/v1/feedback body validation
+const specificChangeSchema = z.object({
+  text:        z.string(),
+  instruction: z.string(),
+  startOffset: z.number().optional(),
+  endOffset:   z.number().optional(),
+})
+
+const createFeedbackSchema = z.object({
+  workflowRunId:    z.string().optional(),
+  documentId:       z.string().optional(),
+  stakeholderId:    z.string().optional(),
+  decision:         z.enum(['approved', 'approved_with_changes', 'needs_revision', 'rejected']).optional(),
+  comment:          z.string().optional(),
+  starRating:       z.number().int().min(1).max(5).optional(),
+  toneFeedback:     z.enum(['too_formal', 'too_casual', 'just_right', 'too_generic']).optional(),
+  contentTags:      z.array(z.string()).default([]),
+  specificChanges:  z.array(specificChangeSchema).default([]),
+  outputDecisions:  z.record(z.object({ decision: z.string(), comment: z.string().optional() })).default({}),
+})
 
 export async function feedbackRoutes(app: FastifyInstance) {
   app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
     const { workflowRunId, stakeholderId, clientId } = req.query as Record<string, string>
+
+    // HIGH #4: Verify clientId belongs to the requesting agency before using it as a filter
+    if (clientId) {
+      const clientRecord = await prisma.client.findFirst({ where: { id: clientId, agencyId } })
+      if (!clientRecord) {
+        return reply.code(403).send({ error: 'clientId does not belong to this agency' })
+      }
+    }
 
     const data = await prisma.feedback.findMany({
       where: {
@@ -29,7 +59,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
       where: { id: req.params.id, agencyId },
       include: {
         stakeholder: { select: { id: true, name: true, role: true } },
-        workflowRun: { select: { id: true, workflowId: true } },
+        workflowRun: { select: { id: true, workflowId: true, workflow: { select: { name: true, client: { select: { id: true, name: true } } } } } },
       },
     })
 
@@ -39,17 +69,13 @@ export async function feedbackRoutes(app: FastifyInstance) {
 
   app.post('/', async (req, reply) => {
     const { agencyId } = req.auth
-    const body = req.body as {
-      workflowRunId?: string
-      documentId?: string
-      stakeholderId: string
-      decision?: string
-      comment?: string
-      starRating?: number
-      toneFeedback?: string
-      contentTags?: string[]
-      specificChanges?: object[]
+
+    // MEDIUM #7: Validate request body with Zod instead of type assertion
+    const parsed = createFeedbackSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Invalid request body', details: parsed.error.issues })
     }
+    const body = parsed.data
 
     const feedback = await prisma.feedback.create({
       data: {
@@ -61,8 +87,9 @@ export async function feedbackRoutes(app: FastifyInstance) {
         comment: body.comment,
         starRating: body.starRating,
         toneFeedback: body.toneFeedback,
-        contentTags: (body.contentTags ?? []) as string[],
-        specificChanges: (body.specificChanges ?? []) as object[],
+        contentTags: body.contentTags as string[],
+        specificChanges: body.specificChanges as object[],
+        outputDecisions: body.outputDecisions as object,
       },
       include: {
         workflowRun: {
@@ -73,6 +100,14 @@ export async function feedbackRoutes(app: FastifyInstance) {
         },
       },
     })
+
+    // Update run reviewStatus to 'pending' if it's still 'none' (agency just reviewed)
+    if (body.workflowRunId) {
+      const run = await prisma.workflowRun.findFirst({ where: { id: body.workflowRunId, agencyId }, select: { reviewStatus: true } })
+      if (run?.reviewStatus === 'none') {
+        await prisma.workflowRun.update({ where: { id: body.workflowRunId }, data: { reviewStatus: 'pending' } })
+      }
+    }
 
     await auditService.log(agencyId, {
       actorType: 'user',

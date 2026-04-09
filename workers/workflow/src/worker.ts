@@ -1,11 +1,13 @@
 import { type Job } from 'bullmq'
 import {
   createWorker,
+  createQueue,
   QUEUE_WORKFLOW_RUNS,
   QUEUE_NODE_EXECUTION,
   QUEUE_TRANSCRIPTION,
   QUEUE_ASSET_GENERATION,
   QUEUE_PATTERN_DETECTION,
+  QUEUE_SCHEDULE_CHECKER,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
   type TranscriptionJobData,
@@ -14,6 +16,7 @@ import {
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns } from './patternDetector.js'
+import { runScheduleChecker } from './scheduleChecker.js'
 
 // ── workflow-runs ─────────────────────────────────────────────────────────────
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
@@ -22,8 +25,26 @@ const workflowRunsWorker = createWorker<WorkflowRunJobData>(
     const { workflowRunId, agencyId } = job.data
     console.log(`[workflow-runs] starting run ${workflowRunId}`)
     const runner = new WorkflowRunner(workflowRunId, agencyId)
-    await runner.run()
-    console.log(`[workflow-runs] finished run ${workflowRunId}`)
+    try {
+      await runner.run()
+      console.log(`[workflow-runs] finished run ${workflowRunId}`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      console.error(`[workflow-runs] run ${workflowRunId} crashed:`, errorMessage)
+      // Mark run as failed so the frontend doesn't stay stuck at "running"
+      try {
+        const { prisma, withAgency } = await import('@contentnode/database')
+        await withAgency(agencyId, async () => {
+          await prisma.workflowRun.update({
+            where: { id: workflowRunId },
+            data: { status: 'failed', completedAt: new Date(), errorMessage },
+          })
+        })
+      } catch (dbErr) {
+        console.error(`[workflow-runs] failed to mark run ${workflowRunId} as failed:`, dbErr)
+      }
+      throw err // re-throw so BullMQ marks the job as failed
+    }
   },
   3 // max 3 concurrent workflow runs
 )
@@ -73,6 +94,24 @@ const assetGenerationWorker = createWorker<AssetGenerationJobData>(
   3
 )
 
+// ── schedule-checker — fires every 60s ───────────────────────────────────────
+const scheduleCheckerQueue = createQueue(QUEUE_SCHEDULE_CHECKER)
+await scheduleCheckerQueue.add(
+  'tick',
+  {},
+  {
+    jobId: 'schedule-checker-singleton',
+    repeat: { every: 60_000 },
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 20 },
+  }
+)
+const scheduleCheckerWorker = createWorker(
+  QUEUE_SCHEDULE_CHECKER,
+  async () => { await runScheduleChecker() },
+  1
+)
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -82,6 +121,7 @@ async function shutdown() {
     transcriptionWorker.close(),
     assetGenerationWorker.close(),
     patternDetectionWorker.close(),
+    scheduleCheckerWorker.close(),
   ])
   process.exit(0)
 }

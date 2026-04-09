@@ -9,6 +9,7 @@ export const QUEUE_NODE_EXECUTION = 'node-execution'
 export const QUEUE_TRANSCRIPTION = 'transcription'
 export const QUEUE_ASSET_GENERATION = 'asset-generation'
 export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
+export const QUEUE_SCHEDULE_CHECKER = 'schedule-checker'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -77,5 +78,8 @@ export function createWorker<T>(
   return new Worker<T>(name, processor, {
     connection: getConnection(),
     concurrency,
+    lockDuration: 60000,       // 60s lock per job (default 30s)
+    stalledInterval: 5000,     // check for stalled jobs every 5s (default 30s)
+    maxStalledCount: 1,        // re-queue stalled jobs once, then fail them
   })
 }

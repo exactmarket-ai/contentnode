@@ -1,55 +1,82 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { useWorkflowStore } from '@/store/workflowStore'
+import { getNodeSpec } from '@/lib/nodeColors'
 
 export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
   const status = nodeStatuses[id]?.status ?? 'idle'
+  const subtype = (data.subtype as string) ?? (data.config as Record<string, unknown>)?.subtype as string
+  const spec = getNodeSpec('output', subtype)
 
-  const IconComp = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[data.icon as string] ?? Icons.Box
+  const isRunning = status === 'running'
+  const isPassed  = status === 'passed'
+  const isFailed  = status === 'failed'
+
+  const cardStyle: React.CSSProperties = selected ? {
+    border: `2px solid ${spec.accent}`,
+    boxShadow: `0 0 0 3px ${spec.activeRing}`,
+  } : isRunning ? {
+    border: `1.5px solid ${spec.accent}`,
+    boxShadow: `0 0 20px 4px ${spec.activeRing}`,
+  } : isPassed ? {
+    border: `1.5px solid ${spec.accent}`,
+  } : isFailed ? {
+    border: '1.5px solid #ef4444',
+  } : {
+    border: '1px solid #e0deda',
+  }
+
+  const headerStyle: React.CSSProperties = selected ? {
+    backgroundColor: spec.accent,
+    borderBottomColor: spec.accent,
+  } : {
+    backgroundColor: spec.headerBg,
+    borderBottomColor: spec.headerBorder,
+  }
+
+  const titleColor = selected ? spec.activeTextColor : '#1a1a14'
 
   return (
-    <div
-      className={cn(
-        'relative min-w-[160px] rounded-lg border bg-card transition-all',
-        selected
-          ? 'border-purple-500/70 shadow-[0_0_0_1px_rgba(168,85,247,0.3)]'
-          : 'border-border hover:border-purple-500/40',
-        status === 'running' && 'border-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.4)]',
-        status === 'passed' && 'border-purple-600',
-        status === 'failed' && 'border-red-500',
-      )}
-    >
-      {/* Input handle */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="input"
-        style={{ top: '50%' }}
-      />
+    <div className="relative w-[200px] rounded-md bg-white transition-all" style={cardStyle}>
+      <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
 
       {/* Header */}
-      <div className="flex items-center gap-2 rounded-t-lg border-b border-border bg-purple-500/10 px-3 py-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-purple-500/20">
-          <IconComp className="h-3.5 w-3.5 text-purple-400" />
-        </div>
-        <span className="text-xs font-medium text-purple-300">{data.label as string}</span>
-        {status === 'running' && (
-          <div className="ml-auto h-1.5 w-1.5 animate-pulse rounded-full bg-purple-400" />
+      <div className="flex items-center gap-2 rounded-t-md border-b px-3 py-2" style={headerStyle}>
+        <div
+          className="shrink-0"
+          style={{
+            width: 7, height: 7, borderRadius: 2,
+            backgroundColor: selected ? 'rgba(255,255,255,0.7)' : spec.accent,
+          }}
+        />
+        <span className="text-[11px] font-semibold truncate" style={{ color: titleColor }}>
+          {data.label as string}
+        </span>
+        <span
+          className="ml-auto shrink-0 rounded-full px-1.5 py-px text-[9px] font-semibold"
+          style={{ backgroundColor: selected ? 'rgba(255,255,255,0.2)' : spec.badgeBg, color: selected ? spec.activeTextColor : spec.badgeText }}
+        >
+          {spec.label}
+        </span>
+        {isRunning && (
+          <div className="h-1.5 w-1.5 animate-pulse rounded-full ml-1" style={{ backgroundColor: spec.accent }} />
         )}
-        {status === 'passed' && (
-          <Icons.CheckCircle2 className="ml-auto h-3.5 w-3.5 text-purple-400" />
-        )}
-        {status === 'failed' && (
-          <Icons.XCircle className="ml-auto h-3.5 w-3.5 text-red-400" />
-        )}
+        {isPassed && <Icons.CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0" style={{ color: spec.accent }} />}
+        {isFailed && <Icons.XCircle className="ml-1 h-3.5 w-3.5 shrink-0 text-red-500" />}
       </div>
 
       {/* Body */}
-      <div className="px-3 py-2">
-        <p className="text-xs text-muted-foreground">{data.description as string}</p>
+      <div className="px-2.5 py-1.5">
+        <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
+          {data.description as string}
+        </p>
+        {(isPassed || isFailed) && nodeStatuses[id]?.startedAt && (
+          <p className="mt-1 text-[10px]" style={{ color: '#b4b2a9' }}>
+            Received {new Date(nodeStatuses[id].startedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </p>
+        )}
       </div>
     </div>
   )

@@ -96,6 +96,32 @@ async function main() {
     console.log(`  ✓ Stakeholder: ${created.name} <${created.email}>`)
   }
 
+  // ── Dev owner user ──────────────────────────────────────────────────────
+  // Matches the dev-mode bypass in auth.ts (agencyId: 'dev-agency', userId: 'dev-user')
+  const devAgency = await prisma.agency.upsert({
+    where: { slug: 'dev-agency' },
+    update: {},
+    create: {
+      id: 'dev-agency',
+      name: 'Dev Agency',
+      slug: 'dev-agency',
+      plan: 'pro',
+    },
+  })
+  await prisma.user.upsert({
+    where: { clerkUserId: 'dev-user' },
+    update: {},
+    create: {
+      id: 'dev-owner',
+      agencyId: devAgency.id,
+      clerkUserId: 'dev-user',
+      email: 'owner@dev.local',
+      name: 'Dev Owner',
+      role: 'owner',
+    },
+  })
+  console.log(`  ✓ Dev owner user: owner@dev.local (agency: ${devAgency.id})`)
+
   console.log('\n✅ Seed complete.')
 }
 

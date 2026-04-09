@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agency context — stored in AsyncLocalStorage so every query in a request
-// automatically has the correct agency_id injected without manual plumbing.
+// automatically has the correct agencyId injected without manual plumbing.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AgencyContext {
@@ -29,7 +29,7 @@ export function requireAgencyId(): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tables that are tenant-scoped and need agency_id automatically injected.
+// Tables that are tenant-scoped and need agencyId automatically injected.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TENANT_MODELS = new Set([
@@ -49,10 +49,10 @@ const TENANT_MODELS = new Set([
   'AuditLog',
 ])
 
-// Write operations where we inject agency_id into the data payload
+// Write operations where we inject agencyId into the data payload
 const WRITE_OPERATIONS = new Set(['create', 'createMany', 'upsert'])
 
-// Read / write operations where we inject agency_id into the where clause
+// Read / write operations where we inject agencyId into the where clause
 const FILTER_OPERATIONS = new Set([
   'findUnique',
   'findFirst',
@@ -67,7 +67,7 @@ const FILTER_OPERATIONS = new Set([
 ])
 
 /**
- * Prisma middleware that automatically injects `agency_id` into every query
+ * Prisma middleware that automatically injects `agencyId` into every query
  * that touches a tenant-scoped model.
  *
  * Attach this to your PrismaClient via `prisma.$use(agencyMiddleware)`.
@@ -91,19 +91,19 @@ export const agencyMiddleware: Prisma.Middleware = async (params, next) => {
       const items: Record<string, unknown>[] = Array.isArray(params.args?.data)
         ? params.args.data
         : [params.args?.data]
-      params.args.data = items.map((item) => ({ ...item, agency_id: agencyId }))
+      params.args.data = items.map((item) => ({ ...item, agencyId: agencyId }))
     } else if (params.action === 'upsert') {
-      params.args.create = { ...params.args.create, agency_id: agencyId }
-      params.args.where = { ...params.args.where, agency_id: agencyId }
+      params.args.create = { ...params.args.create, agencyId: agencyId }
+      params.args.where = { ...params.args.where, agencyId: agencyId }
     } else {
       // create
-      params.args.data = { ...params.args.data, agency_id: agencyId }
+      params.args.data = { ...params.args.data, agencyId: agencyId }
     }
   }
 
   if (FILTER_OPERATIONS.has(params.action)) {
     params.args = params.args ?? {}
-    params.args.where = { ...params.args.where, agency_id: agencyId }
+    params.args.where = { ...params.args.where, agencyId: agencyId }
   }
 
   return next(params)

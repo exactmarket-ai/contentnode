@@ -1,0 +1,20 @@
+# Railway deployment configuration
+# Each service is created in the Railway dashboard and configured to use
+# the appropriate Dockerfile via the RAILWAY_DOCKERFILE_PATH service variable.
+#
+# Services:
+#   api     → Dockerfile.api
+#   worker  → Dockerfile.worker
+#   web     → Dockerfile.web
+#
+# See ENV_VARS.md for required environment variables per service.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.api"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

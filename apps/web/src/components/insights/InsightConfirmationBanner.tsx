@@ -70,13 +70,13 @@ export function InsightConfirmationBanner({ confirmation }: InsightConfirmationB
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-lg border border-yellow-700/60 bg-yellow-950/80',
+        'flex items-start gap-3 rounded-lg border border-yellow-300 bg-yellow-50',
         'px-4 py-3 shadow-lg backdrop-blur-sm max-w-sm',
       )}
     >
-      <Icons.Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-yellow-400" />
+      <Icons.Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-yellow-600" />
       <div className="flex-1 min-w-0 space-y-2">
-        <p className="text-xs text-yellow-200 leading-relaxed">
+        <p className="text-xs text-yellow-800 leading-relaxed">
           You applied{' '}
           <span className="font-medium">"{confirmation.patternDescription}"</span>{' '}
           {confirmation.appliedRunCount} run{confirmation.appliedRunCount !== 1 ? 's' : ''} ago.

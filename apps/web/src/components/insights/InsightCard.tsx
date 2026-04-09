@@ -25,14 +25,14 @@ export interface InsightData {
 }
 
 const TYPE_META: Record<string, { icon: string; label: string; color: string }> = {
-  tone:          { icon: 'MessageSquare', label: 'Tone',         color: 'text-blue-400' },
-  forbidden_term:{ icon: 'Ban',           label: 'Forbidden Term',color: 'text-red-400' },
-  structure:     { icon: 'LayoutList',    label: 'Structure',    color: 'text-purple-400' },
-  length:        { icon: 'Ruler',         label: 'Length',       color: 'text-orange-400' },
-  claims:        { icon: 'Quote',         label: 'Claims',       color: 'text-green-400' },
-  theme:         { icon: 'Tag',           label: 'Theme',        color: 'text-yellow-400' },
-  action_item:   { icon: 'CheckSquare',   label: 'Action Item',  color: 'text-teal-400' },
-  sentiment:     { icon: 'Heart',         label: 'Sentiment',    color: 'text-pink-400' },
+  tone:          { icon: 'MessageSquare', label: 'Tone',         color: 'text-blue-600' },
+  forbidden_term:{ icon: 'Ban',           label: 'Forbidden Term',color: 'text-red-600' },
+  structure:     { icon: 'LayoutList',    label: 'Structure',    color: 'text-purple-600' },
+  length:        { icon: 'Ruler',         label: 'Length',       color: 'text-orange-600' },
+  claims:        { icon: 'Quote',         label: 'Claims',       color: 'text-green-600' },
+  theme:         { icon: 'Tag',           label: 'Theme',        color: 'text-yellow-600' },
+  action_item:   { icon: 'CheckSquare',   label: 'Action Item',  color: 'text-teal-600' },
+  sentiment:     { icon: 'Heart',         label: 'Sentiment',    color: 'text-pink-600' },
 }
 
 const NODE_TYPE_LABELS: Record<string, string> = {
@@ -47,7 +47,7 @@ export function InsightCard({ insight }: { insight: InsightData }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const confidence = insight.confidence ?? 0
   const pct = Math.round(confidence * 100)
-  const meta = TYPE_META[insight.type] ?? { icon: 'Lightbulb', label: insight.type, color: 'text-yellow-400' }
+  const meta = TYPE_META[insight.type] ?? { icon: 'Lightbulb', label: insight.type, color: 'text-yellow-600' }
   const IconComp = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[meta.icon] ?? Icons.Lightbulb
 
   const onDragStart = (e: React.DragEvent) => {
@@ -71,7 +71,7 @@ export function InsightCard({ insight }: { insight: InsightData }) {
       className={cn(
         'rounded-lg border p-3 space-y-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-accent/40',
         confidence > 0.6
-          ? 'border-yellow-700/60 bg-yellow-950/20'
+          ? 'border-yellow-300 bg-yellow-50/60'
           : 'border-border bg-card',
       )}
     >
@@ -87,12 +87,12 @@ export function InsightCard({ insight }: { insight: InsightData }) {
               {meta.label}
             </Badge>
             {insight.isCollective && (
-              <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 text-blue-400 border-blue-700/50">
+              <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 text-blue-600 border-blue-300">
                 Collective
               </Badge>
             )}
             {insight.suggestedNodeType && (
-              <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 text-yellow-400 border-yellow-700/50">
+              <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 text-yellow-600 border-yellow-300">
                 → {NODE_TYPE_LABELS[insight.suggestedNodeType] ?? insight.suggestedNodeType}
               </Badge>
             )}
@@ -102,7 +102,7 @@ export function InsightCard({ insight }: { insight: InsightData }) {
         {/* Confidence badge */}
         <div className={cn(
           'shrink-0 text-xs font-medium tabular-nums ml-auto',
-          confidence >= 0.6 ? 'text-yellow-400' : 'text-muted-foreground'
+          confidence >= 0.6 ? 'text-yellow-600' : 'text-muted-foreground'
         )}>
           {pct}%
           {confidence > 0.6 && (

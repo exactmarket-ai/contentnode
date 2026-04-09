@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { prisma, withAgency, auditService, type Prisma } from '@contentnode/database'
 import { SourceNodeExecutor } from './executors/source.js'
 import { LogicNodeExecutor } from './executors/logic.js'
@@ -8,8 +9,15 @@ import { ConditionalBranchNodeExecutor } from './executors/conditional_branch.js
 import { TranscriptionNodeExecutor } from './executors/transcription.js'
 import { FeedbackNodeExecutor } from './executors/feedback.js'
 import { InsightNodeExecutor } from './executors/insight.js'
+import { HumanReviewNodeExecutor } from './executors/human_review.js'
+import { EmailNodeExecutor } from './executors/email.js'
+import { WebhookNodeExecutor } from './executors/webhook.js'
+import { TranslationNodeExecutor } from './executors/translation.js'
+import { QualityReviewNodeExecutor } from './executors/qualityReview.js'
+import { InstructionTranslatorExecutor } from './executors/instructionTranslator.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
+import { extractAndSaveQuality } from './qualityExtractor.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-node status stored inside WorkflowRun.output
@@ -29,6 +37,10 @@ export interface NodeStatus {
   warning?: string
   /** Set when this node is awaiting human input (e.g. speaker assignment) */
   paused?: boolean
+  /** Words processed by this node (humanizer nodes) */
+  wordsProcessed?: number
+  /** Filenames processed by this node (source/file-upload nodes) */
+  sourceFiles?: string[]
 }
 
 export interface RunOutput {
@@ -40,6 +52,10 @@ export interface RunOutput {
   pendingTranscriptionSessionId?: string
   /** ID of the feedback node whose portal access is being set up */
   pendingFeedbackNodeId?: string
+  /** Node ID of a Human Review node awaiting human approval */
+  pendingReviewNodeId?: string
+  /** Content surfaced for human review/editing */
+  pendingReviewContent?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,13 +65,32 @@ export interface RunOutput {
 const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   source:                      SourceNodeExecutor,
   'source:transcription':      TranscriptionNodeExecutor,
+  'source:instruction-translator': InstructionTranslatorExecutor,
   logic:                       LogicNodeExecutor,
   'logic:humanizer':           HumanizerNodeExecutor,
+  'logic:humanizer-pro':       HumanizerNodeExecutor,
   'logic:detection':           DetectionNodeExecutor,
   'logic:conditional-branch':  ConditionalBranchNodeExecutor,
   output:                      OutputNodeExecutor,
-  'output:client-feedback':   FeedbackNodeExecutor,
+  'output:client-feedback':    FeedbackNodeExecutor,
+  'output:email':              EmailNodeExecutor,
+  'output:webhook':            WebhookNodeExecutor,
   insight:                     InsightNodeExecutor,
+  'logic:human-review':        HumanReviewNodeExecutor,
+  'logic:translate':           TranslationNodeExecutor,
+  'logic:quality-review':      QualityReviewNodeExecutor,
+}
+
+async function loadTranscriptText(sessionId: string): Promise<string | null> {
+  const segments = await prisma.transcriptSegment.findMany({
+    where: { sessionId },
+    orderBy: { startMs: 'asc' },
+    select: { speakerName: true, speaker: true, text: true },
+  })
+  if (segments.length === 0) return null
+  return segments
+    .map((s) => `${s.speakerName ?? `Speaker ${s.speaker}`}: ${s.text}`)
+    .join('\n\n')
 }
 
 function getExecutor(nodeType: string, config: Record<string, unknown>): NodeExecutor {
@@ -88,7 +123,7 @@ interface GraphEdge {
 
 interface DetectionLoop {
   detectionNodeId: string
-  branchNodeId: string
+  branchNodeId: string | null  // null = detection node itself acts as branch via pass/fail edges
   humanizerNodeId: string
 }
 
@@ -121,7 +156,7 @@ function findDetectionLoops(nodes: GraphNode[], edges: GraphEdge[]): DetectionLo
         const humNode = nodes.find((n) => n.id === branchEdge.targetNodeId)
         if (!humNode) continue
         const humCfg = (humNode.config ?? {}) as Record<string, unknown>
-        if (humCfg.subtype !== 'humanizer') continue
+        if (humCfg.subtype !== 'humanizer' && humCfg.subtype !== 'humanizer-pro') continue
 
         // From humanizer → back to detection = confirmed loop
         const loopBack = edges.find(
@@ -133,6 +168,27 @@ function findDetectionLoops(nodes: GraphNode[], edges: GraphEdge[]): DetectionLo
             branchNodeId: branchNode.id,
             humanizerNodeId: humNode.id,
           })
+        }
+      }
+    }
+
+    // Simplified loop: Detection -fail-> Humanizer -> Detection (no branch node)
+    const failEdge = detOutEdges.find((e) => e.label === 'fail')
+    if (failEdge && !loops.some((l) => l.detectionNodeId === detNode.id)) {
+      const humNode = nodes.find((n) => n.id === failEdge.targetNodeId)
+      if (humNode) {
+        const humCfg = (humNode.config ?? {}) as Record<string, unknown>
+        if (humCfg.subtype === 'humanizer' || humCfg.subtype === 'humanizer-pro') {
+          const loopBack = edges.find(
+            (e) => e.sourceNodeId === humNode.id && e.targetNodeId === detNode.id,
+          )
+          if (loopBack) {
+            loops.push({
+              detectionNodeId: detNode.id,
+              branchNodeId: null,
+              humanizerNodeId: humNode.id,
+            })
+          }
         }
       }
     }
@@ -150,11 +206,15 @@ function buildExecutionWaves(
   nodes: GraphNode[],
   edges: GraphEdge[],
   skipNodeIds: Set<string>,
+  skipEdgeKeys: Set<string> = new Set(),
 ): GraphNode[][] {
-  // Filter out nodes and edges involving loop-managed nodes
+  // Filter out nodes and edges involving loop-managed nodes, plus explicit back-edges
   const executableNodes = nodes.filter((n) => !skipNodeIds.has(n.id))
   const executableEdges = edges.filter(
-    (e) => !skipNodeIds.has(e.sourceNodeId) && !skipNodeIds.has(e.targetNodeId),
+    (e) =>
+      !skipNodeIds.has(e.sourceNodeId) &&
+      !skipNodeIds.has(e.targetNodeId) &&
+      !skipEdgeKeys.has(`${e.sourceNodeId}:${e.targetNodeId}:${e.label ?? ''}`),
   )
 
   const inDegree = new Map<string, number>()
@@ -227,15 +287,67 @@ export class WorkflowRunner {
 
     const { workflow } = run
 
+    // ── Load client profile (brand voice context) ────────────────────────────
+    const clientId = workflow.clientId ?? ''
+    const clientProfile = clientId
+      ? await prisma.clientProfile.findFirst({ where: { clientId, status: 'active' }, orderBy: { updatedAt: 'desc' } })
+      : null
+
+    // ── Merge client-scoped file bindings into node configs ──────────────────
+    const clientFiles = await prisma.clientWorkflowFiles.findMany({
+      where: { workflowId: workflow.id, clientId },
+    })
+    const filesByNode = Object.fromEntries(
+      clientFiles.map((f) => [f.nodeId, f.files as Record<string, unknown>])
+    )
+    // Patch workflow.nodes in-memory so executors see the client files
+    for (const node of workflow.nodes) {
+      const files = filesByNode[node.id]
+      if (files) {
+        node.config = { ...(node.config as Record<string, unknown>), ...files } as typeof node.config
+      }
+    }
+
+    // ── Compute content hash from source node inputs ─────────────────────────
+    // SHA-256 of all source node content (text, file names, URLs) sorted by node ID.
+    // Same content + same workflow = same hash, so we can group runs in the Runs tab.
+    const contentHash = (() => {
+      const sourceNodes = workflow.nodes.filter((n) => n.type === 'source')
+      if (sourceNodes.length === 0) return null
+      const parts = sourceNodes
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((n) => {
+          const cfg = (n.config as Record<string, unknown>) ?? {}
+          const text = (cfg.text as string) ?? ''
+          const url = (cfg.url as string) ?? ''
+          const files = ((cfg.uploaded_files as Array<{ name: string }>) ?? []).map((f) => f.name).join(',')
+          const audio = ((cfg.audio_files as Array<{ name: string }>) ?? []).map((f) => f.name).join(',')
+          return `${n.id}:${text}|${url}|${files}|${audio}`
+        })
+        .join('||')
+      return createHash('sha256').update(parts).digest('hex').slice(0, 16)
+    })()
+
     // ── Resume or fresh start ────────────────────────────────────────────────
-    // A run with status 'awaiting_assignment' is being resumed after the human
-    // completed speaker assignment. We restore its existing node outputs so
-    // already-passed nodes are skipped.
-    const isResume = run.status === 'awaiting_assignment' || run.status === 'waiting_feedback'
+    // A run is a "resume" if it was paused (awaiting human input) and is now being
+    // re-enqueued to continue. This can happen with the DB status still set to
+    // 'awaiting_assignment'/'waiting_review'/'waiting_feedback', OR it may already
+    // be 'running' (some pause handlers pre-update status before re-enqueueing to
+    // prevent the frontend from re-showing the pause UI). We detect the latter case
+    // by checking whether any nodes already have a 'passed' status in the saved output.
+    const savedOutput = run.output as unknown as RunOutput | null
+    const hasPassedNodes = savedOutput?.nodeStatuses != null
+      && Object.values(savedOutput.nodeStatuses).some((s) => s.status === 'passed')
+    const isResume = (
+      run.status === 'awaiting_assignment' ||
+      run.status === 'waiting_feedback' ||
+      run.status === 'waiting_review' ||
+      hasPassedNodes
+    )
 
     let runOutput: RunOutput
-    if (isResume && run.output) {
-      runOutput = run.output as unknown as RunOutput
+    if (isResume && savedOutput) {
+      runOutput = savedOutput
       // Ensure any newly-added nodes that are not in the saved output get idle status
       for (const n of workflow.nodes) {
         if (!runOutput.nodeStatuses[n.id]) {
@@ -258,6 +370,7 @@ export class WorkflowRunner {
         status: 'running',
         startedAt: isResume ? run.startedAt : new Date(),
         output: runOutput as unknown as Prisma.InputJsonValue,
+        ...(contentHash && !run.contentHash ? { contentHash } : {}),
       },
     })
 
@@ -279,11 +392,19 @@ export class WorkflowRunner {
 
     // ── Detect detection loops ───────────────────────────────────────────────
     const detectionLoops = findDetectionLoops(workflow.nodes, workflow.edges)
-    // Nodes owned by a loop are executed inline by the loop handler
+    // Full loops: branch + humanizer are managed inline (excluded from waves)
+    // Simplified loops: only the back-edge is excluded; humanizer runs in waves normally
     const loopManagedNodeIds = new Set<string>([
-      ...detectionLoops.map((l) => l.branchNodeId),
-      ...detectionLoops.map((l) => l.humanizerNodeId),
+      ...detectionLoops.filter((l) => l.branchNodeId !== null).map((l) => l.branchNodeId!),
+      ...detectionLoops.filter((l) => l.branchNodeId !== null).map((l) => l.humanizerNodeId),
     ])
+
+    // Back-edges for simplified loops (Detection -fail-> Humanizer): excluded from topo sort
+    const skipEdgeKeys = new Set<string>(
+      detectionLoops
+        .filter((l) => l.branchNodeId === null)
+        .map((l) => `${l.detectionNodeId}:${l.humanizerNodeId}:fail`),
+    )
 
     // Map from detection node ID → its loop definition
     const loopByDetectionNode = new Map<string, DetectionLoop>()
@@ -292,7 +413,7 @@ export class WorkflowRunner {
     }
 
     // ── Build execution plan (loop-managed nodes excluded) ───────────────────
-    const waves = buildExecutionWaves(workflow.nodes, workflow.edges, loopManagedNodeIds)
+    const waves = buildExecutionWaves(workflow.nodes, workflow.edges, loopManagedNodeIds, skipEdgeKeys)
     const nodeOutputs = new Map<string, unknown>()
     // Store the routePath result from routing nodes (conditional-branch)
     const nodeRoutePaths = new Map<string, string>()
@@ -301,7 +422,14 @@ export class WorkflowRunner {
     if (isResume) {
       for (const [nodeId, nodeStatus] of Object.entries(runOutput.nodeStatuses)) {
         if (nodeStatus.status === 'passed' && nodeStatus.output !== undefined) {
-          nodeOutputs.set(nodeId, nodeStatus.output)
+          const saved = nodeStatus.output as Record<string, unknown>
+          // Transcription nodes save session metadata — swap in the real transcript text
+          if (saved?.sessionId && saved?.status === 'awaiting_assignment') {
+            const transcriptText = await loadTranscriptText(saved.sessionId as string)
+            nodeOutputs.set(nodeId, transcriptText ?? nodeStatus.output)
+          } else {
+            nodeOutputs.set(nodeId, nodeStatus.output)
+          }
         }
       }
     }
@@ -332,6 +460,23 @@ export class WorkflowRunner {
             agencyId: this.agencyId,
             nodeId: node.id,
             workflowId: workflow.id,
+            clientId: workflow.clientId ?? null,
+            clientProfile: clientProfile ? {
+              brandTone: clientProfile.brandTone,
+              formality: clientProfile.formality,
+              pov: clientProfile.pov,
+              signaturePhrases: (clientProfile.signaturePhrases as string[]) ?? [],
+              avoidPhrases: (clientProfile.avoidPhrases as string[]) ?? [],
+              primaryBuyer: (clientProfile.primaryBuyer as Record<string, unknown>) ?? {},
+              secondaryBuyer: (clientProfile.secondaryBuyer as Record<string, unknown>) ?? {},
+              buyerMotivations: (clientProfile.buyerMotivations as string[]) ?? [],
+              buyerFears: (clientProfile.buyerFears as string[]) ?? [],
+              visualStyle: clientProfile.visualStyle,
+              colorTemperature: clientProfile.colorTemperature,
+              currentPositioning: clientProfile.currentPositioning,
+              campaignThemesApproved: (clientProfile.campaignThemesApproved as string[]) ?? [],
+              manualOverrides: (clientProfile.manualOverrides as Array<Record<string, unknown>>) ?? [],
+            } : null,
           }
 
           // Collect inputs from upstream nodes, respecting routing decisions
@@ -344,7 +489,16 @@ export class WorkflowRunner {
               if (!edgeLabel) return true            // unlabelled edge = always active
               return edgeLabel === routePath         // only activate matching path
             })
-            .map((e) => nodeOutputs.get(e.sourceNodeId))
+            .map((e) => {
+              const output = nodeOutputs.get(e.sourceNodeId)
+              const sourceNode = workflow.nodes.find((n) => n.id === e.sourceNodeId)
+              const label = sourceNode?.label?.trim()
+              // Only prefix source node outputs with labels (not logic/output nodes)
+              if (label && typeof output === 'string' && sourceNode?.type === 'source') {
+                return `## ${label}\n\n${output}`
+              }
+              return output
+            })
 
           const input =
             upstreamOutputs.length === 0
@@ -401,6 +555,36 @@ export class WorkflowRunner {
               return
             }
 
+            // ── Waiting review: human review node awaiting approval ──────────
+            if (result.waitingReview) {
+              paused = true
+              nodeOutputs.set(node.id, result.output)
+              runOutput.nodeStatuses[node.id] = {
+                status: 'passed',
+                output: result.output,
+                paused: true,
+                startedAt: runOutput.nodeStatuses[node.id]?.startedAt,
+                completedAt: new Date().toISOString(),
+              }
+              runOutput.pendingReviewNodeId = node.id
+              runOutput.pendingReviewContent = result.reviewContent
+              // Clear any stale transcription session ID so the frontend doesn't
+              // re-show the speaker assignment panel when polling waiting_review status
+              runOutput.pendingTranscriptionSessionId = undefined
+              await this.persistOutput(runOutput)
+
+              await prisma.workflowRun.update({
+                where: { id: this.workflowRunId },
+                data: {
+                  status: 'waiting_review',
+                  output: runOutput as unknown as Prisma.InputJsonValue,
+                },
+              })
+
+              console.log(`[runner] run ${this.workflowRunId} paused at human review node ${node.id}`)
+              return
+            }
+
             // ── Waiting feedback: node needs stakeholder portal input ────────
             if (result.waitingFeedback) {
               paused = true
@@ -441,7 +625,7 @@ export class WorkflowRunner {
             // ── Detection loop execution ─────────────────────────────────────
             const loop = loopByDetectionNode.get(node.id)
             if (loop) {
-              await this.runDetectionLoop(
+              const loopRoute = await this.runDetectionLoop(
                 loop,
                 workflow.nodes,
                 config,
@@ -449,6 +633,11 @@ export class WorkflowRunner {
                 nodeOutputs,
                 runOutput,
               )
+              // For simplified loops (no branch node), the detection node itself
+              // acts as the branch — set its routePath so pass/fail edges are filtered
+              if (!loop.branchNodeId) {
+                nodeRoutePaths.set(node.id, loopRoute)
+              }
             }
 
             // Record token usage
@@ -466,6 +655,8 @@ export class WorkflowRunner {
               completedAt: new Date().toISOString(),
               tokensUsed: result.tokensUsed,
               modelUsed: result.modelUsed,
+              wordsProcessed: result.wordsProcessed,
+              sourceFiles: result.sourceFiles,
             }
             await this.persistOutput(runOutput)
 
@@ -485,6 +676,7 @@ export class WorkflowRunner {
           } catch (err) {
             failed = true
             const errorMessage = err instanceof Error ? err.message : String(err)
+            console.error(`[runner] node ${node.id} (${node.type}:${((node.config as Record<string,unknown>)?.subtype as string) ?? ''}) failed:`, errorMessage)
 
             runOutput.nodeStatuses[node.id] = {
               status: 'failed',
@@ -545,6 +737,13 @@ export class WorkflowRunner {
         console.error('[runner] insight outcome tracking failed:', err)
       })
     }
+
+    // Extract quality signals for learning (non-blocking)
+    if (finalStatus === 'completed') {
+      extractAndSaveQuality(this.agencyId, this.workflowRunId).catch((err) => {
+        console.error('[runner] quality extraction failed:', err)
+      })
+    }
   }
 
   // ─── Detection loop execution ──────────────────────────────────────────────
@@ -556,7 +755,7 @@ export class WorkflowRunner {
     detCtx: NodeExecutionContext,
     nodeOutputs: Map<string, unknown>,
     runOutput: RunOutput,
-  ): Promise<void> {
+  ): Promise<'pass' | 'fail'> {
     const detOutput = nodeOutputs.get(loop.detectionNodeId) as Record<string, unknown>
     const score = (detOutput?.overall_score as number) ?? 0
     const threshold = (detCfg.threshold as number) ?? 20
@@ -565,7 +764,7 @@ export class WorkflowRunner {
     if (score <= threshold) {
       // Already passing — mark loop-managed nodes as passed without extra work
       this.markLoopManagedNodes(loop, 'pass', detOutput, nodeOutputs, runOutput)
-      return
+      return 'pass'
     }
 
     const humNode = allNodes.find((n) => n.id === loop.humanizerNodeId)!
@@ -583,26 +782,24 @@ export class WorkflowRunner {
     while (retryCount < maxRetries) {
       retryCount++
 
-      // Mark humanizer as running
-      runOutput.nodeStatuses[humNode.id] = {
-        status: 'running',
-        startedAt: new Date().toISOString(),
-      }
-      await this.persistOutput(runOutput)
-
-      // Run humanizer
+      // Run humanizer (don't persist 'running' status — doing so can cause re-runs
+      // if the workflow pauses between the 'running' write and the subsequent 'passed' write)
       const humResult = await humExec.execute(currentDetOutput, humCfg, humCtx)
       const humanizedText = humResult.output as string
 
+      const humWordCount = typeof humanizedText === 'string'
+        ? humanizedText.split(/\s+/).filter(Boolean).length : undefined
       runOutput.nodeStatuses[humNode.id] = {
         status: 'passed',
         output: humanizedText,
-        startedAt: runOutput.nodeStatuses[humNode.id].startedAt,
+        startedAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
         tokensUsed: humResult.tokensUsed,
         modelUsed: humResult.modelUsed,
+        wordsProcessed: humWordCount,
       }
       nodeOutputs.set(humNode.id, humanizedText)
+      await this.persistOutput(runOutput)  // save humanizer 'passed' before detection re-runs
 
       if (humResult.tokensUsed) {
         await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'humanizer')
@@ -635,8 +832,10 @@ export class WorkflowRunner {
             warning,
           }
           await this.persistOutput(runOutput)
-          this.markBranchNode(loop.branchNodeId, 'fail', currentDetOutput, nodeOutputs, runOutput)
-          return
+          if (loop.branchNodeId) {
+            this.markBranchNode(loop.branchNodeId, 'fail', currentDetOutput, nodeOutputs, runOutput)
+          }
+          return 'fail'
         }
       } else {
         noImprovementCount = 0
@@ -659,15 +858,13 @@ export class WorkflowRunner {
     runOutput.detectionState[loop.detectionNodeId] = { retryCount, lastScore }
 
     const passed = ((currentDetOutput.overall_score as number) ?? 0) <= threshold
-    this.markBranchNode(
-      loop.branchNodeId,
-      passed ? 'pass' : 'fail',
-      currentDetOutput,
-      nodeOutputs,
-      runOutput,
-    )
+    const route = passed ? 'pass' : 'fail'
+    if (loop.branchNodeId) {
+      this.markBranchNode(loop.branchNodeId, route, currentDetOutput, nodeOutputs, runOutput)
+    }
 
     await this.persistOutput(runOutput)
+    return route
   }
 
   private markLoopManagedNodes(
@@ -677,11 +874,15 @@ export class WorkflowRunner {
     nodeOutputs: Map<string, unknown>,
     runOutput: RunOutput,
   ): void {
-    const branchOutput = { route, evaluated_value: (detOutput as Record<string, unknown>)?.overall_score ?? 0, input: detOutput }
-    nodeOutputs.set(loop.branchNodeId, branchOutput)
-    nodeOutputs.set(loop.humanizerNodeId, detOutput) // no humanizer needed
-    runOutput.nodeStatuses[loop.branchNodeId] = { status: 'passed', output: branchOutput }
-    runOutput.nodeStatuses[loop.humanizerNodeId] = { status: 'passed', output: 'skipped (score below threshold)' }
+    if (loop.branchNodeId) {
+      // Full loop: branch + humanizer are both managed inline
+      const branchOutput = { route, evaluated_value: (detOutput as Record<string, unknown>)?.overall_score ?? 0, input: detOutput }
+      nodeOutputs.set(loop.branchNodeId, branchOutput)
+      runOutput.nodeStatuses[loop.branchNodeId] = { status: 'passed', output: branchOutput }
+      nodeOutputs.set(loop.humanizerNodeId, detOutput)
+      runOutput.nodeStatuses[loop.humanizerNodeId] = { status: 'passed', output: 'skipped (score below threshold)' }
+    }
+    // Simplified loop: humanizer already ran in waves — nothing to mark here
   }
 
   private markBranchNode(

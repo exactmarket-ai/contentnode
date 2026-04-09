@@ -5,15 +5,20 @@
   "type": "module",
   "main": "./src/worker.ts",
   "scripts": {
-    "dev": "tsx watch src/worker.ts",
+    "dev": "tsx watch --env-file ../../apps/api/.env src/worker.ts",
     "build": "tsc",
     "start": "node dist/worker.js"
   },
   "dependencies": {
     "@contentnode/ai": "workspace:*",
     "@contentnode/database": "workspace:*",
+    "@contentnode/storage": "workspace:*",
     "bullmq": "^5.12.0",
-    "ioredis": "^5.4.1"
+    "croner": "^10.0.1",
+    "ioredis": "^5.4.1",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "pdf2json": "^4.0.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

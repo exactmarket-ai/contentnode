@@ -1,21 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { PALETTE_NODES, type NodeCategory, type PaletteNodeDef } from '@/store/workflowStore'
+import { PALETTE_NODES, type NodeCategory, type PaletteNodeDef, useWorkflowStore } from '@/store/workflowStore'
 import { InsightsSidebar } from '@/components/insights/InsightsSidebar'
+import { NODE_SPEC } from '@/lib/nodeColors'
+import { apiFetch } from '@/lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-const CATEGORY_META: Record<NodeCategory, { label: string; color: string; textColor: string }> = {
-  source:  { label: 'Source',  color: 'bg-emerald-500/10 border-emerald-500/20', textColor: 'text-emerald-400' },
-  logic:   { label: 'Logic',   color: 'bg-blue-500/10 border-blue-500/20',       textColor: 'text-blue-400'   },
-  output:  { label: 'Output',  color: 'bg-purple-500/10 border-purple-500/20',   textColor: 'text-purple-400' },
-  insight: { label: 'Insight', color: 'bg-yellow-500/10 border-yellow-500/20',   textColor: 'text-yellow-400' },
+const CATEGORY_LABELS: Record<NodeCategory, string> = {
+  source: 'Source', logic: 'Logic', output: 'Output', insight: 'Insight',
+}
+
+const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
+  source:  NODE_SPEC['input'],     // blue
+  logic:   NODE_SPEC['ai-model'],  // orange
+  output:  NODE_SPEC['transform'], // green
+  insight: NODE_SPEC['ai-model'],  // orange (fallback)
 }
 
 function PaletteItem({ def }: { def: PaletteNodeDef }) {
-  const meta = CATEGORY_META[def.category]
+  const spec = CATEGORY_SPEC[def.category]
   const IconComp = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[def.icon] ?? Icons.Box
 
   const onDragStart = (e: React.DragEvent) => {
@@ -27,18 +35,109 @@ function PaletteItem({ def }: { def: PaletteNodeDef }) {
     <div
       draggable
       onDragStart={onDragStart}
-      className={cn(
-        'flex cursor-grab items-start gap-2.5 rounded-md border p-2.5 transition-colors active:cursor-grabbing hover:bg-accent',
-        meta.color
-      )}
+      className="flex cursor-grab items-start gap-2.5 rounded-md border p-2.5 transition-colors active:cursor-grabbing hover:bg-accent"
+      style={{ borderColor: spec.headerBorder, backgroundColor: spec.headerBg }}
     >
-      <div className={cn('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded', meta.color)}>
-        <IconComp className={cn('h-3.5 w-3.5', meta.textColor)} />
+      <div
+        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded"
+        style={{ backgroundColor: spec.badgeBg, border: `1px solid ${spec.headerBorder}` }}
+      >
+        <IconComp className="h-3.5 w-3.5" style={{ color: spec.accent }} />
       </div>
       <div className="min-w-0">
-        <p className={cn('text-xs font-medium', meta.textColor)}>{def.label}</p>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">{def.description}</p>
+        <p className="text-xs font-medium" style={{ color: spec.badgeText }}>{def.label}</p>
+        <p className="mt-0.5 line-clamp-1 text-xs" style={{ color: '#b4b2a9' }}>{def.description}</p>
       </div>
+    </div>
+  )
+}
+
+function ClientIndicator() {
+  const workflow = useWorkflowStore((s) => s.workflow)
+  const setWorkflow = useWorkflowStore((s) => s.setWorkflow)
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    apiFetch('/api/v1/clients?status=active')
+      .then((r) => r.json())
+      .then(({ data }) => setClients(data ?? []))
+      .catch(() => {})
+  }, [])
+
+  if (clients.length === 0) return null
+
+  const activeClient = clients.find((c) => c.id === workflow.clientId)
+
+  const handleChange = async (value: string) => {
+    const newClientId = value === 'none' ? null : value
+    setWorkflow({ clientId: newClientId })
+    if (workflow.id) {
+      apiFetch(`/api/v1/workflows/${workflow.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: newClientId }),
+      }).catch(() => {})
+    }
+  }
+
+  return (
+    <div className="px-3 pt-3 pb-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#b4b2a9' }}>Client</p>
+      <Select value={workflow.clientId ?? 'none'} onValueChange={handleChange}>
+        <SelectTrigger
+          className="h-8 w-full text-xs font-medium focus:ring-0 border"
+          style={activeClient
+            ? { backgroundColor: '#fdf5ff', borderColor: '#a200ee', color: '#7a00b4' }
+            : { backgroundColor: 'transparent', borderColor: 'var(--border)', color: 'var(--muted-foreground)' }
+          }
+        >
+          <Icons.Building2 className="h-3 w-3 shrink-0 mr-1" />
+          <SelectValue>
+            {activeClient ? activeClient.name : 'No client assigned'}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none" className="text-xs text-muted-foreground">No client</SelectItem>
+          {clients.map((c) => (
+            <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function ClientTemplatesSection() {
+  const workflow = useWorkflowStore((s) => s.workflow)
+  const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!workflow.clientId) { setTemplates([]); return }
+    apiFetch(`/api/v1/workflows?clientId=${workflow.clientId}&limit=50`)
+      .then((r) => r.json())
+      .then(({ data }) => setTemplates(data ?? []))
+      .catch(() => {})
+  }, [workflow.clientId])
+
+  return (
+    <div className="px-3 pt-2 pb-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#b4b2a9' }}>Client Templates</p>
+      <Select
+        value=""
+        onValueChange={(id) => { if (id) navigate(`/workflows/${id}`) }}
+        disabled={templates.length === 0}
+      >
+        <SelectTrigger className="h-8 w-full text-xs focus:ring-0">
+          <Icons.LayoutTemplate className="h-3 w-3 shrink-0 mr-1" />
+          <SelectValue placeholder={templates.length === 0 ? 'No templates' : 'Load template…'} />
+        </SelectTrigger>
+        <SelectContent>
+          {templates.map((t) => (
+            <SelectItem key={t.id} value={t.id} className="text-xs">{t.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }
@@ -56,6 +155,12 @@ function NodesPalette() {
 
   return (
     <>
+      {/* Client indicator */}
+      <ClientIndicator />
+
+      {/* Client templates */}
+      <ClientTemplatesSection />
+
       {/* Search */}
       <div className="px-3 py-2">
         <div className="relative">
@@ -71,16 +176,15 @@ function NodesPalette() {
 
       <Separator />
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-4 px-3 py-3">
           {(['source', 'logic', 'output'] as NodeCategory[]).map((cat) => {
             const items = byCategory(cat)
             if (items.length === 0) return null
-            const meta = CATEGORY_META[cat]
             return (
               <div key={cat}>
-                <p className={cn('mb-2 text-xs font-semibold uppercase tracking-wider', meta.textColor)}>
-                  {meta.label}
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b4b2a9' }}>
+                  {CATEGORY_LABELS[cat]}
                 </p>
                 <div className="space-y-1.5">
                   {items.map((def) => (
@@ -110,7 +214,7 @@ export function NodePalette() {
   const [tab, setTab] = useState<Tab>('nodes')
 
   return (
-    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">
+    <div className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
       {/* Header with tabs */}
       <div className="flex items-center border-b border-border">
         <button
@@ -130,7 +234,7 @@ export function NodePalette() {
           className={cn(
             'flex flex-1 items-center justify-center gap-1.5 px-3 py-3 text-sm font-medium transition-colors',
             tab === 'insights'
-              ? 'text-yellow-400 border-b-2 border-yellow-400'
+              ? 'text-yellow-600 border-b-2 border-yellow-500'
               : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'
           )}
         >

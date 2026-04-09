@@ -1,13 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '@contentnode/database'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Usage Routes — /api/v1/usage
-//
-// Returns token consumption and activity metrics for the current billing period.
-// Billing period = current calendar month.
-// ─────────────────────────────────────────────────────────────────────────────
-
 function currentPeriod() {
   const now = new Date()
   const start = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -15,7 +8,7 @@ function currentPeriod() {
   return { start, end }
 }
 
-function last30DayBuckets(): { date: string; start: Date; end: Date }[] {
+function last30DayBuckets() {
   const buckets: { date: string; start: Date; end: Date }[] = []
   const today = new Date()
   for (let i = 29; i >= 0; i--) {
@@ -23,152 +16,206 @@ function last30DayBuckets(): { date: string; start: Date; end: Date }[] {
     d.setDate(d.getDate() - i)
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate())
     const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999)
-    buckets.push({
-      date: start.toISOString().slice(0, 10),
-      start,
-      end,
-    })
+    buckets.push({ date: start.toISOString().slice(0, 10), start, end })
   }
   return buckets
 }
 
 export async function usageRoutes(app: FastifyInstance) {
-  // ── GET / — usage summary ─────────────────────────────────────────────────
   app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
     const { start: periodStart, end: periodEnd } = currentPeriod()
 
-    // ── Token consumption ────────────────────────────────────────────────────
-    const tokenRecords = await prisma.usageRecord.findMany({
-      where: {
-        agencyId,
-        metric: 'ai_tokens',
-        periodStart: { gte: periodStart },
-      },
+    // Fetch all usage records for the period in one shot
+    const allRecords = await prisma.usageRecord.findMany({
+      where: { agencyId, periodStart: { gte: periodStart } },
     })
 
-    const totalTokens = tokenRecords.reduce((sum, r) => sum + r.quantity, 0)
-
-    // ── Breakdown by workflow run ────────────────────────────────────────────
-    // Token records have workflowRunId in metadata; join to get clientId / workflowId
-    const runIds = [
-      ...new Set(
-        tokenRecords
-          .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
-          .filter(Boolean) as string[]
-      ),
-    ]
-
-    const runs = runIds.length
-      ? await prisma.workflowRun.findMany({
-          where: { id: { in: runIds }, agencyId },
-          select: {
-            id: true,
-            workflowId: true,
-            workflow: {
-              select: {
-                id: true,
-                name: true,
-                clientId: true,
-                client: { select: { id: true, name: true } },
-              },
-            },
-          },
-        })
-      : []
-
-    const runMap = Object.fromEntries(runs.map((r) => [r.id, r]))
-
-    // Group tokens by client
-    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number }> = {}
-    const tokensByWorkflow: Record<string, { workflowId: string; workflowName: string; clientName: string; tokens: number }> = {}
-
-    for (const record of tokenRecords) {
-      const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
-      const run = runId ? runMap[runId] : undefined
-      const wf = (run as unknown as { workflow: { id: string; name: string; clientId: string; client: { id: string; name: string } } } | undefined)?.workflow
-
-      if (wf) {
-        const clientId = wf.clientId
-        const clientName = wf.client.name
-        if (!tokensByClient[clientId]) {
-          tokensByClient[clientId] = { clientId, clientName, tokens: 0 }
-        }
-        tokensByClient[clientId].tokens += record.quantity
-
-        const wfId = wf.id
-        if (!tokensByWorkflow[wfId]) {
-          tokensByWorkflow[wfId] = { workflowId: wfId, workflowName: wf.name, clientName, tokens: 0 }
-        }
-        tokensByWorkflow[wfId].tokens += record.quantity
-      }
+    // ── AI / LLM tokens ──────────────────────────────────────────────────────
+    const tokenRecords = allRecords.filter((r) => r.metric === 'ai_tokens')
+    const totalTokens = tokenRecords.reduce((s, r) => s + r.quantity, 0)
+    const tokensByModel: Record<string, number> = {}
+    for (const r of tokenRecords) {
+      const model = ((r.metadata as Record<string, unknown>)['model'] as string) ?? 'unknown'
+      tokensByModel[model] = (tokensByModel[model] ?? 0) + r.quantity
+    }
+    const tokensByProvider: Record<string, number> = {}
+    for (const r of tokenRecords) {
+      const provider = ((r.metadata as Record<string, unknown>)['provider'] as string) ?? 'unknown'
+      tokensByProvider[provider] = (tokensByProvider[provider] ?? 0) + r.quantity
     }
 
-    // ── Workflow run count this period ───────────────────────────────────────
-    const runCount = await prisma.workflowRun.count({
-      where: {
-        agencyId,
-        createdAt: { gte: periodStart, lte: periodEnd },
-      },
-    })
+    // ── Humanizer words ──────────────────────────────────────────────────────
+    const humRecords = allRecords.filter((r) => r.metric === 'humanizer_words')
+    const totalHumWords = humRecords.reduce((s, r) => s + r.quantity, 0)
+    const humByService: Record<string, number> = {}
+    for (const r of humRecords) {
+      const service = ((r.metadata as Record<string, unknown>)['service'] as string) ?? 'unknown'
+      humByService[service] = (humByService[service] ?? 0) + r.quantity
+    }
 
-    // ── Transcription sessions / minutes this period ─────────────────────────
+    // ── AI Detection calls ───────────────────────────────────────────────────
+    const detectionRecords = allRecords.filter((r) => r.metric === 'detection_call')
+    const totalDetectionCalls = detectionRecords.length
+    const detectionByService: Record<string, number> = {}
+    for (const r of detectionRecords) {
+      const service = ((r.metadata as Record<string, unknown>)['service'] as string) ?? 'unknown'
+      detectionByService[service] = (detectionByService[service] ?? 0) + 1
+    }
+
+    // ── Translation ──────────────────────────────────────────────────────────
+    const translationRecords = allRecords.filter((r) => r.metric === 'translation_chars')
+    const totalTranslationChars = translationRecords.reduce((s, r) => s + r.quantity, 0)
+    const translationByProvider: Record<string, number> = {}
+    for (const r of translationRecords) {
+      const provider = ((r.metadata as Record<string, unknown>)['provider'] as string) ?? 'unknown'
+      translationByProvider[provider] = (translationByProvider[provider] ?? 0) + r.quantity
+    }
+
+    // ── Email ────────────────────────────────────────────────────────────────
+    const emailRecords = allRecords.filter((r) => r.metric === 'email_sent')
+    const totalEmailsSent = emailRecords.reduce((s, r) => s + r.quantity, 0)
+    const emailByProvider: Record<string, number> = {}
+    for (const r of emailRecords) {
+      const provider = ((r.metadata as Record<string, unknown>)['provider'] as string) ?? 'unknown'
+      emailByProvider[provider] = (emailByProvider[provider] ?? 0) + r.quantity
+    }
+
+    // ── Transcription ────────────────────────────────────────────────────────
     const transcriptSessions = await prisma.transcriptSession.findMany({
-      where: {
-        agencyId,
-        createdAt: { gte: periodStart, lte: periodEnd },
-        status: 'ready',
-      },
+      where: { agencyId, createdAt: { gte: periodStart, lte: periodEnd }, status: 'ready' },
       select: { durationSecs: true },
     })
-
     const transcriptionMinutes = Math.ceil(
       transcriptSessions.reduce((sum, s) => sum + (s.durationSecs ?? 0), 0) / 60
     )
 
-    // ── Detection runs (workflow runs that have detection node outputs) ───────
-    // Proxy: count workflow runs with 'detection' in their node statuses output
-    const detectionRuns = await prisma.workflowRun.count({
-      where: {
-        agencyId,
-        createdAt: { gte: periodStart, lte: periodEnd },
-        output: { path: ['nodeStatuses'], not: {} },
-      },
+    // ── Runs ─────────────────────────────────────────────────────────────────
+    const runCount = await prisma.workflowRun.count({
+      where: { agencyId, createdAt: { gte: periodStart, lte: periodEnd } },
     })
 
-    // ── Daily usage over last 30 days ────────────────────────────────────────
-    const buckets = last30DayBuckets()
-    const dailyUsage = await Promise.all(
-      buckets.map(async (bucket) => {
-        const dayRecords = await prisma.usageRecord.findMany({
-          where: {
-            agencyId,
-            metric: 'ai_tokens',
-            periodStart: { gte: bucket.start, lte: bucket.end },
+    // ── Token breakdown by client/workflow ───────────────────────────────────
+    const runIds = [...new Set(
+      tokenRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[]
+    )]
+    const runMap: Record<string, unknown> = {}
+
+    // Also gather run IDs from translation records for client/workflow attribution
+    const allRunIds = [...new Set([
+      ...runIds,
+      ...translationRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[],
+    ])]
+    const allRuns = allRunIds.length
+      ? await prisma.workflowRun.findMany({
+          where: { id: { in: allRunIds }, agencyId },
+          select: {
+            id: true,
+            workflow: { select: { id: true, name: true, clientId: true, client: { select: { id: true, name: true } } } },
           },
-          select: { quantity: true },
         })
-        const tokens = dayRecords.reduce((s, r) => s + r.quantity, 0)
-        return { date: bucket.date, tokens }
-      })
-    )
+      : []
+    const allRunMap = Object.fromEntries(allRuns.map((r) => [r.id, r]))
+    // Replace runMap with the broader allRunMap
+    Object.assign(runMap, allRunMap)
+
+    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number; translationChars: number }> = {}
+    const tokensByWorkflow: Record<string, { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }> = {}
+    for (const record of tokenRecords) {
+      const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
+      const run = runId ? runMap[runId] : undefined
+      const wf = (run as any)?.workflow
+      if (wf) {
+        const cid = wf.clientId
+        const cname = wf.client?.name ?? 'Unknown'
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0 }
+        tokensByClient[cid].tokens += record.quantity
+        tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
+        tokensByWorkflow[wf.id].tokens += record.quantity
+      }
+    }
+    for (const record of translationRecords) {
+      const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
+      const run = runId ? runMap[runId] : undefined
+      const wf = (run as any)?.workflow
+      if (wf) {
+        const cid = wf.clientId
+        const cname = wf.client?.name ?? 'Unknown'
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0 }
+        tokensByClient[cid].translationChars += record.quantity
+        tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
+        tokensByWorkflow[wf.id].translationChars += record.quantity
+      }
+    }
+
+    // ── Daily token usage (last 30 days) ─────────────────────────────────────
+    const buckets = last30DayBuckets()
+    const dailyUsage = buckets.map((bucket) => {
+      const tokens = allRecords
+        .filter((r) => r.metric === 'ai_tokens' && r.periodStart >= bucket.start && r.periodStart <= bucket.end)
+        .reduce((s, r) => s + r.quantity, 0)
+      return { date: bucket.date, tokens }
+    })
 
     return reply.send({
       data: {
-        period: {
-          start: periodStart.toISOString(),
-          end: periodEnd.toISOString(),
-        },
+        period: { start: periodStart.toISOString(), end: periodEnd.toISOString() },
         totals: {
           tokens: totalTokens,
           runs: runCount,
           transcriptionMinutes,
-          detectionApiCalls: detectionRuns,
+          detectionCalls: totalDetectionCalls,
+          humanizerWords: totalHumWords,
+          translationChars: totalTranslationChars,
+          emailsSent: totalEmailsSent,
+        },
+        llm: {
+          totalTokens,
+          byModel: Object.entries(tokensByModel).map(([model, tokens]) => ({ model, tokens })).sort((a, b) => b.tokens - a.tokens),
+          byProvider: Object.entries(tokensByProvider).map(([provider, tokens]) => ({ provider, tokens })).sort((a, b) => b.tokens - a.tokens),
+        },
+        humanizer: {
+          totalWords: totalHumWords,
+          byService: Object.entries(humByService).map(([service, words]) => ({ service, words })).sort((a, b) => b.words - a.words),
+        },
+        detection: {
+          totalCalls: totalDetectionCalls,
+          byService: Object.entries(detectionByService).map(([service, calls]) => ({ service, calls })).sort((a, b) => b.calls - a.calls),
+        },
+        translation: {
+          totalChars: totalTranslationChars,
+          byProvider: Object.entries(translationByProvider).map(([provider, chars]) => ({ provider, chars })).sort((a, b) => b.chars - a.chars),
+        },
+        email: {
+          totalSent: totalEmailsSent,
+          byProvider: Object.entries(emailByProvider).map(([provider, count]) => ({ provider, count })).sort((a, b) => b.count - a.count),
         },
         byClient: Object.values(tokensByClient).sort((a, b) => b.tokens - a.tokens),
         byWorkflow: Object.values(tokensByWorkflow).sort((a, b) => b.tokens - a.tokens),
         dailyUsage,
       },
     })
+  })
+
+  // ── GET /humanizer — per-service word counts for the current month ─────────
+  app.get('/humanizer', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { start: periodStart } = currentPeriod()
+
+    const records = await prisma.usageRecord.findMany({
+      where: { agencyId, metric: 'humanizer_words', periodStart: { gte: periodStart } },
+    })
+
+    const byService: Record<string, number> = {}
+    for (const r of records) {
+      const service = ((r.metadata as Record<string, unknown>)['service'] as string) ?? 'unknown'
+      byService[service] = (byService[service] ?? 0) + r.quantity
+    }
+
+    return reply.send({ data: byService })
   })
 }

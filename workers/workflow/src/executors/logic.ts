@@ -14,6 +14,12 @@ interface LogicNodeConfig {
    * Defaults to just passing the input directly.
    */
   prompt_template?: string
+  /** Frontend saves prompt as 'prompt' — executor accepts both */
+  prompt?: string
+  /** Additional instructions appended after the main prompt */
+  additional_instructions?: string
+  /** Task type label from the frontend (expand/summarize/etc.) */
+  task_type?: string
 }
 
 function buildPrompt(template: string | undefined, input: unknown): string {
@@ -21,7 +27,7 @@ function buildPrompt(template: string | undefined, input: unknown): string {
     typeof input === 'string'
       ? input
       : Array.isArray(input)
-      ? input.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n\n')
+      ? input.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n\n---\n\n')
       : JSON.stringify(input)
 
   if (!template) return inputStr
@@ -47,16 +53,30 @@ export class LogicNodeExecutor extends NodeExecutor {
       )
     }
 
+    const defaultKeyRef = cfg.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : ''
     const modelConfig: ModelConfig = {
       provider: cfg.provider,
       model: cfg.model,
-      api_key_ref: cfg.api_key_ref ?? '',
+      api_key_ref: cfg.api_key_ref || defaultKeyRef,
       system_prompt: cfg.system_prompt,
       temperature: cfg.temperature,
       max_tokens: cfg.max_tokens,
     }
 
-    const prompt = buildPrompt(cfg.prompt_template, input)
+    const baseTemplate = cfg.prompt_template ?? cfg.prompt
+    const additionalInstructions = cfg.additional_instructions
+
+    // Build the final prompt: instructions first, then the input content
+    let fullTemplate: string | undefined
+    if (baseTemplate && additionalInstructions) {
+      fullTemplate = `${additionalInstructions}\n\n${baseTemplate}`
+    } else if (additionalInstructions && !baseTemplate) {
+      fullTemplate = `${additionalInstructions}\n\n{{input}}`
+    } else {
+      fullTemplate = baseTemplate
+    }
+
+    const prompt = buildPrompt(fullTemplate, input)
     const result = await callModel(modelConfig, prompt)
 
     return {

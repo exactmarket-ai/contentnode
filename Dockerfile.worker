@@ -1,0 +1,37 @@
+# ─── Build stage ──────────────────────────────────────────────────────────────
+FROM --platform=linux/amd64 node:20-alpine AS build
+
+RUN corepack enable pnpm
+WORKDIR /app
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY packages/database/package.json packages/database/
+COPY packages/ai/package.json packages/ai/
+COPY packages/storage/package.json packages/storage/
+COPY packages/shared/package.json packages/shared/
+COPY workers/workflow/package.json workers/workflow/
+
+RUN pnpm install --no-frozen-lockfile
+
+COPY packages/ packages/
+COPY workers/workflow/ workers/workflow/
+
+RUN pnpm --filter @contentnode/database generate
+RUN pnpm --filter @contentnode/workflow-worker build
+
+# ─── Production stage ─────────────────────────────────────────────────────────
+FROM --platform=linux/amd64 node:20-alpine AS production
+
+# ffmpeg needed for transcription audio clip extraction
+RUN apk add --no-cache ffmpeg
+
+RUN corepack enable pnpm
+WORKDIR /app
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/workers/workflow/dist ./workers/workflow/dist
+COPY --from=build /app/workers/workflow/package.json ./workers/workflow/package.json
+COPY --from=build /app/package.json ./package.json
+
+CMD ["node", "workers/workflow/dist/worker.js"]

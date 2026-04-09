@@ -1,4 +1,27 @@
+import { prisma, withAgency, type Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+
+async function logDetectionUsage(agencyId: string, service: string, workflowRunId: string | undefined, wordCount: number) {
+  try {
+    const now = new Date()
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    await withAgency(agencyId, () =>
+      prisma.usageRecord.create({
+        data: {
+          agencyId,
+          metric: 'detection_call',
+          quantity: wordCount,
+          periodStart,
+          periodEnd,
+          metadata: { service, workflowRunId } as Prisma.InputJsonValue,
+        },
+      })
+    )
+  } catch (err) {
+    console.warn('[detection] failed to log usage record:', err)
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Detection node executor — scores content for AI likelihood
@@ -81,11 +104,19 @@ export class DetectionNodeExecutor extends NodeExecutor {
   async execute(
     input: unknown,
     config: Record<string, unknown>,
-    _ctx: NodeExecutionContext
+    ctx: NodeExecutionContext
   ): Promise<NodeExecutionResult> {
     const content = extractContent(input)
-    const service = (config.service as string) ?? 'gptzero'
-    const apiKeyRef = (config.api_key_ref as string) ?? ''
+    const service = (config.service as string) ?? 'local'
+    const wordCount = content.split(/\s+/).filter(Boolean).length
+    // Default env var names per service — users don't need to configure these
+    const SERVICE_KEY_DEFAULTS: Record<string, string> = {
+      gptzero: 'GPTZERO_API_KEY',
+      originality: 'ORIGINALITY_API_KEY',
+      sapling: 'SAPLING_API_KEY',
+      copyleaks: 'COPYLEAKS_API_KEY',
+    }
+    const apiKeyRef = (config.api_key_ref as string) || SERVICE_KEY_DEFAULTS[service] || ''
 
     let result: DetectionOutput
 
@@ -95,8 +126,12 @@ export class DetectionNodeExecutor extends NodeExecutor {
         break
 
       case 'gptzero': {
-        const apiKey = process.env[apiKeyRef] ?? ''
-        if (!apiKey) throw new Error(`GPTZero: env var "${apiKeyRef}" is not set`)
+        const apiKey = process.env[apiKeyRef] ?? apiKeyRef
+        if (!apiKey) {
+          console.warn(`[detection] GPTZero API key not configured — falling back to local detection`)
+          result = localDetect(content)
+          break
+        }
 
         const res = await fetch('https://api.gptzero.me/v2/predict/text', {
           method: 'POST',
@@ -113,12 +148,17 @@ export class DetectionNodeExecutor extends NodeExecutor {
           .map((s) => s.sentence)
 
         result = { overall_score: score, flagged_sentences: flagged, content, service }
+        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount)
         break
       }
 
       case 'originality': {
-        const apiKey = process.env[apiKeyRef] ?? ''
-        if (!apiKey) throw new Error(`Originality.ai: env var "${apiKeyRef}" is not set`)
+        const apiKey = process.env[apiKeyRef] ?? apiKeyRef
+        if (!apiKey) {
+          console.warn(`[detection] Originality.ai API key not configured — falling back to local detection`)
+          result = localDetect(content)
+          break
+        }
 
         const res = await fetch('https://api.originality.ai/api/v1/scan/ai', {
           method: 'POST',
@@ -134,12 +174,17 @@ export class DetectionNodeExecutor extends NodeExecutor {
           .map((item) => item.text)
 
         result = { overall_score: score, flagged_sentences: flagged, content, service }
+        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount)
         break
       }
 
       case 'sapling': {
-        const apiKey = process.env[apiKeyRef] ?? ''
-        if (!apiKey) throw new Error(`Sapling: env var "${apiKeyRef}" is not set`)
+        const apiKey = process.env[apiKeyRef] ?? apiKeyRef
+        if (!apiKey) {
+          console.warn(`[detection] Sapling API key not configured — falling back to local detection`)
+          result = localDetect(content)
+          break
+        }
 
         const res = await fetch('https://api.sapling.ai/api/v1/aidetect', {
           method: 'POST',
@@ -155,6 +200,7 @@ export class DetectionNodeExecutor extends NodeExecutor {
           .map((s) => s.sentence)
 
         result = { overall_score: score, flagged_sentences: flagged, content, service }
+        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount)
         break
       }
 

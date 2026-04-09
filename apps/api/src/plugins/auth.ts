@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import fp from 'fastify-plugin'
 import { verifyToken } from '@clerk/backend'
-import { agencyStorage } from '@contentnode/database'
+import { agencyStorage, prisma } from '@contentnode/database'
 
 // Extend Fastify's request type to carry decoded auth info
 declare module 'fastify' {
@@ -16,16 +16,46 @@ declare module 'fastify' {
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? ''
 
+const DEV_MODE = !CLERK_SECRET_KEY || CLERK_SECRET_KEY === 'sk_test_...'
+
 async function authPluginFn(app: FastifyInstance) {
   app.decorateRequest('auth', null)
 
+  // CRITICAL #3: Prevent starting in production without a real Clerk secret key
+  if (process.env.NODE_ENV === 'production' && DEV_MODE) {
+    throw new Error(
+      '[auth] CLERK_SECRET_KEY is not set or is a placeholder. ' +
+      'The server cannot start in production without a valid Clerk secret key.'
+    )
+  }
+
+  if (DEV_MODE) {
+    app.log.warn('[auth] CLERK_SECRET_KEY not set — running in dev mode, all requests authenticated as dev-agency')
+  }
+
   app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.url === '/health') return
-    // Portal routes use magic link auth — skip Clerk JWT check
+    // Portal and writer portal routes use magic link auth — skip Clerk JWT check
     if (req.url.startsWith('/portal')) return
+    if (req.url.startsWith('/writer')) return
+    // Invite token validation is public — no Clerk auth needed to peek at invite details
+    if (req.method === 'GET' && req.url.startsWith('/api/v1/team/accept-invite/')) return
+    // Client logos are public assets — no auth needed for <img src> to work
+    if (req.method === 'GET' && /^\/api\/v1\/clients\/[^/]+\/logo(\?.*)?$/.test(req.url)) return
+
+    // Dev bypass: when no Clerk secret key is configured, treat every request
+    // as an authenticated dev user so local development works without Clerk.
+    if (DEV_MODE) {
+      req.auth = { agencyId: 'dev-agency', userId: 'dev-user', role: 'owner' }
+      agencyStorage.enterWith({ agencyId: 'dev-agency' })
+      return
+    }
 
     const authHeader = req.headers.authorization
+    req.log.debug({ authHeader: authHeader ? `${authHeader.slice(0, 20)}...` : 'missing' }, '[auth] incoming authorization header')
+
     if (!authHeader?.startsWith('Bearer ')) {
+      req.log.warn({ url: req.url, method: req.method }, '[auth] 401 — missing or malformed Authorization header')
       return reply.code(401).send({ error: 'Missing or malformed Authorization header' })
     }
 
@@ -34,7 +64,8 @@ async function authPluginFn(app: FastifyInstance) {
     let payload: Awaited<ReturnType<typeof verifyToken>>
     try {
       payload = await verifyToken(token, { secretKey: CLERK_SECRET_KEY })
-    } catch {
+    } catch (err) {
+      req.log.warn({ url: req.url, err: String(err) }, '[auth] 401 — token verification failed')
       return reply.code(401).send({ error: 'Invalid or expired token' })
     }
 
@@ -44,18 +75,41 @@ async function authPluginFn(app: FastifyInstance) {
     const meta = ((payload as Record<string, unknown>)['publicMetadata'] ?? {}) as Record<string, unknown>
 
     const agencyId = (claims['agency_id'] ?? meta['agency_id']) as string | undefined
-    const role = ((claims['role'] ?? meta['role']) as string | undefined) ?? 'member'
+    const roleFromToken = ((claims['role'] ?? meta['role']) as string | undefined) ?? 'member'
+    // DEFAULT_ROLE env var overrides token role for local dev (when Clerk custom claims aren't configured)
+    const role = process.env.DEFAULT_ROLE ?? roleFromToken
+
+    req.log.debug({ agencyId, role, sub: payload.sub }, '[auth] token claims')
 
     if (!agencyId) {
-      return reply.code(403).send({ error: 'Token is missing agency_id claim' })
+      // Fallback for dev: if a DEFAULT_AGENCY_ID env var is set, use it rather
+      // than rejecting a valid token that just lacks the custom claim.
+      // In production, agency_id must be set as a Clerk custom session claim.
+      const fallback = process.env.DEFAULT_AGENCY_ID
+      if (!fallback) {
+        req.log.warn({ sub: payload.sub, claims: Object.keys(claims) }, '[auth] 403 — token missing agency_id claim (set DEFAULT_AGENCY_ID env var for local dev)')
+        return reply.code(403).send({ error: 'Token is missing agency_id claim' })
+      }
+      const roleOverride = process.env.DEFAULT_ROLE ?? role
+      req.log.warn({ sub: payload.sub, fallback, roleOverride }, '[auth] agency_id missing from token — using DEFAULT_AGENCY_ID fallback')
+      req.auth = { agencyId: fallback, userId: payload.sub, role: roleOverride }
+      agencyStorage.enterWith({ agencyId: fallback })
+      return
     }
 
     req.auth = { agencyId, userId: payload.sub, role }
-
-    // Seed AsyncLocalStorage so Prisma middleware can read agency_id.
-    // enterWith() transitions the current async context immediately — the route
-    // handler runs in the same async continuation and will see the store.
     agencyStorage.enterWith({ agencyId })
+
+    // Track last active — fire-and-forget, only updates if stale (>5 min)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
+    prisma.user.updateMany({
+      where: {
+        clerkUserId: payload.sub,
+        agencyId,
+        OR: [{ lastActiveAt: null }, { lastActiveAt: { lt: fiveMinutesAgo } }],
+      },
+      data: { lastActiveAt: new Date() },
+    }).catch(() => {})
   })
 }
 

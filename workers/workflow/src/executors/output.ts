@@ -22,8 +22,15 @@ function coerceToString(value: unknown): string {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) {
     return value
-      .map((v) => (typeof v === 'string' ? v : JSON.stringify(v)))
+      .map((v) => coerceToString(v))
       .join('\n\n')
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    // Any node that returns { content: string, ... } — extract the text
+    if (typeof obj.content === 'string') {
+      return obj.content
+    }
   }
   return JSON.stringify(value, null, 2)
 }

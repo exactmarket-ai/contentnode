@@ -10,8 +10,33 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: true,
     proxy: {
       '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/portal/auth': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/portal/deliverables': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/portal/feedback': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/writer/verify': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/writer/draft': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/writer/submit': {
         target: 'http://localhost:3001',
         changeOrigin: true,
       },

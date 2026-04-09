@@ -1,4 +1,4 @@
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, type Prisma } from '@contentnode/database'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Seniority weights — used in collective confidence scoring
@@ -107,7 +107,7 @@ export async function detectPatterns(
           isCollective: candidate.isCollective,
           evidenceQuotes: candidate.evidenceQuotes as object[],
           suggestedNodeType: candidate.suggestedNodeType,
-          suggestedConfigChange: candidate.suggestedConfigChange,
+          suggestedConfigChange: candidate.suggestedConfigChange as Prisma.InputJsonValue,
         },
       })
     }

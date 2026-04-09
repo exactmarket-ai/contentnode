@@ -1,0 +1,29 @@
+FROM --platform=linux/amd64 node:20-alpine
+
+RUN apk add --no-cache openssl
+RUN corepack enable pnpm
+WORKDIR /app
+
+# Copy workspace manifests first (for better layer caching)
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY packages/database/package.json packages/database/
+COPY packages/ai/package.json packages/ai/
+COPY packages/storage/package.json packages/storage/
+COPY packages/shared/package.json packages/shared/
+COPY apps/api/package.json apps/api/
+
+RUN pnpm install --no-frozen-lockfile
+
+# Copy all source
+COPY packages/ packages/
+COPY apps/api/ apps/api/
+
+# Copy startup script
+COPY scripts/start-api.sh ./scripts/start-api.sh
+RUN chmod +x scripts/start-api.sh
+
+# Generate Prisma client
+RUN pnpm --filter @contentnode/database generate
+
+# Runs migrations then starts the server
+CMD ["sh", "scripts/start-api.sh"]

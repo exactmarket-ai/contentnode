@@ -1,9 +1,10 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import ReactFlow, {
   Background,
   BackgroundVariant,
   Controls,
   MiniMap,
+  Panel,
   type ReactFlowInstance,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -13,6 +14,7 @@ import { SourceNode } from './nodes/SourceNode'
 import { LogicNode } from './nodes/LogicNode'
 import { OutputNode } from './nodes/OutputNode'
 import { InsightNode } from './nodes/InsightNode'
+import { AlignmentToolbar } from './AlignmentToolbar'
 
 const nodeTypes = {
   source: SourceNode,
@@ -34,6 +36,18 @@ export function WorkflowCanvas() {
   } = useWorkflowStore()
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
+  const hasFitRef = useRef(false)
+
+  // Fit view once after workflow nodes load asynchronously
+  useEffect(() => {
+    if (nodes.length > 0 && !hasFitRef.current) {
+      hasFitRef.current = true
+      setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.2 }), 50)
+    }
+    if (nodes.length === 0) {
+      hasFitRef.current = false
+    }
+  }, [nodes.length])
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: { id: string }) => {
     setSelectedNodeId(node.id)
@@ -73,8 +87,9 @@ export function WorkflowCanvas() {
           body: string
         }
 
+        const newId = nextId()
         addNode({
-          id: nextId(),
+          id: newId,
           type: 'insight',
           position,
           data: {
@@ -94,6 +109,7 @@ export function WorkflowCanvas() {
             },
           },
         })
+        setSelectedNodeId(newId)
       } catch {
         // Malformed drag data — ignore
       }
@@ -107,8 +123,9 @@ export function WorkflowCanvas() {
     const def = PALETTE_NODES.find((n) => n.subtype === subtype)
     if (!def) return
 
+    const newId = nextId()
     addNode({
-      id: nextId(),
+      id: newId,
       type: def.type,
       position,
       data: {
@@ -119,7 +136,8 @@ export function WorkflowCanvas() {
         config: { ...def.defaultConfig },
       },
     })
-  }, [addNode])
+    setSelectedNodeId(newId)
+  }, [addNode, setSelectedNodeId])
 
   return (
     <ReactFlow
@@ -137,6 +155,11 @@ export function WorkflowCanvas() {
       fitView
       fitViewOptions={{ padding: 0.2 }}
       deleteKeyCode="Backspace"
+      selectionOnDrag={true}
+      panOnDrag={false}
+      panActivationKeyCode="Space"
+      selectionKeyCode={null}
+      multiSelectionKeyCode="Meta"
       className="bg-background"
     >
       <Background
@@ -146,6 +169,9 @@ export function WorkflowCanvas() {
         color="hsl(0 0% 18%)"
       />
       <Controls showInteractive={false} />
+      <Panel position="top-center">
+        <AlignmentToolbar />
+      </Panel>
       <MiniMap
         nodeColor={(node) => {
           if (node.type === 'source') return 'rgba(16,185,129,0.4)'
@@ -155,6 +181,8 @@ export function WorkflowCanvas() {
           return 'rgba(255,255,255,0.1)'
         }}
         maskColor="rgba(0,0,0,0.6)"
+        pannable
+        zoomable
       />
     </ReactFlow>
   )

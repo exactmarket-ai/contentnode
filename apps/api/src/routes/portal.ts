@@ -1,8 +1,12 @@
 import crypto from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma, withAgency, auditService } from '@contentnode/database'
+import { verifyToken } from '@clerk/backend'
+import { prisma, withAgency, auditService, agencyStorage } from '@contentnode/database'
 import { getWorkflowRunsQueue, getPatternDetectionQueue } from '../lib/queues.js'
+
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? ''
+const DEV_MODE = !CLERK_SECRET_KEY || CLERK_SECRET_KEY === 'sk_test_...'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Client Portal Routes — /portal/*
@@ -11,19 +15,25 @@ import { getWorkflowRunsQueue, getPatternDetectionQueue } from '../lib/queues.js
 // explicitly skips /portal/* routes (see plugins/auth.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TOKEN_TTL_MINUTES = 60 * 24 * 30 // 30 days
+const TOKEN_TTL_DAYS = 30
 
-/** Validate a magic link token and return the stakeholder, or null. */
-async function resolveToken(token: string) {
+/** Resolve a DeliverableAccess token.
+ *  Returns { access, stakeholder, run } or null.
+ *  Also seeds agencyStorage for subsequent Prisma queries. */
+async function resolveAccessToken(token: string) {
   if (!token) return null
-  const stakeholder = await prisma.stakeholder.findUnique({
-    where: { magicLinkToken: token },
-    include: { client: true },
+  const access = await prisma.deliverableAccess.findUnique({
+    where: { token },
+    include: {
+      stakeholder: { include: { client: true } },
+      run: { include: { workflow: { select: { id: true, name: true, clientId: true } } } },
+    },
   })
-  if (!stakeholder) return null
-  if (!stakeholder.magicLinkExpiresAt) return null
-  if (stakeholder.magicLinkExpiresAt < new Date()) return null
-  return stakeholder
+  if (!access) return null
+  if (access.revokedAt) return null
+  if (access.expiresAt && access.expiresAt < new Date()) return null
+  agencyStorage.enterWith({ agencyId: access.agencyId })
+  return access
 }
 
 /** Extract token from Authorization header (Bearer) or query string. */
@@ -61,63 +71,86 @@ export async function portalRoutes(app: FastifyInstance) {
   // ── POST /portal/auth/send-link ─────────────────────────────────────────
   // Agency calls this (with agency auth) to generate a magic link for a stakeholder.
   // In dev mode, the token is returned in the response; in production, send via email.
-  app.post<{ Body: { stakeholderId: string } }>('/auth/send-link', async (req, reply) => {
-    const { stakeholderId } = req.body ?? {}
-    if (!stakeholderId) {
-      return reply.code(400).send({ error: 'stakeholderId required' })
+  // CRITICAL #1: This endpoint requires a valid Clerk JWT even though it lives under
+  // /portal/* (which skips the global preHandler). We verify it manually here.
+  app.post<{ Body: { stakeholderId: string; runId: string } }>('/auth/send-link', async (req, reply) => {
+    // ── Manual Clerk JWT check ─────────────────────────────────────────────
+    let agencyId: string
+    let grantedBy: string | undefined
+    if (DEV_MODE) {
+      agencyId  = process.env.DEFAULT_AGENCY_ID ?? 'dev-agency'
+      grantedBy = 'dev-user'
+    } else {
+      const authHeader = req.headers.authorization
+      if (!authHeader?.startsWith('Bearer ')) {
+        return reply.code(401).send({ error: 'Missing or malformed Authorization header' })
+      }
+      const jwtToken = authHeader.slice(7)
+      let payload: Awaited<ReturnType<typeof verifyToken>>
+      try {
+        payload = await verifyToken(jwtToken, { secretKey: CLERK_SECRET_KEY })
+      } catch {
+        return reply.code(401).send({ error: 'Invalid or expired token' })
+      }
+      const claims = payload as Record<string, unknown>
+      const meta = ((payload as Record<string, unknown>)['publicMetadata'] ?? {}) as Record<string, unknown>
+      const resolvedAgencyId = (claims['agency_id'] ?? meta['agency_id'] ?? process.env.DEFAULT_AGENCY_ID) as string | undefined
+      if (!resolvedAgencyId) {
+        return reply.code(403).send({ error: 'Token is missing agency_id claim' })
+      }
+      agencyId  = resolvedAgencyId
+      grantedBy = payload.sub
     }
 
-    // This endpoint may be called by agency staff — we look up without agency filter
-    // (agency auth is handled by the preHandler; portal routes skip it, so this
-    //  endpoint is actually open. In production it should be protected by agency auth.
-    //  For now, we validate by requiring a known stakeholder ID.)
-    const stakeholder = await prisma.stakeholder.findFirst({
-      where: { id: stakeholderId },
-    })
-    if (!stakeholder) {
-      return reply.code(404).send({ error: 'Stakeholder not found' })
+    const { stakeholderId, runId } = req.body ?? {}
+    if (!stakeholderId || !runId) {
+      return reply.code(400).send({ error: 'stakeholderId and runId are required' })
     }
 
-    const token     = crypto.randomUUID()
-    const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60 * 1000)
+    const [stakeholder, run] = await Promise.all([
+      prisma.stakeholder.findFirst({ where: { id: stakeholderId, agencyId } }),
+      prisma.workflowRun.findFirst({ where: { id: runId, agencyId } }),
+    ])
+    if (!stakeholder) return reply.code(404).send({ error: 'Stakeholder not found' })
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
 
-    await prisma.stakeholder.update({
-      where: { id: stakeholderId },
-      data: { magicLinkToken: token, magicLinkExpiresAt: expiresAt },
+    const token     = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000)
+
+    // Upsert: revive a previously revoked grant or create a new one
+    const access = await prisma.deliverableAccess.upsert({
+      where: { runId_stakeholderId: { runId, stakeholderId } },
+      update: { token, expiresAt, revokedAt: null, grantedBy: grantedBy ?? null },
+      create: { agencyId, runId, stakeholderId, token, expiresAt, grantedBy: grantedBy ?? null },
     })
 
-    const portalUrl = `${process.env.PORTAL_BASE_URL ?? 'http://localhost:5173'}/portal?token=${token}`
+    const portalUrl = `${process.env.PORTAL_BASE_URL ?? 'http://localhost:5173'}/portal?token=${access.token}`
 
     return reply.send({
       data: {
-        token,
+        token: access.token,
         portalUrl,
         expiresAt,
-        stakeholder: {
-          id:    stakeholder.id,
-          name:  stakeholder.name,
-          email: stakeholder.email,
-        },
+        stakeholder: { id: stakeholder.id, name: stakeholder.name, email: stakeholder.email },
       },
     })
   })
 
   // ── GET /portal/auth/verify ─────────────────────────────────────────────
   app.get('/auth/verify', async (req, reply) => {
-    const token = extractToken(req as Parameters<typeof extractToken>[0])
-    const stakeholder = await resolveToken(token)
+    const token  = extractToken(req as Parameters<typeof extractToken>[0])
+    const access = await resolveAccessToken(token)
 
-    if (!stakeholder) {
-      return reply.code(401).send({ error: 'Invalid or expired magic link' })
-    }
+    if (!access) return reply.code(401).send({ error: 'Invalid, expired, or revoked access link' })
 
+    const { stakeholder } = access
     return reply.send({
       data: {
         stakeholder: {
-          id:      stakeholder.id,
-          name:    stakeholder.name,
-          email:   stakeholder.email,
-          role:    stakeholder.role,
+          id:       stakeholder.id,
+          name:     stakeholder.name,
+          email:    stakeholder.email,
+          role:     stakeholder.role,
           clientId: stakeholder.clientId,
           client: {
             id:   stakeholder.client.id,
@@ -125,55 +158,46 @@ export async function portalRoutes(app: FastifyInstance) {
             slug: stakeholder.client.slug,
           },
         },
+        // Include the specific run this token grants access to
+        runId: access.runId,
       },
     })
   })
 
   // ── GET /portal/deliverables ────────────────────────────────────────────
-  // Returns all completed WorkflowRun outputs for the stakeholder's client,
-  // newest first.
+  // Returns only the specific run this token grants access to.
   app.get('/deliverables', async (req, reply) => {
-    const token = extractToken(req as Parameters<typeof extractToken>[0])
-    const stakeholder = await resolveToken(token)
-    if (!stakeholder) return reply.code(401).send({ error: 'Invalid or expired magic link' })
+    const token  = extractToken(req as Parameters<typeof extractToken>[0])
+    const access = await resolveAccessToken(token)
+    if (!access) return reply.code(401).send({ error: 'Invalid, expired, or revoked access link' })
 
-    const runs = await withAgency(stakeholder.agencyId, () =>
-      prisma.workflowRun.findMany({
-        where: {
-          workflow: { clientId: stakeholder.clientId },
-          status: { in: ['completed', 'waiting_feedback'] },
-        },
-        include: {
-          workflow: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-      })
-    )
+    const run    = access.run
+    const output = run.output as Record<string, unknown>
 
-    const deliverables = runs.map((run) => {
-      const output = run.output as Record<string, unknown>
-      return {
+    return reply.send({
+      data: [{
         id:           run.id,
         workflowId:   run.workflowId,
-        workflowName: (run as unknown as { workflow: { name: string } }).workflow.name,
+        workflowName: access.run.workflow.name,
         status:       run.status,
         finalOutput:  (output.finalOutput as unknown) ?? null,
         createdAt:    run.createdAt,
         completedAt:  run.completedAt,
-      }
+      }],
     })
-
-    return reply.send({ data: deliverables })
   })
 
   // ── GET /portal/deliverables/:id ────────────────────────────────────────
   app.get<{ Params: { id: string } }>('/deliverables/:id', async (req, reply) => {
-    const token = extractToken(req as Parameters<typeof extractToken>[0])
-    const stakeholder = await resolveToken(token)
-    if (!stakeholder) return reply.code(401).send({ error: 'Invalid or expired magic link' })
+    const token  = extractToken(req as Parameters<typeof extractToken>[0])
+    const access = await resolveAccessToken(token)
+    if (!access) return reply.code(401).send({ error: 'Invalid, expired, or revoked access link' })
 
+    const stakeholder = access.stakeholder
     const { id } = req.params
+
+    // Token must grant access to this specific run
+    if (access.runId !== id) return reply.code(403).send({ error: 'Access not granted for this deliverable' })
 
     const run = await withAgency(stakeholder.agencyId, () =>
       prisma.workflowRun.findFirst({
@@ -182,7 +206,7 @@ export async function portalRoutes(app: FastifyInstance) {
           workflow: { clientId: stakeholder.clientId },
         },
         include: {
-          workflow: { select: { id: true, name: true } },
+          workflow: { select: { id: true, name: true, nodes: { select: { id: true, label: true, type: true } } } },
           documents: {
             select: { id: true, name: true, mimeType: true, storageKey: true, sizeBytes: true, createdAt: true },
           },
@@ -207,6 +231,7 @@ export async function portalRoutes(app: FastifyInstance) {
         id:           run.id,
         workflowId:   run.workflowId,
         workflowName: (run as unknown as { workflow: { name: string } }).workflow.name,
+        workflowNodes: (run as unknown as { workflow: { nodes: unknown[] } }).workflow.nodes ?? [],
         status:       run.status,
         finalOutput:  (output.finalOutput as unknown) ?? null,
         nodeStatuses: (output.nodeStatuses as unknown) ?? {},
@@ -220,9 +245,12 @@ export async function portalRoutes(app: FastifyInstance) {
 
   // ── POST /portal/deliverables/:id/feedback ──────────────────────────────
   app.post<{ Params: { id: string } }>('/deliverables/:id/feedback', async (req, reply) => {
-    const token = extractToken(req as Parameters<typeof extractToken>[0])
-    const stakeholder = await resolveToken(token)
-    if (!stakeholder) return reply.code(401).send({ error: 'Invalid or expired magic link' })
+    const token  = extractToken(req as Parameters<typeof extractToken>[0])
+    const access = await resolveAccessToken(token)
+    if (!access) return reply.code(401).send({ error: 'Invalid, expired, or revoked access link' })
+
+    const stakeholder = access.stakeholder
+    if (access.runId !== req.params.id) return reply.code(403).send({ error: 'Access not granted for this deliverable' })
 
     const { id: runId } = req.params
 
@@ -280,6 +308,14 @@ export async function portalRoutes(app: FastifyInstance) {
       })
     )
 
+    // Update run reviewStatus to client_responded (non-blocking)
+    withAgency(stakeholder.agencyId, () =>
+      prisma.workflowRun.update({
+        where: { id: runId },
+        data: { reviewStatus: 'client_responded' },
+      })
+    ).catch(() => { /* non-critical */ })
+
     // Trigger pattern detection (non-blocking — portal feedback is the primary source)
     const clientId = run.workflow?.clientId
     if (clientId) {
@@ -289,6 +325,30 @@ export async function portalRoutes(app: FastifyInstance) {
         clientId,
         agencyId: stakeholder.agencyId,
       }).catch(() => { /* non-critical */ })
+    }
+
+    // Update quality record with stakeholder rating (non-blocking)
+    if (feedback.starRating !== null || feedback.decision) {
+      prisma.contentQualityRecord.findUnique({ where: { runId } })
+        .then((qr) => {
+          if (!qr) return
+          const count = qr.feedbackCount
+          const prevRating = qr.stakeholderRating as number | null
+          const newRating = feedback.starRating !== null
+            ? prevRating !== null
+              ? (prevRating * count + feedback.starRating) / (count + 1)
+              : feedback.starRating
+            : prevRating
+          return prisma.contentQualityRecord.update({
+            where: { runId },
+            data: {
+              stakeholderRating: newRating,
+              feedbackDecision: feedback.decision ?? qr.feedbackDecision,
+              feedbackCount: { increment: 1 },
+            },
+          })
+        })
+        .catch(() => { /* non-critical */ })
     }
 
     // ── Auto re-entry: if the run is waiting_feedback, check if we should
@@ -382,11 +442,12 @@ export async function portalRoutes(app: FastifyInstance) {
   })
 
   // ── GET /portal/feedback ────────────────────────────────────────────────
-  // Returns all feedback this stakeholder has ever submitted.
   app.get('/feedback', async (req, reply) => {
-    const token = extractToken(req as Parameters<typeof extractToken>[0])
-    const stakeholder = await resolveToken(token)
-    if (!stakeholder) return reply.code(401).send({ error: 'Invalid or expired magic link' })
+    const token  = extractToken(req as Parameters<typeof extractToken>[0])
+    const access = await resolveAccessToken(token)
+    if (!access) return reply.code(401).send({ error: 'Invalid, expired, or revoked access link' })
+
+    const stakeholder = access.stakeholder
 
     const feedbacks = await withAgency(stakeholder.agencyId, () =>
       prisma.feedback.findMany({

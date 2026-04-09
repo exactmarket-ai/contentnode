@@ -2,11 +2,31 @@
 // Execution context passed to every executor
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface ClientProfileContext {
+  brandTone?: string | null
+  formality?: string | null
+  pov?: string | null
+  signaturePhrases: string[]
+  avoidPhrases: string[]
+  primaryBuyer: Record<string, unknown>
+  secondaryBuyer: Record<string, unknown>
+  buyerMotivations: string[]
+  buyerFears: string[]
+  visualStyle?: string | null
+  colorTemperature?: string | null
+  currentPositioning?: string | null
+  campaignThemesApproved: string[]
+  manualOverrides: Array<Record<string, unknown>>
+}
+
 export interface NodeExecutionContext {
   workflowRunId: string
   agencyId: string
   nodeId: string
   workflowId: string
+  clientId?: string | null
+  /** Client brand profile — null if not yet populated */
+  clientProfile?: ClientProfileContext | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,6 +57,10 @@ export interface NodeExecutionResult {
   modelUsed?: string
   /** Routing decision for conditional nodes ('pass' | 'fail') */
   routePath?: string
+  /** Number of words processed (for humanizer nodes) */
+  wordsProcessed?: number
+  /** Filenames processed (for file-upload source nodes) */
+  sourceFiles?: string[]
   /**
    * If true, this node requires human input before the workflow can continue.
    * The runner will pause the run (status → 'awaiting_assignment') and stop
@@ -53,4 +77,8 @@ export interface NodeExecutionResult {
   waitingFeedback?: boolean
   /** Node ID to store as pendingFeedbackNodeId in run output */
   pendingFeedbackNodeId?: string
+  /** If true, this node is waiting for a human to review/edit the content */
+  waitingReview?: boolean
+  /** The content to display for human review */
+  reviewContent?: string
 }

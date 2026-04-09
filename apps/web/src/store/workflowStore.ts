@@ -5,7 +5,7 @@ import type { Node, Edge, NodeChange, EdgeChange, Connection, Viewport } from 'r
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ConnectivityMode = 'online' | 'offline'
-export type RunStatus = 'idle' | 'running' | 'completed' | 'failed' | 'awaiting_assignment'
+export type RunStatus = 'idle' | 'running' | 'completed' | 'failed' | 'awaiting_assignment' | 'waiting_review'
 
 export interface ModelConfig {
   provider: 'anthropic' | 'ollama'
@@ -17,9 +17,14 @@ export interface ModelConfig {
 export interface WorkflowMeta {
   id: string | null
   name: string
+  clientId: string | null
   /** Locked after first run — never change after that */
   connectivity_mode: ConnectivityMode
   default_model_config: ModelConfig
+  /** True when the workflow was auto-created by the run engine, not explicitly saved by the user */
+  autoCreated?: boolean
+  /** True once the graph has been explicitly saved (PUT /graph). False for brand-new unsaved workflows. */
+  graphSaved?: boolean
 }
 
 export interface NodeRunStatus {
@@ -29,6 +34,10 @@ export interface NodeRunStatus {
   tokensUsed?: number
   modelUsed?: string
   warning?: string
+  paused?: boolean
+  wordsProcessed?: number
+  startedAt?: string
+  completedAt?: string
 }
 
 // ─── Node palette definition (used by NodePalette + node factories) ───────────
@@ -71,6 +80,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'Scan',
     defaultConfig: { url: '', selector: '' },
   },
+  {
+    type: 'source', subtype: 'instruction-translator',
+    label: 'Instruction Translator', description: 'Parse a brief or notes into a structured instruction object',
+    category: 'source', icon: 'FileSearch',
+    defaultConfig: { subtype: 'instruction-translator', raw_text: '', parsed: null },
+  },
   // Logic
   {
     type: 'logic', subtype: 'ai-generate',
@@ -100,12 +115,48 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     type: 'logic', subtype: 'human-review',
     label: 'Human Review', description: 'Pause for human approval before continuing',
     category: 'logic', icon: 'UserCheck',
-    defaultConfig: { instructions: '', assignee_email: '' },
+    defaultConfig: { subtype: 'human-review', instructions: '', assignee_email: '' },
+  },
+  {
+    type: 'logic', subtype: 'translate',
+    label: 'Translate', description: 'Translate content to another language',
+    category: 'logic', icon: 'Languages',
+    defaultConfig: {
+      subtype: 'translate',
+      target_language: 'ES',
+      source_language: 'auto',
+      provider: 'deepl',
+      formality: 'default',
+      preserve_formatting: true,
+    },
+  },
+  {
+    type: 'logic', subtype: 'quality-review',
+    label: 'Quality Reviewer', description: 'Rate output and suggest prompt/content improvements',
+    category: 'logic', icon: 'BadgeCheck',
+    defaultConfig: {
+      subtype: 'quality-review',
+      goal: 'Evaluate this content for a marketing director audience. It should be engaging, persuasive, and drive the reader toward a clear call-to-action. Avoid academic or overly technical language. Score based on clarity, audience fit, tone, and whether it ends with a compelling CTA.',
+      rubric: '',
+      insight_threshold: 7,
+      auto_create_insight: true,
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
+    },
   },
   // Detection-Humanization loop
   {
+    type: 'logic', subtype: 'humanizer-pro',
+    label: 'Humanizer', description: 'Rewrite content using professional humanization services',
+    category: 'logic', icon: 'PenLine',
+    defaultConfig: {
+      subtype: 'humanizer-pro',
+      humanizer_service: 'auto',
+    },
+  },
+  {
     type: 'logic', subtype: 'humanizer',
-    label: 'Humanizer', description: 'Rewrite content to reduce AI detection score',
+    label: 'Humanizer - Old', description: 'Rewrite content to reduce AI detection score',
     category: 'logic', icon: 'PenLine',
     defaultConfig: {
       subtype: 'humanizer',
@@ -156,12 +207,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'Mic',
     defaultConfig: {
       subtype: 'transcription',
-      provider: 'deepgram',
+      provider: 'assemblyai',
       enable_diarization: true,
       max_speakers: null,
       target_node_ids: [],
       stakeholder_id: null,
-      api_key_ref: 'DEEPGRAM_API_KEY',
+      api_key_ref: 'ASSEMBLYAI_API_KEY',
       audio_files: [],
     },
   },
@@ -169,13 +220,13 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     type: 'output', subtype: 'webhook',
     label: 'Webhook', description: 'POST result to an external URL',
     category: 'output', icon: 'Send',
-    defaultConfig: { url: '', headers: {} },
+    defaultConfig: { subtype: 'webhook', url: '', method: 'POST', content_type: 'application/json', auth_type: 'none', auth_value_ref: '', secret_ref: '', custom_headers: '' },
   },
   {
     type: 'output', subtype: 'email',
     label: 'Email', description: 'Send result via email',
     category: 'output', icon: 'Mail',
-    defaultConfig: { to: '', subject: '' },
+    defaultConfig: { subtype: 'email', provider: 'sendgrid', api_key_ref: 'SENDGRID_API_KEY', from_email: '', from_name: '', to: '', subject: 'Your content is ready' },
   },
   {
     type: 'output', subtype: 'file-export',
@@ -243,13 +294,22 @@ interface WorkflowState {
   // UI
   selectedNodeId: string | null
   runStatus: RunStatus
+  runError: string | null
   nodeRunStatuses: Record<string, NodeRunStatus>
+  finalOutput: unknown
   /** True once the workflow has been run at least once — locks connectivity_mode */
   hasBeenRun: boolean
   /** Set when a transcription node pauses the run awaiting speaker assignment */
   pendingTranscriptionSessionId: string | null
+  /** The currently active run ID — used to resume polling after pauses */
+  activeRunId: string | null
+  /** Set when a human review node pauses the run */
+  pendingReviewRunId: string | null
+  pendingReviewContent: string | null
   /** Active confirmation prompts for applied insights that have 3+ post-apply runs */
   insightConfirmations: InsightConfirmation[]
+  /** True when the graph has unsaved changes (nodes/edges modified since last save or load) */
+  graphDirty: boolean
 
   // Actions — graph
   onNodesChange: (changes: NodeChange[]) => void
@@ -257,12 +317,15 @@ interface WorkflowState {
   onConnect: (connection: Connection) => void
   setViewport: (viewport: Viewport) => void
   addNode: (node: Node) => void
+  loadTemplate: (nodes: Node[], edges: Edge[]) => void
   updateNodeData: (id: string, data: Partial<Record<string, unknown>>) => void
 
   // Actions — UI
   setSelectedNodeId: (id: string | null) => void
   setRunStatus: (status: RunStatus) => void
+  setRunError: (error: string | null) => void
   setNodeRunStatuses: (statuses: Record<string, NodeRunStatus>) => void
+  setFinalOutput: (output: unknown) => void
 
   // Actions — metadata
   setWorkflowName: (name: string) => void
@@ -270,6 +333,11 @@ interface WorkflowState {
 
   // Actions — transcription
   setPendingTranscriptionSessionId: (id: string | null) => void
+
+  setActiveRunId: (id: string | null) => void
+
+  // Actions — human review
+  setPendingReview: (runId: string | null, content: string | null) => void
 
   // Actions — insights
   addInsightConfirmation: (confirmation: InsightConfirmation) => void
@@ -284,6 +352,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflow: {
     id: null,
     name: 'Untitled Workflow',
+    clientId: null,
     connectivity_mode: 'online',
     default_model_config: {
       provider: 'anthropic',
@@ -294,17 +363,26 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   selectedNodeId: null,
   runStatus: 'idle',
+  runError: null,
   nodeRunStatuses: {},
+  finalOutput: null,
   hasBeenRun: false,
   pendingTranscriptionSessionId: null,
+  activeRunId: null,
+  pendingReviewRunId: null,
+  pendingReviewContent: null,
   insightConfirmations: [],
+  graphDirty: false,
 
-  // Graph actions
-  onNodesChange: (changes) =>
-    set({ nodes: applyNodeChanges(changes, get().nodes) }),
+  // Graph actions — each mutation marks the graph dirty
+  onNodesChange: (changes) => {
+    // Only flag dirty for structural changes, not selection/dimension updates
+    const meaningful = changes.some((c) => c.type !== 'select' && c.type !== 'dimensions')
+    set({ nodes: applyNodeChanges(changes, get().nodes), ...(meaningful ? { graphDirty: true } : {}) })
+  },
 
   onEdgesChange: (changes) =>
-    set({ edges: applyEdgeChanges(changes, get().edges) }),
+    set({ edges: applyEdgeChanges(changes, get().edges), graphDirty: true }),
 
   onConnect: (connection) =>
     set({
@@ -318,17 +396,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         },
         get().edges,
       ),
+      graphDirty: true,
     }),
 
   setViewport: (viewport) => set({ viewport }),
 
-  addNode: (node) => set({ nodes: [...get().nodes, node] }),
+  addNode: (node) => set({ nodes: [...get().nodes, node], graphDirty: true }),
+  loadTemplate: (nodes, edges) => set({ nodes, edges, graphDirty: false }),
 
   updateNodeData: (id, data) =>
     set({
       nodes: get().nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, ...data } } : n
       ),
+      graphDirty: true,
     }),
 
   // UI actions
@@ -337,10 +418,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setRunStatus: (status) =>
     set((state) => ({
       runStatus: status,
+      runError: status !== 'failed' ? null : state.runError,
       hasBeenRun: status === 'running' ? true : state.hasBeenRun,
     })),
 
+  setRunError: (error) => set({ runError: error }),
+
   setNodeRunStatuses: (statuses) => set({ nodeRunStatuses: statuses }),
+  setFinalOutput: (output) => set({ finalOutput: output }),
 
   // Metadata actions
   setWorkflowName: (name) =>
@@ -352,6 +437,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Transcription actions
   setPendingTranscriptionSessionId: (id) =>
     set({ pendingTranscriptionSessionId: id }),
+
+  setActiveRunId: (id) => set({ activeRunId: id }),
+
+  // Human review actions
+  setPendingReview: (runId, content) =>
+    set({ pendingReviewRunId: runId, pendingReviewContent: content }),
 
   // Insight confirmation actions
   addInsightConfirmation: (confirmation) =>

@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { createReadStream, existsSync, mkdirSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { prisma } from '@contentnode/database'
@@ -125,16 +125,14 @@ async function callAssemblyAI(
   apiKey: string,
   enableDiarization: boolean,
 ): Promise<{ segments: ParsedSegment[]; durationSecs: number }> {
-  // Step 1: upload audio
-  const stream = createReadStream(filePath)
+  // Step 1: upload audio (read into buffer for reliable Node.js fetch compatibility)
+  const fileBuffer = readFileSync(filePath)
   const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
     method: 'POST',
     headers: { authorization: apiKey, 'content-type': 'application/octet-stream' },
-    body: stream as unknown,
-    // @ts-ignore — Node 20 fetch supports ReadStream bodies with duplex
-    duplex: 'half',
-  } as RequestInit)
-  if (!uploadRes.ok) throw new Error(`AssemblyAI upload failed: ${uploadRes.status}`)
+    body: fileBuffer,
+  })
+  if (!uploadRes.ok) throw new Error(`AssemblyAI upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
   const { upload_url } = (await uploadRes.json()) as { upload_url: string }
 
   // Step 2: request transcription
@@ -144,9 +142,10 @@ async function callAssemblyAI(
     body: JSON.stringify({
       audio_url: upload_url,
       speaker_labels: enableDiarization,
+      speech_models: ['universal-2'],
     }),
   })
-  if (!transcriptRes.ok) throw new Error(`AssemblyAI transcript request failed: ${transcriptRes.status}`)
+  if (!transcriptRes.ok) throw new Error(`AssemblyAI transcript request failed: ${transcriptRes.status} ${await transcriptRes.text()}`)
   const { id } = (await transcriptRes.json()) as { id: string }
 
   // Step 3: poll until completed (up to 10 minutes)
@@ -158,6 +157,7 @@ async function callAssemblyAI(
     const data = (await pollRes.json()) as AssemblyAITranscript
     if (data.status === 'completed') {
       const durationSecs = (data.audio_duration ?? 0) / 1000
+      console.log(`[assemblyai] completed — utterances: ${data.utterances?.length ?? 0}, text preview: ${data.text?.slice(0, 100)}`)
       const segments: ParsedSegment[] = (data.utterances ?? []).map((u) => ({
         speaker: u.speaker,
         startMs: u.start,
@@ -166,7 +166,7 @@ async function callAssemblyAI(
       }))
       return { segments, durationSecs }
     }
-    if (data.status === 'error') throw new Error(`AssemblyAI transcription failed`)
+    if (data.status === 'error') throw new Error(`AssemblyAI transcription failed: ${JSON.stringify(data)}`)
   }
   throw new Error('AssemblyAI transcription timed out after 10 minutes')
 }
@@ -341,15 +341,26 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
     let segments: ParsedSegment[]
     let durationSecs: number
 
-    if (provider === 'deepgram' && apiKey) {
+    if (provider === 'local') {
+      ;({ segments, durationSecs } = localMockTranscription(firstFile.name))
+    } else if (provider === 'deepgram') {
+      if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for Deepgram`)
       ;({ segments, durationSecs } = await callDeeepgram(filePath, apiKey, enableDiarization, maxSpeakers))
-    } else if (provider === 'assemblyai' && apiKey) {
-      ;({ segments, durationSecs } = await callAssemblyAI(filePath, apiKey, enableDiarization))
-    } else if (provider === 'openai-whisper' && apiKey) {
+    } else if (provider === 'assemblyai') {
+      if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for AssemblyAI`)
+      console.log(`[transcription] calling AssemblyAI, file: ${filePath}, diarization: ${enableDiarization}, keyRef: ${apiKeyRef}, keyLen: ${apiKey.length}`)
+      try {
+        ;({ segments, durationSecs } = await callAssemblyAI(filePath, apiKey, enableDiarization))
+        console.log(`[transcription] AssemblyAI returned ${segments.length} segments`)
+      } catch (err) {
+        console.error(`[transcription] AssemblyAI threw:`, err)
+        throw err
+      }
+    } else if (provider === 'openai-whisper') {
+      if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for OpenAI Whisper`)
       ;({ segments, durationSecs } = await callWhisper(filePath, apiKey))
     } else {
-      // local / fallback
-      ;({ segments, durationSecs } = localMockTranscription(firstFile.name))
+      throw new Error(`Unknown transcription provider: ${provider}`)
     }
 
     // ── Determine unique speakers ────────────────────────────────────────────
