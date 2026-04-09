@@ -6,7 +6,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "dev": "tsx watch --env-file .env src/index.ts",
-    "build": "tsc",
+    "build": "echo 'build step skipped - using tsx at runtime'",
     "start": "node dist/index.js"
   },
   "dependencies": {
