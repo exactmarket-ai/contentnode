@@ -1,5 +1,5 @@
 FROM --platform=linux/amd64 node:20-alpine
-# cache-bust: 2026-04-09-v6
+# cache-bust: 2026-04-09-v7
 
 RUN apk add --no-cache openssl
 RUN corepack enable pnpm
@@ -13,7 +13,7 @@ COPY packages/storage/package.json packages/storage/
 COPY packages/shared/package.json packages/shared/
 COPY apps/api/package.json apps/api/
 
-RUN pnpm install --no-frozen-lockfile
+RUN echo "shamefully-hoist=true" >> .npmrc && pnpm install --no-frozen-lockfile
 
 # Copy all source
 COPY packages/ packages/
