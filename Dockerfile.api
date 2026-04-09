@@ -1,5 +1,5 @@
 FROM --platform=linux/amd64 node:20-alpine
-# cache-bust: 2026-04-09-v3
+# cache-bust: 2026-04-09-v4
 
 RUN apk add --no-cache openssl
 RUN corepack enable pnpm
