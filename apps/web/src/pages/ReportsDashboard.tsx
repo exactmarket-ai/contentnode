@@ -250,8 +250,7 @@ export function ReportsDashboard({ clientId: propClientId, days: propDays, start
             value={internalStart}
             max={internalEnd}
             onChange={(e) => setInternalStart(e.target.value)}
-            style={{ colorScheme: 'dark' }}
-            className="h-8 rounded-md border border-border bg-card px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <span className="text-xs text-muted-foreground">to</span>
           <input
@@ -260,8 +259,7 @@ export function ReportsDashboard({ clientId: propClientId, days: propDays, start
             min={internalStart}
             max={toISODate(new Date())}
             onChange={(e) => setInternalEnd(e.target.value)}
-            style={{ colorScheme: 'dark' }}
-            className="h-8 rounded-md border border-border bg-card px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={load} disabled={loading}>
             <Icons.RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
