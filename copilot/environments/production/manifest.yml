@@ -1,0 +1,10 @@
+name: production
+type: Environment
+
+network:
+  vpc:
+    id:                    # leave blank — Copilot creates a new VPC
+  # Subnets are auto-created across 2 AZs for high availability
+
+observability:
+  container_insights: true  # CloudWatch Container Insights

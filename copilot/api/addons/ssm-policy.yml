@@ -1,0 +1,24 @@
+Parameters:
+  App:
+    Type: String
+  Env:
+    Type: String
+  Name:
+    Type: String
+
+Resources:
+  SSMReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Allow ECS tasks to read SSM parameters
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: ssm:GetParameters
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/contentnode/production/*"
+
+Outputs:
+  SSMReadPolicyArn:
+    Description: SSM read policy ARN
+    Value: !Ref SSMReadPolicy

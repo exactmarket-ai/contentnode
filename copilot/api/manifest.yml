@@ -1,0 +1,60 @@
+# API — public-facing Fastify service
+name: api
+type: Load Balanced Web Service
+
+image:
+  build:
+    dockerfile: Dockerfile.api
+    context: .
+  port: 3001
+
+http:
+  path: '/'
+  healthcheck:
+    path: /health
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
+
+cpu: 512        # 0.5 vCPU — scale up for more throughput
+memory: 1024    # 1 GB
+
+execution_role: arn:aws:iam::920096026809:role/contentnode-api-execution-role
+
+count:
+  range: 1-4
+  cooldown:
+    in: 60s
+    out: 120s
+  cpu_percentage: 70
+
+variables:
+  NODE_ENV: production
+  PORT: 3001
+
+secrets:
+  DATABASE_URL: /contentnode/production/DATABASE_URL
+  REDIS_URL: /contentnode/production/REDIS_URL
+  CLERK_SECRET_KEY: /contentnode/production/CLERK_SECRET_KEY
+  CLERK_PUBLISHABLE_KEY: /contentnode/production/CLERK_PUBLISHABLE_KEY
+  ANTHROPIC_API_KEY: /contentnode/production/ANTHROPIC_API_KEY
+  SENDGRID_API_KEY: /contentnode/production/SENDGRID_API_KEY
+  FROM_EMAIL: /contentnode/production/FROM_EMAIL
+  FROM_NAME: /contentnode/production/FROM_NAME
+  S3_BUCKET: /contentnode/production/S3_BUCKET
+  S3_REGION: /contentnode/production/S3_REGION
+  AWS_ACCESS_KEY_ID: /contentnode/production/AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY: /contentnode/production/AWS_SECRET_ACCESS_KEY
+  PORTAL_BASE_URL: /contentnode/production/PORTAL_BASE_URL
+  DEV_CLIENT_ID: /contentnode/production/DEV_CLIENT_ID
+  BYPASSGPT_API_KEY: /contentnode/production/BYPASSGPT_API_KEY
+  DEEPL_API_KEY: /contentnode/production/DEEPL_API_KEY
+  GOOGLE_TRANSLATE_API_KEY: /contentnode/production/GOOGLE_TRANSLATE_API_KEY
+  GPTZERO_API_KEY: /contentnode/production/GPTZERO_API_KEY
+  ORIGINALITY_API_KEY: /contentnode/production/ORIGINALITY_API_KEY
+
+environments:
+  production:
+    count:
+      range: 2-6   # minimum 2 for high availability

@@ -1,0 +1,53 @@
+{
+  "_comment": "Client profile template — copy and fill in for each client. Remove this field before saving.",
+  "_version": "1.0",
+
+  "brandTone": "",
+  "formality": "semi-formal",
+  "pov": "second_person",
+
+  "signaturePhrases": [],
+  "avoidPhrases": [],
+
+  "primaryBuyer": {
+    "title": "",
+    "age_range": "",
+    "pain_points": [],
+    "goals": []
+  },
+  "secondaryBuyer": {
+    "title": "",
+    "age_range": "",
+    "pain_points": [],
+    "goals": []
+  },
+  "buyerMotivations": [],
+  "buyerFears": [],
+
+  "visualStyle": "",
+  "colorTemperature": "neutral",
+  "photographyVsIllustration": "photography",
+  "approvedVisualThemes": [],
+  "avoidVisual": [],
+
+  "currentPositioning": "",
+  "campaignThemesApproved": [],
+
+  "manualOverrides": [
+    {
+      "_example": true,
+      "field": "brandTone",
+      "instruction": "Always write as if speaking directly to a CFO",
+      "source": "client_direct",
+      "confidence": "high",
+      "date": "2026-04-08",
+      "expires": null
+    }
+  ],
+
+  "confidenceMap": {
+    "brandTone": "client_direct",
+    "formality": "historical",
+    "pov": "crawled"
+  }
+}
