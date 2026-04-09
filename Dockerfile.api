@@ -25,8 +25,5 @@ RUN chmod +x scripts/start-api.sh
 # Generate Prisma client
 RUN pnpm --filter @contentnode/database generate
 
-# Compile TypeScript
-RUN pnpm --filter @contentnode/api build
-
-# Runs migrations then starts the compiled server
+# Runs migrations then starts the server
 CMD ["sh", "scripts/start-api.sh"]
