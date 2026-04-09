@@ -1,19 +1,20 @@
-FROM --platform=linux/amd64 node:20-alpine
-# cache-bust: 2026-04-09-v7
+FROM --platform=linux/amd64 node:20.19.1-alpine3.21
 
 RUN apk add --no-cache openssl
 RUN corepack enable pnpm
+
 WORKDIR /app
 
-# Copy workspace manifests first (for better layer caching)
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json .npmrc ./
+# .npmrc must be copied first so pnpm reads shamefully-hoist=true during install
+COPY .npmrc ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 COPY packages/database/package.json packages/database/
 COPY packages/ai/package.json packages/ai/
 COPY packages/storage/package.json packages/storage/
 COPY packages/shared/package.json packages/shared/
 COPY apps/api/package.json apps/api/
 
-RUN echo "shamefully-hoist=true" >> .npmrc && pnpm install --no-frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copy all source
 COPY packages/ packages/
