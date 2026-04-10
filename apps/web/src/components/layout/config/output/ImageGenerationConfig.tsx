@@ -1,0 +1,365 @@
+import { useState } from 'react'
+import * as Icons from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import { FieldGroup } from '../shared'
+
+// ─── Provider metadata ────────────────────────────────────────────────────────
+
+const PROVIDERS = [
+  { value: 'dalle3',        label: 'DALL-E 3',       desc: 'OpenAI' },
+  { value: 'stability',     label: 'Stability AI',   desc: 'SDXL 1.0' },
+  { value: 'fal',           label: 'Fal.ai',         desc: 'FLUX Dev' },
+  { value: 'comfyui',       label: 'ComfyUI',        desc: 'Local' },
+  { value: 'automatic1111', label: 'AUTOMATIC1111',  desc: 'Local' },
+]
+
+// Which settings each provider supports
+const PROVIDER_SUPPORT: Record<string, {
+  aspectRatio: boolean
+  quality: boolean
+  numOutputs: boolean
+  cfgScale: boolean
+  seed: boolean
+  negativePrompt: boolean
+  referenceImage: boolean
+}> = {
+  dalle3: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: false,
+    seed: false,
+    negativePrompt: false,
+    referenceImage: false,
+  },
+  stability: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: true,
+    seed: true,
+    negativePrompt: true,
+    referenceImage: false,
+  },
+  fal: {
+    aspectRatio: true,
+    quality: false,
+    numOutputs: true,
+    cfgScale: false,
+    seed: true,
+    negativePrompt: false,
+    referenceImage: false,
+  },
+  comfyui: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: true,
+    seed: true,
+    negativePrompt: true,
+    referenceImage: false,
+  },
+  automatic1111: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: true,
+    seed: true,
+    negativePrompt: true,
+    referenceImage: true,
+  },
+}
+
+const ASPECT_RATIOS = [
+  { value: '1:1',  label: '1:1 — Square' },
+  { value: '16:9', label: '16:9 — Landscape' },
+  { value: '9:16', label: '9:16 — Portrait' },
+  { value: '4:3',  label: '4:3 — Classic' },
+]
+
+const QUALITY_OPTIONS = [
+  { value: 'draft',    label: 'Draft (fast)' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'high',     label: 'High quality' },
+]
+
+// ─── Unsupported field tooltip ────────────────────────────────────────────────
+
+function UnsupportedOverlay({ label, reason }: { label: string; reason: string }) {
+  return (
+    <div className="relative">
+      <div className="pointer-events-none select-none rounded-md border border-border bg-muted px-2 py-1.5 text-xs text-muted-foreground opacity-50">
+        {label}
+      </div>
+      <div className="absolute -top-5 left-0 text-[9px] text-muted-foreground/60">{reason}</div>
+    </div>
+  )
+}
+
+// ─── Post-run image filmstrip ─────────────────────────────────────────────────
+
+interface GeneratedAsset {
+  type: string
+  storageKey: string
+  localPath: string
+  provider: string
+  generatedAt: string
+}
+
+function ImageFilmstrip({ assets }: { assets: GeneratedAsset[] }) {
+  const [modalSrc, setModalSrc] = useState<string | null>(null)
+
+  if (assets.length === 0) return null
+
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Generated ({assets.length})
+        </p>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {assets.map((asset, i) => (
+            <button
+              key={i}
+              onClick={() => setModalSrc(asset.localPath)}
+              className="shrink-0 h-[140px] w-[140px] overflow-hidden rounded-md border border-border bg-muted transition-opacity hover:opacity-80"
+              title="Click to view full size"
+            >
+              <img
+                src={asset.localPath}
+                alt={`Generated image ${i + 1}`}
+                className="h-full w-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+        <p className="text-[9px] text-muted-foreground/60">
+          Generated {new Date(assets[0].generatedAt).toLocaleString()} via {assets[0].provider}
+        </p>
+      </div>
+
+      {/* Full-size modal */}
+      {modalSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => setModalSrc(null)}
+        >
+          <div className="relative max-h-[90vh] max-w-[90vw]">
+            <img
+              src={modalSrc}
+              alt="Generated image"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setModalSrc(null)}
+              className="absolute -right-3 -top-3 rounded-full bg-white p-1 shadow-lg"
+            >
+              <Icons.X className="h-4 w-4 text-black" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ─── Main config panel ────────────────────────────────────────────────────────
+
+export function ImageGenerationConfig({
+  config,
+  onChange,
+  nodeRunStatus,
+}: {
+  config: Record<string, unknown>
+  onChange: (k: string, v: unknown) => void
+  nodeRunStatus?: { status?: string; output?: unknown }
+}) {
+  const provider = (config.provider as string) ?? 'dalle3'
+  const support  = PROVIDER_SUPPORT[provider] ?? PROVIDER_SUPPORT.dalle3
+  const [seedLocked, setSeedLocked] = useState((config.seed as number | null) != null)
+
+  // Extract generated assets from run output
+  const runOutput = nodeRunStatus?.output as Record<string, unknown> | undefined
+  const assets = (runOutput?.assets as GeneratedAsset[] | undefined) ?? []
+  const hasPassed = nodeRunStatus?.status === 'passed'
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Post-run filmstrip */}
+      {hasPassed && assets.length > 0 && (
+        <>
+          <ImageFilmstrip assets={assets} />
+          <Separator />
+        </>
+      )}
+
+      {/* Provider */}
+      <FieldGroup label="Provider">
+        <Select value={provider} onValueChange={(v) => onChange('provider', v)}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {PROVIDERS.map((p) => (
+              <SelectItem key={p.value} value={p.value} className="text-xs">
+                {p.label}
+                <span className="ml-1 text-muted-foreground">· {p.desc}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+
+      {/* Aspect ratio */}
+      {support.aspectRatio ? (
+        <FieldGroup label="Aspect Ratio">
+          <Select
+            value={(config.aspect_ratio as string) ?? '1:1'}
+            onValueChange={(v) => onChange('aspect_ratio', v)}
+          >
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {ASPECT_RATIOS.map((r) => (
+                <SelectItem key={r.value} value={r.value} className="text-xs">{r.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FieldGroup>
+      ) : (
+        <FieldGroup label="Aspect Ratio">
+          <UnsupportedOverlay label="Not supported by this provider" reason="N/A for this provider" />
+        </FieldGroup>
+      )}
+
+      {/* Quality */}
+      {support.quality ? (
+        <FieldGroup label="Quality">
+          <Select
+            value={(config.quality as string) ?? 'standard'}
+            onValueChange={(v) => onChange('quality', v)}
+          >
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {QUALITY_OPTIONS.map((q) => (
+                <SelectItem key={q.value} value={q.value} className="text-xs">{q.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FieldGroup>
+      ) : (
+        <FieldGroup label="Quality">
+          <UnsupportedOverlay label="Not configurable for Fal.ai" reason="N/A for this provider" />
+        </FieldGroup>
+      )}
+
+      {/* Number of outputs */}
+      <FieldGroup label="Number of Images">
+        <Input
+          type="number"
+          min={1}
+          max={4}
+          className="h-8 text-xs"
+          value={(config.num_outputs as number) ?? 1}
+          onChange={(e) => onChange('num_outputs', Math.max(1, Math.min(4, Number(e.target.value))))}
+        />
+      </FieldGroup>
+
+      {/* CFG scale */}
+      {support.cfgScale ? (
+        <FieldGroup label={`CFG Scale: ${config.cfg_scale ?? 7}`}>
+          <input
+            type="range" min={1} max={20} step={0.5}
+            className="w-full accent-foreground"
+            value={(config.cfg_scale as number) ?? 7}
+            onChange={(e) => onChange('cfg_scale', Number(e.target.value))}
+          />
+        </FieldGroup>
+      ) : (
+        <FieldGroup label="CFG Scale">
+          <UnsupportedOverlay label="Not configurable" reason="N/A for this provider" />
+        </FieldGroup>
+      )}
+
+      {/* Seed */}
+      {support.seed ? (
+        <FieldGroup label="Seed">
+          <div className="flex gap-1.5">
+            <Input
+              type="number"
+              className="h-8 text-xs"
+              placeholder="Random"
+              disabled={!seedLocked}
+              value={seedLocked ? ((config.seed as number) ?? '') : ''}
+              onChange={(e) => onChange('seed', e.target.value ? Number(e.target.value) : null)}
+            />
+            <button
+              onClick={() => {
+                const next = !seedLocked
+                setSeedLocked(next)
+                if (!next) onChange('seed', null)
+              }}
+              className={cn(
+                'shrink-0 rounded-md border px-2 transition-colors text-xs',
+                seedLocked
+                  ? 'border-foreground bg-foreground text-background'
+                  : 'border-border bg-transparent text-muted-foreground hover:border-foreground',
+              )}
+              title={seedLocked ? 'Unlock seed (random each run)' : 'Lock seed (reproducible)'}
+            >
+              {seedLocked ? <Icons.Lock className="h-3 w-3" /> : <Icons.Unlock className="h-3 w-3" />}
+            </button>
+          </div>
+          <p className="mt-1 text-[9px] text-muted-foreground">
+            {seedLocked ? 'Fixed seed — same prompt produces same image' : 'Random seed each run'}
+          </p>
+        </FieldGroup>
+      ) : (
+        <FieldGroup label="Seed">
+          <UnsupportedOverlay label="Not supported by DALL-E 3" reason="N/A for this provider" />
+        </FieldGroup>
+      )}
+
+      {/* Negative prompt */}
+      {support.negativePrompt ? (
+        <FieldGroup label="Negative Prompt">
+          <Textarea
+            className="min-h-[60px] text-xs resize-none"
+            placeholder="e.g. blurry, watermark, text, low quality, distorted…"
+            value={(config.negative_prompt as string) ?? ''}
+            onChange={(e) => onChange('negative_prompt', e.target.value)}
+          />
+        </FieldGroup>
+      ) : (
+        <FieldGroup label="Negative Prompt">
+          <UnsupportedOverlay label="Not supported by this provider" reason="Use the Image Prompt Builder to add negative guidance" />
+        </FieldGroup>
+      )}
+
+      {/* Reference image (img2img) */}
+      {support.referenceImage && (
+        <FieldGroup label="Reference Image URL (optional)">
+          <Input
+            className="h-8 text-xs"
+            placeholder="https://… or leave blank for text-to-image"
+            value={(config.reference_image as string) ?? ''}
+            onChange={(e) => onChange('reference_image', e.target.value)}
+          />
+        </FieldGroup>
+      )}
+
+      {/* Local provider notes */}
+      {(provider === 'comfyui' || provider === 'automatic1111') && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-800">
+          <strong>{provider === 'comfyui' ? 'ComfyUI' : 'AUTOMATIC1111'}</strong> must be running
+          locally. Set <code className="font-mono">
+            {provider === 'comfyui' ? 'COMFYUI_BASE_URL' : 'A1111_BASE_URL'}
+          </code> in your worker .env if not using the default port.
+        </div>
+      )}
+    </div>
+  )
+}

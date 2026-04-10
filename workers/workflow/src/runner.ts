@@ -15,6 +15,8 @@ import { WebhookNodeExecutor } from './executors/webhook.js'
 import { TranslationNodeExecutor } from './executors/translation.js'
 import { QualityReviewNodeExecutor } from './executors/qualityReview.js'
 import { InstructionTranslatorExecutor } from './executors/instructionTranslator.js'
+import { ImagePromptBuilderExecutor } from './executors/imagePromptBuilder.js'
+import { ImageGenerationExecutor } from './executors/imageGeneration.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -79,6 +81,8 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:human-review':        HumanReviewNodeExecutor,
   'logic:translate':           TranslationNodeExecutor,
   'logic:quality-review':      QualityReviewNodeExecutor,
+  'logic:image-prompt-builder': ImagePromptBuilderExecutor,
+  'output:image-generation':   ImageGenerationExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {

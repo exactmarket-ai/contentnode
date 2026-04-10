@@ -78,6 +78,33 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
             Received {new Date(nodeStatuses[id].startedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </p>
         )}
+        {/* Image generation: show thumbnail strip on canvas */}
+        {isPassed && subtype === 'image-generation' && (() => {
+          const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
+          const assets = output?.assets as { localPath: string }[] | undefined
+          if (!assets?.length) return null
+          return (
+            <div className="mt-1.5 flex gap-1 overflow-x-auto">
+              {assets.slice(0, 3).map((a, i) => (
+                <img
+                  key={i}
+                  src={a.localPath}
+                  alt={`Generated ${i + 1}`}
+                  className="h-10 w-10 shrink-0 rounded object-cover border"
+                  style={{ borderColor: spec.accent + '44' }}
+                />
+              ))}
+              {assets.length > 3 && (
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded border text-[9px] font-medium"
+                  style={{ borderColor: spec.accent + '44', color: spec.accent }}
+                >
+                  +{assets.length - 3}
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

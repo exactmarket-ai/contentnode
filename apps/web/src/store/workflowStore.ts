@@ -141,6 +141,18 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     },
   },
   {
+    type: 'logic', subtype: 'image-prompt-builder',
+    label: 'Image Prompt Builder', description: 'Translate a creative brief into a structured image generation prompt',
+    category: 'logic', icon: 'ImagePlay',
+    defaultConfig: {
+      subtype: 'image-prompt-builder',
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      aspect_ratio_override: '',
+      style_hint: '',
+    },
+  },
+  {
     type: 'logic', subtype: 'quality-review',
     label: 'Quality Reviewer', description: 'Rate output and suggest prompt/content improvements',
     category: 'logic', icon: 'BadgeCheck',
@@ -256,6 +268,22 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     label: 'Content Output', description: 'Format and deliver generated content',
     category: 'output', icon: 'FileText',
     defaultConfig: { output_type: 'blog-post', min_words: 800, max_words: 1200, format_options: {} },
+  },
+  {
+    type: 'output', subtype: 'image-generation',
+    label: 'Image Generation', description: 'Generate images from a prompt using DALL-E 3, Stability AI, or Fal.ai',
+    category: 'output', icon: 'Image',
+    defaultConfig: {
+      subtype: 'image-generation',
+      provider: 'dalle3',
+      aspect_ratio: '1:1',
+      quality: 'standard',
+      num_outputs: 1,
+      cfg_scale: 7,
+      seed: null,
+      negative_prompt: '',
+      reference_image: '',
+    },
   },
   {
     type: 'output', subtype: 'client-feedback',
