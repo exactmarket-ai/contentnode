@@ -160,4 +160,43 @@ export function localPath(storageKey: string): string {
   return resolve(join(UPLOAD_DIR, storageKey))
 }
 
+// ─── Generated asset storage ─────────────────────────────────────────────────
+
+/**
+ * Save a generated asset (image, video, audio) to persistent local storage.
+ *
+ * Accepts either:
+ *   - A URL string — the file is fetched and the response body is saved
+ *   - A Buffer — saved directly
+ *
+ * Files are stored under the "generated/" prefix so they are grouped separately
+ * from user-uploaded documents.
+ *
+ * Returns the storage key (e.g. "generated/abc123.jpg") which can be used to
+ * derive the public serving path: `/files/generated/abc123.jpg`
+ */
+export async function saveGeneratedFile(
+  source: string | Buffer,
+  filename: string,
+  contentType = 'application/octet-stream',
+): Promise<string> {
+  const storageKey = `generated/${filename}`
+
+  let buffer: Buffer
+
+  if (typeof source === 'string') {
+    // Fetch from URL (provider temporary URL or localhost provider endpoint)
+    const response = await fetch(source)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch generated file from ${source}: HTTP ${response.status}`)
+    }
+    buffer = Buffer.from(await response.arrayBuffer())
+  } else {
+    buffer = source
+  }
+
+  await uploadBuffer(storageKey, buffer, contentType)
+  return storageKey
+}
+
 export { UPLOAD_DIR }

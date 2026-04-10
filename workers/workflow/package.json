@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./src/worker.ts",
   "scripts": {
-    "dev": "tsx watch --env-file ../../apps/api/.env src/worker.ts",
+    "dev": "tsx watch --env-file .env src/worker.ts",
+    "dev:prod": "tsx watch --env-file .env.production src/worker.ts",
     "build": "tsc",
     "start": "node --import tsx/esm src/worker.ts"
   },

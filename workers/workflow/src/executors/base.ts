@@ -50,6 +50,21 @@ export abstract class NodeExecutor {
   ): Promise<NodeExecutionResult>
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Generated asset reference — stored in node output after file is saved locally
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GeneratedAsset {
+  type: 'image' | 'video' | 'audio'
+  /** Storage key used by @contentnode/storage (e.g. "generated/abc123.jpg") */
+  storageKey: string
+  /** Public serving path (e.g. "/files/generated/abc123.jpg") */
+  localPath: string
+  /** Provider that generated the asset (e.g. "dalle3", "runway", "comfyui") */
+  provider: string
+  generatedAt: string  // ISO timestamp
+}
+
 export interface NodeExecutionResult {
   output: unknown
   /** Token usage to record (only set for AI nodes) */
@@ -61,6 +76,8 @@ export interface NodeExecutionResult {
   wordsProcessed?: number
   /** Filenames processed (for file-upload source nodes) */
   sourceFiles?: string[]
+  /** Generated image/video/audio assets saved to local storage */
+  generatedAssets?: GeneratedAsset[]
   /**
    * If true, this node requires human input before the workflow can continue.
    * The runner will pause the run (status → 'awaiting_assignment') and stop
@@ -81,4 +98,47 @@ export interface NodeExecutionResult {
   waitingReview?: boolean
   /** The content to display for human review */
   reviewContent?: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared async polling helper — used by any executor that calls an async API
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AsyncPollOptions<T> {
+  /** Called repeatedly until it returns a non-null result or timeout is reached */
+  poll: () => Promise<T | null>
+  /** How long to wait between polls (ms). Default: 3000 */
+  intervalMs?: number
+  /** How long to poll before giving up (ms). Default: 300000 (5 min) */
+  timeoutMs?: number
+  /** Human-readable label for timeout error messages */
+  label?: string
+}
+
+/**
+ * Polls `options.poll` until it returns a non-null value or the timeout is reached.
+ * Waits `intervalMs` between each attempt.
+ *
+ * Usage:
+ *   const result = await asyncPoll({
+ *     poll: async () => {
+ *       const status = await checkJobStatus(jobId)
+ *       return status.done ? status.result : null
+ *     },
+ *     intervalMs: 5000,
+ *     timeoutMs: 120_000,
+ *     label: 'image generation',
+ *   })
+ */
+export async function asyncPoll<T>(options: AsyncPollOptions<T>): Promise<T> {
+  const { poll, intervalMs = 3000, timeoutMs = 300_000, label = 'async operation' } = options
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    const result = await poll()
+    if (result !== null) return result
+    await new Promise<void>((resolve) => setTimeout(resolve, intervalMs))
+  }
+
+  throw new Error(`Timed out waiting for ${label} after ${timeoutMs / 1000}s`)
 }

@@ -11,6 +11,7 @@
     "dev:api": "pnpm --filter @contentnode/api dev",
     "dev:web": "pnpm --filter @contentnode/web dev",
     "dev:worker": "pnpm --filter @contentnode/workflow-worker dev",
+    "dev:worker:prod": "pnpm --filter @contentnode/workflow-worker dev:prod",
     "db:generate": "pnpm --filter @contentnode/database generate",
     "db:migrate": "pnpm --filter @contentnode/database migrate:dev",
     "db:migrate:deploy": "pnpm --filter @contentnode/database migrate:deploy",

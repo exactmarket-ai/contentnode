@@ -38,6 +38,8 @@ async function authPluginFn(app: FastifyInstance) {
     // Portal and writer portal routes use magic link auth — skip Clerk JWT check
     if (req.url.startsWith('/portal')) return
     if (req.url.startsWith('/writer')) return
+    // Generated files are public static assets — no auth required
+    if (req.url.startsWith('/files/generated/')) return
     // Invite token validation is public — no Clerk auth needed to peek at invite details
     if (req.method === 'GET' && req.url.startsWith('/api/v1/team/accept-invite/')) return
     // Client logos are public assets — no auth needed for <img src> to work
