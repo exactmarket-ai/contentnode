@@ -96,8 +96,9 @@ Respond with a JSON object (no markdown, no code fences) with exactly these fiel
             data: {
               agencyId: ctx.agencyId!,
               clientId: ctx.clientId!,
-              patternType: 'structure',
-              summary: `Quality score ${reviewOutput.score}/10 — ${reviewOutput.overall_critique.slice(0, 120)}`,
+              type: 'structure',
+              title: `Quality score ${reviewOutput.score}/10`,
+              body: reviewOutput.overall_critique.slice(0, 120),
               suggestedNodeType: 'ai-generate',
               suggestedConfigChange: JSON.stringify({
                 improved_prompt: reviewOutput.improved_prompt,
