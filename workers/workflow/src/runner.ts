@@ -567,7 +567,6 @@ export class WorkflowRunner {
 
           // Media generation nodes receive a structured inputs collection instead of flat strings
           const MULTI_INPUT_SUBTYPES = new Set(['image-prompt-builder', 'video-prompt-builder', 'image-generation', 'video-generation'])
-          const nodeSubtype = (config as Record<string, unknown>).subtype as string | undefined
 
           let input: unknown
           if (activeUpstreamEdges.length === 0) {
