@@ -143,7 +143,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'video-prompt-builder',
     label: 'Video Prompt Builder', description: 'Translate a creative brief or image into a structured video generation prompt',
-    category: 'logic', icon: 'VideoIcon',
+    category: 'logic', icon: 'Video',
     defaultConfig: {
       subtype: 'video-prompt-builder',
       provider: 'anthropic',
@@ -156,7 +156,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'image-prompt-builder',
     label: 'Image Prompt Builder', description: 'Translate a creative brief into a structured image generation prompt',
-    category: 'logic', icon: 'ImagePlay',
+    category: 'logic', icon: 'ImageIcon',
     defaultConfig: {
       subtype: 'image-prompt-builder',
       provider: 'anthropic',
