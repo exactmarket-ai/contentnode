@@ -17,6 +17,7 @@ import { ApiFetchConfig } from './config/source/ApiFetchConfig'
 import { WebScrapeConfig } from './config/source/WebScrapeConfig'
 import { TranscriptionConfig } from './config/source/TranscriptionConfig'
 import { InstructionTranslatorConfig } from './config/source/InstructionTranslatorConfig'
+import { WorkflowOutputConfig } from './config/source/WorkflowOutputConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -75,6 +76,8 @@ function NodeConfigForm({
         return <WebScrapeConfig config={config} onChange={onChange} />
       if (subtype === 'instruction-translator')
         return <InstructionTranslatorConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} nodeId={nodeId} />
+      if (subtype === 'workflow-output')
+        return <WorkflowOutputConfig config={config} onChange={onChange} />
       return <DocumentSourceConfig config={config} onChange={onChange} />
     case 'logic':
       if (subtype === 'humanizer-pro')

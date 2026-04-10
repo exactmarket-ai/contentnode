@@ -39,6 +39,8 @@ model Agency {
   promptTemplates    PromptTemplate[]
   clientProfiles     ClientProfile[]
   companyProfiles    CompanyProfile[]
+  divisions          Division[]
+  jobs               Job[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -91,6 +93,7 @@ model Client {
   promptTemplates PromptTemplate[]
   profiles        ClientProfile[]
   companyProfiles CompanyProfile[]
+  divisions    Division[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -217,6 +220,48 @@ model WorkflowSchedule {
 }
 
 // ─────────────────────────────────────────────
+// Division — a subdivision of a client (e.g. department, brand)
+// ─────────────────────────────────────────────
+model Division {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  clientId  String   @map("client_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agency Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  jobs   Job[]
+  runs   WorkflowRun[]
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("divisions")
+}
+
+// ─────────────────────────────────────────────
+// Job — a project/campaign within a division
+// ─────────────────────────────────────────────
+model Job {
+  id          String   @id @default(cuid())
+  agencyId    String   @map("agency_id")
+  divisionId  String   @map("division_id")
+  name        String
+  budgetCents Int?     @map("budget_cents")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  runs     WorkflowRun[]
+
+  @@index([agencyId])
+  @@index([divisionId])
+  @@map("jobs")
+}
+
+// ─────────────────────────────────────────────
 // Node — a single node in a workflow graph
 // ─────────────────────────────────────────────
 model Node {
@@ -314,6 +359,10 @@ model WorkflowRun {
   reviewStatus        String    @default("none") @map("review_status") // none | pending | sent_to_client | client_responded | closed
   reviewerIds         Json      @default("[]") @map("reviewer_ids")   // stakeholder IDs assigned to review
   contentHash         String?   @map("content_hash")  // SHA-256 of all source node content — groups runs of same input
+  divisionId          String?   @map("division_id")
+  jobId               String?   @map("job_id")
+  itemName            String?   @map("item_name")
+  itemVersion         Int       @default(1) @map("item_version")
 
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   user              User?                 @relation(fields: [triggeredBy], references: [id])
@@ -322,10 +371,14 @@ model WorkflowRun {
   qualityRecord     ContentQualityRecord?
   writerAssignments WriterAssignment[]
   deliverableAccess DeliverableAccess[]
+  division          Division?             @relation(fields: [divisionId], references: [id])
+  job               Job?                  @relation(fields: [jobId], references: [id])
 
   @@index([agencyId])
   @@index([workflowId])
   @@index([batchId])
+  @@index([divisionId])
+  @@index([jobId])
   @@map("workflow_runs")
 }
 

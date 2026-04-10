@@ -4192,7 +4192,460 @@ function CompanyProfileTab({ clientId, clientName }: { clientId: string; clientN
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company'] as const
+// ── Structure Tab (Divisions & Jobs) ─────────────────────────────────────────
+
+interface DivisionJob {
+  id: string
+  name: string
+  budgetCents: number | null
+  createdAt: string
+}
+
+interface DivisionData {
+  id: string
+  name: string
+  jobs: DivisionJob[]
+  createdAt: string
+}
+
+function StructureTab({ client }: { client: Client }) {
+  const [divisions, setDivisions] = useState<DivisionData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [addingDivision, setAddingDivision] = useState(false)
+  const [newDivisionName, setNewDivisionName] = useState('')
+  const [savingDivision, setSavingDivision] = useState(false)
+  const [editingDivisionId, setEditingDivisionId] = useState<string | null>(null)
+  const [editingDivisionName, setEditingDivisionName] = useState('')
+  const [deletingDivisionId, setDeletingDivisionId] = useState<string | null>(null)
+  const [confirmDeleteDivision, setConfirmDeleteDivision] = useState<DivisionData | null>(null)
+
+  // Per-division job add state
+  const [addingJobDivisionId, setAddingJobDivisionId] = useState<string | null>(null)
+  const [newJobName, setNewJobName] = useState('')
+  const [newJobBudget, setNewJobBudget] = useState('')
+  const [savingJob, setSavingJob] = useState(false)
+  const [editingJob, setEditingJob] = useState<{ divisionId: string; job: DivisionJob } | null>(null)
+  const [editJobName, setEditJobName] = useState('')
+  const [editJobBudget, setEditJobBudget] = useState('')
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null)
+
+  const load = () => {
+    setLoading(true)
+    apiFetch(`/api/v1/clients/${client.id}/divisions`)
+      .then((r) => r.json())
+      .then(({ data }) => setDivisions(data ?? []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [client.id])
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  // Division actions
+  const createDivision = async () => {
+    if (!newDivisionName.trim()) return
+    setSavingDivision(true)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${client.id}/divisions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newDivisionName.trim() }),
+      })
+      if (res.ok) {
+        const { data } = await res.json()
+        setDivisions((prev) => [...prev, data])
+        setNewDivisionName('')
+        setAddingDivision(false)
+        setExpandedIds((prev) => new Set([...prev, data.id]))
+      }
+    } finally { setSavingDivision(false) }
+  }
+
+  const startEditDivision = (d: DivisionData) => {
+    setEditingDivisionId(d.id)
+    setEditingDivisionName(d.name)
+  }
+
+  const saveEditDivision = async (id: string) => {
+    if (!editingDivisionName.trim()) return
+    try {
+      const res = await apiFetch(`/api/v1/clients/${client.id}/divisions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingDivisionName.trim() }),
+      })
+      if (res.ok) {
+        setDivisions((prev) => prev.map((d) => d.id === id ? { ...d, name: editingDivisionName.trim() } : d))
+        setEditingDivisionId(null)
+      }
+    } catch { /* ignore */ }
+  }
+
+  const deleteDivision = async (id: string) => {
+    setDeletingDivisionId(id)
+    try {
+      await apiFetch(`/api/v1/clients/${client.id}/divisions/${id}`, { method: 'DELETE' })
+      setDivisions((prev) => prev.filter((d) => d.id !== id))
+      setConfirmDeleteDivision(null)
+    } finally {
+      setDeletingDivisionId(null)
+    }
+  }
+
+  // Job actions
+  const createJob = async (divisionId: string) => {
+    if (!newJobName.trim()) return
+    setSavingJob(true)
+    try {
+      const budgetCents = newJobBudget ? Math.round(parseFloat(newJobBudget) * 100) : undefined
+      const res = await apiFetch(`/api/v1/clients/${client.id}/divisions/${divisionId}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newJobName.trim(), budgetCents }),
+      })
+      if (res.ok) {
+        const { data } = await res.json()
+        setDivisions((prev) => prev.map((d) =>
+          d.id === divisionId ? { ...d, jobs: [...d.jobs, data] } : d,
+        ))
+        setNewJobName('')
+        setNewJobBudget('')
+        setAddingJobDivisionId(null)
+      }
+    } finally { setSavingJob(false) }
+  }
+
+  const startEditJob = (divisionId: string, job: DivisionJob) => {
+    setEditingJob({ divisionId, job })
+    setEditJobName(job.name)
+    setEditJobBudget(job.budgetCents != null ? (job.budgetCents / 100).toFixed(2) : '')
+  }
+
+  const saveEditJob = async () => {
+    if (!editingJob || !editJobName.trim()) return
+    const { divisionId, job } = editingJob
+    try {
+      const budgetCents = editJobBudget ? Math.round(parseFloat(editJobBudget) * 100) : null
+      const res = await apiFetch(`/api/v1/clients/${client.id}/divisions/${divisionId}/jobs/${job.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editJobName.trim(), budgetCents }),
+      })
+      if (res.ok) {
+        setDivisions((prev) => prev.map((d) =>
+          d.id === divisionId
+            ? { ...d, jobs: d.jobs.map((j) => j.id === job.id ? { ...j, name: editJobName.trim(), budgetCents } : j) }
+            : d,
+        ))
+        setEditingJob(null)
+      }
+    } catch { /* ignore */ }
+  }
+
+  const deleteJob = async (divisionId: string, jobId: string) => {
+    if (!confirm('Delete this job? All associated run tags will be cleared.')) return
+    setDeletingJobId(jobId)
+    try {
+      await apiFetch(`/api/v1/clients/${client.id}/divisions/${divisionId}/jobs/${jobId}`, { method: 'DELETE' })
+      setDivisions((prev) => prev.map((d) =>
+        d.id === divisionId ? { ...d, jobs: d.jobs.filter((j) => j.id !== jobId) } : d,
+      ))
+    } finally { setDeletingJobId(null) }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Divisions & Jobs</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Organise runs by division (e.g. department) and job (e.g. campaign). Used to tag and filter workflow runs.
+          </p>
+        </div>
+        <Button size="sm" className="h-7 text-xs" onClick={() => { setAddingDivision(true); setNewDivisionName('') }}>
+          <Icons.Plus className="mr-1.5 h-3 w-3" />
+          Add Division
+        </Button>
+      </div>
+
+      {/* Add division inline form */}
+      {addingDivision && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/40 p-3">
+          <Input
+            autoFocus
+            value={newDivisionName}
+            onChange={(e) => setNewDivisionName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') createDivision(); if (e.key === 'Escape') setAddingDivision(false) }}
+            placeholder="Division name…"
+            className="h-7 flex-1 text-xs"
+          />
+          <Button size="sm" className="h-7 text-xs" onClick={createDivision} disabled={savingDivision || !newDivisionName.trim()}>
+            {savingDivision ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : 'Add'}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setAddingDivision(false)}>Cancel</Button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {divisions.length === 0 && !addingDivision && (
+        <div className="flex flex-col items-center py-12 text-center">
+          <Icons.FolderOpen className="mb-2 h-8 w-8 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">No divisions yet</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">Add a division to start organising runs into projects</p>
+          <Button size="sm" className="mt-3 h-7 text-xs" onClick={() => setAddingDivision(true)}>
+            <Icons.Plus className="mr-1.5 h-3 w-3" />
+            Add first division
+          </Button>
+        </div>
+      )}
+
+      {/* Division list */}
+      <div className="space-y-3">
+        {divisions.map((division) => {
+          const isExpanded = expandedIds.has(division.id)
+          const isEditingThis = editingDivisionId === division.id
+
+          return (
+            <div key={division.id} className="rounded-xl border border-border bg-card overflow-hidden">
+              {/* Division header */}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <button
+                  onClick={() => toggleExpand(division.id)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Icons.ChevronRight className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')} />
+                </button>
+
+                {isEditingThis ? (
+                  <Input
+                    autoFocus
+                    value={editingDivisionName}
+                    onChange={(e) => setEditingDivisionName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveEditDivision(division.id)
+                      if (e.key === 'Escape') setEditingDivisionId(null)
+                    }}
+                    className="h-6 flex-1 text-xs"
+                    onBlur={() => saveEditDivision(division.id)}
+                  />
+                ) : (
+                  <button
+                    className="flex-1 text-left text-sm font-medium hover:text-blue-600 transition-colors"
+                    onClick={() => toggleExpand(division.id)}
+                  >
+                    {division.name}
+                  </button>
+                )}
+
+                <span className="text-xs text-muted-foreground shrink-0">{division.jobs.length} job{division.jobs.length !== 1 ? 's' : ''}</span>
+
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => startEditDivision(division)}
+                    title="Rename"
+                  >
+                    <Icons.Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-red-600"
+                    onClick={() => setConfirmDeleteDivision(division)}
+                    title="Delete division"
+                  >
+                    <Icons.Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Jobs list (expanded) */}
+              {isExpanded && (
+                <div className="border-t border-border bg-muted/10">
+                  {division.jobs.length === 0 && addingJobDivisionId !== division.id && (
+                    <div className="px-12 py-3">
+                      <p className="text-xs text-muted-foreground/60 italic">No jobs yet</p>
+                    </div>
+                  )}
+
+                  {division.jobs.map((job) => {
+                    const isEditingThisJob = editingJob?.job.id === job.id
+                    return (
+                      <div key={job.id} className="flex items-center gap-3 border-b border-border/50 last:border-0 px-12 py-2.5">
+                        <Icons.Briefcase className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+
+                        {isEditingThisJob ? (
+                          <div className="flex flex-1 items-center gap-2">
+                            <Input
+                              autoFocus
+                              value={editJobName}
+                              onChange={(e) => setEditJobName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') saveEditJob(); if (e.key === 'Escape') setEditingJob(null) }}
+                              placeholder="Job name"
+                              className="h-6 flex-1 text-xs"
+                            />
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                              <Input
+                                value={editJobBudget}
+                                onChange={(e) => setEditJobBudget(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveEditJob(); if (e.key === 'Escape') setEditingJob(null) }}
+                                placeholder="Budget"
+                                className="h-6 w-28 pl-5 text-xs"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                              />
+                            </div>
+                            <Button size="sm" className="h-6 text-xs px-2" onClick={saveEditJob}>Save</Button>
+                            <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setEditingJob(null)}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="flex-1 text-xs">{job.name}</span>
+                            {job.budgetCents != null && (
+                              <span className="text-xs text-muted-foreground shrink-0">
+                                ${(job.budgetCents / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </span>
+                            )}
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
+                                onClick={() => startEditJob(division.id, job)}
+                                title="Edit job"
+                              >
+                                <Icons.Pencil className="h-2.5 w-2.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0 text-muted-foreground hover:text-red-600"
+                                onClick={() => deleteJob(division.id, job.id)}
+                                disabled={deletingJobId === job.id}
+                                title="Delete job"
+                              >
+                                {deletingJobId === job.id
+                                  ? <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                  : <Icons.Trash2 className="h-2.5 w-2.5" />
+                                }
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {/* Add job form */}
+                  {addingJobDivisionId === division.id ? (
+                    <div className="flex items-center gap-2 px-12 py-2.5 border-t border-border/50">
+                      <Icons.Briefcase className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                      <Input
+                        autoFocus
+                        value={newJobName}
+                        onChange={(e) => setNewJobName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') createJob(division.id); if (e.key === 'Escape') setAddingJobDivisionId(null) }}
+                        placeholder="Job name…"
+                        className="h-6 flex-1 text-xs"
+                      />
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                        <Input
+                          value={newJobBudget}
+                          onChange={(e) => setNewJobBudget(e.target.value)}
+                          placeholder="Budget"
+                          className="h-6 w-28 pl-5 text-xs"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                      <Button size="sm" className="h-6 text-xs px-2" onClick={() => createJob(division.id)} disabled={savingJob || !newJobName.trim()}>
+                        {savingJob ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : 'Add'}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setAddingJobDivisionId(null)}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setAddingJobDivisionId(division.id); setNewJobName(''); setNewJobBudget('') }}
+                      className="flex w-full items-center gap-2 px-12 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                    >
+                      <Icons.Plus className="h-3 w-3" />
+                      Add job
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Delete division confirm dialog */}
+      {confirmDeleteDivision && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-96 rounded-xl border border-border bg-card shadow-2xl">
+            <div className="border-b border-border px-5 py-4 flex items-center gap-2">
+              <Icons.Trash2 className="h-4 w-4 text-red-600" />
+              <h2 className="text-sm font-semibold">Delete Division</h2>
+            </div>
+            <div className="px-5 py-4 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Delete <span className="font-medium text-foreground">{confirmDeleteDivision.name}</span>?
+              </p>
+              {confirmDeleteDivision.jobs.length > 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  This will also delete {confirmDeleteDivision.jobs.length} job{confirmDeleteDivision.jobs.length !== 1 ? 's' : ''} within it.
+                  Existing run tags pointing to these jobs will be cleared.
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setConfirmDeleteDivision(null)} disabled={deletingDivisionId != null}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => deleteDivision(confirmDeleteDivision.id)}
+                disabled={deletingDivisionId != null}
+              >
+                {deletingDivisionId != null && <Icons.Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+const TABS = ['overview', 'workflows', 'library', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4272,6 +4725,7 @@ export function ClientDetailPage() {
     reports:      'Reports',
     profile:      'Profile',
     company:      'Company',
+    structure:    'Structure',
   }
 
   return (
@@ -4357,6 +4811,7 @@ export function ClientDetailPage() {
         {activeTab === 'reports' && <ClientReportsTab clientId={client.id} />}
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'company' && <CompanyProfileTab clientId={client.id} clientName={client.name} />}
+        {activeTab === 'structure' && <StructureTab client={client} />}
       </div>
 
       {showEditClient && (

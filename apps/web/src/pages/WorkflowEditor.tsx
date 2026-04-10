@@ -11,6 +11,7 @@ import { InsightConfirmationBanner } from '@/components/insights/InsightConfirma
 import { HumanReviewPanel } from '@/components/review/HumanReviewPanel'
 import { RunHistoryPanel } from '@/components/layout/RunHistoryPanel'
 import { AlignmentToolbar } from '@/components/canvas/AlignmentToolbar'
+import { RunNamingPanel } from '@/components/canvas/RunNamingPanel'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 
@@ -23,6 +24,7 @@ export function WorkflowEditor() {
   const selectedNodeId = useWorkflowStore((s) => s.selectedNodeId)
   const connectivity_mode = useWorkflowStore((s) => s.workflow.connectivity_mode)
   const runStatus = useWorkflowStore((s) => s.runStatus)
+  const activeRunId = useWorkflowStore((s) => s.activeRunId)
   const pendingTranscriptionSessionId = useWorkflowStore((s) => s.pendingTranscriptionSessionId)
   const setPendingTranscriptionSessionId = useWorkflowStore((s) => s.setPendingTranscriptionSessionId)
   const pendingReviewRunId = useWorkflowStore((s) => s.pendingReviewRunId)
@@ -371,6 +373,9 @@ export function WorkflowEditor() {
                 ))}
               </div>
             )}
+
+            {/* Run naming panel — slides up while run is in progress */}
+            <RunNamingPanel />
 
             {/* Persistent OFFLINE badge on canvas */}
             {connectivity_mode === 'offline' && (

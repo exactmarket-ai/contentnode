@@ -19,6 +19,7 @@ import { ImagePromptBuilderExecutor } from './executors/imagePromptBuilder.js'
 import { ImageGenerationExecutor } from './executors/imageGeneration.js'
 import { VideoPromptBuilderExecutor } from './executors/videoPromptBuilder.js'
 import { VideoGenerationExecutor } from './executors/videoGeneration.js'
+import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -70,6 +71,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   source:                      SourceNodeExecutor,
   'source:transcription':      TranscriptionNodeExecutor,
   'source:instruction-translator': InstructionTranslatorExecutor,
+  'source:workflow-output':    WorkflowOutputExecutor,
   logic:                       LogicNodeExecutor,
   'logic:humanizer':           HumanizerNodeExecutor,
   'logic:humanizer-pro':       HumanizerNodeExecutor,

@@ -49,6 +49,10 @@ const createRunBody = z.object({
   input: z.record(z.unknown()).optional().default({}),
   /** When set, the worker prunes the graph to ancestors of this node and stops after it executes */
   stopAtNodeId: z.string().optional(),
+  // Division/Job/Item metadata — optional, can be set after run creation via PATCH
+  divisionId: z.string().optional(),
+  jobId: z.string().optional(),
+  itemName: z.string().optional(),
 })
 
 // Default dev client used when no clientId is provided
@@ -282,6 +286,9 @@ export async function runRoutes(app: FastifyInstance) {
         status: 'pending',
         input: { ...(body.input ?? {}), resolvedPermissions, triggeredByClerkId: userId } as Prisma.InputJsonValue,
         output: initialOutput as Prisma.InputJsonValue,
+        ...(body.divisionId ? { divisionId: body.divisionId } : {}),
+        ...(body.jobId ? { jobId: body.jobId } : {}),
+        ...(body.itemName ? { itemName: body.itemName } : {}),
       },
     })
 
@@ -536,6 +543,19 @@ export async function runRoutes(app: FastifyInstance) {
     return reply.send({ data: { status: 'failed' } })
   })
 
+  // ── GET /item-version — next version number for job+workflow ─────────────
+  app.get('/item-version', async (req, reply) => {
+    const { agencyId } = req.auth
+    const query = req.query as { workflowId?: string; jobId?: string }
+    if (!query.workflowId || !query.jobId) {
+      return reply.code(400).send({ error: 'workflowId and jobId are required' })
+    }
+    const count = await prisma.workflowRun.count({
+      where: { agencyId, workflowId: query.workflowId, jobId: query.jobId },
+    })
+    return reply.send({ data: { nextVersion: count + 1 } })
+  })
+
   // ── GET / — list runs for the agency ─────────────────────────────────────
   app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
@@ -545,6 +565,8 @@ export async function runRoutes(app: FastifyInstance) {
       status?: string
       limit?: string
       offset?: string
+      divisionId?: string
+      jobId?: string
     }
 
     const statusFilter = query.status && query.status !== 'all' ? query.status : undefined
@@ -558,6 +580,8 @@ export async function runRoutes(app: FastifyInstance) {
     if (query.workflowId) where.workflowId = query.workflowId
     if (statusFilter) where.status = statusFilter
     if (query.clientId) where.workflow = { clientId: query.clientId }
+    if (query.divisionId) where.divisionId = query.divisionId
+    if (query.jobId) where.jobId = query.jobId
 
     const runs = await prisma.workflowRun.findMany({
       where,
@@ -580,6 +604,12 @@ export async function runRoutes(app: FastifyInstance) {
         batchIndex: true,
         reviewStatus: true,
         reviewerIds: true,
+        divisionId: true,
+        jobId: true,
+        itemName: true,
+        itemVersion: true,
+        division: { select: { id: true, name: true } },
+        job: { select: { id: true, name: true, budgetCents: true } },
         workflow: {
           select: {
             id: true,
@@ -612,7 +642,12 @@ export async function runRoutes(app: FastifyInstance) {
         workflowId: r.workflowId,
         workflowName: r.workflow.name,
         projectName: r.workflow.projectName ?? null,
-        itemName: r.workflow.itemName ?? null,
+        itemName: r.itemName ?? r.workflow.itemName ?? null,
+        itemVersion: r.itemVersion,
+        divisionId: r.divisionId ?? null,
+        jobId: r.jobId ?? null,
+        division: r.division ?? null,
+        job: r.job ?? null,
         clientId: r.workflow.client?.id ?? null,
         clientName: r.workflow.client?.name ?? null,
         status: r.status,
@@ -633,6 +668,43 @@ export async function runRoutes(app: FastifyInstance) {
     })
 
     return reply.send({ data, meta: { total, stats: statsByStatus } })
+  })
+
+  // ── PATCH /:id — update run metadata (division, job, item name/version) ───
+  app.patch<{ Params: { id: string } }>('/:id', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params
+    const body = z.object({
+      divisionId:  z.string().nullable().optional(),
+      jobId:       z.string().nullable().optional(),
+      itemName:    z.string().nullable().optional(),
+      itemVersion: z.number().int().positive().optional(),
+      reviewStatus: z.enum(['none', 'pending', 'sent_to_client', 'client_responded', 'closed']).optional(),
+      reviewerIds:  z.array(z.string()).optional(),
+    }).safeParse(req.body)
+
+    if (!body.success) return reply.code(400).send({ error: 'Invalid body', details: body.error.issues })
+
+    const run = await prisma.workflowRun.findFirst({ where: { id, agencyId } })
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+
+    const updated = await prisma.workflowRun.update({
+      where: { id },
+      data: {
+        ...(body.data.divisionId  !== undefined ? { divisionId: body.data.divisionId }   : {}),
+        ...(body.data.jobId       !== undefined ? { jobId: body.data.jobId }             : {}),
+        ...(body.data.itemName    !== undefined ? { itemName: body.data.itemName }       : {}),
+        ...(body.data.itemVersion !== undefined ? { itemVersion: body.data.itemVersion } : {}),
+        ...(body.data.reviewStatus !== undefined ? { reviewStatus: body.data.reviewStatus } : {}),
+        ...(body.data.reviewerIds  !== undefined ? { reviewerIds: body.data.reviewerIds as Prisma.InputJsonValue } : {}),
+      },
+      include: {
+        division: { select: { id: true, name: true } },
+        job:      { select: { id: true, name: true, budgetCents: true } },
+      },
+    })
+
+    return reply.send({ data: updated })
   })
 
   // ── POST /:id/rerun-from/:nodeId — clone run, skip already-passed nodes ──

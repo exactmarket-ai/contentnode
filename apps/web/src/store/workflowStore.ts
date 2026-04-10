@@ -95,6 +95,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'FileSearch',
     defaultConfig: { subtype: 'instruction-translator', raw_text: '', parsed: null },
   },
+  {
+    type: 'source', subtype: 'workflow-output',
+    label: 'Workflow Output', description: 'Reference output from a previous workflow run',
+    category: 'source', icon: 'GitBranch',
+    defaultConfig: { subtype: 'workflow-output', fallbackToLatest: true },
+  },
   // Logic
   {
     type: 'logic', subtype: 'ai-generate',
