@@ -38,6 +38,28 @@ export function WorkflowEditor() {
   const [loadingWorkflow, setLoadingWorkflow] = useState(false)
   const [showModal, setShowModal] = useState(!workflowId)
 
+  // Reset canvas when creating a new workflow
+  useEffect(() => {
+    if (!workflowId) {
+      useWorkflowStore.setState({
+        nodes: [],
+        edges: [],
+        selectedNodeId: null,
+        runStatus: 'idle',
+        nodeRunStatuses: {},
+        activeRunId: null,
+        hasBeenRun: false,
+        workflow: {
+          id: null,
+          name: 'Untitled Workflow',
+          clientId: null,
+          connectivity_mode: 'online',
+          default_model_config: { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 },
+        },
+      })
+    }
+  }, [workflowId])
+
   // Load workflow by ID when navigated from client page
   useEffect(() => {
     if (!workflowId) return
