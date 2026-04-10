@@ -206,6 +206,12 @@ export function TopBar() {
     const store = useWorkflowStore.getState()
     const { nodes, edges, workflow: wf } = store
 
+    // ── Require saved workflow before running ──────────────────────────────
+    if (!wf.id) {
+      setSaveDialogOpen(true)
+      return
+    }
+
     // ── Pre-run validation ─────────────────────────────────────────────────
     const unconfiguredSourceNodes = nodes.filter((n) => {
       if (n.type !== 'source') return false
