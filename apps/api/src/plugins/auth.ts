@@ -107,7 +107,7 @@ async function authPluginFn(app: FastifyInstance) {
       } catch (err) {
         req.log.error({ err }, '[auth] failed to look up user from database')
       }
-      req.log.warn({ sub: payload.sub, claims: Object.keys(claims) }, '[auth] 403 — token missing agency_id claim and user not found in database')
+      req.log.warn({ sub: payload.sub, claimsKeys: Object.keys(claims) }, '[auth] 403 — token missing agency_id claim and user not found in database')
       return reply.code(403).send({ error: 'Token is missing agency_id claim' })
     }
 
