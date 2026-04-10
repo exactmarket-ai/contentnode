@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import * as Icons from 'lucide-react'
 import { PALETTE_NODES, type NodeCategory, useWorkflowStore } from '@/store/workflowStore'
 import { NODE_SPEC } from '@/lib/nodeColors'
@@ -21,6 +22,11 @@ const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPE
   logic:   NODE_SPEC['ai-model'],
   output:  NODE_SPEC['transform'],
   insight: NODE_SPEC['ai-model'],
+}
+
+const MENU_STYLE: React.CSSProperties = {
+  backgroundColor: '#ffffff',
+  boxShadow: '0 10px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)',
 }
 
 interface Props {
@@ -73,7 +79,6 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
   }, [])
 
   const handleCatLeave = useCallback(() => {
-    // Small delay so mouse can move into the flyout without it closing
     closeTimerRef.current = setTimeout(() => setHoveredCat(null), 80)
   }, [])
 
@@ -94,14 +99,13 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
   const flyoutSpec = hoveredCat ? CATEGORY_SPEC[hoveredCat] : null
   const FlyoutCatIcon = hoveredCat ? (CATEGORY_ICONS[hoveredCat] ?? Icons.Box) : null
 
-  return (
+  return createPortal(
     <>
       {/* ── Main menu ──────────────────────────────────────────────────────── */}
       <div
         ref={menuRef}
-        className="fixed z-[999] min-w-[160px] rounded-lg border border-border shadow-2xl"
-        style={{ backgroundColor: '#ffffff' }}
-        style={{ left: adjustedPos.x, top: adjustedPos.y }}
+        className="fixed z-[9999] min-w-[160px] rounded-lg border border-border"
+        style={{ ...MENU_STYLE, left: adjustedPos.x, top: adjustedPos.y }}
         onContextMenu={(e) => e.preventDefault()}
       >
         <div className="py-1 rounded-lg overflow-hidden">
@@ -142,13 +146,12 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
         </div>
       </div>
 
-      {/* ── Flyout submenu — rendered at fixed position to escape overflow:hidden ── */}
+      {/* ── Flyout submenu ─────────────────────────────────────────────────── */}
       {hoveredCat && flyoutPos && flyoutSpec && FlyoutCatIcon && (
         <div
           ref={flyoutRef}
-          className="fixed z-[1000] min-w-[200px] overflow-hidden rounded-lg border border-border shadow-2xl"
-          style={{ backgroundColor: '#ffffff' }}
-          style={{ left: flyoutPos.x + 2, top: flyoutPos.y }}
+          className="fixed z-[10000] min-w-[200px] overflow-hidden rounded-lg border border-border"
+          style={{ ...MENU_STYLE, left: flyoutPos.x + 2, top: flyoutPos.y }}
           onMouseEnter={handleFlyoutEnter}
           onMouseLeave={handleFlyoutLeave}
         >
@@ -190,6 +193,7 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body
   )
 }

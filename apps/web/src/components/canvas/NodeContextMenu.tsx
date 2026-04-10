@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import * as Icons from 'lucide-react'
-import { PALETTE_NODES } from '@/store/workflowStore'
-import { useWorkflowStore } from '@/store/workflowStore'
+import { PALETTE_NODES, useWorkflowStore } from '@/store/workflowStore'
 import { triggerRun } from '@/lib/runWorkflow'
+
+const MENU_STYLE: React.CSSProperties = {
+  backgroundColor: '#ffffff',
+  boxShadow: '0 10px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)',
+}
 
 interface Props {
   nodeId: string
@@ -17,7 +22,6 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
   const [adjustedPos, setAdjustedPos] = useState({ x, y })
   const runStatus = useWorkflowStore((s) => s.runStatus)
 
-  // Resolve the node definition to check requiresManualInput
   const def = PALETTE_NODES.find((n) => n.subtype === subtype)
   const canRunToHere = !def?.requiresManualInput
 
@@ -43,21 +47,19 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
     if (nx !== x || ny !== y) setAdjustedPos({ x: nx, y: ny })
   }, [x, y])
 
+  if (!canRunToHere) return null
+
   const handleRunToHere = async () => {
     onClose()
     if (runStatus === 'running') return
     await triggerRun(nodeId)
   }
 
-  // Nothing to show for manual-input nodes
-  if (!canRunToHere) return null
-
-  return (
+  return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[999] min-w-[180px] overflow-hidden rounded-lg border border-border shadow-2xl"
-      style={{ backgroundColor: '#ffffff' }}
-      style={{ left: adjustedPos.x, top: adjustedPos.y }}
+      className="fixed z-[9999] min-w-[200px] overflow-hidden rounded-lg border border-border"
+      style={{ ...MENU_STYLE, left: adjustedPos.x, top: adjustedPos.y }}
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="py-1">
@@ -66,7 +68,10 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
           disabled={runStatus === 'running'}
           className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded" style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac' }}>
+          <div
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
+            style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac' }}
+          >
             <Icons.Play className="h-3 w-3" style={{ color: '#16a34a' }} />
           </div>
           <div>
@@ -75,6 +80,7 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
           </div>
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

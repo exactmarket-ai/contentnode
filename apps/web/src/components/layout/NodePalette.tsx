@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -299,17 +300,22 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
         <Icons.Lightbulb className="h-4 w-4" />
       </button>
 
-      {/* Floating submenu */}
-      {openCat && (
+      {/* Floating submenu — portal to document.body to escape any stacking context */}
+      {openCat && createPortal(
         <div
           ref={submenuRef}
-          className="fixed z-50 min-w-[220px] overflow-hidden rounded-lg border border-border shadow-2xl"
-          style={{ backgroundColor: '#ffffff', left: 52, top: (() => {
-            if (!toolbarRef.current) return 80
-            const btnIndex = categories.indexOf(openCat)
-            const rect = toolbarRef.current.getBoundingClientRect()
-            return rect.top + 68 + btnIndex * 40
-          })() }}
+          className="fixed z-[9999] min-w-[220px] overflow-hidden rounded-lg border border-border"
+          style={{
+            backgroundColor: '#ffffff',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)',
+            left: 52,
+            top: (() => {
+              if (!toolbarRef.current) return 80
+              const btnIndex = categories.indexOf(openCat)
+              const rect = toolbarRef.current.getBoundingClientRect()
+              return rect.top + 68 + btnIndex * 40
+            })(),
+          }}
         >
           {/* Header */}
           <div
@@ -318,8 +324,7 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
           >
             {(() => {
               const CatIcon = CATEGORY_TOOLBAR_ICONS[openCat] ?? Icons.Box
-              const SubmenuCatIcon = CATEGORY_TOOLBAR_ICONS[openCat] ?? Icons.Box
-              return <SubmenuCatIcon className="h-3.5 w-3.5" style={{ color: CATEGORY_SPEC[openCat].accent }} />
+              return <CatIcon className="h-3.5 w-3.5" style={{ color: CATEGORY_SPEC[openCat].accent }} />
             })()}
             <span className="text-xs font-semibold" style={{ color: CATEGORY_SPEC[openCat].badgeText }}>
               {CATEGORY_LABELS[openCat]}
@@ -340,7 +345,8 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
               />
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
