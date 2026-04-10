@@ -76,10 +76,12 @@ export function VideoGenerationConfig({
   config,
   onChange,
   nodeRunStatus,
+  nodeLabel = 'video-generation',
 }: {
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
   nodeRunStatus?: { status?: string; output?: unknown }
+  nodeLabel?: string
 }) {
   const provider = (config.provider as string) ?? 'runway'
   const support  = SUPPORT[provider] ?? SUPPORT.runway
@@ -99,7 +101,7 @@ export function VideoGenerationConfig({
       {/* Post-run filmstrip */}
       {hasPassed && assets.length > 0 && (
         <>
-          <MediaFilmstrip assets={assets} thumbnailHeight={140} />
+          <MediaFilmstrip assets={assets} nodeLabel={nodeLabel} thumbnailHeight={140} />
           <Separator />
         </>
       )}

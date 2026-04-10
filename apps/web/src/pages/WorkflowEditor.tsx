@@ -110,7 +110,7 @@ export function WorkflowEditor() {
         // Use internal React Flow method to set nodes/edges directly
         useWorkflowStore.setState({ nodes: rfNodes, edges: rfEdges })
         store.setRunStatus('idle')
-        store.setNodeRunStatuses({})
+        useWorkflowStore.setState({ nodeRunStatuses: {} })
 
         // Load client-scoped file bindings and merge into node configs
         const clientId = (data.clientId as string | null) ?? ''

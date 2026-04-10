@@ -63,7 +63,22 @@ export async function pollRunUntilTerminal(runId: string) {
     console.log('[run] poll', i + 1, '— status:', data.status)
 
     if (data.nodeStatuses) {
-      store.setNodeRunStatuses(data.nodeStatuses as Parameters<typeof store.setNodeRunStatuses>[0])
+      const nodeStatuses = data.nodeStatuses as Parameters<typeof store.setNodeRunStatuses>[0]
+      store.setNodeRunStatuses(nodeStatuses)
+
+      // Persist generated assets into node.data so they survive page reloads
+      const ASSET_SUBTYPES = new Set(['image-generation', 'video-generation'])
+      for (const [nodeId, raw] of Object.entries(nodeStatuses)) {
+        const ns = raw as { status: string; output?: Record<string, unknown> }
+        if (ns.status !== 'passed' || !ns.output?.assets) continue
+        const { nodes, updateNodeData } = useWorkflowStore.getState()
+        const node = nodes.find((n) => n.id === nodeId)
+        if (!node) continue
+        const cfg = (node.data?.config as Record<string, unknown>) ?? {}
+        const subtype = (node.data?.subtype as string) ?? (cfg.subtype as string)
+        if (!ASSET_SUBTYPES.has(subtype)) continue
+        updateNodeData(nodeId, { config: { ...cfg, stored_assets: ns.output.assets } })
+      }
     }
 
     if (data.status === 'completed') {

@@ -5,6 +5,7 @@ import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
 import { assetUrl } from '@/lib/api'
 import { NodeUploadZone, type ReferenceFile } from './NodeUploadZone'
+import { downloadAsset, makeFilename } from '@/lib/downloadAsset'
 
 const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
@@ -145,21 +146,33 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
         )}
 
         {/* Video generation: looping full-width preview after completion */}
-        {isPassed && subtype === 'video-generation' && (() => {
+        {(isPassed || status === 'idle') && subtype === 'video-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
-          const assets = output?.assets as { localPath: string }[] | undefined
+          const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
           if (!assets?.length) return null
+          const label = data.label as string
           return (
             <div className="overflow-hidden rounded-sm" style={{ marginLeft: -10, marginRight: -10 }}>
-              <video
-                src={assetUrl(assets[0].localPath)}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full object-cover"
-                style={{ maxHeight: 240, display: 'block' }}
-              />
+              <div className="relative group">
+                <video
+                  src={assetUrl(assets[0].localPath)}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full object-cover"
+                  style={{ maxHeight: 240, display: 'block' }}
+                />
+                <div className="absolute top-1.5 right-1.5 hidden group-hover:flex">
+                  <button
+                    className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors"
+                    title="Download"
+                    onClick={(e) => { e.stopPropagation(); downloadAsset(assets[0].localPath, makeFilename(label, assets[0].localPath)) }}
+                  >
+                    <Icons.Download className="h-3 w-3 text-white" />
+                  </button>
+                </div>
+              </div>
               {assets.length > 1 && (
                 <p className="text-center text-[9px] py-0.5" style={{ color: '#b4b2a9' }}>
                   +{assets.length - 1} more clip{assets.length > 2 ? 's' : ''}
@@ -170,33 +183,53 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
         })()}
 
         {/* Image generation: full-width thumbnail after completion */}
-        {isPassed && subtype === 'image-generation' && (() => {
+        {(isPassed || status === 'idle') && subtype === 'image-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
-          const assets = output?.assets as { localPath: string }[] | undefined
+          const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
           if (!assets?.length) return null
+          const label = data.label as string
           return (
             <div style={{ marginLeft: -10, marginRight: -10 }}>
               {/* Primary image — full width, 240px tall */}
-              <div className="overflow-hidden" style={{ height: 240 }}>
+              <div className="relative overflow-hidden group" style={{ height: 240 }}>
                 <img
                   src={assetUrl(assets[0].localPath)}
                   alt="Generated"
                   draggable={false}
                   className="w-full h-full object-cover"
                 />
+                <div className="absolute top-1.5 right-1.5 hidden group-hover:flex">
+                  <button
+                    className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors"
+                    title="Download"
+                    onClick={(e) => { e.stopPropagation(); downloadAsset(assets[0].localPath, makeFilename(label, assets[0].localPath)) }}
+                  >
+                    <Icons.Download className="h-3 w-3 text-white" />
+                  </button>
+                </div>
               </div>
-              {/* Additional images as small strip */}
+              {/* Additional images as small strip with download on hover */}
               {assets.length > 1 && (
                 <div className="flex gap-0.5 pt-0.5 px-2.5">
                   {assets.slice(1, 4).map((a, i) => (
-                    <img
-                      key={i}
-                      src={assetUrl(a.localPath)}
-                      alt={`Generated ${i + 2}`}
-                      draggable={false}
-                      className="h-8 w-8 shrink-0 rounded-sm object-cover border"
-                      style={{ borderColor: spec.accent + '44' }}
-                    />
+                    <div key={i} className="relative group/thumb shrink-0">
+                      <img
+                        src={assetUrl(a.localPath)}
+                        alt={`Generated ${i + 2}`}
+                        draggable={false}
+                        className="h-8 w-8 rounded-sm object-cover border"
+                        style={{ borderColor: spec.accent + '44' }}
+                      />
+                      <div className="absolute inset-0 hidden group-hover/thumb:flex items-center justify-center rounded-sm bg-black/50">
+                        <button
+                          className="nodrag"
+                          title="Download"
+                          onClick={(e) => { e.stopPropagation(); downloadAsset(a.localPath, makeFilename(label, a.localPath, i + 1)) }}
+                        >
+                          <Icons.Download className="h-2.5 w-2.5 text-white" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                   {assets.length > 4 && (
                     <div

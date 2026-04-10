@@ -52,6 +52,7 @@ function NodeConfigForm({
   workflowModel,
   nodeRunStatus,
   nodeId,
+  nodeLabel,
 }: {
   nodeType: string
   subtype: string
@@ -60,6 +61,7 @@ function NodeConfigForm({
   workflowModel: { provider: string; model: string; temperature?: number }
   nodeRunStatus?: { status?: string; output?: unknown; warning?: string; paused?: boolean; wordsProcessed?: number; startedAt?: string; error?: string }
   nodeId: string
+  nodeLabel: string
 }) {
   switch (nodeType) {
     case 'source':
@@ -100,9 +102,9 @@ function NodeConfigForm({
       return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} nodeRunStatus={nodeRunStatus} />
     case 'output':
       if (subtype === 'image-generation')
-        return <ImageGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+        return <ImageGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} nodeLabel={nodeLabel} />
       if (subtype === 'video-generation')
-        return <VideoGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+        return <VideoGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} nodeLabel={nodeLabel} />
       if (subtype === 'client-feedback')
         return <ClientFeedbackConfig config={config} onChange={onChange} />
       if (subtype === 'email')
@@ -252,6 +254,7 @@ export function ConfigPanel() {
             workflowModel={workflow.default_model_config}
             nodeRunStatus={nodeRunStatuses[node.id]}
             nodeId={node.id}
+            nodeLabel={node.data.label as string}
           />
         </div>
       </ScrollArea>

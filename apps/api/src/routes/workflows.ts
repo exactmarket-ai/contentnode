@@ -162,77 +162,87 @@ export async function workflowRoutes(app: FastifyInstance) {
       defaultModelConfig?: Record<string, unknown>
     }
 
-    const existing = await prisma.workflow.findFirst({
-      where: { id: workflowId, agencyId },
-      include: { client: { select: { requireOffline: true } } },
-    })
-    if (!existing) return reply.code(404).send({ error: 'Workflow not found' })
+    try {
+      const existing = await prisma.workflow.findFirst({
+        where: { id: workflowId, agencyId },
+        include: { client: { select: { requireOffline: true } } },
+      })
+      if (!existing) return reply.code(404).send({ error: 'Workflow not found' })
 
-    const rfNodes = body.nodes ?? []
-    const rfEdges = body.edges ?? []
-    const defaultModelCfg = body.defaultModelConfig ?? {}
-    const isOfflineSave = existing.connectivityMode === 'offline' || existing.client?.requireOffline === true
+      const rfNodes = body.nodes ?? []
+      const rfEdges = body.edges ?? []
+      const defaultModelCfg = body.defaultModelConfig ?? {}
+      const isOfflineSave = existing.connectivityMode === 'offline' || existing.client?.requireOffline === true
 
-    // Update name if provided
-    if (body.name) {
-      await prisma.workflow.update({ where: { id: workflowId }, data: { name: body.name } })
-    }
+      // Update name if provided
+      if (body.name) {
+        await prisma.workflow.update({ where: { id: workflowId }, data: { name: body.name } })
+      }
 
-    // Replace all nodes for this workflow
-    await prisma.node.deleteMany({ where: { workflowId } })
-    if (rfNodes.length > 0) {
-      await prisma.node.createMany({
-        data: rfNodes.map((n) => {
-          const data = (n.data ?? {}) as Record<string, unknown>
-          const nestedConfig = (data.config as Record<string, unknown>) ?? null
-          const { label: _l, description: _d, icon: _i, config: _c, ...dataFields } = data
-          const config = (nestedConfig && Object.keys(nestedConfig).length > 1)
-            ? nestedConfig
-            : dataFields
-          const nodeModelCfg = (config.model_config as Record<string, unknown> | null) ?? null
-          const resolvedModelCfg = nodeModelCfg ?? defaultModelCfg
-          const resolvedProvider = (resolvedModelCfg.provider as string | undefined) ?? 'anthropic'
-          const modelFields = n.type === 'logic' ? {
-            provider: isOfflineSave ? 'ollama' : resolvedProvider,
-            model: isOfflineSave
-              ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
-              : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-5',
-            temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
-          } : {}
-          // Strip file arrays — files are stored in client_workflow_files, not the template
-          const { uploaded_files: _uf, audio_files: _af, ...configWithoutFiles } = config as Record<string, unknown>
-          return {
-            id: n.id ?? randomUUID(),
+      // Replace all nodes for this workflow
+      await prisma.node.deleteMany({ where: { workflowId } })
+      if (rfNodes.length > 0) {
+        await prisma.node.createMany({
+          data: rfNodes.map((n) => {
+            const data = (n.data ?? {}) as Record<string, unknown>
+            const nestedConfig = (data.config as Record<string, unknown>) ?? null
+            const { label: _l, description: _d, icon: _i, config: _c, ...dataFields } = data
+            const config = (nestedConfig && Object.keys(nestedConfig).length > 1)
+              ? nestedConfig
+              : dataFields
+            const nodeModelCfg = (config.model_config as Record<string, unknown> | null) ?? null
+            const resolvedModelCfg = nodeModelCfg ?? defaultModelCfg
+            const resolvedProvider = (resolvedModelCfg.provider as string | undefined) ?? 'anthropic'
+            const modelFields = n.type === 'logic' ? {
+              provider: isOfflineSave ? 'ollama' : resolvedProvider,
+              model: isOfflineSave
+                ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
+                : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-5',
+              temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
+            } : {}
+            // Strip file arrays — files are stored in client_workflow_files, not the template
+            // Strip stored_assets — runtime-only display data, not part of the workflow template
+            const { uploaded_files: _uf, audio_files: _af, stored_assets: _sa, ...configWithoutFiles } = config as Record<string, unknown>
+            // JSON.parse/stringify strips undefined values which Prisma's Json column rejects
+            const safeConfig = JSON.parse(JSON.stringify(
+              { subtype: data.subtype ?? config.subtype, ...configWithoutFiles, ...modelFields }
+            )) as Prisma.InputJsonValue
+            return {
+              id: n.id ?? randomUUID(),
+              agencyId,
+              workflowId,
+              type: n.type,
+              label: (data.label as string | undefined) ?? n.type,
+              config: safeConfig,
+              positionX: n.position?.x ?? 0,
+              positionY: n.position?.y ?? 0,
+            }
+          }),
+        })
+      }
+
+      // Replace all edges for this workflow
+      const savedNodeIds = new Set(rfNodes.map((n) => n.id))
+      const validEdges = rfEdges.filter((e) => savedNodeIds.has(e.source) && savedNodeIds.has(e.target))
+      await prisma.edge.deleteMany({ where: { workflowId } })
+      if (validEdges.length > 0) {
+        await prisma.edge.createMany({
+          data: validEdges.map((e) => ({
+            id: e.id ?? randomUUID(),
             agencyId,
             workflowId,
-            type: n.type,
-            label: (data.label as string | undefined) ?? n.type,
-            config: { subtype: data.subtype ?? config.subtype, ...configWithoutFiles, ...modelFields } as Prisma.InputJsonValue,
-            positionX: n.position?.x ?? 0,
-            positionY: n.position?.y ?? 0,
-          }
-        }),
-      })
-    }
+            sourceNodeId: e.source,
+            targetNodeId: e.target,
+            label: e.sourceHandle ?? e.label ?? null,
+          })),
+        })
+      }
 
-    // Replace all edges for this workflow
-    const savedNodeIds = new Set(rfNodes.map((n) => n.id))
-    const validEdges = rfEdges.filter((e) => savedNodeIds.has(e.source) && savedNodeIds.has(e.target))
-    await prisma.edge.deleteMany({ where: { workflowId } })
-    if (validEdges.length > 0) {
-      await prisma.edge.createMany({
-        data: validEdges.map((e) => ({
-          id: e.id ?? randomUUID(),
-          agencyId,
-          workflowId,
-          sourceNodeId: e.source,
-          targetNodeId: e.target,
-          label: e.sourceHandle ?? e.label ?? null,
-        })),
-      })
+      return reply.send({ data: { workflowId, nodeCount: rfNodes.length, edgeCount: validEdges.length } })
+    } catch (err) {
+      req.log.error({ err, workflowId }, '[graph save] failed')
+      return reply.code(500).send({ error: 'Failed to save workflow graph', detail: err instanceof Error ? err.message : String(err) })
     }
-
-    return reply.send({ data: { workflowId, nodeCount: rfNodes.length, edgeCount: validEdges.length } })
   })
 
   // ── GET /:id/files — get client-scoped file bindings for this workflow ───────

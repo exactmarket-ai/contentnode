@@ -505,7 +505,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setRunError: (error) => set({ runError: error }),
 
-  setNodeRunStatuses: (statuses) => set({ nodeRunStatuses: statuses }),
+  setNodeRunStatuses: (statuses) => set((state) => ({ nodeRunStatuses: { ...state.nodeRunStatuses, ...statuses } })),
   setFinalOutput: (output) => set({ finalOutput: output }),
 
   // Metadata actions

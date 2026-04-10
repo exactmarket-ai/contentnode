@@ -108,10 +108,12 @@ export function ImageGenerationConfig({
   config,
   onChange,
   nodeRunStatus,
+  nodeLabel = 'image-generation',
 }: {
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
   nodeRunStatus?: { status?: string; output?: unknown }
+  nodeLabel?: string
 }) {
   const provider = (config.provider as string) ?? 'dalle3'
   const support  = PROVIDER_SUPPORT[provider] ?? PROVIDER_SUPPORT.dalle3
@@ -127,7 +129,7 @@ export function ImageGenerationConfig({
       {/* Post-run filmstrip (shared component) */}
       {hasPassed && assets.length > 0 && (
         <>
-          <MediaFilmstrip assets={assets} thumbnailHeight={140} />
+          <MediaFilmstrip assets={assets} nodeLabel={nodeLabel} thumbnailHeight={140} />
           <Separator />
         </>
       )}

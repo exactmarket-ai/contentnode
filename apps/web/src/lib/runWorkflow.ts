@@ -72,7 +72,9 @@ export async function triggerRun(stopAtNodeId?: string): Promise<void> {
   }
 
   store.setRunStatus('running')
-  store.setNodeRunStatuses({})
+  // Do NOT pre-reset any node statuses here. Nodes that aren't part of this
+  // execution path must keep their output indefinitely. Nodes that are part of
+  // this run will be set to 'running' → 'passed'/'failed' by the first poll.
 
   try {
     const res = await apiFetch('/api/v1/runs', {
