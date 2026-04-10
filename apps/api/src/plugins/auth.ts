@@ -94,11 +94,14 @@ async function authPluginFn(app: FastifyInstance) {
         return
       }
       try {
-        const user = await prisma.user.findFirst({ where: { clerkUserId: payload.sub } })
-        if (user) {
-          req.log.info({ sub: payload.sub, agencyId: user.agencyId }, '[auth] agency_id resolved from database')
-          req.auth = { agencyId: user.agencyId, userId: payload.sub, role: user.role }
-          agencyStorage.enterWith({ agencyId: user.agencyId })
+        const rows = await prisma.$queryRaw<{ agency_id: string; role: string }[]>`
+          SELECT agency_id, role FROM users WHERE clerk_user_id = ${payload.sub} LIMIT 1
+        `
+        if (rows.length > 0) {
+          const { agency_id, role: userRole } = rows[0]
+          req.log.info({ sub: payload.sub, agencyId: agency_id }, '[auth] agency_id resolved from database')
+          req.auth = { agencyId: agency_id, userId: payload.sub, role: userRole }
+          agencyStorage.enterWith({ agencyId: agency_id })
           return
         }
       } catch (err) {
