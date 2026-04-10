@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch --env-file ../../apps/api/.env src/worker.ts",
     "build": "tsc",
-    "start": "node dist/worker.js"
+    "start": "node --import tsx/esm src/worker.ts"
   },
   "dependencies": {
     "@contentnode/ai": "workspace:*",
