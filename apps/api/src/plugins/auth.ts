@@ -94,10 +94,9 @@ async function authPluginFn(app: FastifyInstance) {
         return
       }
       try {
-        const rows = await prisma.$transaction([
-          prisma.$queryRaw<{ agency_id: string; role: string }[]>`SET LOCAL row_security = off`,
-          prisma.$queryRaw<{ agency_id: string; role: string }[]>`SELECT agency_id, role FROM users WHERE clerk_user_id = ${payload.sub} LIMIT 1`,
-        ]).then(([, result]) => result)
+        const rows = await prisma.$queryRaw<{ agency_id: string; role: string }[]>`
+          SELECT agency_id, role FROM get_user_by_clerk_id(${payload.sub})
+        `
         if (rows.length > 0) {
           const { agency_id, role: userRole } = rows[0]
           req.log.info({ sub: payload.sub, agencyId: agency_id }, '[auth] agency_id resolved from database')
