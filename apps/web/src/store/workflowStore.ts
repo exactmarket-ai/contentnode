@@ -322,6 +322,8 @@ interface WorkflowState {
   insightConfirmations: InsightConfirmation[]
   /** True when the graph has unsaved changes (nodes/edges modified since last save or load) */
   graphDirty: boolean
+  /** Active canvas tool — select (default) or hand/pan */
+  canvasTool: 'select' | 'hand'
   /** ReactFlow instance — stored so palette/context menu can convert screen → flow coords */
   rfInstance: ReactFlowInstance | null
 
@@ -359,6 +361,7 @@ interface WorkflowState {
 
   // Actions — canvas
   setRfInstance: (instance: ReactFlowInstance | null) => void
+  setCanvasTool: (tool: 'select' | 'hand') => void
   addNodeBySubtype: (subtype: string, screenPosition?: { x: number; y: number }) => void
 }
 
@@ -391,6 +394,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   pendingReviewContent: null,
   insightConfirmations: [],
   graphDirty: false,
+  canvasTool: 'select',
   rfInstance: null,
 
   // Graph actions — each mutation marks the graph dirty
@@ -478,6 +482,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     })),
 
   setRfInstance: (instance) => set({ rfInstance: instance }),
+  setCanvasTool: (tool) => set({ canvasTool: tool }),
 
   addNodeBySubtype: (subtype, screenPosition) => {
     const { rfInstance, addNode, setSelectedNodeId } = get()

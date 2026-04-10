@@ -77,8 +77,10 @@ async function authPluginFn(app: FastifyInstance) {
     const claims = payload as Record<string, unknown>
     const meta = ((payload as Record<string, unknown>)['publicMetadata'] ?? {}) as Record<string, unknown>
 
-    const agencyId = (claims['agency_id'] ?? meta['agency_id']) as string | undefined
+    const agencyIdFromToken = (claims['agency_id'] ?? meta['agency_id']) as string | undefined
     const roleFromToken = ((claims['role'] ?? meta['role']) as string | undefined) ?? 'member'
+    // DEFAULT_AGENCY_ID always wins in local dev — production JWT agency_id may not exist locally
+    const agencyId = process.env.DEFAULT_AGENCY_ID ?? agencyIdFromToken
     // DEFAULT_ROLE env var overrides token role for local dev (when Clerk custom claims aren't configured)
     const role = process.env.DEFAULT_ROLE ?? roleFromToken
 

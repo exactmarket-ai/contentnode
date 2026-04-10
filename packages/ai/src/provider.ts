@@ -46,7 +46,8 @@ function resolveApiKey(ref: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function callAnthropic(config: ModelConfig, prompt: string): Promise<ModelResult> {
-  const apiKey = resolveApiKey(config.api_key_ref)
+  const apiKey = config.api_key_ref ? resolveApiKey(config.api_key_ref) : (process.env.ANTHROPIC_API_KEY ?? '')
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set')
 
   const client = new Anthropic({ apiKey })
 
@@ -77,7 +78,8 @@ async function callAnthropic(config: ModelConfig, prompt: string): Promise<Model
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelResult> {
-  const apiKey = resolveApiKey(config.api_key_ref)
+  const apiKey = config.api_key_ref ? resolveApiKey(config.api_key_ref) : (process.env.OPENAI_API_KEY ?? '')
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
   const client = new OpenAI({ apiKey })
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [

@@ -34,6 +34,19 @@ export function WorkflowCanvas() {
     onNodesChange, onEdgesChange, onConnect,
     setSelectedNodeId, addNode, setRfInstance,
   } = useWorkflowStore()
+  const canvasTool = useWorkflowStore((s) => s.canvasTool)
+  const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
+
+  // Keyboard shortcuts: V = select, H = hand
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'v' || e.key === 'V') setCanvasTool('select')
+      if (e.key === 'h' || e.key === 'H') setCanvasTool('hand')
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [setCanvasTool])
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
   const hasFitRef = useRef(false)
@@ -52,8 +65,9 @@ export function WorkflowCanvas() {
   }, [nodes.length])
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: { id: string }) => {
+    if (canvasTool === 'hand') return
     setSelectedNodeId(node.id)
-  }, [setSelectedNodeId])
+  }, [setSelectedNodeId, canvasTool])
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null)
@@ -179,12 +193,12 @@ export function WorkflowCanvas() {
         fitView
         fitViewOptions={{ padding: 0.2 }}
         deleteKeyCode="Backspace"
-        selectionOnDrag={true}
-        panOnDrag={false}
-        panActivationKeyCode="Space"
+        selectionOnDrag={canvasTool === 'select'}
+        panOnDrag={canvasTool === 'hand'}
+        panActivationKeyCode={canvasTool === 'select' ? 'Space' : null}
         selectionKeyCode={null}
         multiSelectionKeyCode="Meta"
-        className="bg-background"
+        className={canvasTool === 'hand' ? 'bg-background cursor-grab active:cursor-grabbing' : 'bg-background'}
       >
         <Background
           variant={BackgroundVariant.Dots}

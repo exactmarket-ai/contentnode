@@ -234,9 +234,12 @@ function NodesPalette() {
 
 function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
+  const canvasTool = useWorkflowStore((s) => s.canvasTool)
+  const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
   const [openCat, setOpenCat] = useState<NodeCategory | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
   const submenuRef = useRef<HTMLDivElement>(null)
+  const catBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   // Close submenu when clicking outside both toolbar and submenu
   useEffect(() => {
@@ -268,6 +271,34 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
 
       <div className="my-1 h-px w-7 bg-border" />
 
+      {/* Canvas tool buttons */}
+      <button
+        title="Select (V)"
+        onClick={() => setCanvasTool('select')}
+        className={cn(
+          'flex h-9 w-9 items-center justify-center rounded-md transition-colors',
+          canvasTool === 'select'
+            ? 'bg-accent text-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+        )}
+      >
+        <Icons.MousePointer2 className="h-4 w-4" />
+      </button>
+      <button
+        title="Hand / Pan (H)"
+        onClick={() => setCanvasTool('hand')}
+        className={cn(
+          'flex h-9 w-9 items-center justify-center rounded-md transition-colors',
+          canvasTool === 'hand'
+            ? 'bg-accent text-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+        )}
+      >
+        <Icons.Hand className="h-4 w-4" />
+      </button>
+
+      <div className="my-1 h-px w-7 bg-border" />
+
       {/* Category icon buttons */}
       {categories.map((cat) => {
         const CatIcon = CATEGORY_TOOLBAR_ICONS[cat] ?? Icons.Box
@@ -277,6 +308,7 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
         return (
           <button
             key={cat}
+            ref={(el) => { catBtnRefs.current[cat] = el }}
             title={CATEGORY_LABELS[cat]}
             onClick={() => setOpenCat(isOpen ? null : cat)}
             className={cn(
@@ -310,6 +342,8 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
             boxShadow: '0 10px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)',
             left: 52,
             top: (() => {
+              const btn = catBtnRefs.current[openCat]
+              if (btn) return btn.getBoundingClientRect().top
               if (!toolbarRef.current) return 80
               const btnIndex = categories.indexOf(openCat)
               const rect = toolbarRef.current.getBoundingClientRect()
