@@ -518,31 +518,56 @@ export class WorkflowRunner {
 
           // Collect inputs from upstream nodes, respecting routing decisions
           const upstreamEdges = workflow.edges.filter((e) => e.targetNodeId === node.id)
-          const upstreamOutputs = upstreamEdges
-            .filter((e) => {
-              const routePath = nodeRoutePaths.get(e.sourceNodeId)
-              if (!routePath) return true            // no routing constraint
-              const edgeLabel = e.label ?? null
-              if (!edgeLabel) return true            // unlabelled edge = always active
-              return edgeLabel === routePath         // only activate matching path
+          const activeUpstreamEdges = upstreamEdges.filter((e) => {
+            const routePath = nodeRoutePaths.get(e.sourceNodeId)
+            if (!routePath) return true
+            const edgeLabel = e.label ?? null
+            if (!edgeLabel) return true
+            return edgeLabel === routePath
+          })
+
+          // Media generation nodes receive a structured inputs collection instead of flat strings
+          const MULTI_INPUT_SUBTYPES = new Set(['image-prompt-builder', 'video-prompt-builder', 'image-generation', 'video-generation'])
+          const nodeSubtype = (config as Record<string, unknown>).subtype as string | undefined
+
+          let input: unknown
+          if (activeUpstreamEdges.length === 0) {
+            input = null
+          } else if (MULTI_INPUT_SUBTYPES.has(nodeSubtype ?? '')) {
+            const structuredInputs = activeUpstreamEdges.map((e) => {
+              const output = nodeOutputs.get(e.sourceNodeId)
+              const sourceNode = workflow.nodes.find((n) => n.id === e.sourceNodeId)
+              const nodeType = ((sourceNode?.config ?? {}) as Record<string, unknown>).subtype as string ?? sourceNode?.type ?? 'unknown'
+              return {
+                nodeId: e.sourceNodeId,
+                nodeLabel: sourceNode?.label ?? 'Source',
+                nodeType,
+                content: output,
+              }
             })
-            .map((e) => {
+            // Append reference files uploaded directly onto the node
+            const refFiles = (config as Record<string, unknown>).reference_files as Array<{ localPath: string; type: string; filename?: string }> | undefined
+            for (const f of refFiles ?? []) {
+              structuredInputs.push({
+                nodeId: 'uploaded',
+                nodeLabel: f.filename ?? 'Reference file',
+                nodeType: 'uploaded-reference',
+                content: { type: f.type, localPath: f.localPath },
+              })
+            }
+            input = { inputs: structuredInputs }
+          } else {
+            const upstreamOutputs = activeUpstreamEdges.map((e) => {
               const output = nodeOutputs.get(e.sourceNodeId)
               const sourceNode = workflow.nodes.find((n) => n.id === e.sourceNodeId)
               const label = sourceNode?.label?.trim()
-              // Only prefix source node outputs with labels (not logic/output nodes)
               if (label && typeof output === 'string' && sourceNode?.type === 'source') {
                 return `## ${label}\n\n${output}`
               }
               return output
             })
-
-          const input =
-            upstreamOutputs.length === 0
-              ? null
-              : upstreamOutputs.length === 1
-              ? upstreamOutputs[0]
-              : upstreamOutputs
+            input = upstreamOutputs.length === 1 ? upstreamOutputs[0] : upstreamOutputs
+          }
 
           // Mark running
           runOutput.nodeStatuses[node.id] = {

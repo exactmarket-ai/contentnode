@@ -4,6 +4,8 @@ import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
 
+const MULTI_INPUT_LOGIC = new Set(['image-prompt-builder', 'video-prompt-builder'])
+
 // ─── Port configuration ───────────────────────────────────────────────────────
 
 interface PortDef {
@@ -74,10 +76,24 @@ function getPortConfig(subtype: string): PortConfig {
 
 export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
+  const edges = useWorkflowStore((s) => s.edges)
+  const nodes = useWorkflowStore((s) => s.nodes)
   const status = nodeStatuses[id]?.status ?? 'idle'
   const subtype = data.subtype as string
   const portConfig = getPortConfig(subtype)
   const spec = getNodeSpec('logic', subtype)
+  const isMultiInput = MULTI_INPUT_LOGIC.has(subtype)
+
+  // Connected upstream labels (for prompt builder nodes)
+  const connectedSources = isMultiInput
+    ? edges
+        .filter((e) => e.target === id)
+        .map((e) => {
+          const src = nodes.find((n) => n.id === e.source)
+          return src?.data?.label as string || 'Source'
+        })
+        .filter(Boolean)
+    : []
 
   const isRunning = status === 'running'
   const isPassed  = status === 'passed'
@@ -144,6 +160,18 @@ export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
         <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
           {data.description as string}
         </p>
+
+        {/* Connected sources (prompt builder nodes) */}
+        {isMultiInput && connectedSources.length > 0 && (
+          <div className="mt-1.5 space-y-0.5">
+            {connectedSources.map((label, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <div className="h-px w-2 shrink-0" style={{ backgroundColor: spec.accent + '88' }} />
+                <span className="text-[9px] truncate" style={{ color: spec.accent + 'cc' }}>{label}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* AI-generate: model override + prompt template indicator */}
         {subtype === 'ai-generate' && data.config && (

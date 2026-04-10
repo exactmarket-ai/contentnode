@@ -50,10 +50,32 @@ For positivePrompt: describe the motion, flow, camera movement, lighting changes
 // Input helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Extract a reference image URL from an upstream Image Generation node's output */
+/** Extract a reference image URL from any input shape */
 function extractReferenceImage(input: unknown): string | null {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  if (!input || typeof input !== 'object') return null
   const obj = input as Record<string, unknown>
+
+  // Structured multi-input: look for image assets or uploaded image references
+  if (Array.isArray(obj.inputs)) {
+    for (const inp of obj.inputs as Array<{ nodeType: string; content: unknown }>) {
+      // Image Generation node output
+      if (inp.content && typeof inp.content === 'object') {
+        const c = inp.content as Record<string, unknown>
+        if (Array.isArray(c.assets) && c.assets.length > 0) {
+          const asset = c.assets[0] as { localPath?: string }
+          if (asset.localPath) return asset.localPath
+        }
+      }
+      // Uploaded reference image
+      if (inp.nodeType === 'uploaded-reference') {
+        const c = inp.content as { type?: string; localPath?: string }
+        if (c.type === 'image' && c.localPath) return c.localPath
+      }
+    }
+    return null
+  }
+
+  // Single object: Image Generation node output
   if (Array.isArray(obj.assets) && obj.assets.length > 0) {
     const asset = obj.assets[0] as { localPath?: string }
     return asset.localPath ?? null
@@ -66,6 +88,10 @@ function getInputText(input: unknown): string {
   if (typeof input === 'string') return input
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
+    // Structured multi-input
+    if (Array.isArray(obj.inputs)) {
+      return `Multiple inputs:\n${JSON.stringify(obj.inputs, null, 2)}`
+    }
     // Image or Video Prompt Builder output
     if (typeof obj.positivePrompt === 'string') return obj.positivePrompt
     // Image Generation node output — extract embedded prompt

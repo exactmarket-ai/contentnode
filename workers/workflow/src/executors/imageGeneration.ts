@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { saveGeneratedFile } from '@contentnode/storage'
+import { callModel } from '@contentnode/ai'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { ImagePromptOutput } from './imagePromptBuilder.js'
 
@@ -27,14 +28,50 @@ interface ImageGenerationConfig {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function extractPrompt(input: unknown): ImagePromptOutput {
+const IMAGE_MERGE_SYSTEM_PROMPT = `You are an expert at writing prompts for image generation models.
+
+Given a collection of inputs (briefs, descriptions, reference files, style guides), synthesize a single coherent image generation prompt.
+
+Return ONLY valid JSON with no markdown, no code fences, no explanation:
+{
+  "positivePrompt": "detailed visual description of what to generate",
+  "negativePrompt": "what to avoid, e.g. blurry, watermark, text, low quality",
+  "aspectRatio": "16:9",
+  "styleTag": "e.g. photorealistic, cinematic, illustration",
+  "modelPreference": "e.g. dall-e-3, stable-diffusion"
+}
+
+aspectRatio must be one of: 1:1, 16:9, 9:16, 4:3. Make the positivePrompt rich and descriptive.`
+
+async function extractPrompt(input: unknown): Promise<ImagePromptOutput> {
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
+    // Already a prompt object from ImagePromptBuilder
     if (typeof obj.positivePrompt === 'string') {
       return obj as unknown as ImagePromptOutput
     }
+    // Structured multi-input: do quick LLM merge
+    if (Array.isArray(obj.inputs)) {
+      const result = await callModel(
+        {
+          provider: 'anthropic',
+          model: 'claude-haiku-4-5-20251001',
+          api_key_ref: '',
+          system_prompt: IMAGE_MERGE_SYSTEM_PROMPT,
+          temperature: 0.7,
+          max_tokens: 512,
+        },
+        `Synthesize a single coherent image generation prompt from these inputs:\n\n${JSON.stringify(obj.inputs, null, 2)}`,
+      )
+      try {
+        const cleaned = result.text.replace(/```(?:json)?/g, '').trim()
+        return JSON.parse(cleaned) as ImagePromptOutput
+      } catch {
+        throw new Error(`Image Generation: LLM merge returned invalid JSON: ${result.text.slice(0, 200)}`)
+      }
+    }
   }
-  // Fallback: treat input as a plain text prompt
+  // Fallback: treat input as plain text
   const text = typeof input === 'string' ? input : JSON.stringify(input)
   return {
     positivePrompt: text,
@@ -371,7 +408,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as ImageGenerationConfig
     const provider: Provider = cfg.provider ?? 'dalle3'
-    const prompt = extractPrompt(input)
+    const prompt = await extractPrompt(input)
 
     let rawUrls: string[]
 

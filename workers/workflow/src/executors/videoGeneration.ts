@@ -1,5 +1,6 @@
 import { randomUUID, createHmac } from 'node:crypto'
 import { saveGeneratedFile } from '@contentnode/storage'
+import { callModel } from '@contentnode/ai'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { VideoPromptOutput } from './videoPromptBuilder.js'
 
@@ -34,7 +35,25 @@ interface VideoGenerationConfig {
 // Input helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig): VideoPromptOutput {
+const VIDEO_MERGE_SYSTEM_PROMPT = `You are an expert at writing prompts for AI video generation models.
+
+Given a collection of inputs, synthesize a single coherent video generation prompt.
+
+Return ONLY valid JSON:
+{
+  "positivePrompt": "detailed motion and scene description",
+  "negativePrompt": "what to avoid",
+  "durationSeconds": 5,
+  "aspectRatio": "16:9",
+  "cameraMotion": "static",
+  "motionIntensity": "medium",
+  "mode": "text-to-video",
+  "referenceImageUrl": null
+}
+
+Rules: aspectRatio ∈ {1:1,16:9,9:16,4:3}, cameraMotion ∈ {static,pan-left,pan-right,zoom-in,zoom-out,dolly,orbit}, motionIntensity ∈ {low,medium,high}, durationSeconds 3-10, referenceImageUrl always null.`
+
+async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig): Promise<VideoPromptOutput> {
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
     // VideoPromptOutput from Video Prompt Builder
@@ -56,6 +75,46 @@ function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig): VideoPr
         motionIntensity: cfg.motion_intensity ?? 'medium',
         mode: 'image-to-video',
         referenceImageUrl: asset.localPath,
+      }
+    }
+    // Structured multi-input: LLM merge
+    if (Array.isArray(obj.inputs)) {
+      // Extract reference image from uploaded references or image generation outputs
+      let referenceImageUrl: string | null = null
+      for (const inp of obj.inputs as Array<{ nodeType: string; content: unknown }>) {
+        if (inp.nodeType === 'uploaded-reference') {
+          const c = inp.content as { type?: string; localPath?: string }
+          if (c.type === 'image' && c.localPath) { referenceImageUrl = c.localPath; break }
+        }
+        if (inp.content && typeof inp.content === 'object') {
+          const c = inp.content as Record<string, unknown>
+          if (Array.isArray(c.assets) && c.assets.length > 0) {
+            const a = c.assets[0] as { localPath?: string }
+            if (a.localPath) { referenceImageUrl = a.localPath; break }
+          }
+        }
+      }
+      const result = await callModel(
+        {
+          provider: 'anthropic',
+          model: 'claude-haiku-4-5-20251001',
+          api_key_ref: '',
+          system_prompt: VIDEO_MERGE_SYSTEM_PROMPT,
+          temperature: 0.7,
+          max_tokens: 512,
+        },
+        `Synthesize a single coherent video generation prompt from these inputs:\n\n${JSON.stringify(obj.inputs, null, 2)}`,
+      )
+      try {
+        const cleaned = result.text.replace(/```(?:json)?/g, '').trim()
+        const parsed = JSON.parse(cleaned) as VideoPromptOutput
+        if (referenceImageUrl) {
+          parsed.mode = 'image-to-video'
+          parsed.referenceImageUrl = referenceImageUrl
+        }
+        return parsed
+      } catch {
+        throw new Error(`Video Generation: LLM merge returned invalid JSON: ${result.text.slice(0, 200)}`)
       }
     }
   }
@@ -722,7 +781,7 @@ export class VideoGenerationExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as VideoGenerationConfig
     const provider: Provider = cfg.provider ?? 'runway'
-    const prompt = extractVideoPrompt(input, cfg)
+    const prompt = await extractVideoPrompt(input, cfg)
 
     // Merge manual start_frame into prompt if not already set by upstream
     if (cfg.start_frame && !prompt.referenceImageUrl) {

@@ -29,6 +29,7 @@ import { clientLibraryRoutes } from './routes/clientLibrary.js'
 import { promptRoutes } from './routes/prompts.js'
 import { instructionTranslatorRoutes } from './routes/instructionTranslator.js'
 import { generatedFileRoutes } from './routes/generatedFiles.js'
+import { referenceFileRoutes } from './routes/referenceFiles.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -125,6 +126,8 @@ await app.register(libraryRoutes,          { prefix: '/api/v1/library' })
 await app.register(clientLibraryRoutes,    { prefix: '/api/v1/clients/:clientId/library' })
 await app.register(promptRoutes,           { prefix: '/api/v1/prompts' })
 await app.register(instructionTranslatorRoutes, { prefix: '/api/v1/instruction-translator' })
+// Reference file upload (images/videos for use as generation inputs)
+await app.register(referenceFileRoutes, { prefix: '/api/v1/reference-files' })
 // Generated asset serving — public, no auth, immutable cache
 await app.register(generatedFileRoutes, { prefix: '/files' })
 

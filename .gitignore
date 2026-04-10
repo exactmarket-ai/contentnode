@@ -1,6 +1,7 @@
 node_modules
 .env
 .env.local
+.env.production
 !apps/web/.env.production
 dist
 .DS_Store

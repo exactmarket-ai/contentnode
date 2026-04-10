@@ -41,16 +41,22 @@ export class ImagePromptBuilderExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const cfg = config as ImagePromptBuilderConfig
 
-    const inputStr =
-      typeof input === 'string'
-        ? input
-        : Array.isArray(input)
-        ? input.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n\n')
-        : JSON.stringify(input)
+    const stylePrefix = cfg.style_hint ? `Style preference: ${cfg.style_hint}\n\n` : ''
+    let userMessage: string
 
-    const userMessage = cfg.style_hint
-      ? `Style preference: ${cfg.style_hint}\n\nContent/brief:\n${inputStr}`
-      : `Content/brief:\n${inputStr}`
+    if (input && typeof input === 'object' && !Array.isArray(input) && 'inputs' in (input as object)) {
+      // Structured multi-input: synthesize a prompt from all sources
+      const { inputs } = input as { inputs: Array<{ nodeLabel: string; nodeType: string; content: unknown }> }
+      userMessage = `${stylePrefix}Synthesize a single coherent image generation prompt from these inputs:\n\n${JSON.stringify(inputs, null, 2)}`
+    } else {
+      const inputStr =
+        typeof input === 'string'
+          ? input
+          : Array.isArray(input)
+          ? input.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n\n')
+          : JSON.stringify(input)
+      userMessage = `${stylePrefix}Content/brief:\n${inputStr}`
+    }
 
     const result = await callModel(
       {

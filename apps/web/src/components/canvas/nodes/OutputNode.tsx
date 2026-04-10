@@ -4,16 +4,44 @@ import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
 import { assetUrl } from '@/lib/api'
+import { NodeUploadZone, type ReferenceFile } from './NodeUploadZone'
+
+const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
 export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
+  const edges = useWorkflowStore((s) => s.edges)
+  const nodes = useWorkflowStore((s) => s.nodes)
+  const updateNodeData = useWorkflowStore((s) => s.updateNodeData)
+
   const status = nodeStatuses[id]?.status ?? 'idle'
   const subtype = (data.subtype as string) ?? (data.config as Record<string, unknown>)?.subtype as string
   const spec = getNodeSpec('output', subtype)
+  const isGeneration = GENERATION_SUBTYPES.has(subtype)
 
   const isRunning = status === 'running'
   const isPassed  = status === 'passed'
   const isFailed  = status === 'failed'
+
+  // Connected upstream nodes (for multi-input display)
+  const incomingEdges = edges.filter((e) => e.target === id)
+  const connectedSources = incomingEdges.map((e) => {
+    const src = nodes.find((n) => n.id === e.source)
+    return src?.data?.label as string || 'Source'
+  }).filter(Boolean)
+
+  // Reference files stored in node config
+  const config = (data.config as Record<string, unknown>) ?? {}
+  const referenceFiles = (config.reference_files as ReferenceFile[]) ?? []
+
+  const handleAddRef = (file: ReferenceFile) => {
+    const current = (config.reference_files as ReferenceFile[]) ?? []
+    updateNodeData(id, { config: { ...config, reference_files: [...current, file] } })
+  }
+  const handleRemoveRef = (localPath: string) => {
+    const current = (config.reference_files as ReferenceFile[]) ?? []
+    updateNodeData(id, { config: { ...config, reference_files: current.filter((f) => f.localPath !== localPath) } })
+  }
 
   const cardStyle: React.CSSProperties = selected ? {
     border: `2px solid ${spec.accent}`,
@@ -38,9 +66,13 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   }
 
   const titleColor = selected ? spec.activeTextColor : '#1a1a14'
+  const nodeWidth = isGeneration ? 240 : 200
 
   return (
-    <div className="relative w-[200px] rounded-md bg-white transition-all" style={cardStyle}>
+    <div
+      className="relative rounded-md bg-white transition-all"
+      style={{ ...cardStyle, width: nodeWidth }}
+    >
       <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
       <Handle type="source" position={Position.Right} id="output" style={{ top: '50%' }} />
 
@@ -48,10 +80,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
       <div className="flex items-center gap-2 rounded-t-md border-b px-3 py-2" style={headerStyle}>
         <div
           className="shrink-0"
-          style={{
-            width: 7, height: 7, borderRadius: 2,
-            backgroundColor: selected ? 'rgba(255,255,255,0.7)' : spec.accent,
-          }}
+          style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: selected ? 'rgba(255,255,255,0.7)' : spec.accent }}
         />
         <span className="text-[11px] font-semibold truncate" style={{ color: titleColor }}>
           {data.label as string}
@@ -70,28 +99,58 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
       </div>
 
       {/* Body */}
-      <div className="px-2.5 py-1.5">
-        <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
-          {data.description as string}
-        </p>
+      <div className="px-2.5 py-1.5 space-y-1.5">
+
+        {/* Connected sources (generation nodes) */}
+        {isGeneration && connectedSources.length > 0 && (
+          <div className="space-y-0.5">
+            {connectedSources.map((label, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <div className="h-px w-2 shrink-0" style={{ backgroundColor: spec.accent + '88' }} />
+                <span className="text-[9px] truncate" style={{ color: spec.accent + 'cc' }}>{label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Description (non-generation) */}
+        {!isGeneration && (
+          <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
+            {data.description as string}
+          </p>
+        )}
+
+        {/* Reference file upload zone (generation nodes only) */}
+        {isGeneration && (
+          <NodeUploadZone
+            files={referenceFiles}
+            onAdd={handleAddRef}
+            onRemove={handleRemoveRef}
+            accentColor={spec.accent}
+          />
+        )}
+
+        {/* Status / timing */}
         {(isPassed || isFailed) && nodeStatuses[id]?.startedAt && (
-          <p className="mt-1 text-[10px]" style={{ color: '#b4b2a9' }}>
+          <p className="text-[10px]" style={{ color: '#b4b2a9' }}>
             Received {new Date(nodeStatuses[id].startedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </p>
         )}
+
         {/* Video generation: generating indicator */}
         {isRunning && subtype === 'video-generation' && (
-          <p className="mt-1 animate-pulse text-[10px]" style={{ color: spec.accent }}>
+          <p className="animate-pulse text-[10px]" style={{ color: spec.accent }}>
             Generating video…
           </p>
         )}
-        {/* Video generation: looping preview after completion */}
+
+        {/* Video generation: looping full-width preview after completion */}
         {isPassed && subtype === 'video-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
           const assets = output?.assets as { localPath: string }[] | undefined
           if (!assets?.length) return null
           return (
-            <div className="mt-1.5 overflow-hidden rounded" style={{ maxHeight: '112px' }}>
+            <div className="overflow-hidden rounded-sm" style={{ marginLeft: -10, marginRight: -10 }}>
               <video
                 src={assetUrl(assets[0].localPath)}
                 autoPlay
@@ -99,43 +158,66 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                 muted
                 playsInline
                 className="w-full object-cover"
-                style={{ maxHeight: '112px' }}
+                style={{ maxHeight: 240, display: 'block' }}
               />
               {assets.length > 1 && (
-                <p className="text-center text-[9px]" style={{ color: '#b4b2a9' }}>
+                <p className="text-center text-[9px] py-0.5" style={{ color: '#b4b2a9' }}>
                   +{assets.length - 1} more clip{assets.length > 2 ? 's' : ''}
                 </p>
               )}
             </div>
           )
         })()}
-        {/* Image generation: show thumbnail strip on canvas */}
+
+        {/* Image generation: full-width thumbnail after completion */}
         {isPassed && subtype === 'image-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
           const assets = output?.assets as { localPath: string }[] | undefined
           if (!assets?.length) return null
           return (
-            <div className="mt-1.5 flex gap-1 overflow-x-auto">
-              {assets.slice(0, 3).map((a, i) => (
+            <div style={{ marginLeft: -10, marginRight: -10 }}>
+              {/* Primary image — full width, 240px tall */}
+              <div className="overflow-hidden" style={{ height: 240 }}>
                 <img
-                  key={i}
-                  src={assetUrl(a.localPath)}
-                  alt={`Generated ${i + 1}`}
-                  className="h-10 w-10 shrink-0 rounded object-cover border"
-                  style={{ borderColor: spec.accent + '44' }}
+                  src={assetUrl(assets[0].localPath)}
+                  alt="Generated"
+                  draggable={false}
+                  className="w-full h-full object-cover"
                 />
-              ))}
-              {assets.length > 3 && (
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded border text-[9px] font-medium"
-                  style={{ borderColor: spec.accent + '44', color: spec.accent }}
-                >
-                  +{assets.length - 3}
+              </div>
+              {/* Additional images as small strip */}
+              {assets.length > 1 && (
+                <div className="flex gap-0.5 pt-0.5 px-2.5">
+                  {assets.slice(1, 4).map((a, i) => (
+                    <img
+                      key={i}
+                      src={assetUrl(a.localPath)}
+                      alt={`Generated ${i + 2}`}
+                      draggable={false}
+                      className="h-8 w-8 shrink-0 rounded-sm object-cover border"
+                      style={{ borderColor: spec.accent + '44' }}
+                    />
+                  ))}
+                  {assets.length > 4 && (
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border text-[9px] font-medium"
+                      style={{ borderColor: spec.accent + '44', color: spec.accent }}
+                    >
+                      +{assets.length - 4}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )
         })()}
+
+        {/* Non-generation output description */}
+        {!isGeneration && (isPassed || isFailed) && (
+          <p className="text-[10px] leading-[1.4]" style={{ color: '#6b6a62' }}>
+            {data.description as string}
+          </p>
+        )}
       </div>
     </div>
   )

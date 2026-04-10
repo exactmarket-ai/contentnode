@@ -15,14 +15,12 @@ interface MediaFilmstripProps {
 }
 
 function AssetThumbnail({ asset, height, onClick }: { asset: MediaAsset; height: number; onClick: () => void }) {
-  const style = { height, width: height, flexShrink: 0 } as const
-
   if (asset.type === 'video') {
     return (
       <button
         onClick={onClick}
-        className="overflow-hidden rounded-md border border-border bg-muted transition-opacity hover:opacity-80"
-        style={style}
+        className="relative overflow-hidden rounded-md border border-border bg-muted transition-opacity hover:opacity-80 shrink-0"
+        style={{ height, width: height }}
         title="Click to view"
       >
         <video
@@ -33,6 +31,11 @@ function AssetThumbnail({ asset, height, onClick }: { asset: MediaAsset; height:
           playsInline
           className="h-full w-full object-cover"
         />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="rounded-full bg-black/40 p-1.5">
+            <Icons.Play className="h-4 w-4 text-white" />
+          </div>
+        </div>
       </button>
     )
   }
@@ -40,8 +43,8 @@ function AssetThumbnail({ asset, height, onClick }: { asset: MediaAsset; height:
   return (
     <button
       onClick={onClick}
-      className="overflow-hidden rounded-md border border-border bg-muted transition-opacity hover:opacity-80"
-      style={style}
+      className="overflow-hidden rounded-md border border-border bg-muted transition-opacity hover:opacity-80 shrink-0"
+      style={{ height, width: height }}
       title="Click to view"
     >
       <img src={assetUrl(asset.localPath)} alt="Generated" className="h-full w-full object-cover" />
@@ -53,7 +56,7 @@ function AssetThumbnail({ asset, height, onClick }: { asset: MediaAsset; height:
  * Shared media filmstrip used by Image Generation and Video Generation config panels.
  * Shows thumbnails in a horizontal scroll strip. Clicking opens a full-size modal.
  */
-export function MediaFilmstrip({ assets, thumbnailHeight = 140 }: MediaFilmstripProps) {
+export function MediaFilmstrip({ assets, thumbnailHeight = 200 }: MediaFilmstripProps) {
   const [modalAsset, setModalAsset] = useState<MediaAsset | null>(null)
 
   if (assets.length === 0) return null
@@ -85,25 +88,31 @@ export function MediaFilmstrip({ assets, thumbnailHeight = 140 }: MediaFilmstrip
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
           onClick={() => setModalAsset(null)}
         >
-          <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative"
+            style={{ maxHeight: '90vh', maxWidth: '90vw' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {modalAsset.type === 'video' ? (
               <video
                 src={assetUrl(modalAsset.localPath)}
                 controls
                 autoPlay
                 loop
-                className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl"
+                className="rounded-lg shadow-2xl"
+                style={{ maxHeight: '90vh', maxWidth: '90vw', objectFit: 'contain', display: 'block' }}
               />
             ) : (
               <img
                 src={assetUrl(modalAsset.localPath)}
                 alt="Generated"
-                className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+                className="rounded-lg shadow-2xl"
+                style={{ maxHeight: '90vh', maxWidth: '90vw', objectFit: 'contain', display: 'block' }}
               />
             )}
             <button
               onClick={() => setModalAsset(null)}
-              className="absolute -right-3 -top-3 rounded-full bg-white p-1 shadow-lg"
+              className="absolute -right-3 -top-3 rounded-full bg-white p-1.5 shadow-lg hover:bg-gray-100"
             >
               <Icons.X className="h-4 w-4 text-black" />
             </button>
