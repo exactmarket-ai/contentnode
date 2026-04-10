@@ -163,13 +163,31 @@ async function extractPrompt(input: unknown, referenceImages: ImageInput[]): Pro
     }
     // Structured multi-input (or has reference images): use Claude vision to compose
     if (Array.isArray(obj.inputs) || hasRefs) {
-      const textContext = Array.isArray(obj.inputs)
-        ? `Text inputs and context:\n${JSON.stringify(
-            (obj.inputs as Record<string, unknown>[]).filter(
-              (i) => !(i.content as Record<string, unknown>)?.assets
-            ),
-            null, 2
-          )}`
+      // If there is only one text input and no reference images, pass it through directly
+      // to avoid Claude expanding it into something that trips provider safety filters.
+      const textInputs = Array.isArray(obj.inputs)
+        ? (obj.inputs as Record<string, unknown>[]).filter(
+            (i) => !(i.content as Record<string, unknown>)?.assets
+          )
+        : []
+      if (!hasRefs && textInputs.length === 1) {
+        const singleContent = (textInputs[0].content as string | Record<string, unknown> | undefined)
+        const singleText = typeof singleContent === 'string'
+          ? singleContent
+          : typeof singleContent === 'object' && singleContent !== null
+            ? String((singleContent as Record<string, unknown>).text ?? JSON.stringify(singleContent))
+            : JSON.stringify(textInputs[0])
+        return {
+          positivePrompt: singleText,
+          negativePrompt: '',
+          aspectRatio: (obj.aspectRatio as string | undefined) ?? '1:1',
+          styleTag: '',
+          modelPreference: '',
+        } as ImagePromptOutput
+      }
+
+      const textContext = textInputs.length > 0
+        ? `Text inputs and context:\n${JSON.stringify(textInputs, null, 2)}`
         : typeof obj.positivePrompt === 'string'
           ? `Existing prompt direction: ${obj.positivePrompt}`
           : `Input: ${JSON.stringify(obj)}`
