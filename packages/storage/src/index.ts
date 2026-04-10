@@ -17,7 +17,7 @@
 
 import { createWriteStream, mkdirSync, readFileSync, existsSync, unlinkSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, resolve, dirname } from 'node:path'
 import { Readable, pipeline as streamPipeline } from 'node:stream'
 import { promisify } from 'node:util'
 
@@ -61,8 +61,8 @@ export async function uploadStream(
   contentType = 'application/octet-stream',
 ): Promise<void> {
   if (!isS3Mode()) {
-    mkdirSync(UPLOAD_DIR, { recursive: true })
     const filePath = join(UPLOAD_DIR, storageKey)
+    mkdirSync(dirname(filePath), { recursive: true })
     await pipeline(stream, createWriteStream(filePath))
     return
   }
@@ -90,8 +90,9 @@ export async function uploadBuffer(
   contentType = 'application/octet-stream',
 ): Promise<void> {
   if (!isS3Mode()) {
-    mkdirSync(UPLOAD_DIR, { recursive: true })
-    await writeFile(join(UPLOAD_DIR, storageKey), buffer)
+    const filePath = join(UPLOAD_DIR, storageKey)
+    mkdirSync(dirname(filePath), { recursive: true })
+    await writeFile(filePath, buffer)
     return
   }
 
