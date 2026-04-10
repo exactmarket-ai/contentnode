@@ -82,19 +82,30 @@ async function authPluginFn(app: FastifyInstance) {
     req.log.debug({ agencyId, role, sub: payload.sub }, '[auth] token claims')
 
     if (!agencyId) {
-      // Fallback for dev: if a DEFAULT_AGENCY_ID env var is set, use it rather
-      // than rejecting a valid token that just lacks the custom claim.
-      // In production, agency_id must be set as a Clerk custom session claim.
+      // Fallback: look up agency_id from the database using the Clerk user ID.
+      // This handles cases where the JWT template hasn't propagated yet or
+      // the session token customization isn't configured.
       const fallback = process.env.DEFAULT_AGENCY_ID
-      if (!fallback) {
-        req.log.warn({ sub: payload.sub, claims: Object.keys(claims) }, '[auth] 403 — token missing agency_id claim (set DEFAULT_AGENCY_ID env var for local dev)')
-        return reply.code(403).send({ error: 'Token is missing agency_id claim' })
+      if (fallback) {
+        const roleOverride = process.env.DEFAULT_ROLE ?? role
+        req.log.warn({ sub: payload.sub, fallback, roleOverride }, '[auth] agency_id missing from token — using DEFAULT_AGENCY_ID fallback')
+        req.auth = { agencyId: fallback, userId: payload.sub, role: roleOverride }
+        agencyStorage.enterWith({ agencyId: fallback })
+        return
       }
-      const roleOverride = process.env.DEFAULT_ROLE ?? role
-      req.log.warn({ sub: payload.sub, fallback, roleOverride }, '[auth] agency_id missing from token — using DEFAULT_AGENCY_ID fallback')
-      req.auth = { agencyId: fallback, userId: payload.sub, role: roleOverride }
-      agencyStorage.enterWith({ agencyId: fallback })
-      return
+      try {
+        const user = await prisma.user.findFirst({ where: { clerkUserId: payload.sub } })
+        if (user) {
+          req.log.info({ sub: payload.sub, agencyId: user.agencyId }, '[auth] agency_id resolved from database')
+          req.auth = { agencyId: user.agencyId, userId: payload.sub, role: user.role }
+          agencyStorage.enterWith({ agencyId: user.agencyId })
+          return
+        }
+      } catch (err) {
+        req.log.error({ err }, '[auth] failed to look up user from database')
+      }
+      req.log.warn({ sub: payload.sub, claims: Object.keys(claims) }, '[auth] 403 — token missing agency_id claim and user not found in database')
+      return reply.code(403).send({ error: 'Token is missing agency_id claim' })
     }
 
     req.auth = { agencyId, userId: payload.sub, role }
