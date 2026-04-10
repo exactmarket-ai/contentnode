@@ -6,7 +6,6 @@ import { getNodeSpec } from '@/lib/nodeColors'
 import { assetUrl } from '@/lib/api'
 import { NodeUploadZone, type ReferenceFile } from './NodeUploadZone'
 import { downloadAsset, makeFilename } from '@/lib/downloadAsset'
-import { triggerRun } from '@/lib/runWorkflow'
 
 const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
@@ -25,7 +24,6 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const isPassed   = status === 'passed'
   const isFailed   = status === 'failed'
   const isSkipped  = status === 'skipped'
-  const isLocked   = config.locked === true
 
   // Connected upstream nodes (for multi-input display)
   const incomingEdges = edges.filter((e) => e.target === id)
@@ -36,6 +34,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
 
   // Reference files stored in node config
   const config = (data.config as Record<string, unknown>) ?? {}
+  const isLocked   = config.locked === true
   const referenceFiles = (config.reference_files as ReferenceFile[]) ?? []
 
   const handleAddRef = (file: ReferenceFile) => {
@@ -51,7 +50,6 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
     e.stopPropagation()
     // Unlock and clear stored assets so the runner will re-generate this node
     updateNodeData(id, { config: { ...config, locked: false, stored_assets: undefined } })
-    void triggerRun()
   }
 
   const cardStyle: React.CSSProperties = selected ? {
