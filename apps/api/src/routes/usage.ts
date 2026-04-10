@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import { prisma } from '@contentnode/database'
+import { prisma, usageQueryService } from '@contentnode/database'
+import type { UsageFilters } from '@contentnode/database'
 
 function currentPeriod() {
   const now = new Date()
@@ -199,6 +200,94 @@ export async function usageRoutes(app: FastifyInstance) {
         dailyUsage,
       },
     })
+  })
+
+  // ── GET /events — raw granular UsageEvent log ─────────────────────────────
+  app.get('/events', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const filters: UsageFilters = {
+      startDate:  q.startDate,
+      endDate:    q.endDate,
+      toolType:   q.toolType as UsageFilters['toolType'],
+      provider:   q.provider,
+      model:      q.model,
+      isOnline:   q.isOnline !== undefined ? q.isOnline === 'true' : undefined,
+      status:     q.status as UsageFilters['status'],
+      workflowId: q.workflowId,
+    }
+    const limit  = Math.min(Number(q.limit  ?? 100), 1000)
+    const offset = Number(q.offset ?? 0)
+    const events = await usageQueryService.getUsageEvents(agencyId, filters, { limit, offset })
+    return reply.send({ data: events })
+  })
+
+  // ── GET /events/org — org-level aggregated stats ──────────────────────────
+  app.get('/events/org', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const filters: UsageFilters = {
+      startDate: q.startDate, endDate: q.endDate,
+      toolType: q.toolType as UsageFilters['toolType'],
+    }
+    const summary = await usageQueryService.getOrgUsage(agencyId, filters)
+    return reply.send({ data: summary })
+  })
+
+  // ── GET /events/org/by-client — org breakdown by client ──────────────────
+  app.get('/events/org/by-client', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const data = await usageQueryService.getOrgUsageByClient(agencyId, { startDate: q.startDate, endDate: q.endDate })
+    return reply.send({ data })
+  })
+
+  // ── GET /events/org/by-role — org breakdown by role ──────────────────────
+  app.get('/events/org/by-role', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const data = await usageQueryService.getOrgUsageByRole(agencyId, { startDate: q.startDate, endDate: q.endDate })
+    return reply.send({ data })
+  })
+
+  // ── GET /events/org/cost-by-provider ─────────────────────────────────────
+  app.get('/events/org/cost-by-provider', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const data = await usageQueryService.getOrgCostByProvider(agencyId, { startDate: q.startDate, endDate: q.endDate })
+    return reply.send({ data })
+  })
+
+  // ── GET /events/clients/:clientId ─────────────────────────────────────────
+  app.get<{ Params: { clientId: string } }>('/events/clients/:clientId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const filters: UsageFilters = {
+      startDate: q.startDate, endDate: q.endDate,
+      toolType: q.toolType as UsageFilters['toolType'],
+    }
+    const data = await usageQueryService.getClientUsage(agencyId, req.params.clientId, filters)
+    return reply.send({ data })
+  })
+
+  // ── GET /events/clients/:clientId/by-user ────────────────────────────────
+  app.get<{ Params: { clientId: string } }>('/events/clients/:clientId/by-user', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const data = await usageQueryService.getClientUsageByUser(agencyId, req.params.clientId, { startDate: q.startDate, endDate: q.endDate })
+    return reply.send({ data })
+  })
+
+  // ── GET /events/users/:userId ─────────────────────────────────────────────
+  app.get<{ Params: { userId: string } }>('/events/users/:userId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const q = req.query as Record<string, string>
+    const filters: UsageFilters = {
+      startDate: q.startDate, endDate: q.endDate,
+      toolType: q.toolType as UsageFilters['toolType'],
+    }
+    const data = await usageQueryService.getUserUsage(agencyId, req.params.userId, filters)
+    return reply.send({ data })
   })
 
   // ── GET /humanizer — per-service word counts for the current month ─────────

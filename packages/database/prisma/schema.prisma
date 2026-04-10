@@ -25,6 +25,7 @@ model Agency {
   workflows          Workflow[]
   documents          Document[]
   usageRecords       UsageRecord[]
+  usageEvents        UsageEvent[]
   auditLogs          AuditLog[]
   transcriptSessions TranscriptSession[]
   insights           Insight[]
@@ -38,6 +39,9 @@ model Agency {
   promptTemplates    PromptTemplate[]
   clientProfiles     ClientProfile[]
   companyProfiles    CompanyProfile[]
+  // Permissions override — if null, role defaults apply.
+  // See PermissionService for resolution order.
+  permissionsOverride Json? @map("permissions_override")
 
   @@map("agencies")
 }
@@ -70,7 +74,10 @@ model Client {
   logoStorageKey String?   @map("logo_storage_key")
   status         String    @default("active") // active | archived
   archivedAt     DateTime? @map("archived_at")
-  requireOffline Boolean   @default(false) @map("require_offline") // if true, all workflows must use local models only
+  requireOffline      Boolean @default(false) @map("require_offline")
+  // Permissions override for all users working with this client.
+  // Merged after the agency-level override; before user-level override.
+  permissionsOverride Json?   @map("permissions_override")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
@@ -133,7 +140,11 @@ model User {
   name       String?
   title      String?
   department String?
-  role       String   @default("member") // owner | admin | lead | member
+  // Roles: owner | admin | lead | member (existing) + super_admin | org_admin | client_manager | editor | reviewer | viewer | api_user (new)
+  role       String   @default("member")
+  // Per-user permission override. Highest priority in the resolution chain.
+  // If null, inherits from client → agency → role defaults.
+  permissionsOverride Json? @map("permissions_override")
   inviteToken     String?   @unique @map("invite_token")
   inviteExpiresAt DateTime? @map("invite_expires_at")
   lastActiveAt    DateTime? @map("last_active_at") // updated on every authenticated request (throttled to 5 min)
@@ -538,6 +549,73 @@ model UsageRecord {
   @@index([agencyId])
   @@index([agencyId, metric, periodStart])
   @@map("usage_records")
+}
+
+// ─────────────────────────────────────────────
+// UsageEvent — granular per-execution event log
+// Immutable: never update. Corrections write a new event with `corrects` set.
+// ─────────────────────────────────────────────
+model UsageEvent {
+  id        String   @id @default(cuid())
+  timestamp DateTime @default(now())
+
+  // Identity
+  userId   String? @map("user_id")    // Clerk user ID of the triggering user
+  userRole String? @map("user_role")
+  clientId String? @map("client_id")
+  agencyId String  @map("agency_id")
+
+  // Tool category
+  toolType    String @map("tool_type")    // llm | graphics | video | content
+  toolSubtype String @map("tool_subtype") // text_generation | image_generation | video_generation | humanizer | …
+
+  // Provider / model used
+  provider String
+  model    String
+  isOnline Boolean @map("is_online") // true = cloud, false = local/offline
+
+  // Workflow context
+  workflowId    String? @map("workflow_id")
+  workflowRunId String? @map("workflow_run_id")
+  nodeId        String? @map("node_id")
+  nodeType      String? @map("node_type")
+
+  // Input / output metrics (nullable — not all fields apply to all tool types)
+  inputTokens        Int?   @map("input_tokens")
+  outputTokens       Int?   @map("output_tokens")
+  inputCharacters    Int?   @map("input_characters")
+  outputCharacters   Int?   @map("output_characters")
+  inputMediaCount    Int?   @map("input_media_count")
+  outputMediaCount   Int?   @map("output_media_count")
+  outputDurationSecs Float? @map("output_duration_secs")
+  outputResolution   String? @map("output_resolution")
+
+  // Cost
+  estimatedCostUsd Float? @map("estimated_cost_usd")
+
+  // Execution
+  durationMs   Int    @map("duration_ms")
+  status       String // success | error | cancelled
+  errorCode    String? @map("error_code")
+  errorMessage String? @map("error_message")
+
+  // Snapshot of the user's resolved permissions at execution time (audit trail).
+  // Allows reconstruction of why a capability was or was not allowed.
+  permissionsAtTime Json? @map("permissions_at_time")
+
+  // Correction chain: if this event corrects a prior event, set its id here.
+  // The original event is never mutated.
+  corrects String?
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([agencyId, userId])
+  @@index([agencyId, clientId])
+  @@index([agencyId, workflowRunId])
+  @@index([agencyId, toolType])
+  @@index([agencyId, timestamp])
+  @@map("usage_events")
 }
 
 // ─────────────────────────────────────────────

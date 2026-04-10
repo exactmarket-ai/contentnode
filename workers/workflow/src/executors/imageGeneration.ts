@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
 import { callModel, type ImageInput } from '@contentnode/ai'
+import { usageEventService, costEstimator } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { ImagePromptOutput } from './imagePromptBuilder.js'
+
+const OFFLINE_IMAGE_PROVIDERS = new Set(['comfyui', 'automatic1111'])
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -515,10 +518,12 @@ export class ImageGenerationExecutor extends NodeExecutor {
   async execute(
     input: unknown,
     config: Record<string, unknown>,
-    _ctx: NodeExecutionContext,
+    ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as ImageGenerationConfig
     const provider: Provider = cfg.provider ?? 'dalle3'
+    const isOnline = !OFFLINE_IMAGE_PROVIDERS.has(provider)
+    const startMs = Date.now()
 
     // Extract reference images from connected upstream generation nodes
     const assetRefs = extractAssetRefs(input)
@@ -528,27 +533,87 @@ export class ImageGenerationExecutor extends NodeExecutor {
 
     let rawUrls: string[]
 
-    switch (provider) {
-      case 'dalle3':
-        rawUrls = await generateDalle3(prompt, cfg)
-        break
-      case 'stability':
-        rawUrls = await generateStability(prompt, cfg)
-        break
-      case 'fal':
-        rawUrls = await generateFal(prompt, cfg)
-        break
-      case 'comfyui':
-        rawUrls = await generateComfyUI(prompt, cfg)
-        break
-      case 'automatic1111':
-        rawUrls = await generateAutomatic1111(prompt, cfg)
-        break
-      default:
-        throw new Error(`Unknown image generation provider: ${String(provider)}`)
+    try {
+      switch (provider) {
+        case 'dalle3':
+          rawUrls = await generateDalle3(prompt, cfg)
+          break
+        case 'stability':
+          rawUrls = await generateStability(prompt, cfg)
+          break
+        case 'fal':
+          rawUrls = await generateFal(prompt, cfg)
+          break
+        case 'comfyui':
+          rawUrls = await generateComfyUI(prompt, cfg)
+          break
+        case 'automatic1111':
+          rawUrls = await generateAutomatic1111(prompt, cfg)
+          break
+        default:
+          throw new Error(`Unknown image generation provider: ${String(provider)}`)
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      usageEventService.record({
+        agencyId:          ctx.agencyId,
+        userId:            ctx.userId ?? undefined,
+        userRole:          ctx.userRole ?? undefined,
+        clientId:          ctx.clientId ?? undefined,
+        toolType:          'graphics',
+        toolSubtype:       'image_generation',
+        provider,
+        model:             provider,
+        isOnline,
+        workflowId:        ctx.workflowId,
+        workflowRunId:     ctx.workflowRunId,
+        nodeId:            ctx.nodeId,
+        nodeType:          'output',
+        inputMediaCount:   referenceImages.length,
+        durationMs:        Date.now() - startMs,
+        status:            'error',
+        errorMessage,
+        permissionsAtTime: ctx.resolvedPermissions,
+      }).catch(() => {})
+      throw err
     }
 
     const assets = await saveImages(rawUrls, provider)
+
+    // Infer resolution from aspect_ratio / num_outputs for cost estimation
+    const resolution = cfg.aspect_ratio === '16:9' ? '1792x1024'
+      : cfg.aspect_ratio === '9:16' ? '1024x1792'
+      : '1024x1024'
+    const costUsd = costEstimator.estimateImageCost(
+      provider === 'dalle3' ? 'openai' : provider,
+      provider === 'dalle3' ? 'dall-e-3' : provider,
+      assets.length,
+      resolution,
+      isOnline,
+    )
+
+    usageEventService.record({
+      agencyId:          ctx.agencyId,
+      userId:            ctx.userId ?? undefined,
+      userRole:          ctx.userRole ?? undefined,
+      clientId:          ctx.clientId ?? undefined,
+      toolType:          'graphics',
+      toolSubtype:       'image_generation',
+      provider,
+      model:             provider,
+      isOnline,
+      workflowId:        ctx.workflowId,
+      workflowRunId:     ctx.workflowRunId,
+      nodeId:            ctx.nodeId,
+      nodeType:          'output',
+      inputMediaCount:   referenceImages.length,
+      outputMediaCount:  assets.length,
+      outputResolution:  resolution,
+      estimatedCostUsd:  costUsd ?? undefined,
+      durationMs:        Date.now() - startMs,
+      status:            'success',
+      permissionsAtTime: ctx.resolvedPermissions,
+    }).catch(() => {})
 
     return {
       output: {

@@ -30,6 +30,7 @@ import { promptRoutes } from './routes/prompts.js'
 import { instructionTranslatorRoutes } from './routes/instructionTranslator.js'
 import { generatedFileRoutes } from './routes/generatedFiles.js'
 import { referenceFileRoutes } from './routes/referenceFiles.js'
+import { permissionRoutes } from './routes/permissions.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -130,6 +131,7 @@ await app.register(instructionTranslatorRoutes, { prefix: '/api/v1/instruction-t
 await app.register(referenceFileRoutes, { prefix: '/api/v1/reference-files' })
 // Generated asset serving — public, no auth, immutable cache
 await app.register(generatedFileRoutes, { prefix: '/files' })
+await app.register(permissionRoutes,    { prefix: '/api/v1/permissions' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

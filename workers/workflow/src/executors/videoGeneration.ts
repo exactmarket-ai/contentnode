@@ -1,8 +1,11 @@
 import { randomUUID, createHmac } from 'node:crypto'
 import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
 import { callModel, type ImageInput } from '@contentnode/ai'
+import { usageEventService, costEstimator } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { VideoPromptOutput } from './videoPromptBuilder.js'
+
+const OFFLINE_VIDEO_PROVIDERS = new Set(['comfyui-animatediff', 'cogvideox', 'wan21'])
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -858,10 +861,12 @@ export class VideoGenerationExecutor extends NodeExecutor {
   async execute(
     input: unknown,
     config: Record<string, unknown>,
-    _ctx: NodeExecutionContext,
+    ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as VideoGenerationConfig
     const provider: Provider = cfg.provider ?? 'runway'
+    const isOnline = !OFFLINE_VIDEO_PROVIDERS.has(provider)
+    const startMs = Date.now()
 
     // Extract reference images from connected upstream generation nodes
     const assetRefs = extractAssetRefs(input)
@@ -877,65 +882,122 @@ export class VideoGenerationExecutor extends NodeExecutor {
 
     let assets: GeneratedAsset[]
 
-    switch (provider) {
-      case 'runway': {
-        const urls = await generateRunway(prompt, cfg)
-        assets = await saveVideos(urls, provider)
-        break
+    try {
+      switch (provider) {
+        case 'runway': {
+          const urls = await generateRunway(prompt, cfg)
+          assets = await saveVideos(urls, provider)
+          break
+        }
+        case 'kling': {
+          const urls = await generateKling(prompt, cfg)
+          assets = await saveVideos(urls, provider)
+          break
+        }
+        case 'luma': {
+          const urls = await generateLuma(prompt, cfg)
+          assets = await saveVideos(urls, provider)
+          break
+        }
+        case 'pika': {
+          const urls = await generatePika(prompt, cfg)
+          assets = await saveVideos(urls, provider)
+          break
+        }
+        case 'stability': {
+          const buffers = await generateStabilityVideo(prompt, cfg)
+          assets = await saveVideos(buffers, provider)
+          break
+        }
+        case 'veo2': {
+          const refs = await generateVeo2(prompt, cfg)
+          assets = refs.map((ref) => {
+            const storageKey = ref.replace('__stored__:', '')
+            return {
+              type: 'video' as const,
+              storageKey,
+              localPath: `/files/${storageKey}`,
+              provider,
+              generatedAt: new Date().toISOString(),
+            }
+          })
+          break
+        }
+        case 'comfyui-animatediff': {
+          const urls = await generateComfyUIVideo(prompt, cfg)
+          assets = await saveVideos(urls, provider)
+          break
+        }
+        case 'cogvideox': {
+          const urls = await generateCogVideoX(prompt, cfg)
+          assets = await saveVideos(urls, provider)
+          break
+        }
+        case 'wan21': {
+          const urls = await generateWan21(prompt, cfg)
+          assets = await saveVideos(urls, provider)
+          break
+        }
+        default:
+          throw new Error(`Unknown video generation provider: ${String(provider)}`)
       }
-      case 'kling': {
-        const urls = await generateKling(prompt, cfg)
-        assets = await saveVideos(urls, provider)
-        break
-      }
-      case 'luma': {
-        const urls = await generateLuma(prompt, cfg)
-        assets = await saveVideos(urls, provider)
-        break
-      }
-      case 'pika': {
-        const urls = await generatePika(prompt, cfg)
-        assets = await saveVideos(urls, provider)
-        break
-      }
-      case 'stability': {
-        const buffers = await generateStabilityVideo(prompt, cfg)
-        assets = await saveVideos(buffers, provider)
-        break
-      }
-      case 'veo2': {
-        // veo2 returns __stored__: prefixed keys — already saved
-        const refs = await generateVeo2(prompt, cfg)
-        assets = refs.map((ref) => {
-          const storageKey = ref.replace('__stored__:', '')
-          return {
-            type: 'video' as const,
-            storageKey,
-            localPath: `/files/${storageKey}`,
-            provider,
-            generatedAt: new Date().toISOString(),
-          }
-        })
-        break
-      }
-      case 'comfyui-animatediff': {
-        const urls = await generateComfyUIVideo(prompt, cfg)
-        assets = await saveVideos(urls, provider)
-        break
-      }
-      case 'cogvideox': {
-        const urls = await generateCogVideoX(prompt, cfg)
-        assets = await saveVideos(urls, provider)
-        break
-      }
-      case 'wan21': {
-        const urls = await generateWan21(prompt, cfg)
-        assets = await saveVideos(urls, provider)
-        break
-      }
-      default:
-        throw new Error(`Unknown video generation provider: ${String(provider)}`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      usageEventService.record({
+        agencyId:          ctx.agencyId,
+        userId:            ctx.userId ?? undefined,
+        userRole:          ctx.userRole ?? undefined,
+        clientId:          ctx.clientId ?? undefined,
+        toolType:          'video',
+        toolSubtype:       'video_generation',
+        provider,
+        model:             provider,
+        isOnline,
+        workflowId:        ctx.workflowId,
+        workflowRunId:     ctx.workflowRunId,
+        nodeId:            ctx.nodeId,
+        nodeType:          'output',
+        inputMediaCount:   referenceImages.length,
+        durationMs:        Date.now() - startMs,
+        status:            'error',
+        errorMessage,
+        permissionsAtTime: ctx.resolvedPermissions,
+      }).catch(() => {})
+      throw err
     }
+
+    const durationSecs = cfg.duration_seconds ?? 4
+    const resolution   = cfg.resolution ?? '1080p'
+    const costUsd = costEstimator.estimateVideoCost(
+      provider,
+      provider,   // model key matches provider name in rates config
+      durationSecs * assets.length,
+      isOnline,
+    )
+
+    usageEventService.record({
+      agencyId:           ctx.agencyId,
+      userId:             ctx.userId ?? undefined,
+      userRole:           ctx.userRole ?? undefined,
+      clientId:           ctx.clientId ?? undefined,
+      toolType:           'video',
+      toolSubtype:        'video_generation',
+      provider,
+      model:              provider,
+      isOnline,
+      workflowId:         ctx.workflowId,
+      workflowRunId:      ctx.workflowRunId,
+      nodeId:             ctx.nodeId,
+      nodeType:           'output',
+      inputMediaCount:    referenceImages.length,
+      outputMediaCount:   assets.length,
+      outputDurationSecs: durationSecs * assets.length,
+      outputResolution:   resolution,
+      estimatedCostUsd:   costUsd ?? undefined,
+      durationMs:         Date.now() - startMs,
+      status:             'success',
+      permissionsAtTime:  ctx.resolvedPermissions,
+    }).catch(() => {})
 
     return {
       output: { assets, prompt, provider },

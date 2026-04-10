@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { prisma, withAgency, auditService, type Prisma } from '@contentnode/database'
+import { prisma, withAgency, auditService, usageEventService, costEstimator, type Prisma } from '@contentnode/database'
 import { SourceNodeExecutor } from './executors/source.js'
 import { LogicNodeExecutor } from './executors/logic.js'
 import { OutputNodeExecutor } from './executors/output.js'
@@ -296,6 +296,23 @@ export class WorkflowRunner {
 
     const { workflow } = run
 
+    // ── Extract caller context stored at run-creation time ───────────────────
+    // runs.ts stores triggeredByClerkId and resolvedPermissions in run.input
+    // so the worker can use them for UsageEvent recording without a DB round-trip.
+    const runInput = (run.input ?? {}) as Record<string, unknown>
+    const callerClerkId    = (runInput['triggeredByClerkId'] as string | undefined) ?? run.triggeredBy ?? undefined
+    const callerPermissions = runInput['resolvedPermissions'] ?? null
+
+    // Look up the user's role for UsageEvent context
+    let callerRole: string | undefined
+    if (callerClerkId) {
+      const u = await prisma.user.findFirst({
+        where: { agencyId: this.agencyId, clerkUserId: callerClerkId },
+        select: { role: true },
+      })
+      callerRole = u?.role
+    }
+
     // ── Load client profile (brand voice context) ────────────────────────────
     const clientId = workflow.clientId ?? ''
     const clientProfile = clientId
@@ -515,6 +532,9 @@ export class WorkflowRunner {
             nodeId: node.id,
             workflowId: workflow.id,
             clientId: workflow.clientId ?? null,
+            userId: callerClerkId ?? null,
+            userRole: callerRole ?? null,
+            resolvedPermissions: callerPermissions,
             clientProfile: clientProfile ? {
               brandTone: clientProfile.brandTone,
               formality: clientProfile.formality,
@@ -719,9 +739,41 @@ export class WorkflowRunner {
               }
             }
 
-            // Record token usage
+            // Record token usage (existing monthly-bucket tracking)
             if (result.tokensUsed !== undefined) {
               await this.recordTokenUsage(result.tokensUsed, result.modelUsed ?? node.type)
+            }
+
+            // Fire granular UsageEvent for LLM nodes
+            if (result.tokensUsed !== undefined && node.type === 'logic') {
+              const nodeConfig = config as Record<string, unknown>
+              const llmProvider = (nodeConfig.provider as string | undefined) ?? 'anthropic'
+              const llmModel    = (nodeConfig.model    as string | undefined) ?? 'unknown'
+              const isOnline    = llmProvider !== 'ollama'
+              const startedAt   = runOutput.nodeStatuses[node.id]?.startedAt
+              const durationMs  = startedAt ? Date.now() - new Date(startedAt).getTime() : 0
+              const costUsd     = costEstimator.estimateLlmCost(llmProvider, llmModel, result.tokensUsed, 0, isOnline)
+              usageEventService.record({
+                agencyId:          this.agencyId,
+                userId:            ctx.userId ?? undefined,
+                userRole:          ctx.userRole ?? undefined,
+                clientId:          workflow.clientId ?? undefined,
+                toolType:          'llm',
+                toolSubtype:       'text_generation',
+                provider:          llmProvider,
+                model:             llmModel,
+                isOnline,
+                workflowId:        workflow.id,
+                workflowRunId:     this.workflowRunId,
+                nodeId:            node.id,
+                nodeType:          node.type,
+                inputTokens:       result.tokensUsed,
+                outputTokens:      0,
+                estimatedCostUsd:  costUsd ?? undefined,
+                durationMs,
+                status:            'success',
+                permissionsAtTime: ctx.resolvedPermissions,
+              }).catch(() => {})
             }
 
             // After potential loop, use updated output
@@ -776,6 +828,32 @@ export class WorkflowRunner {
                 error: errorMessage,
               },
             })
+
+            // Fire error UsageEvent for any node that fails
+            const failedNodeConfig = config as Record<string, unknown>
+            const failedSubtype    = (failedNodeConfig.subtype as string | undefined) ?? node.type
+            const failedProvider   = (failedNodeConfig.provider as string | undefined) ?? 'unknown'
+            const failedModel      = (failedNodeConfig.model    as string | undefined) ?? 'unknown'
+            const startedAt        = runOutput.nodeStatuses[node.id]?.startedAt
+            usageEventService.record({
+              agencyId:          this.agencyId,
+              userId:            ctx.userId ?? undefined,
+              userRole:          ctx.userRole ?? undefined,
+              clientId:          workflow.clientId ?? undefined,
+              toolType:          node.type === 'output' ? (failedSubtype.includes('video') ? 'video' : failedSubtype.includes('image') ? 'graphics' : 'content') : 'llm',
+              toolSubtype:       failedSubtype,
+              provider:          failedProvider,
+              model:             failedModel,
+              isOnline:          failedProvider !== 'ollama' && failedProvider !== 'comfyui' && failedProvider !== 'automatic1111' && failedProvider !== 'cogvideox' && failedProvider !== 'wan21',
+              workflowId:        workflow.id,
+              workflowRunId:     this.workflowRunId,
+              nodeId:            node.id,
+              nodeType:          node.type,
+              durationMs:        startedAt ? Date.now() - new Date(startedAt).getTime() : 0,
+              status:            'error',
+              errorMessage,
+              permissionsAtTime: ctx.resolvedPermissions,
+            }).catch(() => {})
           }
         }),
       )

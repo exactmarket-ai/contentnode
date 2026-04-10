@@ -1,5 +1,5 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, usageEventService } from '@contentnode/database'
 import type { Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 import type { DetectionOutput } from './detection.js'
@@ -514,10 +514,35 @@ export class HumanizerNodeExecutor extends NodeExecutor {
       })
     }
 
-    // Record usage per service (non-blocking)
+    // Record usage per service — existing monthly-bucket tracking (non-blocking)
     recordHumanizerUsage(ctx.agencyId, service, wordsProcessed, ctx.workflowRunId).catch((err) => {
       console.error('[humanizer] failed to record usage:', err)
     })
+
+    // Granular UsageEvent (non-blocking)
+    const isOnline = !['undetectable', 'bypassgpt', 'stealthgpt', 'humanizeai'].includes(service)
+      ? service === 'cnHumanizer' || service === 'claude'
+      : true
+    usageEventService.record({
+      agencyId:         ctx.agencyId,
+      userId:           ctx.userId ?? undefined,
+      userRole:         ctx.userRole ?? undefined,
+      clientId:         ctx.clientId ?? undefined,
+      toolType:         'content',
+      toolSubtype:      'humanizer',
+      provider:         service,
+      model:            service,
+      isOnline,
+      workflowId:       ctx.workflowId,
+      workflowRunId:    ctx.workflowRunId,
+      nodeId:           ctx.nodeId,
+      nodeType:         'logic',
+      inputCharacters:  content.length,
+      outputCharacters: humanized.length,
+      durationMs:       0,       // humanizer doesn't track per-call wall time currently
+      status:           'success',
+      permissionsAtTime: ctx.resolvedPermissions,
+    }).catch(() => {})
 
     return { output: humanized, wordsProcessed, tokensUsed, modelUsed }
   }

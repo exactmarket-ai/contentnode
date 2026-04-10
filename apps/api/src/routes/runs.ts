@@ -2,10 +2,15 @@ import { randomUUID } from 'node:crypto'
 import crypto from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma, type Prisma } from '@contentnode/database'
+import { prisma, type Prisma, permissionService } from '@contentnode/database'
 import { auditService } from '../services/audit.js'
 import { getWorkflowRunsQueue } from '../lib/queues.js'
 import { sendReviewEmail } from '../lib/email.js'
+
+// Providers that are local/offline for permission classification
+const OFFLINE_IMAGE_PROVIDERS = new Set(['comfyui', 'automatic1111'])
+const OFFLINE_VIDEO_PROVIDERS  = new Set(['comfyui-animatediff', 'cogvideox', 'wan21'])
+const OFFLINE_LLM_PROVIDERS    = new Set(['ollama'])
 
 const PORTAL_BASE_URL = process.env.PORTAL_BASE_URL ?? 'http://localhost:5173'
 const TOKEN_TTL_MINUTES = 60 * 24 * 30 // 30 days
@@ -213,6 +218,52 @@ export async function runRoutes(app: FastifyInstance) {
     // Fall back to null (anonymous trigger) if the user record isn't found.
     const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
 
+    // ── Server-side permission enforcement ─────────────────────────────────
+    // Resolve the calling user's permissions and validate every node in the graph.
+    // Client-side checks are UX only — this is the authoritative gate.
+    const resolvedPermissions = await permissionService.resolvePermissions(agencyId, userId, workflow.clientId ?? null)
+
+    if (body.graph?.nodes) {
+      for (const n of body.graph.nodes) {
+        const data   = (n.data ?? {}) as Record<string, unknown>
+        const cfg    = (data.config as Record<string, unknown>) ?? data
+        const subtype = (data.subtype ?? cfg.subtype) as string | undefined
+
+        if (subtype === 'image-generation') {
+          if (!resolvedPermissions.graphics.enabled) {
+            return reply.code(403).send({ error: 'Your permissions do not allow image generation nodes.' })
+          }
+          const provider = (cfg.provider as string | undefined) ?? 'dalle3'
+          if (!permissionService.isImageProviderAllowed(resolvedPermissions, provider)) {
+            return reply.code(403).send({ error: `Image generation provider "${provider}" is not allowed by your permissions.` })
+          }
+        }
+
+        if (subtype === 'video-generation') {
+          if (!resolvedPermissions.video.enabled) {
+            return reply.code(403).send({ error: 'Your permissions do not allow video generation nodes.' })
+          }
+          const provider = (cfg.provider as string | undefined) ?? 'runway'
+          if (!permissionService.isVideoProviderAllowed(resolvedPermissions, provider)) {
+            return reply.code(403).send({ error: `Video generation provider "${provider}" is not allowed by your permissions.` })
+          }
+        }
+
+        if (n.type === 'logic' && subtype !== 'humanizer' && subtype !== 'humanizer-pro') {
+          // LLM node — check provider/model access
+          const provider = (cfg.provider as string | undefined) ?? 'anthropic'
+          const model    = (cfg.model    as string | undefined) ?? 'claude-sonnet-4-5'
+          if (!permissionService.isLlmAllowed(resolvedPermissions, provider, model)) {
+            return reply.code(403).send({ error: `LLM provider/model "${provider}/${model}" is not allowed by your permissions.` })
+          }
+        }
+
+        if ((subtype === 'humanizer' || subtype === 'humanizer-pro') && !resolvedPermissions.content.humanizer) {
+          return reply.code(403).send({ error: 'Your permissions do not allow humanizer nodes.' })
+        }
+      }
+    }
+
     // If the caller pre-seeded node statuses (e.g. "run to here" reusing existing outputs),
     // use them as the initial output so the runner skips already-passed nodes.
     const seedStatuses = (body as Record<string, unknown>).seedNodeStatuses as Record<string, unknown> | undefined
@@ -220,14 +271,16 @@ export async function runRoutes(app: FastifyInstance) {
       ? { nodeStatuses: seedStatuses }
       : { nodeStatuses: {} }
 
-    // Create the run record with status 'pending'
+    // Create the run record with status 'pending'.
+    // Store resolvedPermissions in input so the worker can read them for per-node validation
+    // and UsageEvent snapshots without requiring another DB round-trip.
     const run = await prisma.workflowRun.create({
       data: {
         workflowId,
         agencyId,
         triggeredBy: userExists ? userId : null,
         status: 'pending',
-        input: (body.input ?? {}) as Prisma.InputJsonValue,
+        input: { ...(body.input ?? {}), resolvedPermissions, triggeredByClerkId: userId } as Prisma.InputJsonValue,
         output: initialOutput as Prisma.InputJsonValue,
       },
     })

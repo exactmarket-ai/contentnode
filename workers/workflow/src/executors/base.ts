@@ -27,6 +27,12 @@ export interface NodeExecutionContext {
   clientId?: string | null
   /** Client brand profile — null if not yet populated */
   clientProfile?: ClientProfileContext | null
+  /** Clerk user ID of the user who triggered this run (from WorkflowRun.input) */
+  userId?: string | null
+  /** Role of the triggering user */
+  userRole?: string | null
+  /** Resolved permission snapshot stored at run-creation time (for UsageEvent audit trail) */
+  resolvedPermissions?: unknown
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

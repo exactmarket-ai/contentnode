@@ -1,0 +1,113 @@
+{
+  "_comment": "Cost rates per provider/model. Update this file to change pricing without code changes. Offline/local models should not appear here — they always record estimatedCostUsd: 0.",
+  "anthropic": {
+    "claude-opus-4-6": {
+      "input_per_million_tokens": 15.00,
+      "output_per_million_tokens": 75.00
+    },
+    "claude-sonnet-4-6": {
+      "input_per_million_tokens": 3.00,
+      "output_per_million_tokens": 15.00
+    },
+    "claude-sonnet-4-5": {
+      "input_per_million_tokens": 3.00,
+      "output_per_million_tokens": 15.00
+    },
+    "claude-haiku-4-5-20251001": {
+      "input_per_million_tokens": 0.80,
+      "output_per_million_tokens": 4.00
+    },
+    "claude-3-5-sonnet-20241022": {
+      "input_per_million_tokens": 3.00,
+      "output_per_million_tokens": 15.00
+    },
+    "claude-3-5-haiku-20241022": {
+      "input_per_million_tokens": 0.80,
+      "output_per_million_tokens": 4.00
+    },
+    "claude-3-opus-20240229": {
+      "input_per_million_tokens": 15.00,
+      "output_per_million_tokens": 75.00
+    }
+  },
+  "openai": {
+    "gpt-4o": {
+      "input_per_million_tokens": 2.50,
+      "output_per_million_tokens": 10.00
+    },
+    "gpt-4o-mini": {
+      "input_per_million_tokens": 0.15,
+      "output_per_million_tokens": 0.60
+    },
+    "gpt-4-turbo": {
+      "input_per_million_tokens": 10.00,
+      "output_per_million_tokens": 30.00
+    },
+    "gpt-3.5-turbo": {
+      "input_per_million_tokens": 0.50,
+      "output_per_million_tokens": 1.50
+    },
+    "dall-e-3": {
+      "per_image_1024x1024": 0.040,
+      "per_image_1792x1024": 0.080,
+      "per_image_1024x1792": 0.080,
+      "per_image_hd_1024x1024": 0.080,
+      "per_image_hd_1792x1024": 0.120
+    },
+    "dall-e-2": {
+      "per_image_1024x1024": 0.020,
+      "per_image_512x512": 0.018,
+      "per_image_256x256": 0.016
+    }
+  },
+  "stability": {
+    "stable-diffusion-xl": {
+      "per_image": 0.002
+    },
+    "stable-video-diffusion": {
+      "per_second_video": 0.010
+    }
+  },
+  "fal": {
+    "flux-pro": {
+      "per_image": 0.055
+    },
+    "flux-dev": {
+      "per_image": 0.025
+    },
+    "flux-schnell": {
+      "per_image": 0.003
+    }
+  },
+  "runway": {
+    "gen3_alpha": {
+      "per_second_video": 0.05
+    },
+    "gen3_alpha_turbo": {
+      "per_second_video": 0.025
+    }
+  },
+  "kling": {
+    "kling-v1": {
+      "per_second_video": 0.028
+    },
+    "kling-v1-5": {
+      "per_second_video": 0.035
+    }
+  },
+  "luma": {
+    "dream-machine": {
+      "per_second_video": 0.032
+    }
+  },
+  "pika": {
+    "pika-1.5": {
+      "per_second_video": 0.030
+    }
+  },
+  "veo2": {
+    "veo-2": {
+      "per_second_video": 0.035
+    }
+  }
+}
