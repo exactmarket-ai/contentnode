@@ -73,6 +73,25 @@ export async function usageRoutes(app: FastifyInstance) {
       translationByProvider[provider] = (translationByProvider[provider] ?? 0) + r.quantity
     }
 
+    // ── Image generation ─────────────────────────────────────────────────────
+    const imageRecords = allRecords.filter((r) => r.metric === 'image_generations')
+    const totalImagesGenerated = imageRecords.reduce((s, r) => s + r.quantity, 0)
+    const imagesByProvider: Record<string, number> = {}
+    for (const r of imageRecords) {
+      const provider = ((r.metadata as Record<string, unknown>)['provider'] as string) ?? 'unknown'
+      imagesByProvider[provider] = (imagesByProvider[provider] ?? 0) + r.quantity
+    }
+
+    // ── Video generation ─────────────────────────────────────────────────────
+    const videoRecords = allRecords.filter((r) => r.metric === 'video_generations')
+    const totalVideosGenerated = videoRecords.reduce((s, r) => s + r.quantity, 0)
+    const videosByProvider: Record<string, number> = {}
+    const totalVideoSecs = videoRecords.reduce((s, r) => {
+      const provider = ((r.metadata as Record<string, unknown>)['provider'] as string) ?? 'unknown'
+      videosByProvider[provider] = (videosByProvider[provider] ?? 0) + r.quantity
+      return s + (((r.metadata as Record<string, unknown>)['durationSecs'] as number) ?? 0)
+    }, 0)
+
     // ── Email ────────────────────────────────────────────────────────────────
     const emailRecords = allRecords.filter((r) => r.metric === 'email_sent')
     const totalEmailsSent = emailRecords.reduce((s, r) => s + r.quantity, 0)
@@ -173,6 +192,9 @@ export async function usageRoutes(app: FastifyInstance) {
           humanizerWords: totalHumWords,
           translationChars: totalTranslationChars,
           emailsSent: totalEmailsSent,
+          imagesGenerated: totalImagesGenerated,
+          videosGenerated: totalVideosGenerated,
+          videoSecondGenerated: totalVideoSecs,
         },
         llm: {
           totalTokens,
@@ -194,6 +216,15 @@ export async function usageRoutes(app: FastifyInstance) {
         email: {
           totalSent: totalEmailsSent,
           byProvider: Object.entries(emailByProvider).map(([provider, count]) => ({ provider, count })).sort((a, b) => b.count - a.count),
+        },
+        imageGeneration: {
+          totalImages: totalImagesGenerated,
+          byProvider: Object.entries(imagesByProvider).map(([provider, count]) => ({ provider, count })).sort((a, b) => b.count - a.count),
+        },
+        videoGeneration: {
+          totalVideos: totalVideosGenerated,
+          totalSecondGenerated: totalVideoSecs,
+          byProvider: Object.entries(videosByProvider).map(([provider, count]) => ({ provider, count })).sort((a, b) => b.count - a.count),
         },
         byClient: Object.values(tokensByClient).sort((a, b) => b.tokens - a.tokens),
         byWorkflow: Object.values(tokensByWorkflow).sort((a, b) => b.tokens - a.tokens),

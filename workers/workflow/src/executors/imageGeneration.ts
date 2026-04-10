@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
 import { callModel, type ImageInput } from '@contentnode/ai'
-import { usageEventService, costEstimator } from '@contentnode/database'
+import { prisma, withAgency, usageEventService, costEstimator, type Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { ImagePromptOutput } from './imagePromptBuilder.js'
 
@@ -614,6 +614,21 @@ export class ImageGenerationExecutor extends NodeExecutor {
       status:            'success',
       permissionsAtTime: ctx.resolvedPermissions,
     }).catch(() => {})
+
+    // Monthly-bucket UsageRecord (keeps the existing dashboard in sync)
+    const now = new Date()
+    withAgency(ctx.agencyId, () =>
+      prisma.usageRecord.create({
+        data: {
+          agencyId:    ctx.agencyId,
+          metric:      'image_generations',
+          quantity:    assets.length,
+          periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
+          periodEnd:   new Date(now.getFullYear(), now.getMonth() + 1, 0),
+          metadata:    { provider, workflowRunId: ctx.workflowRunId, resolution } as Prisma.InputJsonValue,
+        },
+      })
+    ).catch(() => {})
 
     return {
       output: {
