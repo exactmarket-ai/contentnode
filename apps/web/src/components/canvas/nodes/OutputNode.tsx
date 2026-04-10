@@ -151,6 +151,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
           if (!assets?.length) return null
           const label = data.label as string
+          const isLocked = config.locked === true
           return (
             <div className="overflow-hidden rounded-sm" style={{ marginLeft: -10, marginRight: -10 }}>
               <div className="relative group">
@@ -163,6 +164,17 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   className="w-full object-cover"
                   style={{ maxHeight: 240, display: 'block' }}
                 />
+                {/* Lock button — top left, always visible when locked */}
+                <div className={`absolute top-1.5 left-1.5 ${isLocked ? 'flex' : 'hidden group-hover:flex'}`}>
+                  <button
+                    className={`nodrag flex items-center justify-center rounded p-1 transition-colors ${isLocked ? 'bg-green-500/90 hover:bg-green-600/90' : 'bg-black/60 hover:bg-black/80'}`}
+                    title={isLocked ? "Approved – won't re-run (click to unlock)" : "Approve – skip on next run"}
+                    onClick={(e) => { e.stopPropagation(); updateNodeData(id, { config: { ...config, locked: !isLocked } }) }}
+                  >
+                    {isLocked ? <Icons.Lock className="h-3 w-3 text-white" /> : <Icons.LockOpen className="h-3 w-3 text-white" />}
+                  </button>
+                </div>
+                {/* Download button — top right */}
                 <div className="absolute top-1.5 right-1.5 hidden group-hover:flex">
                   <button
                     className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors"
@@ -188,6 +200,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
           if (!assets?.length) return null
           const label = data.label as string
+          const isLocked = config.locked === true
           return (
             <div style={{ marginLeft: -10, marginRight: -10 }}>
               {/* Primary image — full width, 240px tall */}
@@ -198,6 +211,17 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   draggable={false}
                   className="w-full h-full object-cover"
                 />
+                {/* Lock button — top left, always visible when locked */}
+                <div className={`absolute top-1.5 left-1.5 ${isLocked ? 'flex' : 'hidden group-hover:flex'}`}>
+                  <button
+                    className={`nodrag flex items-center justify-center rounded p-1 transition-colors ${isLocked ? 'bg-green-500/90 hover:bg-green-600/90' : 'bg-black/60 hover:bg-black/80'}`}
+                    title={isLocked ? "Approved – won't re-run (click to unlock)" : "Approve – skip on next run"}
+                    onClick={(e) => { e.stopPropagation(); updateNodeData(id, { config: { ...config, locked: !isLocked } }) }}
+                  >
+                    {isLocked ? <Icons.Lock className="h-3 w-3 text-white" /> : <Icons.LockOpen className="h-3 w-3 text-white" />}
+                  </button>
+                </div>
+                {/* Download button — top right */}
                 <div className="absolute top-1.5 right-1.5 hidden group-hover:flex">
                   <button
                     className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors"

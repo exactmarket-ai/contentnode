@@ -492,6 +492,23 @@ export class WorkflowRunner {
           }
 
           const config = (node.config ?? {}) as Record<string, unknown>
+
+          // ── Skip locked nodes that have stored assets ────────────────────
+          if (config.locked === true) {
+            const storedAssets = config.stored_assets as Array<{ localPath: string }> | undefined
+            if (storedAssets && storedAssets.length > 0) {
+              const lockedOutput = { assets: storedAssets }
+              nodeOutputs.set(node.id, lockedOutput)
+              runOutput.nodeStatuses[node.id] = {
+                status: 'passed',
+                output: lockedOutput,
+                completedAt: new Date().toISOString(),
+              }
+              await this.persistOutput(runOutput)
+              if (node.type === 'output') lastOutputNodeResult = lockedOutput
+              return
+            }
+          }
           const ctx: NodeExecutionContext = {
             workflowRunId: this.workflowRunId,
             agencyId: this.agencyId,

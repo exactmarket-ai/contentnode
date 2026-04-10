@@ -201,8 +201,8 @@ export async function workflowRoutes(app: FastifyInstance) {
               temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
             } : {}
             // Strip file arrays — files are stored in client_workflow_files, not the template
-            // Strip stored_assets — runtime-only display data, not part of the workflow template
-            const { uploaded_files: _uf, audio_files: _af, stored_assets: _sa, ...configWithoutFiles } = config as Record<string, unknown>
+            // Keep stored_assets — needed so locked nodes can skip re-generation on next run
+            const { uploaded_files: _uf, audio_files: _af, ...configWithoutFiles } = config as Record<string, unknown>
             // JSON.parse/stringify strips undefined values which Prisma's Json column rejects
             const safeConfig = JSON.parse(JSON.stringify(
               { subtype: data.subtype ?? config.subtype, ...configWithoutFiles, ...modelFields }
