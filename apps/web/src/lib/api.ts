@@ -20,6 +20,11 @@ async function getToken(): Promise<string | null> {
   }
 }
 
+/** Resolve a worker-generated asset path (e.g. /files/generated/abc.png) to an absolute URL. */
+export function assetUrl(localPath: string): string {
+  return `${BASE_URL}${localPath}`
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = await getToken()
   const headers: Record<string, string> = {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import * as Icons from 'lucide-react'
+import { assetUrl } from '@/lib/api'
 
 export interface MediaAsset {
   type: 'image' | 'video' | 'audio'
@@ -25,7 +26,7 @@ function AssetThumbnail({ asset, height, onClick }: { asset: MediaAsset; height:
         title="Click to view"
       >
         <video
-          src={asset.localPath}
+          src={assetUrl(asset.localPath)}
           autoPlay
           loop
           muted
@@ -43,7 +44,7 @@ function AssetThumbnail({ asset, height, onClick }: { asset: MediaAsset; height:
       style={style}
       title="Click to view"
     >
-      <img src={asset.localPath} alt="Generated" className="h-full w-full object-cover" />
+      <img src={assetUrl(asset.localPath)} alt="Generated" className="h-full w-full object-cover" />
     </button>
   )
 }
@@ -87,7 +88,7 @@ export function MediaFilmstrip({ assets, thumbnailHeight = 140 }: MediaFilmstrip
           <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
             {modalAsset.type === 'video' ? (
               <video
-                src={modalAsset.localPath}
+                src={assetUrl(modalAsset.localPath)}
                 controls
                 autoPlay
                 loop
@@ -95,7 +96,7 @@ export function MediaFilmstrip({ assets, thumbnailHeight = 140 }: MediaFilmstrip
               />
             ) : (
               <img
-                src={modalAsset.localPath}
+                src={assetUrl(modalAsset.localPath)}
                 alt="Generated"
                 className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
               />

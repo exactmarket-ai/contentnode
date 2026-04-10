@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
+import { assetUrl } from '@/lib/api'
 
 export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
@@ -92,7 +93,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           return (
             <div className="mt-1.5 overflow-hidden rounded" style={{ maxHeight: '112px' }}>
               <video
-                src={assets[0].localPath}
+                src={assetUrl(assets[0].localPath)}
                 autoPlay
                 loop
                 muted
@@ -118,7 +119,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
               {assets.slice(0, 3).map((a, i) => (
                 <img
                   key={i}
-                  src={a.localPath}
+                  src={assetUrl(a.localPath)}
                   alt={`Generated ${i + 1}`}
                   className="h-10 w-10 shrink-0 rounded object-cover border"
                   style={{ borderColor: spec.accent + '44' }}
