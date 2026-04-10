@@ -40,6 +40,7 @@ export async function generatedFileRoutes(app: FastifyInstance) {
 
       reply.header('Content-Type', contentType)
       reply.header('Cache-Control', 'public, max-age=31536000, immutable')
+      reply.header('Cross-Origin-Resource-Policy', 'cross-origin')
 
       if (!isS3Mode()) {
         // Local mode: stream directly from disk
