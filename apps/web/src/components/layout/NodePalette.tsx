@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -16,15 +16,26 @@ const CATEGORY_LABELS: Record<NodeCategory, string> = {
 }
 
 const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
-  source:  NODE_SPEC['input'],     // blue
-  logic:   NODE_SPEC['ai-model'],  // orange
-  output:  NODE_SPEC['transform'], // green
-  insight: NODE_SPEC['ai-model'],  // orange (fallback)
+  source:  NODE_SPEC['input'],
+  logic:   NODE_SPEC['ai-model'],
+  output:  NODE_SPEC['transform'],
+  insight: NODE_SPEC['ai-model'],
 }
 
-function PaletteItem({ def }: { def: PaletteNodeDef }) {
+type IconComponent = React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+
+// Icons for each category in the collapsed toolbar
+const CATEGORY_TOOLBAR_ICONS: Record<string, IconComponent> = {
+  source: Icons.Database,
+  logic:  Icons.GitBranch,
+  output: Icons.Share2,
+}
+
+// ─── PaletteItem ──────────────────────────────────────────────────────────────
+
+function PaletteItem({ def, onClick }: { def: PaletteNodeDef; onClick?: () => void }) {
   const spec = CATEGORY_SPEC[def.category]
-  const IconComp = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[def.icon] ?? Icons.Box
+  const IconComp = (Icons as unknown as Record<string, IconComponent>)[def.icon] ?? Icons.Box
 
   const onDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/contentnode-subtype', def.subtype)
@@ -35,7 +46,11 @@ function PaletteItem({ def }: { def: PaletteNodeDef }) {
     <div
       draggable
       onDragStart={onDragStart}
-      className="flex cursor-grab items-start gap-2.5 rounded-md border p-2.5 transition-colors active:cursor-grabbing hover:bg-accent"
+      onClick={onClick}
+      className={cn(
+        'flex cursor-grab items-start gap-2.5 rounded-md border p-2.5 transition-colors active:cursor-grabbing hover:bg-accent',
+        onClick && 'cursor-pointer active:cursor-pointer',
+      )}
       style={{ borderColor: spec.headerBorder, backgroundColor: spec.headerBg }}
     >
       <div
@@ -51,6 +66,8 @@ function PaletteItem({ def }: { def: PaletteNodeDef }) {
     </div>
   )
 }
+
+// ─── ClientIndicator ──────────────────────────────────────────────────────────
 
 function ClientIndicator() {
   const workflow = useWorkflowStore((s) => s.workflow)
@@ -107,6 +124,8 @@ function ClientIndicator() {
   )
 }
 
+// ─── ClientTemplatesSection ───────────────────────────────────────────────────
+
 function ClientTemplatesSection() {
   const workflow = useWorkflowStore((s) => s.workflow)
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
@@ -142,8 +161,11 @@ function ClientTemplatesSection() {
   )
 }
 
+// ─── NodesPalette (expanded) ──────────────────────────────────────────────────
+
 function NodesPalette() {
   const [search, setSearch] = useState('')
+  const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
 
   const filtered = PALETTE_NODES.filter(
     (n) =>
@@ -155,13 +177,9 @@ function NodesPalette() {
 
   return (
     <>
-      {/* Client indicator */}
       <ClientIndicator />
-
-      {/* Client templates */}
       <ClientTemplatesSection />
 
-      {/* Search */}
       <div className="px-3 py-2">
         <div className="relative">
           <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -188,7 +206,11 @@ function NodesPalette() {
                 </p>
                 <div className="space-y-1.5">
                   {items.map((def) => (
-                    <PaletteItem key={def.subtype} def={def} />
+                    <PaletteItem
+                      key={def.subtype}
+                      def={def}
+                      onClick={() => addNodeBySubtype(def.subtype)}
+                    />
                   ))}
                 </div>
               </div>
@@ -200,22 +222,152 @@ function NodesPalette() {
         </div>
       </ScrollArea>
 
-      {/* Footer hint */}
       <div className="border-t border-border px-3 py-2">
-        <p className="text-xs text-muted-foreground">Drag nodes onto the canvas</p>
+        <p className="text-xs text-muted-foreground">Drag or click nodes to add</p>
       </div>
     </>
   )
 }
 
+// ─── CollapsedToolbar ─────────────────────────────────────────────────────────
+
+function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
+  const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
+  const [openCat, setOpenCat] = useState<NodeCategory | null>(null)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const submenuRef = useRef<HTMLDivElement>(null)
+
+  // Close submenu when clicking outside both toolbar and submenu
+  useEffect(() => {
+    if (!openCat) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (
+        toolbarRef.current?.contains(target) ||
+        submenuRef.current?.contains(target)
+      ) return
+      setOpenCat(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [openCat])
+
+  const categories: NodeCategory[] = ['source', 'logic', 'output']
+
+  return (
+    <div ref={toolbarRef} className="relative flex h-full flex-col items-center py-2 gap-1">
+      {/* Expand button */}
+      <button
+        onClick={onExpand}
+        title="Expand palette"
+        className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <Icons.PanelLeftOpen className="h-4 w-4" />
+      </button>
+
+      <div className="my-1 h-px w-7 bg-border" />
+
+      {/* Category icon buttons */}
+      {categories.map((cat) => {
+        const CatIcon = CATEGORY_TOOLBAR_ICONS[cat] ?? Icons.Box
+        const spec = CATEGORY_SPEC[cat]
+        const isOpen = openCat === cat
+
+        return (
+          <button
+            key={cat}
+            title={CATEGORY_LABELS[cat]}
+            onClick={() => setOpenCat(isOpen ? null : cat)}
+            className={cn(
+              'flex h-9 w-9 items-center justify-center rounded-md transition-colors',
+              isOpen
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+            )}
+            style={isOpen ? { backgroundColor: spec.headerBg, color: spec.accent, border: `1px solid ${spec.headerBorder}` } : {}}
+          >
+            <CatIcon className="h-4 w-4" />
+          </button>
+        )
+      })}
+
+      {/* Insights button */}
+      <button
+        title="Insights"
+        className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-yellow-500"
+      >
+        <Icons.Lightbulb className="h-4 w-4" />
+      </button>
+
+      {/* Floating submenu */}
+      {openCat && (
+        <div
+          ref={submenuRef}
+          className="fixed z-50 min-w-[220px] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+          style={{ left: 52, top: (() => {
+            if (!toolbarRef.current) return 80
+            const btnIndex = categories.indexOf(openCat)
+            const rect = toolbarRef.current.getBoundingClientRect()
+            // Approximate: expand button (36) + divider (20) + (btnIndex * 40) + offset
+            return rect.top + 68 + btnIndex * 40
+          })() }}
+        >
+          {/* Header */}
+          <div
+            className="flex items-center gap-2 px-3 py-2.5 border-b border-border"
+            style={{ backgroundColor: CATEGORY_SPEC[openCat].headerBg }}
+          >
+            {(() => {
+              const CatIcon = CATEGORY_TOOLBAR_ICONS[openCat] ?? Icons.Box
+              const SubmenuCatIcon = CATEGORY_TOOLBAR_ICONS[openCat] ?? Icons.Box
+              return <SubmenuCatIcon className="h-3.5 w-3.5" style={{ color: CATEGORY_SPEC[openCat].accent }} />
+            })()}
+            <span className="text-xs font-semibold" style={{ color: CATEGORY_SPEC[openCat].badgeText }}>
+              {CATEGORY_LABELS[openCat]}
+            </span>
+            <span className="ml-auto text-[10px] text-muted-foreground">drag or click</span>
+          </div>
+
+          {/* Node list */}
+          <div className="max-h-[60vh] overflow-y-auto py-1.5 px-2 space-y-1">
+            {PALETTE_NODES.filter((n) => n.category === openCat).map((def) => (
+              <PaletteItem
+                key={def.subtype}
+                def={def}
+                onClick={() => {
+                  addNodeBySubtype(def.subtype)
+                  setOpenCat(null)
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── NodePalette (main export) ────────────────────────────────────────────────
+
 type Tab = 'nodes' | 'insights'
 
 export function NodePalette() {
   const [tab, setTab] = useState<Tab>('nodes')
+  const [collapsed, setCollapsed] = useState(false)
 
+  // Collapsed icon-bar mode
+  if (collapsed) {
+    return (
+      <div className="flex h-full w-[52px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+        <CollapsedToolbar onExpand={() => setCollapsed(false)} />
+      </div>
+    )
+  }
+
+  // Expanded mode
   return (
     <div className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
-      {/* Header with tabs */}
+      {/* Header with tabs + collapse button */}
       <div className="flex items-center border-b border-border">
         <button
           onClick={() => setTab('nodes')}
@@ -240,6 +392,14 @@ export function NodePalette() {
         >
           <Icons.Lightbulb className="h-3.5 w-3.5" />
           Insights
+        </button>
+        {/* Collapse button */}
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Collapse palette"
+          className="flex h-full items-center px-2 text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
+        >
+          <Icons.PanelLeftClose className="h-3.5 w-3.5" />
         </button>
       </div>
 

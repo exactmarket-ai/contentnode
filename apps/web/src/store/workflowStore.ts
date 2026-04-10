@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { applyNodeChanges, applyEdgeChanges, addEdge } from 'reactflow'
-import type { Node, Edge, NodeChange, EdgeChange, Connection, Viewport } from 'reactflow'
+import type { Node, Edge, NodeChange, EdgeChange, Connection, Viewport, ReactFlowInstance } from 'reactflow'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -8,7 +8,7 @@ export type ConnectivityMode = 'online' | 'offline'
 export type RunStatus = 'idle' | 'running' | 'completed' | 'failed' | 'awaiting_assignment' | 'waiting_review'
 
 export interface ModelConfig {
-  provider: 'anthropic' | 'ollama'
+  provider: 'anthropic' | 'openai' | 'ollama'
   model: string
   temperature?: number
   max_tokens?: number
@@ -310,6 +310,8 @@ interface WorkflowState {
   insightConfirmations: InsightConfirmation[]
   /** True when the graph has unsaved changes (nodes/edges modified since last save or load) */
   graphDirty: boolean
+  /** ReactFlow instance — stored so palette/context menu can convert screen → flow coords */
+  rfInstance: ReactFlowInstance | null
 
   // Actions — graph
   onNodesChange: (changes: NodeChange[]) => void
@@ -342,6 +344,10 @@ interface WorkflowState {
   // Actions — insights
   addInsightConfirmation: (confirmation: InsightConfirmation) => void
   dismissInsightConfirmation: (insightId: string) => void
+
+  // Actions — canvas
+  setRfInstance: (instance: ReactFlowInstance | null) => void
+  addNodeBySubtype: (subtype: string, screenPosition?: { x: number; y: number }) => void
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -373,6 +379,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   pendingReviewContent: null,
   insightConfirmations: [],
   graphDirty: false,
+  rfInstance: null,
 
   // Graph actions — each mutation marks the graph dirty
   onNodesChange: (changes) => {
@@ -457,4 +464,42 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({
       insightConfirmations: state.insightConfirmations.filter((c) => c.insightId !== insightId),
     })),
+
+  setRfInstance: (instance) => set({ rfInstance: instance }),
+
+  addNodeBySubtype: (subtype, screenPosition) => {
+    const { rfInstance, addNode, setSelectedNodeId } = get()
+    const def = PALETTE_NODES.find((n) => n.subtype === subtype)
+    if (!def) return
+
+    let position: { x: number; y: number }
+    if (screenPosition && rfInstance) {
+      position = rfInstance.screenToFlowPosition(screenPosition)
+    } else if (rfInstance) {
+      // Default: center of the visible canvas area
+      const canvas = document.querySelector('.react-flow')
+      const rect = canvas?.getBoundingClientRect() ?? { left: 0, top: 0, width: 800, height: 600 }
+      position = rfInstance.screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      })
+    } else {
+      position = { x: 200, y: 200 }
+    }
+
+    const newId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    addNode({
+      id: newId,
+      type: def.type,
+      position,
+      data: {
+        label: def.label,
+        description: def.description,
+        icon: def.icon,
+        subtype: def.subtype,
+        config: { ...def.defaultConfig },
+      },
+    })
+    setSelectedNodeId(newId)
+  },
 }))
