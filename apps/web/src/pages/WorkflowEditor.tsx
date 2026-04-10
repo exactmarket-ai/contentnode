@@ -242,6 +242,26 @@ export function WorkflowEditor() {
 
   const graphDirty = useWorkflowStore((s) => s.graphDirty)
 
+  // Auto-save 2 seconds after any change to a saved workflow
+  useEffect(() => {
+    if (!graphDirty || !workflow.id) return
+    const timer = setTimeout(async () => {
+      const { nodes, edges, workflow: wf } = useWorkflowStore.getState()
+      if (!wf.id) return
+      try {
+        await apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
+          method: 'PUT',
+          body: JSON.stringify({ nodes, edges, name: wf.name, defaultModelConfig: wf.default_model_config }),
+        })
+        useWorkflowStore.setState({ graphDirty: false })
+        useWorkflowStore.getState().setWorkflow({ graphSaved: true })
+      } catch {
+        // silent — user can still save manually
+      }
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [graphDirty, workflow.id])
+
   // Warn on browser close/refresh when there are unsaved changes
   const isUnsaved = !!(workflow.id && (!workflow.graphSaved || graphDirty))
   useEffect(() => {
