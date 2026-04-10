@@ -549,6 +549,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
     const referenceImages = assetRefs.length > 0 ? await fetchImageInputs(assetRefs) : []
 
     const prompt = await extractPrompt(input, referenceImages)
+    console.log(`[imageGeneration] prompt sent to ${provider}:`, JSON.stringify(prompt))
 
     let rawUrls: string[]
 
@@ -573,7 +574,8 @@ export class ImageGenerationExecutor extends NodeExecutor {
           throw new Error(`Unknown image generation provider: ${String(provider)}`)
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
+      const baseMessage = err instanceof Error ? err.message : String(err)
+      const errorMessage = `${baseMessage}\n\nPrompt sent: ${prompt.positivePrompt}`
       usageEventService.record({
         agencyId:          ctx.agencyId,
         userId:            ctx.userId ?? undefined,
@@ -594,7 +596,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
         errorMessage,
         permissionsAtTime: ctx.resolvedPermissions,
       }).catch(() => {})
-      throw err
+      throw new Error(errorMessage)
     }
 
     const assets = await saveImages(rawUrls, provider)
