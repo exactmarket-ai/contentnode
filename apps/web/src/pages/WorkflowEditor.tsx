@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate, useBlocker } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { TopBar, pollRunUntilTerminal } from '@/components/layout/TopBar'
 import { NodePalette } from '@/components/layout/NodePalette'
@@ -226,25 +226,10 @@ export function WorkflowEditor() {
   // Unsaved = new workflow never saved, OR existing workflow with changes since last save
   const isUnsaved = !!(workflow.id && (!workflow.graphSaved || graphDirty))
 
-  // Track a pending nav destination when the user clicks away while unsaved
-  const [pendingNav, setPendingNav] = useState<string | null>(null)
   const [deletingWorkflow, setDeletingWorkflow] = useState(false)
 
-  // Intercept nav-link clicks (capture phase) when unsaved
-  useEffect(() => {
-    if (!isUnsaved) return
-    const handler = (e: MouseEvent) => {
-      const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
-      if (!anchor) return
-      const href = anchor.getAttribute('href')
-      if (!href || href.startsWith('#') || href.startsWith('http')) return
-      e.preventDefault()
-      e.stopPropagation()
-      setPendingNav(href)
-    }
-    document.addEventListener('click', handler, true)
-    return () => document.removeEventListener('click', handler, true)
-  }, [isUnsaved])
+  // Block all React Router navigation (links, back button, programmatic) when unsaved
+  const blocker = useBlocker(isUnsaved)
 
   // Also warn on browser close/refresh
   useEffect(() => {
@@ -261,10 +246,8 @@ export function WorkflowEditor() {
       try { await apiFetch(`/api/v1/workflows/${workflow.id}`, { method: 'DELETE' }) } catch { /* ignore */ }
       setDeletingWorkflow(false)
     }
-    const dest = pendingNav ?? '/workflows'
-    setPendingNav(null)
-    navigate(dest)
-  }, [workflow.id, workflow.graphSaved, pendingNav, navigate])
+    blocker.proceed?.()
+  }, [workflow.id, workflow.graphSaved, blocker])
 
   const handleOpenSaveDialog = useCallback(() => {
     window.dispatchEvent(new CustomEvent('contentnode:open-save-dialog'))
@@ -289,7 +272,7 @@ export function WorkflowEditor() {
       )}
 
       {/* ── Unsaved-changes navigation guard ─────────────────────────────── */}
-      {pendingNav && (
+      {blocker.state === 'blocked' && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60">
           <div className="w-[400px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
             <div className="px-5 py-4" style={{ backgroundColor: '#a200ee' }}>
@@ -309,7 +292,7 @@ export function WorkflowEditor() {
               </p>
               <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => setPendingNav(null)}
+                  onClick={() => blocker.reset?.()}
                   className="rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent transition-colors"
                 >
                   Cancel
@@ -322,7 +305,7 @@ export function WorkflowEditor() {
                   {deletingWorkflow ? 'Removing…' : workflow.graphSaved ? 'Leave without saving' : 'Discard & leave'}
                 </button>
                 <button
-                  onClick={() => { setPendingNav(null); handleOpenSaveDialog() }}
+                  onClick={() => { blocker.reset?.(); handleOpenSaveDialog() }}
                   className="ml-auto rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:opacity-90"
                   style={{ backgroundColor: '#a200ee' }}
                 >

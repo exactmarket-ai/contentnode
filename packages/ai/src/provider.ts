@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -6,7 +7,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export interface ModelConfig {
   /** AI provider to route to */
-  provider: 'anthropic' | 'ollama'
+  provider: 'anthropic' | 'openai' | 'ollama'
   /** Model identifier (e.g. "claude-sonnet-4-5", "llama3") */
   model: string
   /**
@@ -72,6 +73,36 @@ async function callAnthropic(config: ModelConfig, prompt: string): Promise<Model
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// OpenAI
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelResult> {
+  const apiKey = resolveApiKey(config.api_key_ref)
+  const client = new OpenAI({ apiKey })
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    ...(config.system_prompt ? [{ role: 'system' as const, content: config.system_prompt }] : []),
+    { role: 'user', content: prompt },
+  ]
+
+  const response = await client.chat.completions.create({
+    model: config.model,
+    messages,
+    max_tokens: config.max_tokens ?? 4096,
+    ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
+  })
+
+  const text = response.choices[0]?.message?.content ?? ''
+  const usage = response.usage
+
+  return {
+    text,
+    tokens_used: (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0),
+    model_used: response.model,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Ollama (local)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -132,6 +163,8 @@ export async function callModel(config: ModelConfig, prompt: string): Promise<Mo
   switch (config.provider) {
     case 'anthropic':
       return callAnthropic(config, prompt)
+    case 'openai':
+      return callOpenAI(config, prompt)
     case 'ollama':
       return callOllama(config, prompt)
     default: {
