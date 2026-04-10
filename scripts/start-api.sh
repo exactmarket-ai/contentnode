@@ -7,5 +7,8 @@ echo "PORT: $PORT"
 echo "DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo yes || echo NO)"
 echo "REDIS_URL set: $([ -n "$REDIS_URL" ] && echo yes || echo NO)"
 
+echo "Running database migrations..."
+pnpm --filter @contentnode/database migrate:deploy
+
 echo "Starting API server..."
 exec node --import tsx/esm apps/api/src/index.ts
