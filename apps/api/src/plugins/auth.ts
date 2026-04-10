@@ -68,7 +68,7 @@ async function authPluginFn(app: FastifyInstance) {
         authorizedParties: (process.env.CORS_ORIGIN ?? '').split(',').map(o => o.trim()).filter(Boolean),
       })
     } catch (err) {
-      req.log.warn({ url: req.url, err: String(err), errMsg: (err as Error)?.message }, '[auth] 401 — token verification failed')
+      req.log.warn(`[auth] 401 — token verification failed: ${(err as Error)?.message ?? String(err)}`)
       return reply.code(401).send({ error: 'Invalid or expired token' })
     }
 
