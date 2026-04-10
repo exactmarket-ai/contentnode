@@ -74,8 +74,24 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
   const handleCatEnter = useCallback((cat: NodeCategory, el: HTMLElement) => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
     const rect = el.getBoundingClientRect()
+
+    // Estimate flyout dimensions to avoid clipping before it renders
+    const nodeCount = PALETTE_NODES.filter((n) => n.category === cat).length
+    const estimatedHeight = 44 + nodeCount * 36   // header + items
+    const estimatedWidth = 220
+
+    // Flip horizontally if flyout would overflow right edge
+    const leftPos = rect.right + 2 + estimatedWidth > window.innerWidth
+      ? rect.left - estimatedWidth - 2
+      : rect.right + 2
+
+    // Flip vertically if flyout would overflow bottom edge
+    const topPos = rect.top + estimatedHeight > window.innerHeight
+      ? Math.max(8, window.innerHeight - estimatedHeight - 8)
+      : rect.top
+
     setHoveredCat(cat)
-    setFlyoutPos({ x: rect.right, y: rect.top })
+    setFlyoutPos({ x: leftPos, y: topPos })
   }, [])
 
   const handleCatLeave = useCallback(() => {
@@ -151,7 +167,7 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
         <div
           ref={flyoutRef}
           className="fixed z-[10000] min-w-[200px] overflow-hidden rounded-lg border border-border"
-          style={{ ...MENU_STYLE, left: flyoutPos.x + 2, top: flyoutPos.y }}
+          style={{ ...MENU_STYLE, left: flyoutPos.x, top: flyoutPos.y }}
           onMouseEnter={handleFlyoutEnter}
           onMouseLeave={handleFlyoutLeave}
         >
