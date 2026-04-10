@@ -25,6 +25,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const isPassed   = status === 'passed'
   const isFailed   = status === 'failed'
   const isSkipped  = status === 'skipped'
+  const isLocked   = config.locked === true
 
   // Connected upstream nodes (for multi-input display)
   const incomingEdges = edges.filter((e) => e.target === id)
@@ -48,10 +49,8 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
 
   const handleRerun = (e: React.MouseEvent) => {
     e.stopPropagation()
-    // Clear stored assets so the runner will re-generate this node
-    updateNodeData(id, { config: { ...config, stored_assets: undefined } })
-    // Trigger a full workflow run — the other generation nodes still have
-    // stored_assets so they'll skip; only this node will re-execute.
+    // Unlock and clear stored assets so the runner will re-generate this node
+    updateNodeData(id, { config: { ...config, locked: false, stored_assets: undefined } })
     void triggerRun()
   }
 
@@ -64,7 +63,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   } : isPassed ? {
     border: `1.5px solid ${spec.accent}`,
   } : isSkipped ? {
-    border: '1.5px solid #6b7280',
+    border: '1.5px solid #f59e0b',
   } : isFailed ? {
     border: '1.5px solid #ef4444',
   } : {
@@ -108,9 +107,14 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
         {isRunning && (
           <div className="h-1.5 w-1.5 animate-pulse rounded-full ml-1" style={{ backgroundColor: spec.accent }} />
         )}
-        {isPassed  && <Icons.CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0" style={{ color: spec.accent }} />}
-        {isSkipped && <Icons.CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0 text-gray-400" />}
+        {isPassed  && !isLocked && <Icons.CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0" style={{ color: spec.accent }} />}
+        {(isSkipped || (isPassed && isLocked)) && <Icons.Lock className="ml-1 h-3.5 w-3.5 shrink-0 text-amber-400" />}
         {isFailed  && <Icons.XCircle className="ml-1 h-3.5 w-3.5 shrink-0 text-red-500" />}
+        {isLocked  && !isRunning && !isFailed && (
+          <span className="ml-1 rounded-full bg-amber-500/20 px-1.5 py-px text-[8px] font-semibold text-amber-400">
+            SKIP
+          </span>
+        )}
       </div>
 
       {/* Body */}
@@ -145,15 +149,15 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           />
         )}
 
-        {/* Cached badge + Re-run button */}
-        {isSkipped && isGeneration && (
+        {/* Skip indicator + Re-run button (locked nodes) */}
+        {isLocked && isGeneration && (
           <div className="flex items-center gap-1.5">
-            <span className="rounded-full bg-gray-100 px-2 py-px text-[9px] font-semibold text-gray-500 border border-gray-200">
-              Cached
+            <span className="rounded-full bg-amber-500/15 px-2 py-px text-[9px] font-semibold text-amber-500 border border-amber-500/30">
+              {isSkipped ? 'Cached' : 'Will skip'}
             </span>
             <button
-              className="nodrag ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium text-gray-500 border border-gray-200 hover:border-gray-400 hover:text-gray-700 transition-colors bg-white"
-              title="Clear cache and re-generate this node"
+              className="nodrag ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground border border-border hover:border-foreground/40 hover:text-foreground transition-colors bg-card"
+              title="Unlock and re-generate on next run"
               onClick={handleRerun}
             >
               <Icons.RotateCcw className="h-2.5 w-2.5" />

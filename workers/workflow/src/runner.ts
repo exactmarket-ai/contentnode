@@ -510,13 +510,13 @@ export class WorkflowRunner {
 
           const config = (node.config ?? {}) as Record<string, unknown>
 
-          // ── Skip generation nodes that already have stored assets ────────
+          // ── Skip locked generation nodes that have stored assets ────────
           const nodeSubtype = config.subtype as string | undefined
           const isGenerationNode = nodeSubtype === 'image-generation' || nodeSubtype === 'video-generation'
-          if (isGenerationNode) {
+          if (isGenerationNode && config.locked === true) {
             const storedAssets = config.stored_assets as Array<{ localPath: string }> | undefined
-            console.log(`[runner] generation node ${node.id} (${nodeSubtype}): stored_assets=${Array.isArray(storedAssets) ? storedAssets.length + ' assets' : 'none'}, keys=${Object.keys(config).join(',')}`)
             if (Array.isArray(storedAssets) && storedAssets.length > 0) {
+              console.log(`[runner] skipping locked generation node ${node.id} (${nodeSubtype}) — using ${storedAssets.length} cached asset(s)`)
               const cachedOutput = { assets: storedAssets }
               nodeOutputs.set(node.id, cachedOutput)
               runOutput.nodeStatuses[node.id] = {

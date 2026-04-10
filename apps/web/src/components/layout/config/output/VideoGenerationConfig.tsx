@@ -87,10 +87,15 @@ export function VideoGenerationConfig({
   const support  = SUPPORT[provider] ?? SUPPORT.runway
   const [seedLocked, setSeedLocked] = useState((config.seed as number | null) != null)
 
-  // Post-run assets
+  // Post-run assets (from run output OR stored config assets)
   const runOutput = nodeRunStatus?.output as Record<string, unknown> | undefined
-  const assets = (runOutput?.assets as MediaAsset[] | undefined) ?? []
-  const hasPassed = nodeRunStatus?.status === 'passed'
+  const assets = (runOutput?.assets as MediaAsset[] | undefined)
+    ?? (config.stored_assets as MediaAsset[] | undefined)
+    ?? []
+  const hasPassed  = nodeRunStatus?.status === 'passed'
+  const isSkipped  = nodeRunStatus?.status === 'skipped'
+  const isLocked   = config.locked === true
+  const hasAssets  = ((config.stored_assets as unknown[]) ?? []).length > 0
 
   const providerMeta = PROVIDERS.find((p) => p.value === provider)
   const isLocal = ['comfyui-animatediff', 'cogvideox', 'wan21'].includes(provider)
@@ -98,8 +103,31 @@ export function VideoGenerationConfig({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Skip toggle */}
+      <div
+        className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${isLocked ? 'border-amber-400/60 bg-amber-950/20' : 'border-border bg-muted/20'}`}
+      >
+        <div className="flex items-center gap-2">
+          <Icons.Lock className={`h-3.5 w-3.5 ${isLocked ? 'text-amber-400' : 'text-muted-foreground'}`} />
+          <div>
+            <p className="text-xs font-medium">Skip on next run</p>
+            <p className="text-[10px] text-muted-foreground">
+              {isLocked
+                ? hasAssets ? 'Cached output will be passed downstream — no API call' : 'Run once to generate, then subsequent runs will skip'
+                : 'Node will regenerate on every run'}
+            </p>
+          </div>
+        </div>
+        <button
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${isLocked ? 'bg-amber-500' : 'bg-input'}`}
+          onClick={() => onChange('locked', !isLocked)}
+        >
+          <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${isLocked ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
+      </div>
+
       {/* Post-run filmstrip */}
-      {hasPassed && assets.length > 0 && (
+      {(hasPassed || isSkipped) && assets.length > 0 && (
         <>
           <MediaFilmstrip assets={assets} nodeLabel={nodeLabel} thumbnailHeight={140} />
           <Separator />
