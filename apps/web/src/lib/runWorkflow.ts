@@ -85,7 +85,7 @@ export async function triggerRun(stopAtNodeId?: string): Promise<void> {
     for (const nodeId of relevantNodeIds) {
       if (nodeId === stopAtNodeId) continue // always re-run the target itself
       const s = currentStatuses[nodeId]
-      if (s?.status === 'passed' && s.output !== undefined) {
+      if ((s?.status === 'passed' || s?.status === 'skipped') && s.output !== undefined) {
         seedNodeStatuses[nodeId] = s
       }
     }

@@ -76,20 +76,22 @@ export async function usageRoutes(app: FastifyInstance) {
     // ── Image generation ─────────────────────────────────────────────────────
     const imageRecords = allRecords.filter((r) => r.metric === 'image_generations')
     const totalImagesGenerated = imageRecords.reduce((s, r) => s + r.quantity, 0)
-    const imagesByProvider: Record<string, number> = {}
+    const imagesByService: Record<string, number> = {}
     for (const r of imageRecords) {
-      const provider = ((r.metadata as Record<string, unknown>)['provider'] as string) ?? 'unknown'
-      imagesByProvider[provider] = (imagesByProvider[provider] ?? 0) + r.quantity
+      const meta = r.metadata as Record<string, unknown>
+      const service = (meta['service'] as string) ?? (meta['provider'] as string) ?? 'unknown'
+      imagesByService[service] = (imagesByService[service] ?? 0) + r.quantity
     }
 
     // ── Video generation ─────────────────────────────────────────────────────
     const videoRecords = allRecords.filter((r) => r.metric === 'video_generations')
     const totalVideosGenerated = videoRecords.reduce((s, r) => s + r.quantity, 0)
-    const videosByProvider: Record<string, number> = {}
+    const videosByService: Record<string, number> = {}
     const totalVideoSecs = videoRecords.reduce((s, r) => {
-      const provider = ((r.metadata as Record<string, unknown>)['provider'] as string) ?? 'unknown'
-      videosByProvider[provider] = (videosByProvider[provider] ?? 0) + r.quantity
-      return s + (((r.metadata as Record<string, unknown>)['durationSecs'] as number) ?? 0)
+      const meta = r.metadata as Record<string, unknown>
+      const service = (meta['service'] as string) ?? (meta['provider'] as string) ?? 'unknown'
+      videosByService[service] = (videosByService[service] ?? 0) + r.quantity
+      return s + ((meta['durationSecs'] as number) ?? 0)
     }, 0)
 
     // ── Email ────────────────────────────────────────────────────────────────
@@ -172,6 +174,47 @@ export async function usageRoutes(app: FastifyInstance) {
       }
     }
 
+    // ── Usage by user ────────────────────────────────────────────────────────
+    // Collect all userIds mentioned in any UsageRecord metadata
+    const userIdSet = new Set<string>()
+    for (const r of allRecords) {
+      const uid = (r.metadata as Record<string, unknown>)['userId'] as string | undefined
+      if (uid) userIdSet.add(uid)
+    }
+    const userIdList = [...userIdSet]
+    const userRows = userIdList.length
+      ? await prisma.user.findMany({
+          where: { agencyId, clerkUserId: { in: userIdList } },
+          select: { clerkUserId: true, name: true, email: true },
+        })
+      : []
+    const userNameMap = Object.fromEntries(userRows.map((u) => [u.clerkUserId, u.name || u.email || u.clerkUserId]))
+
+    type UserBucket = {
+      userId: string; userName: string
+      tokens: number; humanizerWords: number
+      imagesGenerated: number; videosGenerated: number
+      translationChars: number
+    }
+    const byUserMap: Record<string, UserBucket> = {}
+    const ensureUser = (uid: string) => {
+      if (!byUserMap[uid]) byUserMap[uid] = {
+        userId: uid, userName: userNameMap[uid] ?? uid,
+        tokens: 0, humanizerWords: 0, imagesGenerated: 0, videosGenerated: 0, translationChars: 0,
+      }
+      return byUserMap[uid]
+    }
+    for (const r of allRecords) {
+      const uid = (r.metadata as Record<string, unknown>)['userId'] as string | undefined
+      if (!uid) continue
+      const bucket = ensureUser(uid)
+      if (r.metric === 'ai_tokens')         bucket.tokens          += r.quantity
+      if (r.metric === 'humanizer_words')   bucket.humanizerWords  += r.quantity
+      if (r.metric === 'image_generations') bucket.imagesGenerated += r.quantity
+      if (r.metric === 'video_generations') bucket.videosGenerated += r.quantity
+      if (r.metric === 'translation_chars') bucket.translationChars += r.quantity
+    }
+
     // ── Daily token usage (last 30 days) ─────────────────────────────────────
     const buckets = last30DayBuckets()
     const dailyUsage = buckets.map((bucket) => {
@@ -219,15 +262,16 @@ export async function usageRoutes(app: FastifyInstance) {
         },
         imageGeneration: {
           totalImages: totalImagesGenerated,
-          byProvider: Object.entries(imagesByProvider).map(([provider, count]) => ({ provider, count })).sort((a, b) => b.count - a.count),
+          byService: Object.entries(imagesByService).map(([service, count]) => ({ service, count })).sort((a, b) => b.count - a.count),
         },
         videoGeneration: {
           totalVideos: totalVideosGenerated,
           totalSecondGenerated: totalVideoSecs,
-          byProvider: Object.entries(videosByProvider).map(([provider, count]) => ({ provider, count })).sort((a, b) => b.count - a.count),
+          byService: Object.entries(videosByService).map(([service, count]) => ({ service, count })).sort((a, b) => b.count - a.count),
         },
         byClient: Object.values(tokensByClient).sort((a, b) => b.tokens - a.tokens),
         byWorkflow: Object.values(tokensByWorkflow).sort((a, b) => b.tokens - a.tokens),
+        byUser: Object.values(byUserMap).sort((a, b) => b.tokens - a.tokens),
         dailyUsage,
       },
     })

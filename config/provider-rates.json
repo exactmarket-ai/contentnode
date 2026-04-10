@@ -93,6 +93,9 @@
     },
     "kling-v1-5": {
       "per_second_video": 0.035
+    },
+    "kling-v1-6": {
+      "per_second_video": 0.040
     }
   },
   "luma": {

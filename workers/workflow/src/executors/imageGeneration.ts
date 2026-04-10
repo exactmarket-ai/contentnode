@@ -8,6 +8,20 @@ import type { ImagePromptOutput } from './imagePromptBuilder.js'
 const OFFLINE_IMAGE_PROVIDERS = new Set(['comfyui', 'automatic1111'])
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Service map — exact model/service used per provider (for pricing + tracking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ImageServiceInfo { costProvider: string; model: string; displayService: string }
+
+const IMAGE_SERVICE_MAP: Record<string, ImageServiceInfo> = {
+  dalle3:        { costProvider: 'openai',    model: 'dall-e-3',           displayService: 'DALL-E 3' },
+  stability:     { costProvider: 'stability', model: 'stable-diffusion-xl', displayService: 'Stability SDXL' },
+  fal:           { costProvider: 'fal',       model: 'flux-dev',            displayService: 'FAL FLUX Dev' },
+  comfyui:       { costProvider: '',          model: 'comfyui',             displayService: 'ComfyUI' },
+  automatic1111: { costProvider: '',          model: 'automatic1111',       displayService: 'AUTOMATIC1111' },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -523,6 +537,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
     const cfg = config as unknown as ImageGenerationConfig
     const provider: Provider = cfg.provider ?? 'dalle3'
     const isOnline = !OFFLINE_IMAGE_PROVIDERS.has(provider)
+    const svc = IMAGE_SERVICE_MAP[provider] ?? { costProvider: provider, model: provider, displayService: provider }
     const startMs = Date.now()
 
     // Extract reference images from connected upstream generation nodes
@@ -563,7 +578,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
         toolType:          'graphics',
         toolSubtype:       'image_generation',
         provider,
-        model:             provider,
+        model:             svc.model,
         isOnline,
         workflowId:        ctx.workflowId,
         workflowRunId:     ctx.workflowRunId,
@@ -585,8 +600,8 @@ export class ImageGenerationExecutor extends NodeExecutor {
       : cfg.aspect_ratio === '9:16' ? '1024x1792'
       : '1024x1024'
     const costUsd = costEstimator.estimateImageCost(
-      provider === 'dalle3' ? 'openai' : provider,
-      provider === 'dalle3' ? 'dall-e-3' : provider,
+      svc.costProvider || provider,
+      svc.model,
       assets.length,
       resolution,
       isOnline,
@@ -600,7 +615,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
       toolType:          'graphics',
       toolSubtype:       'image_generation',
       provider,
-      model:             provider,
+      model:             svc.model,
       isOnline,
       workflowId:        ctx.workflowId,
       workflowRunId:     ctx.workflowRunId,
@@ -625,7 +640,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
           quantity:    assets.length,
           periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
           periodEnd:   new Date(now.getFullYear(), now.getMonth() + 1, 0),
-          metadata:    { provider, workflowRunId: ctx.workflowRunId, resolution } as Prisma.InputJsonValue,
+          metadata:    { provider, service: svc.displayService, model: svc.model, userId: ctx.userId ?? undefined, workflowRunId: ctx.workflowRunId, resolution } as Prisma.InputJsonValue,
         },
       })
     ).catch(() => {})

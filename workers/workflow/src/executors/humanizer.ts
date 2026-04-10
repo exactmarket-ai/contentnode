@@ -394,6 +394,7 @@ async function recordHumanizerUsage(
   service: HumanizerService,
   wordsProcessed: number,
   workflowRunId: string,
+  userId?: string | null,
 ): Promise<void> {
   const now = new Date()
   const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -407,7 +408,7 @@ async function recordHumanizerUsage(
         quantity: wordsProcessed,
         periodStart,
         periodEnd,
-        metadata: { service, workflowRunId } as Prisma.InputJsonValue,
+        metadata: { service, workflowRunId, ...(userId ? { userId } : {}) } as Prisma.InputJsonValue,
       },
     })
   )
@@ -515,7 +516,7 @@ export class HumanizerNodeExecutor extends NodeExecutor {
     }
 
     // Record usage per service — existing monthly-bucket tracking (non-blocking)
-    recordHumanizerUsage(ctx.agencyId, service, wordsProcessed, ctx.workflowRunId).catch((err) => {
+    recordHumanizerUsage(ctx.agencyId, service, wordsProcessed, ctx.workflowRunId, ctx.userId).catch((err) => {
       console.error('[humanizer] failed to record usage:', err)
     })
 

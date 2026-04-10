@@ -8,6 +8,24 @@ import type { VideoPromptOutput } from './videoPromptBuilder.js'
 const OFFLINE_VIDEO_PROVIDERS = new Set(['comfyui-animatediff', 'cogvideox', 'wan21'])
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Service map — exact model/service used per provider (for pricing + tracking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface VideoServiceInfo { costProvider: string; model: string; displayService: string }
+
+const VIDEO_SERVICE_MAP: Record<string, VideoServiceInfo> = {
+  runway:               { costProvider: 'runway',    model: 'gen3_alpha_turbo',        displayService: 'Runway Gen-3 Turbo' },
+  kling:                { costProvider: 'kling',     model: 'kling-v1-6',              displayService: 'Kling v1.6' },
+  luma:                 { costProvider: 'luma',      model: 'dream-machine',            displayService: 'Luma Dream Machine' },
+  pika:                 { costProvider: 'pika',      model: 'pika-1.5',                displayService: 'Pika 1.5' },
+  stability:            { costProvider: 'stability', model: 'stable-video-diffusion',   displayService: 'Stability SVD' },
+  veo2:                 { costProvider: 'veo2',      model: 'veo-2',                   displayService: 'Google Veo 2' },
+  'comfyui-animatediff':{ costProvider: '',          model: 'comfyui-animatediff',      displayService: 'ComfyUI AnimateDiff' },
+  cogvideox:            { costProvider: '',          model: 'cogvideox',               displayService: 'CogVideoX' },
+  wan21:                { costProvider: '',          model: 'wan21',                   displayService: 'Wan2.1' },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -866,6 +884,7 @@ export class VideoGenerationExecutor extends NodeExecutor {
     const cfg = config as unknown as VideoGenerationConfig
     const provider: Provider = cfg.provider ?? 'runway'
     const isOnline = !OFFLINE_VIDEO_PROVIDERS.has(provider)
+    const svc = VIDEO_SERVICE_MAP[provider] ?? { costProvider: provider, model: provider, displayService: provider }
     const startMs = Date.now()
 
     // Extract reference images from connected upstream generation nodes
@@ -951,7 +970,7 @@ export class VideoGenerationExecutor extends NodeExecutor {
         toolType:          'video',
         toolSubtype:       'video_generation',
         provider,
-        model:             provider,
+        model:             svc.model,
         isOnline,
         workflowId:        ctx.workflowId,
         workflowRunId:     ctx.workflowRunId,
@@ -969,8 +988,8 @@ export class VideoGenerationExecutor extends NodeExecutor {
     const durationSecs = cfg.duration_seconds ?? 4
     const resolution   = cfg.resolution ?? '1080p'
     const costUsd = costEstimator.estimateVideoCost(
-      provider,
-      provider,   // model key matches provider name in rates config
+      svc.costProvider || provider,
+      svc.model,
       durationSecs * assets.length,
       isOnline,
     )
@@ -983,7 +1002,7 @@ export class VideoGenerationExecutor extends NodeExecutor {
       toolType:           'video',
       toolSubtype:        'video_generation',
       provider,
-      model:              provider,
+      model:              svc.model,
       isOnline,
       workflowId:         ctx.workflowId,
       workflowRunId:      ctx.workflowRunId,
@@ -1009,7 +1028,7 @@ export class VideoGenerationExecutor extends NodeExecutor {
           quantity:    assets.length,
           periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
           periodEnd:   new Date(now.getFullYear(), now.getMonth() + 1, 0),
-          metadata:    { provider, workflowRunId: ctx.workflowRunId, resolution, durationSecs: durationSecs * assets.length } as Prisma.InputJsonValue,
+          metadata:    { provider, service: svc.displayService, model: svc.model, userId: ctx.userId ?? undefined, workflowRunId: ctx.workflowRunId, resolution, durationSecs: durationSecs * assets.length } as Prisma.InputJsonValue,
         },
       })
     ).catch(() => {})

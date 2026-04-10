@@ -27,7 +27,7 @@ import { extractAndSaveQuality } from './qualityExtractor.js'
 // Per-node status stored inside WorkflowRun.output
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type NodeRunStatus = 'idle' | 'running' | 'passed' | 'failed'
+export type NodeRunStatus = 'idle' | 'running' | 'passed' | 'failed' | 'skipped'
 
 export interface NodeStatus {
   status: NodeRunStatus
@@ -391,7 +391,7 @@ export class WorkflowRunner {
     // by checking whether any nodes already have a 'passed' status in the saved output.
     const savedOutput = run.output as unknown as RunOutput | null
     const hasPassedNodes = savedOutput?.nodeStatuses != null
-      && Object.values(savedOutput.nodeStatuses).some((s) => s.status === 'passed')
+      && Object.values(savedOutput.nodeStatuses).some((s) => s.status === 'passed' || s.status === 'skipped')
     const isResume = (
       run.status === 'awaiting_assignment' ||
       run.status === 'waiting_feedback' ||
@@ -472,10 +472,10 @@ export class WorkflowRunner {
     // Store the routePath result from routing nodes (conditional-branch)
     const nodeRoutePaths = new Map<string, string>()
 
-    // For a resumed run, pre-populate nodeOutputs from previously passed nodes
+    // For a resumed run, pre-populate nodeOutputs from previously passed/skipped nodes
     if (isResume) {
       for (const [nodeId, nodeStatus] of Object.entries(runOutput.nodeStatuses)) {
-        if (nodeStatus.status === 'passed' && nodeStatus.output !== undefined) {
+        if ((nodeStatus.status === 'passed' || nodeStatus.status === 'skipped') && nodeStatus.output !== undefined) {
           const saved = nodeStatus.output as Record<string, unknown>
           // Transcription nodes save session metadata — swap in the real transcript text
           if (saved?.sessionId && saved?.status === 'awaiting_assignment') {
@@ -500,8 +500,8 @@ export class WorkflowRunner {
         wave.map(async (node) => {
           if (failed || paused) return
 
-          // ── Skip nodes already passed in a resumed run ──────────────────
-          if (runOutput.nodeStatuses[node.id]?.status === 'passed') {
+          // ── Skip nodes already passed/skipped in a resumed run ─────────
+          if (runOutput.nodeStatuses[node.id]?.status === 'passed' || runOutput.nodeStatuses[node.id]?.status === 'skipped') {
             if (node.type === 'output') {
               lastOutputNodeResult = nodeOutputs.get(node.id)
             }
@@ -510,19 +510,21 @@ export class WorkflowRunner {
 
           const config = (node.config ?? {}) as Record<string, unknown>
 
-          // ── Skip locked nodes that have stored assets ────────────────────
-          if (config.locked === true) {
+          // ── Skip generation nodes that already have stored assets ────────
+          const nodeSubtype = config.subtype as string | undefined
+          const isGenerationNode = nodeSubtype === 'image-generation' || nodeSubtype === 'video-generation'
+          if (isGenerationNode) {
             const storedAssets = config.stored_assets as Array<{ localPath: string }> | undefined
-            if (storedAssets && storedAssets.length > 0) {
-              const lockedOutput = { assets: storedAssets }
-              nodeOutputs.set(node.id, lockedOutput)
+            if (Array.isArray(storedAssets) && storedAssets.length > 0) {
+              const cachedOutput = { assets: storedAssets }
+              nodeOutputs.set(node.id, cachedOutput)
               runOutput.nodeStatuses[node.id] = {
-                status: 'passed',
-                output: lockedOutput,
+                status: 'skipped',
+                output: cachedOutput,
                 completedAt: new Date().toISOString(),
               }
               await this.persistOutput(runOutput)
-              if (node.type === 'output') lastOutputNodeResult = lockedOutput
+              if (node.type === 'output') lastOutputNodeResult = cachedOutput
               return
             }
           }
@@ -741,7 +743,7 @@ export class WorkflowRunner {
 
             // Record token usage (existing monthly-bucket tracking)
             if (result.tokensUsed !== undefined) {
-              await this.recordTokenUsage(result.tokensUsed, result.modelUsed ?? node.type)
+              await this.recordTokenUsage(result.tokensUsed, result.modelUsed ?? node.type, callerClerkId)
             }
 
             // Fire granular UsageEvent for LLM nodes
@@ -959,7 +961,7 @@ export class WorkflowRunner {
       await this.persistOutput(runOutput)  // save humanizer 'passed' before detection re-runs
 
       if (humResult.tokensUsed) {
-        await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'humanizer')
+        await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'humanizer', callerClerkId)
       }
 
       // Mark detection as running again
@@ -1063,7 +1065,7 @@ export class WorkflowRunner {
     })
   }
 
-  private async recordTokenUsage(tokensUsed: number, model: string): Promise<void> {
+  private async recordTokenUsage(tokensUsed: number, model: string, userId?: string | null): Promise<void> {
     const now = new Date()
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -1078,6 +1080,7 @@ export class WorkflowRunner {
         metadata: {
           workflowRunId: this.workflowRunId,
           model,
+          ...(userId ? { userId } : {}),
         } as Prisma.InputJsonValue,
       },
     })

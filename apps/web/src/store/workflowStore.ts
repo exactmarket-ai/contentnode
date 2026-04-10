@@ -28,7 +28,7 @@ export interface WorkflowMeta {
 }
 
 export interface NodeRunStatus {
-  status: 'idle' | 'running' | 'passed' | 'failed'
+  status: 'idle' | 'running' | 'passed' | 'failed' | 'skipped'
   output?: unknown
   error?: string
   tokensUsed?: number

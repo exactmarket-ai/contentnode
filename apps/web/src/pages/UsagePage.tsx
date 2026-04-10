@@ -19,6 +19,8 @@ interface UsageData {
     humanizerWords: number
     translationChars: number
     emailsSent: number
+    imagesGenerated: number
+    videosGenerated: number
   }
   llm: {
     totalTokens: number
@@ -28,10 +30,38 @@ interface UsageData {
   humanizer: { totalWords: number; byService: { service: string; words: number }[] }
   detection: { totalCalls: number; byService: { service: string; calls: number }[] }
   translation: { totalChars: number; byProvider: { provider: string; chars: number }[] }
+  imageGeneration?: { totalImages: number; byService: { service: string; count: number }[] }
+  videoGeneration?: { totalVideos: number; totalSecondGenerated: number; byService: { service: string; count: number }[] }
   byClient: { clientId: string; clientName: string; tokens: number; translationChars: number }[]
   byWorkflow: { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }[]
+  byUser: { userId: string; userName: string; tokens: number; humanizerWords: number; imagesGenerated: number; videosGenerated: number; translationChars: number }[]
   dailyUsage: { date: string; tokens: number }[]
 }
+
+// ── Service definitions with pricing ─────────────────────────────────────────
+
+interface ImageServiceDef { name: string; rateLabel: string }
+interface VideoServiceDef { name: string; rateLabel: string }
+
+const IMAGE_SERVICE_DEFS: ImageServiceDef[] = [
+  { name: 'DALL-E 3',        rateLabel: '$0.04–0.12/img' },
+  { name: 'Stability SDXL',  rateLabel: '$0.002/img' },
+  { name: 'FAL FLUX Dev',    rateLabel: '$0.025/img' },
+  { name: 'ComfyUI',         rateLabel: 'self-hosted' },
+  { name: 'AUTOMATIC1111',   rateLabel: 'self-hosted' },
+]
+
+const VIDEO_SERVICE_DEFS: VideoServiceDef[] = [
+  { name: 'Runway Gen-3 Turbo',  rateLabel: '$0.025/sec' },
+  { name: 'Kling v1.6',          rateLabel: '$0.040/sec' },
+  { name: 'Luma Dream Machine',  rateLabel: '$0.032/sec' },
+  { name: 'Pika 1.5',            rateLabel: '$0.030/sec' },
+  { name: 'Stability SVD',       rateLabel: '$0.010/sec' },
+  { name: 'Google Veo 2',        rateLabel: '$0.035/sec' },
+  { name: 'ComfyUI AnimateDiff', rateLabel: 'self-hosted' },
+  { name: 'CogVideoX',           rateLabel: 'self-hosted' },
+  { name: 'Wan2.1',              rateLabel: 'self-hosted' },
+]
 
 function MiniBar({ value, max, date }: { value: number; max: number; date: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0
@@ -141,12 +171,14 @@ export function UsagePage() {
           <div className="space-y-5 max-w-4xl">
 
             {/* Top stats */}
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-7 gap-3">
               <StatCard icon={Icons.Zap} label="AI Tokens" value={fmt(data.totals.tokens)} sub="this billing period" color="text-blue-400" />
               <StatCard icon={Icons.Play} label="Workflow Runs" value={String(data.totals.runs)} sub="this billing period" />
               <StatCard icon={Icons.Mic} label="Transcription" value={`${data.totals.transcriptionMinutes}m`} sub="minutes processed" />
               <StatCard icon={Icons.ShieldCheck} label="Detection Calls" value={String(data.totals.detectionCalls)} sub="AI detection checks" color="text-amber-400" />
               <StatCard icon={Icons.Languages} label="Translation" value={fmt(data.totals.translationChars, ' chars')} sub="characters translated" color="text-cyan-400" />
+              <StatCard icon={Icons.Image} label="Images Generated" value={fmt(data.totals.imagesGenerated ?? 0)} sub="this billing period" color="text-pink-400" />
+              <StatCard icon={Icons.Video} label="Videos Generated" value={fmt(data.totals.videosGenerated ?? 0)} sub="this billing period" color="text-violet-400" />
             </div>
 
             {/* Daily chart */}
@@ -220,6 +252,45 @@ export function UsagePage() {
               ))}
             </Section>
 
+            {/* Image Generation */}
+            <Section title="Image Generation" icon={Icons.Image} color="text-pink-400" total={fmt(data.imageGeneration?.totalImages ?? 0, ' images')}>
+              <div className="grid grid-cols-3 gap-2">
+                {IMAGE_SERVICE_DEFS.map((svc) => {
+                  const usage = data.imageGeneration?.byService.find((s) => s.service === svc.name)
+                  const count = usage?.count ?? 0
+                  return (
+                    <div key={svc.name} className={cn('rounded-lg border p-3 space-y-1', count > 0 ? 'border-pink-500/40 bg-pink-950/20' : 'border-border bg-muted/20')}>
+                      <p className="text-xs font-medium truncate">{svc.name}</p>
+                      <p className={cn('text-xl font-semibold tabular-nums', count > 0 ? 'text-pink-400' : 'text-muted-foreground/50')}>{fmt(count)}</p>
+                      <p className="text-[10px] text-muted-foreground">{svc.rateLabel}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </Section>
+
+            {/* Video Generation */}
+            <Section
+              title="Video Generation"
+              icon={Icons.Video}
+              color="text-violet-400"
+              total={data.videoGeneration ? `${fmt(data.videoGeneration.totalVideos)} videos · ${fmt(Math.round((data.videoGeneration.totalSecondGenerated ?? 0) / 60))}m` : '0 videos'}
+            >
+              <div className="grid grid-cols-3 gap-2">
+                {VIDEO_SERVICE_DEFS.map((svc) => {
+                  const usage = data.videoGeneration?.byService.find((s) => s.service === svc.name)
+                  const count = usage?.count ?? 0
+                  return (
+                    <div key={svc.name} className={cn('rounded-lg border p-3 space-y-1', count > 0 ? 'border-violet-500/40 bg-violet-950/20' : 'border-border bg-muted/20')}>
+                      <p className="text-xs font-medium truncate">{svc.name}</p>
+                      <p className={cn('text-xl font-semibold tabular-nums', count > 0 ? 'text-violet-400' : 'text-muted-foreground/50')}>{fmt(count)}</p>
+                      <p className="text-[10px] text-muted-foreground">{svc.rateLabel}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </Section>
+
             {/* By client */}
             {data.byClient.length > 0 && (
               <Section title="Usage by Client" icon={Icons.Users} total={`${data.byClient.length} clients`}>
@@ -250,6 +321,52 @@ export function UsagePage() {
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Translation Chars</p>
                     {data.byWorkflow.filter((w) => w.translationChars > 0).slice(0, 10).map((w) => (
                       <Bar key={w.workflowId} label={w.workflowName} sub={w.clientName} value={w.translationChars} max={data.totals.translationChars} color="bg-cyan-600" />
+                    ))}
+                  </>
+                )}
+              </Section>
+            )}
+
+            {/* By user */}
+            {data.byUser?.length > 0 && (
+              <Section title="Usage by User" icon={Icons.User} total={`${data.byUser.length} users`}>
+                {data.totals.tokens > 0 && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">AI Tokens</p>
+                    {data.byUser.filter((u) => u.tokens > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={u.tokens} max={data.totals.tokens} color="bg-blue-600" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => u.imagesGenerated > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Images Generated</p>
+                    {data.byUser.filter((u) => u.imagesGenerated > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={u.imagesGenerated} max={data.totals.imagesGenerated} color="bg-pink-600" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => u.videosGenerated > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Videos Generated</p>
+                    {data.byUser.filter((u) => u.videosGenerated > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={u.videosGenerated} max={data.totals.videosGenerated} color="bg-violet-600" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => u.humanizerWords > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Humanizer Words</p>
+                    {data.byUser.filter((u) => u.humanizerWords > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={u.humanizerWords} max={data.totals.humanizerWords} color="bg-purple-600" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => u.translationChars > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Translation Chars</p>
+                    {data.byUser.filter((u) => u.translationChars > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={u.translationChars} max={data.totals.translationChars} color="bg-cyan-600" />
                     ))}
                   </>
                 )}

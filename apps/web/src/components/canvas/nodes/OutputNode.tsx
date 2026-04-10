@@ -6,6 +6,7 @@ import { getNodeSpec } from '@/lib/nodeColors'
 import { assetUrl } from '@/lib/api'
 import { NodeUploadZone, type ReferenceFile } from './NodeUploadZone'
 import { downloadAsset, makeFilename } from '@/lib/downloadAsset'
+import { triggerRun } from '@/lib/runWorkflow'
 
 const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
@@ -20,9 +21,10 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const spec = getNodeSpec('output', subtype)
   const isGeneration = GENERATION_SUBTYPES.has(subtype)
 
-  const isRunning = status === 'running'
-  const isPassed  = status === 'passed'
-  const isFailed  = status === 'failed'
+  const isRunning  = status === 'running'
+  const isPassed   = status === 'passed'
+  const isFailed   = status === 'failed'
+  const isSkipped  = status === 'skipped'
 
   // Connected upstream nodes (for multi-input display)
   const incomingEdges = edges.filter((e) => e.target === id)
@@ -44,6 +46,15 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
     updateNodeData(id, { config: { ...config, reference_files: current.filter((f) => f.localPath !== localPath) } })
   }
 
+  const handleRerun = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    // Clear stored assets so the runner will re-generate this node
+    updateNodeData(id, { config: { ...config, stored_assets: undefined } })
+    // Trigger a full workflow run — the other generation nodes still have
+    // stored_assets so they'll skip; only this node will re-execute.
+    void triggerRun()
+  }
+
   const cardStyle: React.CSSProperties = selected ? {
     border: `2px solid ${spec.accent}`,
     boxShadow: `0 0 0 3px ${spec.activeRing}`,
@@ -52,6 +63,8 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
     boxShadow: `0 0 20px 4px ${spec.activeRing}`,
   } : isPassed ? {
     border: `1.5px solid ${spec.accent}`,
+  } : isSkipped ? {
+    border: '1.5px solid #6b7280',
   } : isFailed ? {
     border: '1.5px solid #ef4444',
   } : {
@@ -95,8 +108,9 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
         {isRunning && (
           <div className="h-1.5 w-1.5 animate-pulse rounded-full ml-1" style={{ backgroundColor: spec.accent }} />
         )}
-        {isPassed && <Icons.CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0" style={{ color: spec.accent }} />}
-        {isFailed && <Icons.XCircle className="ml-1 h-3.5 w-3.5 shrink-0 text-red-500" />}
+        {isPassed  && <Icons.CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0" style={{ color: spec.accent }} />}
+        {isSkipped && <Icons.CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0 text-gray-400" />}
+        {isFailed  && <Icons.XCircle className="ml-1 h-3.5 w-3.5 shrink-0 text-red-500" />}
       </div>
 
       {/* Body */}
@@ -131,6 +145,23 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           />
         )}
 
+        {/* Cached badge + Re-run button */}
+        {isSkipped && isGeneration && (
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full bg-gray-100 px-2 py-px text-[9px] font-semibold text-gray-500 border border-gray-200">
+              Cached
+            </span>
+            <button
+              className="nodrag ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium text-gray-500 border border-gray-200 hover:border-gray-400 hover:text-gray-700 transition-colors bg-white"
+              title="Clear cache and re-generate this node"
+              onClick={handleRerun}
+            >
+              <Icons.RotateCcw className="h-2.5 w-2.5" />
+              Re-run
+            </button>
+          </div>
+        )}
+
         {/* Status / timing */}
         {(isPassed || isFailed) && nodeStatuses[id]?.startedAt && (
           <p className="text-[10px]" style={{ color: '#b4b2a9' }}>
@@ -145,13 +176,12 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           </p>
         )}
 
-        {/* Video generation: looping full-width preview after completion */}
-        {(isPassed || status === 'idle') && subtype === 'video-generation' && (() => {
+        {/* Video generation: looping full-width preview after completion or when cached */}
+        {(isPassed || isSkipped || status === 'idle') && subtype === 'video-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
           const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
           if (!assets?.length) return null
           const label = data.label as string
-          const isLocked = config.locked === true
           return (
             <div className="overflow-hidden rounded-sm" style={{ marginLeft: -10, marginRight: -10 }}>
               <div className="relative group">
@@ -164,14 +194,15 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   className="w-full object-cover"
                   style={{ maxHeight: 240, display: 'block' }}
                 />
-                {/* Lock button — top left, always visible when locked */}
-                <div className={`absolute top-1.5 left-1.5 ${isLocked ? 'flex' : 'hidden group-hover:flex'}`}>
+                {/* Re-run button — top left on hover (generation nodes with stored assets) */}
+                <div className="absolute top-1.5 left-1.5 hidden group-hover:flex">
                   <button
-                    className={`nodrag flex items-center justify-center rounded p-1 transition-colors ${isLocked ? 'bg-green-500/90 hover:bg-green-600/90' : 'bg-black/60 hover:bg-black/80'}`}
-                    title={isLocked ? "Approved – won't re-run (click to unlock)" : "Approve – skip on next run"}
-                    onClick={(e) => { e.stopPropagation(); updateNodeData(id, { config: { ...config, locked: !isLocked } }) }}
+                    className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors"
+                    title="Clear cache and re-generate"
+                    onClick={handleRerun}
                   >
-                    {isLocked ? <Icons.Lock className="h-3 w-3 text-white" /> : <Icons.LockOpen className="h-3 w-3 text-white" />}
+                    <Icons.RotateCcw className="h-3 w-3" />
+                    Re-run
                   </button>
                 </div>
                 {/* Download button — top right */}
@@ -194,13 +225,12 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           )
         })()}
 
-        {/* Image generation: full-width thumbnail after completion */}
-        {(isPassed || status === 'idle') && subtype === 'image-generation' && (() => {
+        {/* Image generation: full-width thumbnail after completion or when cached */}
+        {(isPassed || isSkipped || status === 'idle') && subtype === 'image-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
           const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
           if (!assets?.length) return null
           const label = data.label as string
-          const isLocked = config.locked === true
           return (
             <div style={{ marginLeft: -10, marginRight: -10 }}>
               {/* Primary image — full width, 240px tall */}
@@ -211,14 +241,15 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   draggable={false}
                   className="w-full h-full object-cover"
                 />
-                {/* Lock button — top left, always visible when locked */}
-                <div className={`absolute top-1.5 left-1.5 ${isLocked ? 'flex' : 'hidden group-hover:flex'}`}>
+                {/* Re-run button — top left on hover */}
+                <div className="absolute top-1.5 left-1.5 hidden group-hover:flex">
                   <button
-                    className={`nodrag flex items-center justify-center rounded p-1 transition-colors ${isLocked ? 'bg-green-500/90 hover:bg-green-600/90' : 'bg-black/60 hover:bg-black/80'}`}
-                    title={isLocked ? "Approved – won't re-run (click to unlock)" : "Approve – skip on next run"}
-                    onClick={(e) => { e.stopPropagation(); updateNodeData(id, { config: { ...config, locked: !isLocked } }) }}
+                    className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors"
+                    title="Clear cache and re-generate"
+                    onClick={handleRerun}
                   >
-                    {isLocked ? <Icons.Lock className="h-3 w-3 text-white" /> : <Icons.LockOpen className="h-3 w-3 text-white" />}
+                    <Icons.RotateCcw className="h-3 w-3" />
+                    Re-run
                   </button>
                 </div>
                 {/* Download button — top right */}

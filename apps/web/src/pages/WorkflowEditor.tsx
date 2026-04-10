@@ -142,7 +142,7 @@ export function WorkflowEditor() {
             if (!last) return
             const nodeStatuses = (last.output as Record<string, unknown>)?.nodeStatuses as Record<string, unknown> | undefined
             if (nodeStatuses && Object.keys(nodeStatuses).length > 0) {
-              useWorkflowStore.getState().setNodeRunStatuses(nodeStatuses as Record<string, { status: 'idle' | 'running' | 'passed' | 'failed'; output?: unknown }>)
+              useWorkflowStore.getState().setNodeRunStatuses(nodeStatuses as Record<string, { status: 'idle' | 'running' | 'passed' | 'failed' | 'skipped'; output?: unknown }>)
               useWorkflowStore.getState().setRunStatus('completed')
               useWorkflowStore.setState({ activeRunId: last.id })
             }

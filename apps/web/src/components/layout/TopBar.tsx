@@ -70,7 +70,7 @@ export async function pollRunUntilTerminal(runId: string) {
       const ASSET_SUBTYPES = new Set(['image-generation', 'video-generation'])
       for (const [nodeId, raw] of Object.entries(nodeStatuses)) {
         const ns = raw as { status: string; output?: Record<string, unknown> }
-        if (ns.status !== 'passed' || !ns.output?.assets) continue
+        if ((ns.status !== 'passed' && ns.status !== 'skipped') || !ns.output?.assets) continue
         const { nodes, updateNodeData } = useWorkflowStore.getState()
         const node = nodes.find((n) => n.id === nodeId)
         if (!node) continue
