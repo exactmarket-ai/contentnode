@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import * as Icons from 'lucide-react'
 import { PALETTE_NODES, type NodeCategory, useWorkflowStore } from '@/store/workflowStore'
@@ -44,6 +44,7 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [hoveredCat, setHoveredCat] = useState<NodeCategory | null>(null)
   const [flyoutPos, setFlyoutPos] = useState<{ x: number; y: number } | null>(null)
+  const [flyoutVisible, setFlyoutVisible] = useState(false)
   const [adjustedPos, setAdjustedPos] = useState({ x, y })
 
   // Close on outside click (check both menu and flyout)
@@ -74,25 +75,25 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
   const handleCatEnter = useCallback((cat: NodeCategory, el: HTMLElement) => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
     const rect = el.getBoundingClientRect()
-
-    // Estimate flyout dimensions to avoid clipping before it renders
-    const nodeCount = PALETTE_NODES.filter((n) => n.category === cat).length
-    const estimatedHeight = 44 + nodeCount * 36   // header + items
-    const estimatedWidth = 220
-
-    // Flip horizontally if flyout would overflow right edge
-    const leftPos = rect.right + 2 + estimatedWidth > window.innerWidth
-      ? rect.left - estimatedWidth - 2
-      : rect.right + 2
-
-    // Flip vertically if flyout would overflow bottom edge
-    const topPos = rect.top + estimatedHeight > window.innerHeight
-      ? Math.max(8, window.innerHeight - estimatedHeight - 8)
-      : rect.top
-
     setHoveredCat(cat)
-    setFlyoutPos({ x: leftPos, y: topPos })
+    setFlyoutVisible(false)
+    setFlyoutPos({ x: rect.right + 2, y: rect.top })
   }, [])
+
+  // After flyout renders (invisible), measure it and clamp to viewport
+  useLayoutEffect(() => {
+    if (!flyoutRef.current || !flyoutPos || flyoutVisible) return
+    const rect = flyoutRef.current.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+
+    let { x, y } = flyoutPos
+    if (x + rect.width > vw) x = flyoutPos.x - rect.width - 4  // flip left
+    if (y + rect.height > vh) y = Math.max(8, vh - rect.height - 8)  // clamp up
+
+    setFlyoutPos({ x, y })
+    setFlyoutVisible(true)
+  }, [flyoutPos, flyoutVisible])
 
   const handleCatLeave = useCallback(() => {
     closeTimerRef.current = setTimeout(() => setHoveredCat(null), 80)
@@ -103,7 +104,7 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
   }, [])
 
   const handleFlyoutLeave = useCallback(() => {
-    closeTimerRef.current = setTimeout(() => setHoveredCat(null), 80)
+    closeTimerRef.current = setTimeout(() => { setHoveredCat(null); setFlyoutVisible(false) }, 80)
   }, [])
 
   const handleSelect = (subtype: string) => {
@@ -167,7 +168,7 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
         <div
           ref={flyoutRef}
           className="fixed z-[10000] min-w-[200px] overflow-hidden rounded-lg border border-border"
-          style={{ ...MENU_STYLE, left: flyoutPos.x, top: flyoutPos.y }}
+          style={{ ...MENU_STYLE, left: flyoutPos.x, top: flyoutPos.y, visibility: flyoutVisible ? 'visible' : 'hidden' }}
           onMouseEnter={handleFlyoutEnter}
           onMouseLeave={handleFlyoutLeave}
         >
