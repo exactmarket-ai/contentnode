@@ -303,12 +303,11 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
       {openCat && (
         <div
           ref={submenuRef}
-          className="fixed z-50 min-w-[220px] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
-          style={{ left: 52, top: (() => {
+          className="fixed z-50 min-w-[220px] overflow-hidden rounded-lg border border-border shadow-2xl"
+          style={{ backgroundColor: '#ffffff', left: 52, top: (() => {
             if (!toolbarRef.current) return 80
             const btnIndex = categories.indexOf(openCat)
             const rect = toolbarRef.current.getBoundingClientRect()
-            // Approximate: expand button (36) + divider (20) + (btnIndex * 40) + offset
             return rect.top + 68 + btnIndex * 40
           })() }}
         >

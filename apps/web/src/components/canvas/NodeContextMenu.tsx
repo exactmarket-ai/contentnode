@@ -55,7 +55,8 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
   return (
     <div
       ref={menuRef}
-      className="fixed z-[999] min-w-[180px] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+      className="fixed z-[999] min-w-[180px] overflow-hidden rounded-lg border border-border shadow-2xl"
+      style={{ backgroundColor: '#ffffff' }}
       style={{ left: adjustedPos.x, top: adjustedPos.y }}
       onContextMenu={(e) => e.preventDefault()}
     >

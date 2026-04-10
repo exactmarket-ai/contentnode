@@ -99,7 +99,8 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
       {/* ── Main menu ──────────────────────────────────────────────────────── */}
       <div
         ref={menuRef}
-        className="fixed z-[999] min-w-[160px] rounded-lg border border-border bg-card shadow-xl"
+        className="fixed z-[999] min-w-[160px] rounded-lg border border-border shadow-2xl"
+        style={{ backgroundColor: '#ffffff' }}
         style={{ left: adjustedPos.x, top: adjustedPos.y }}
         onContextMenu={(e) => e.preventDefault()}
       >
@@ -145,7 +146,8 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
       {hoveredCat && flyoutPos && flyoutSpec && FlyoutCatIcon && (
         <div
           ref={flyoutRef}
-          className="fixed z-[1000] min-w-[200px] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+          className="fixed z-[1000] min-w-[200px] overflow-hidden rounded-lg border border-border shadow-2xl"
+          style={{ backgroundColor: '#ffffff' }}
           style={{ left: flyoutPos.x + 2, top: flyoutPos.y }}
           onMouseEnter={handleFlyoutEnter}
           onMouseLeave={handleFlyoutLeave}
