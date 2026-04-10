@@ -147,20 +147,40 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           />
         )}
 
-        {/* Skip indicator + Re-run button (locked nodes) */}
-        {isLocked && isGeneration && (
-          <div className="flex items-center gap-1.5">
-            <span className="rounded-full bg-amber-500/15 px-2 py-px text-[9px] font-semibold text-amber-500 border border-amber-500/30">
-              {isSkipped ? 'Cached' : 'Will skip'}
-            </span>
+        {/* Skip toggle — always visible on generation nodes */}
+        {isGeneration && (
+          <div className="flex items-center justify-between">
             <button
-              className="nodrag ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground border border-border hover:border-foreground/40 hover:text-foreground transition-colors bg-card"
-              title="Unlock and re-generate on next run"
-              onClick={handleRerun}
+              className="nodrag flex items-center gap-1.5"
+              title={isLocked ? 'Click to unlock — node will regenerate on next run' : 'Click to skip — node will reuse cached output'}
+              onClick={(e) => {
+                e.stopPropagation()
+                updateNodeData(id, { config: { ...config, locked: !isLocked } })
+              }}
             >
-              <Icons.RotateCcw className="h-2.5 w-2.5" />
-              Re-run
+              <div
+                className="relative inline-flex h-3.5 w-6 shrink-0 rounded-full border border-transparent transition-colors"
+                style={{ backgroundColor: isLocked ? '#f59e0b' : '#d1d5db' }}
+              >
+                <span
+                  className="pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform mt-px"
+                  style={{ transform: isLocked ? 'translateX(10px)' : 'translateX(1px)' }}
+                />
+              </div>
+              <span className="text-[9px]" style={{ color: isLocked ? '#f59e0b' : '#9ca3af' }}>
+                {isLocked ? 'Skip' : 'Skip'}
+              </span>
             </button>
+            {isLocked && (
+              <button
+                className="nodrag flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground border border-border hover:border-foreground/40 hover:text-foreground transition-colors bg-card"
+                title="Unlock and re-generate on next run"
+                onClick={handleRerun}
+              >
+                <Icons.RotateCcw className="h-2.5 w-2.5" />
+                Re-run
+              </button>
+            )}
           </div>
         )}
 
