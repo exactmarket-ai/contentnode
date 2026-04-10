@@ -45,43 +45,6 @@ interface ImageGenerationConfig {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const IMAGE_MERGE_SYSTEM_PROMPT = `You are an expert at writing prompts for image generation models.
-
-Given a collection of inputs (briefs, descriptions, reference files, style guides), synthesize a single coherent image generation prompt.
-
-Return ONLY valid JSON with no markdown, no code fences, no explanation:
-{
-  "positivePrompt": "detailed visual description of what to generate",
-  "negativePrompt": "what to avoid, e.g. blurry, watermark, text, low quality",
-  "aspectRatio": "16:9",
-  "styleTag": "e.g. photorealistic, cinematic, illustration",
-  "modelPreference": "e.g. dall-e-3, stable-diffusion"
-}
-
-aspectRatio must be one of: 1:1, 16:9, 9:16, 4:3. Make the positivePrompt rich and descriptive.`
-
-const IMAGE_COMPOSE_SYSTEM_PROMPT = `You are an expert at writing prompts for image generation models.
-
-You are given one or more REFERENCE IMAGES showing subjects, objects, or scenes, along with optional text descriptions.
-Your job: write a single image generation prompt that COMPOSES all the subjects from the reference images into one unified scene.
-
-Rules:
-- Identify every distinct subject/object visible in the reference images
-- Describe their combined scene, placement, and interactions naturally
-- Preserve the visual style, lighting, and mood of the references
-- If text descriptions are included, use them as creative direction
-
-Return ONLY valid JSON with no markdown, no code fences, no explanation:
-{
-  "positivePrompt": "detailed scene description including ALL subjects from the reference images",
-  "negativePrompt": "what to avoid, e.g. blurry, watermark, text, low quality",
-  "aspectRatio": "16:9",
-  "styleTag": "e.g. photorealistic, cinematic, illustration",
-  "modelPreference": "e.g. dall-e-3, stable-diffusion"
-}
-
-aspectRatio must be one of: 1:1, 16:9, 9:16, 4:3.`
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Reference image extraction
 // ─────────────────────────────────────────────────────────────────────────────
@@ -152,75 +115,69 @@ async function fetchImageInputs(refs: AssetRef[]): Promise<ImageInput[]> {
 // Prompt extraction / synthesis
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Extract plain text from any input shape without invoking any AI. */
+function extractTextFromInput(input: unknown): string {
+  if (typeof input === 'string') return input
+  if (!input || typeof input !== 'object') return String(input)
+  const obj = input as Record<string, unknown>
+
+  // Already a structured prompt from ImagePromptBuilder
+  if (typeof obj.positivePrompt === 'string') return obj.positivePrompt
+
+  // Multi-input wrapper: join all text inputs with newlines
+  if (Array.isArray(obj.inputs)) {
+    const parts: string[] = []
+    for (const item of obj.inputs as Record<string, unknown>[]) {
+      const content = item.content
+      if (!content) continue
+      // Skip asset-only inputs (images handled separately via referenceImages)
+      if (typeof content === 'object' && content !== null && (content as Record<string, unknown>).assets) continue
+      if (typeof content === 'string') parts.push(content)
+      else if (typeof content === 'object') {
+        const text = (content as Record<string, unknown>).text
+        if (typeof text === 'string') parts.push(text)
+        else parts.push(JSON.stringify(content))
+      }
+    }
+    if (parts.length > 0) return parts.join('\n')
+  }
+
+  return JSON.stringify(obj)
+}
+
 async function extractPrompt(input: unknown, referenceImages: ImageInput[]): Promise<ImagePromptOutput> {
   const hasRefs = referenceImages.length > 0
 
-  if (input && typeof input === 'object' && !Array.isArray(input)) {
-    const obj = input as Record<string, unknown>
-    // Already a fully-formed prompt from ImagePromptBuilder — use as-is
-    if (typeof obj.positivePrompt === 'string' && !hasRefs) {
-      return obj as unknown as ImagePromptOutput
-    }
-    // Structured multi-input (or has reference images): use Claude vision to compose
-    if (Array.isArray(obj.inputs) || hasRefs) {
-      // If there is only one text input and no reference images, pass it through directly
-      // to avoid Claude expanding it into something that trips provider safety filters.
-      const textInputs = Array.isArray(obj.inputs)
-        ? (obj.inputs as Record<string, unknown>[]).filter(
-            (i) => !(i.content as Record<string, unknown>)?.assets
-          )
-        : []
-      if (!hasRefs && textInputs.length === 1) {
-        const singleContent = (textInputs[0].content as string | Record<string, unknown> | undefined)
-        const singleText = typeof singleContent === 'string'
-          ? singleContent
-          : typeof singleContent === 'object' && singleContent !== null
-            ? String((singleContent as Record<string, unknown>).text ?? JSON.stringify(singleContent))
-            : JSON.stringify(textInputs[0])
-        return {
-          positivePrompt: singleText,
-          negativePrompt: '',
-          aspectRatio: (obj.aspectRatio as string | undefined) ?? '1:1',
-          styleTag: '',
-          modelPreference: '',
-        } as ImagePromptOutput
-      }
+  // Always use the user's text as-is — never rewrite or expand it automatically.
+  // If reference images are present, ask Claude only to describe them so they can
+  // be incorporated, then prepend that description to the user's prompt.
+  const userText = extractTextFromInput(input)
 
-      const textContext = textInputs.length > 0
-        ? `Text inputs and context:\n${JSON.stringify(textInputs, null, 2)}`
-        : typeof obj.positivePrompt === 'string'
-          ? `Existing prompt direction: ${obj.positivePrompt}`
-          : `Input: ${JSON.stringify(obj)}`
-
-      const systemPrompt = hasRefs ? IMAGE_COMPOSE_SYSTEM_PROMPT : IMAGE_MERGE_SYSTEM_PROMPT
-      const userPrompt = hasRefs
-        ? `${referenceImages.length} reference image(s) are attached above. ${textContext}\n\nCompose all subjects into one scene.`
-        : `Synthesize a single coherent image generation prompt from these inputs:\n\n${textContext}`
-
-      const result = await callModel(
-        {
-          provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
-          api_key_ref: '',
-          system_prompt: systemPrompt,
-          temperature: 0.7,
-          max_tokens: 512,
-        },
-        userPrompt,
-        hasRefs ? referenceImages : undefined,
-      )
-      try {
-        const cleaned = result.text.replace(/```(?:json)?/g, '').trim()
-        return JSON.parse(cleaned) as ImagePromptOutput
-      } catch {
-        throw new Error(`Image Generation: LLM merge returned invalid JSON: ${result.text.slice(0, 200)}`)
-      }
+  if (hasRefs) {
+    const result = await callModel(
+      {
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5-20251001',
+        api_key_ref: '',
+        system_prompt: 'Describe the key visual subjects in the provided image(s) in one concise sentence. No extra commentary.',
+        temperature: 0.3,
+        max_tokens: 150,
+      },
+      'Describe what you see.',
+      referenceImages,
+    )
+    const description = result.text.trim()
+    return {
+      positivePrompt: description ? `${description}. ${userText}` : userText,
+      negativePrompt: '',
+      aspectRatio: '1:1',
+      styleTag: '',
+      modelPreference: '',
     }
   }
-  // Fallback: treat input as plain text prompt
-  const text = typeof input === 'string' ? input : JSON.stringify(input)
+
   return {
-    positivePrompt: text,
+    positivePrompt: userText,
     negativePrompt: '',
     aspectRatio: '1:1',
     styleTag: '',
