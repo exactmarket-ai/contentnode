@@ -676,7 +676,7 @@ export class WorkflowRunner {
           } catch (err) {
             failed = true
             const errorMessage = err instanceof Error ? err.message : String(err)
-            console.error(`[runner] node ${node.id} (${node.type}:${((node.config as Record<string,unknown>)?.subtype as string) ?? ''}) failed:`, errorMessage)
+            console.error(`[runner] node ${node.id} (${node.type}:${((node.config as Record<string,unknown>)?.subtype as string) ?? ''}) failed:`, errorMessage, err instanceof Error ? err.stack : '')
 
             runOutput.nodeStatuses[node.id] = {
               status: 'failed',
