@@ -482,6 +482,13 @@ async function generateAutomatic1111(
 // Save all generated images to storage
 // ─────────────────────────────────────────────────────────────────────────────
 
+function mimeToExt(mime: string | null): { ext: string; contentType: string } {
+  if (mime?.includes('png'))  return { ext: 'png', contentType: 'image/png' }
+  if (mime?.includes('webp')) return { ext: 'webp', contentType: 'image/webp' }
+  if (mime?.includes('gif'))  return { ext: 'gif', contentType: 'image/gif' }
+  return { ext: 'jpg', contentType: 'image/jpeg' }
+}
+
 async function saveImages(
   sources: string[],
   provider: Provider,
@@ -489,28 +496,25 @@ async function saveImages(
   const assets: GeneratedAsset[] = []
 
   for (const source of sources) {
-    const ext = source.startsWith('data:image/png') ? 'png' : 'jpg'
-    const filename = `${randomUUID()}.${ext}`
-    const contentType = ext === 'png' ? 'image/png' : 'image/jpeg'
-
     let buffer: Buffer
+    let ext: string
+    let contentType: string
+
     if (source.startsWith('data:')) {
-      // base64 data URI
+      // base64 data URI — type is declared in the URI
+      const mimeMatch = source.match(/^data:([^;]+);/)
+      ;({ ext, contentType } = mimeToExt(mimeMatch?.[1] ?? null))
       const base64 = source.split(',')[1]
       buffer = Buffer.from(base64, 'base64')
     } else {
-      // URL — saveGeneratedFile will fetch it
-      const storageKey = await saveGeneratedFile(source, filename, contentType)
-      assets.push({
-        type: 'image',
-        storageKey,
-        localPath: `/files/generated/${filename}`,
-        provider,
-        generatedAt: new Date().toISOString(),
-      })
-      continue
+      // URL — fetch and detect real content type from response headers
+      const res = await fetch(source)
+      if (!res.ok) throw new Error(`Failed to fetch generated image: HTTP ${res.status}`)
+      ;({ ext, contentType } = mimeToExt(res.headers.get('content-type')))
+      buffer = Buffer.from(await res.arrayBuffer())
     }
 
+    const filename = `${randomUUID()}.${ext}`
     const storageKey = await saveGeneratedFile(buffer, filename, contentType)
     assets.push({
       type: 'image',
