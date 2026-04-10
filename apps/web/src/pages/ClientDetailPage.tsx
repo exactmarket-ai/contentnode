@@ -749,23 +749,22 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
         </div>
       )}
 
-      {/* AI Policy — visible to all, editable by admin/owner only */}
-      <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50' : 'border-border bg-card'}`}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-2.5">
-            <Icons.ShieldAlert className={`mt-0.5 h-4 w-4 shrink-0 ${client.requireOffline ? 'text-amber-600' : 'text-muted-foreground'}`} />
-            <div>
-              <p className="text-sm font-medium">Local AI Only</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {client.requireOffline
-                  ? 'All workflows for this client are restricted to local Ollama models. Cloud AI providers are blocked.'
-                  : 'This client can use any AI provider. Enable this if the client has a policy against cloud AI.'}
-              </p>
-              {!isAdmin && <p className="text-[11px] text-muted-foreground/70 mt-1">Only admins can change this setting.</p>}
-              {toggleError && <p className="text-[11px] text-red-600 mt-1">{toggleError}</p>}
+      {/* AI Policy — admin only */}
+      {isAdmin && (
+        <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50' : 'border-border bg-card'}`}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-2.5">
+              <Icons.ShieldAlert className={`mt-0.5 h-4 w-4 shrink-0 ${client.requireOffline ? 'text-amber-600' : 'text-muted-foreground'}`} />
+              <div>
+                <p className="text-sm font-medium">Local AI Only</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {client.requireOffline
+                    ? 'All workflows for this client are restricted to local Ollama models. Cloud AI providers are blocked.'
+                    : 'This client can use any AI provider. Enable this if the client has a policy against cloud AI.'}
+                </p>
+                {toggleError && <p className="text-[11px] text-red-600 mt-1">{toggleError}</p>}
+              </div>
             </div>
-          </div>
-          {isAdmin && (
             <button
               onClick={toggleRequireOffline}
               disabled={togglingOffline}
@@ -776,9 +775,9 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
                 ? <Icons.Loader2 className="h-3 w-3 animate-spin text-white mx-auto" />
                 : <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${client.requireOffline ? 'translate-x-4' : 'translate-x-0'}`} />}
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
