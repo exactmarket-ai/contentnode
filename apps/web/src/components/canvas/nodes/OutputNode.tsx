@@ -41,6 +41,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   return (
     <div className="relative w-[200px] rounded-md bg-white transition-all" style={cardStyle}>
       <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
+      <Handle type="source" position={Position.Right} id="output" style={{ top: '50%' }} />
 
       {/* Header */}
       <div className="flex items-center gap-2 rounded-t-md border-b px-3 py-2" style={headerStyle}>
