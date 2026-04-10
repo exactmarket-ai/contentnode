@@ -36,6 +36,7 @@ export function WorkflowEditor() {
 
   // When opened with a specific workflow ID, load it into the store
   const [loadingWorkflow, setLoadingWorkflow] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(!workflowId)
 
   // Reset canvas when creating a new workflow
@@ -64,10 +65,14 @@ export function WorkflowEditor() {
   useEffect(() => {
     if (!workflowId) return
     setLoadingWorkflow(true)
+    setLoadError(null)
     apiFetch(`/api/v1/workflows/${workflowId}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(({ data }) => {
-        if (!data) return
+        if (!data) throw new Error('Workflow not found')
         const store = useWorkflowStore.getState()
         // Convert DB nodes → React Flow nodes
         const rfNodes = (data.nodes ?? []).map((n: Record<string, unknown>) => {
@@ -143,7 +148,10 @@ export function WorkflowEditor() {
           })
           .catch(() => {})
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error('[load workflow]', err)
+        setLoadError(err instanceof Error ? err.message : 'Failed to load workflow')
+      })
       .finally(() => setLoadingWorkflow(false))
   }, [workflowId])
 
@@ -257,6 +265,24 @@ export function WorkflowEditor() {
     return (
       <div className="flex h-full items-center justify-center bg-background">
         <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-background">
+        <Icons.AlertTriangle className="h-8 w-8 text-muted-foreground" />
+        <div className="text-center">
+          <p className="text-sm font-medium text-foreground">Couldn't load workflow</p>
+          <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+        </div>
+        <button
+          onClick={() => navigate('/workflows')}
+          className="rounded-md border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
+        >
+          Back to workflows
+        </button>
       </div>
     )
   }
