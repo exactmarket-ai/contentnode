@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { PALETTE_NODES, type NodeCategory, useWorkflowStore } from '@/store/workflowStore'
 import { NODE_SPEC } from '@/lib/nodeColors'
@@ -34,15 +34,19 @@ const CATEGORIES: NodeCategory[] = ['source', 'logic', 'output']
 export function CanvasContextMenu({ x, y, onClose }: Props) {
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
   const menuRef = useRef<HTMLDivElement>(null)
+  const flyoutRef = useRef<HTMLDivElement>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [hoveredCat, setHoveredCat] = useState<NodeCategory | null>(null)
+  const [flyoutPos, setFlyoutPos] = useState<{ x: number; y: number } | null>(null)
   const [adjustedPos, setAdjustedPos] = useState({ x, y })
 
-  // Close on outside click
+  // Close on outside click (check both menu and flyout)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose()
-      }
+      const target = e.target as Node
+      const inMenu = menuRef.current?.contains(target)
+      const inFlyout = flyoutRef.current?.contains(target)
+      if (!inMenu && !inFlyout) onClose()
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -61,89 +65,129 @@ export function CanvasContextMenu({ x, y, onClose }: Props) {
     if (nx !== x || ny !== y) setAdjustedPos({ x: nx, y: ny })
   }, [x, y])
 
+  const handleCatEnter = useCallback((cat: NodeCategory, el: HTMLElement) => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    const rect = el.getBoundingClientRect()
+    setHoveredCat(cat)
+    setFlyoutPos({ x: rect.right, y: rect.top })
+  }, [])
+
+  const handleCatLeave = useCallback(() => {
+    // Small delay so mouse can move into the flyout without it closing
+    closeTimerRef.current = setTimeout(() => setHoveredCat(null), 80)
+  }, [])
+
+  const handleFlyoutEnter = useCallback(() => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+  }, [])
+
+  const handleFlyoutLeave = useCallback(() => {
+    closeTimerRef.current = setTimeout(() => setHoveredCat(null), 80)
+  }, [])
+
   const handleSelect = (subtype: string) => {
     addNodeBySubtype(subtype, { x, y })
     onClose()
   }
 
-  return (
-    <div
-      ref={menuRef}
-      className="fixed z-[999] min-w-[160px] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
-      style={{ left: adjustedPos.x, top: adjustedPos.y }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <div className="py-1">
-        {CATEGORIES.map((cat) => {
-          const nodes = PALETTE_NODES.filter((n) => n.category === cat)
-          const CatIcon = CATEGORY_ICONS[cat] ?? Icons.Box
-          const spec = CATEGORY_SPEC[cat]
-          const isHovered = hoveredCat === cat
+  const flyoutNodes = hoveredCat ? PALETTE_NODES.filter((n) => n.category === hoveredCat) : []
+  const flyoutSpec = hoveredCat ? CATEGORY_SPEC[hoveredCat] : null
+  const FlyoutCatIcon = hoveredCat ? (CATEGORY_ICONS[hoveredCat] ?? Icons.Box) : null
 
-          return (
-            <div
-              key={cat}
-              className="relative"
-              onMouseEnter={() => setHoveredCat(cat)}
-              onMouseLeave={() => setHoveredCat(null)}
-            >
-              {/* Category row */}
+  return (
+    <>
+      {/* ── Main menu ──────────────────────────────────────────────────────── */}
+      <div
+        ref={menuRef}
+        className="fixed z-[999] min-w-[160px] rounded-lg border border-border bg-card shadow-xl"
+        style={{ left: adjustedPos.x, top: adjustedPos.y }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <div className="py-1 rounded-lg overflow-hidden">
+          {CATEGORIES.map((cat) => {
+            const CatIcon = CATEGORY_ICONS[cat] ?? Icons.Box
+            const spec = CATEGORY_SPEC[cat]
+            const isOpen = hoveredCat === cat
+
+            return (
               <div
-                className={cn(
-                  'flex cursor-default items-center gap-2.5 px-3 py-2 text-xs font-medium transition-colors select-none',
-                  isHovered ? 'bg-accent' : 'hover:bg-accent',
-                )}
+                key={cat}
+                onMouseEnter={(e) => handleCatEnter(cat, e.currentTarget)}
+                onMouseLeave={handleCatLeave}
               >
                 <div
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
-                  style={{ backgroundColor: spec.badgeBg, border: `1px solid ${spec.headerBorder}` }}
+                  className={cn(
+                    'flex cursor-default items-center gap-2.5 px-3 py-2 text-xs font-medium transition-colors select-none',
+                    isOpen ? 'bg-accent' : 'hover:bg-accent',
+                  )}
                 >
-                  <CatIcon className="h-3 w-3" style={{ color: spec.accent }} />
-                </div>
-                <span style={{ color: spec.badgeText }}>{CATEGORY_LABELS[cat]}</span>
-                <Icons.ChevronRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
-              </div>
-
-              {/* Flyout submenu */}
-              {isHovered && (
-                <div
-                  className="absolute left-full top-0 z-[1000] min-w-[200px] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
-                  style={{ marginLeft: 2 }}
-                >
-                  <div className="py-1">
-                    {nodes.map((def) => {
-                      const Icon = (Icons as unknown as Record<string, IconComponent>)[def.icon] ?? Icons.Box
-                      return (
-                        <button
-                          key={def.subtype}
-                          onClick={() => handleSelect(def.subtype)}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent"
-                        >
-                          <div
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
-                            style={{ backgroundColor: spec.badgeBg, border: `1px solid ${spec.headerBorder}` }}
-                          >
-                            <Icon className="h-3 w-3" style={{ color: spec.accent }} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium leading-none" style={{ color: spec.badgeText }}>{def.label}</p>
-                            <p className="mt-0.5 truncate text-muted-foreground">{def.description}</p>
-                          </div>
-                        </button>
-                      )
-                    })}
+                  <div
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
+                    style={{ backgroundColor: spec.badgeBg, border: `1px solid ${spec.headerBorder}` }}
+                  >
+                    <CatIcon className="h-3 w-3" style={{ color: spec.accent }} />
                   </div>
+                  <span style={{ color: spec.badgeText }}>{CATEGORY_LABELS[cat]}</span>
+                  <Icons.ChevronRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-              )}
-            </div>
-          )
-        })}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Hint footer */}
+        <div className="border-t border-border px-3 py-1.5">
+          <p className="text-[10px] text-muted-foreground">Click to add at cursor position</p>
+        </div>
       </div>
 
-      {/* Hint footer */}
-      <div className="border-t border-border px-3 py-1.5">
-        <p className="text-[10px] text-muted-foreground">Click to add at cursor position</p>
-      </div>
-    </div>
+      {/* ── Flyout submenu — rendered at fixed position to escape overflow:hidden ── */}
+      {hoveredCat && flyoutPos && flyoutSpec && FlyoutCatIcon && (
+        <div
+          ref={flyoutRef}
+          className="fixed z-[1000] min-w-[200px] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+          style={{ left: flyoutPos.x + 2, top: flyoutPos.y }}
+          onMouseEnter={handleFlyoutEnter}
+          onMouseLeave={handleFlyoutLeave}
+        >
+          {/* Header */}
+          <div
+            className="flex items-center gap-2 px-3 py-2.5 border-b border-border"
+            style={{ backgroundColor: flyoutSpec.headerBg }}
+          >
+            <FlyoutCatIcon className="h-3.5 w-3.5" style={{ color: flyoutSpec.accent }} />
+            <span className="text-xs font-semibold" style={{ color: flyoutSpec.badgeText }}>
+              {CATEGORY_LABELS[hoveredCat]}
+            </span>
+            <span className="ml-auto text-[10px] text-muted-foreground">drag or click</span>
+          </div>
+
+          {/* Node list */}
+          <div className="py-1">
+            {flyoutNodes.map((def) => {
+              const Icon = (Icons as unknown as Record<string, IconComponent>)[def.icon] ?? Icons.Box
+              return (
+                <button
+                  key={def.subtype}
+                  onClick={() => handleSelect(def.subtype)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent"
+                >
+                  <div
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
+                    style={{ backgroundColor: flyoutSpec.badgeBg, border: `1px solid ${flyoutSpec.headerBorder}` }}
+                  >
+                    <Icon className="h-3 w-3" style={{ color: flyoutSpec.accent }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium leading-none" style={{ color: flyoutSpec.badgeText }}>{def.label}</p>
+                    <p className="mt-0.5 truncate text-muted-foreground">{def.description}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
