@@ -102,14 +102,20 @@ function extractAssetRefs(input: unknown): AssetRef[] {
   return refs
 }
 
+function detectMediaType(buf: Buffer): ImageInput['mediaType'] {
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png'
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg'
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[6] === 0x57 && buf[7] === 0x45) return 'image/webp'
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif'
+  return 'image/jpeg'
+}
+
 async function fetchImageInputs(refs: AssetRef[]): Promise<ImageInput[]> {
   const results: ImageInput[] = []
   for (const ref of refs.slice(0, 3)) { // cap at 3 for video (cost/speed)
     try {
       const buf = await downloadBuffer(ref.storageKey)
-      const ext = ref.localPath.split('.').pop()?.toLowerCase() ?? 'jpg'
-      const mediaType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-      results.push({ base64: buf.toString('base64'), mediaType: mediaType as ImageInput['mediaType'] })
+      results.push({ base64: buf.toString('base64'), mediaType: detectMediaType(buf) })
     } catch (err) {
       console.warn(`[videoGeneration] could not fetch reference ${ref.storageKey}:`, err)
     }

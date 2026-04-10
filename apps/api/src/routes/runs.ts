@@ -213,6 +213,13 @@ export async function runRoutes(app: FastifyInstance) {
     // Fall back to null (anonymous trigger) if the user record isn't found.
     const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
 
+    // If the caller pre-seeded node statuses (e.g. "run to here" reusing existing outputs),
+    // use them as the initial output so the runner skips already-passed nodes.
+    const seedStatuses = (body as Record<string, unknown>).seedNodeStatuses as Record<string, unknown> | undefined
+    const initialOutput = seedStatuses && Object.keys(seedStatuses).length > 0
+      ? { nodeStatuses: seedStatuses }
+      : { nodeStatuses: {} }
+
     // Create the run record with status 'pending'
     const run = await prisma.workflowRun.create({
       data: {
@@ -221,7 +228,7 @@ export async function runRoutes(app: FastifyInstance) {
         triggeredBy: userExists ? userId : null,
         status: 'pending',
         input: (body.input ?? {}) as Prisma.InputJsonValue,
-        output: { nodeStatuses: {} } as Prisma.InputJsonValue,
+        output: initialOutput as Prisma.InputJsonValue,
       },
     })
 

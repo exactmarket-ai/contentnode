@@ -76,6 +76,21 @@ export async function triggerRun(stopAtNodeId?: string): Promise<void> {
   // execution path must keep their output indefinitely. Nodes that are part of
   // this run will be set to 'running' → 'passed'/'failed' by the first poll.
 
+  // For "Run to here": seed already-completed ancestor nodes so the runner skips them.
+  // This prevents re-generating images that are already done when you only want to
+  // run the final composition/downstream node.
+  const seedNodeStatuses: Record<string, unknown> = {}
+  if (stopAtNodeId && relevantNodeIds) {
+    const currentStatuses = store.nodeRunStatuses
+    for (const nodeId of relevantNodeIds) {
+      if (nodeId === stopAtNodeId) continue // always re-run the target itself
+      const s = currentStatuses[nodeId]
+      if (s?.status === 'passed' && s.output !== undefined) {
+        seedNodeStatuses[nodeId] = s
+      }
+    }
+  }
+
   try {
     const res = await apiFetch('/api/v1/runs', {
       method: 'POST',
@@ -85,6 +100,7 @@ export async function triggerRun(stopAtNodeId?: string): Promise<void> {
         model_config: wf.default_model_config,
         connectivity_mode: wf.connectivity_mode,
         ...(stopAtNodeId ? { stopAtNodeId } : {}),
+        ...(Object.keys(seedNodeStatuses).length > 0 ? { seedNodeStatuses } : {}),
       }),
     })
 
