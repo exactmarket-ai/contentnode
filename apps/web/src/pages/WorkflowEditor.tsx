@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useSearchParams, useNavigate, useBlocker } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { TopBar, pollRunUntilTerminal } from '@/components/layout/TopBar'
 import { NodePalette } from '@/components/layout/NodePalette'
@@ -221,6 +221,16 @@ export function WorkflowEditor() {
   const isAutoCreated = !!(workflow.autoCreated && workflow.id)
   const navigate = useNavigate()
 
+  // When a new workflow was created via modal but never saved, delete it when the user leaves
+  useEffect(() => {
+    return () => {
+      const state = useWorkflowStore.getState()
+      if (state.workflow.id && !state.workflow.graphSaved) {
+        apiFetch(`/api/v1/workflows/${state.workflow.id}`, { method: 'DELETE' }).catch(() => {})
+      }
+    }
+  }, [])
+
   const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
@@ -231,31 +241,14 @@ export function WorkflowEditor() {
 
   const graphDirty = useWorkflowStore((s) => s.graphDirty)
 
-  // Unsaved = new workflow never saved, OR existing workflow with changes since last save
+  // Warn on browser close/refresh when there are unsaved changes
   const isUnsaved = !!(workflow.id && (!workflow.graphSaved || graphDirty))
-
-  const [deletingWorkflow, setDeletingWorkflow] = useState(false)
-
-  // Block all React Router navigation (links, back button, programmatic) when unsaved
-  const blocker = useBlocker(isUnsaved)
-
-  // Also warn on browser close/refresh
   useEffect(() => {
     if (!isUnsaved) return
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [isUnsaved])
-
-  const handleLeaveWithoutSaving = useCallback(async () => {
-    // Only delete if the workflow was never saved — otherwise just leave, saved version stays intact
-    if (workflow.id && !workflow.graphSaved) {
-      setDeletingWorkflow(true)
-      try { await apiFetch(`/api/v1/workflows/${workflow.id}`, { method: 'DELETE' }) } catch { /* ignore */ }
-      setDeletingWorkflow(false)
-    }
-    blocker.proceed?.()
-  }, [workflow.id, workflow.graphSaved, blocker])
 
   const handleOpenSaveDialog = useCallback(() => {
     window.dispatchEvent(new CustomEvent('contentnode:open-save-dialog'))
@@ -295,52 +288,6 @@ export function WorkflowEditor() {
           onDismiss={() => navigate(-1)}
           defaultClientId={defaultClientId}
         />
-      )}
-
-      {/* ── Unsaved-changes navigation guard ─────────────────────────────── */}
-      {blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60">
-          <div className="w-[400px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
-            <div className="px-5 py-4" style={{ backgroundColor: '#a200ee' }}>
-              <div className="flex items-center gap-2">
-                <Icons.AlertTriangle className="h-4 w-4 text-white/80" />
-                <p className="text-[13px] font-semibold text-white">Unsaved workflow</p>
-              </div>
-            </div>
-            <div className="p-5 space-y-3">
-              <p className="text-[13px] text-foreground">
-                <strong>{workflow.name}</strong> has unsaved changes.
-              </p>
-              <p className="text-[12px] text-muted-foreground">
-                {workflow.graphSaved
-                  ? 'Your changes will be lost if you leave without saving.'
-                  : 'This workflow hasn\'t been saved yet and won\'t appear in your list if you leave.'}
-              </p>
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => blocker.reset?.()}
-                  className="rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLeaveWithoutSaving}
-                  disabled={deletingWorkflow}
-                  className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[12px] font-medium text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
-                >
-                  {deletingWorkflow ? 'Removing…' : workflow.graphSaved ? 'Leave without saving' : 'Discard & leave'}
-                </button>
-                <button
-                  onClick={() => { blocker.reset?.(); handleOpenSaveDialog() }}
-                  className="ml-auto rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:opacity-90"
-                  style={{ backgroundColor: '#a200ee' }}
-                >
-                  Save workflow
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {runStatus === 'waiting_review' && pendingReviewRunId && (
