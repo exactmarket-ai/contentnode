@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { saveGeneratedFile } from '@contentnode/storage'
-import { callModel } from '@contentnode/ai'
+import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
+import { callModel, type ImageInput } from '@contentnode/ai'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { ImagePromptOutput } from './imagePromptBuilder.js'
 
@@ -43,25 +43,129 @@ Return ONLY valid JSON with no markdown, no code fences, no explanation:
 
 aspectRatio must be one of: 1:1, 16:9, 9:16, 4:3. Make the positivePrompt rich and descriptive.`
 
-async function extractPrompt(input: unknown): Promise<ImagePromptOutput> {
+const IMAGE_COMPOSE_SYSTEM_PROMPT = `You are an expert at writing prompts for image generation models.
+
+You are given one or more REFERENCE IMAGES showing subjects, objects, or scenes, along with optional text descriptions.
+Your job: write a single image generation prompt that COMPOSES all the subjects from the reference images into one unified scene.
+
+Rules:
+- Identify every distinct subject/object visible in the reference images
+- Describe their combined scene, placement, and interactions naturally
+- Preserve the visual style, lighting, and mood of the references
+- If text descriptions are included, use them as creative direction
+
+Return ONLY valid JSON with no markdown, no code fences, no explanation:
+{
+  "positivePrompt": "detailed scene description including ALL subjects from the reference images",
+  "negativePrompt": "what to avoid, e.g. blurry, watermark, text, low quality",
+  "aspectRatio": "16:9",
+  "styleTag": "e.g. photorealistic, cinematic, illustration",
+  "modelPreference": "e.g. dall-e-3, stable-diffusion"
+}
+
+aspectRatio must be one of: 1:1, 16:9, 9:16, 4:3.`
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reference image extraction
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AssetRef {
+  storageKey: string
+  localPath: string
+}
+
+/** Pull image assets out of structured multi-inputs from upstream generation nodes. */
+function extractAssetRefs(input: unknown): AssetRef[] {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return []
+  const obj = input as Record<string, unknown>
+  if (!Array.isArray(obj.inputs)) return []
+
+  const refs: AssetRef[] = []
+  for (const item of obj.inputs as Record<string, unknown>[]) {
+    const content = item.content as Record<string, unknown> | undefined
+    if (!content) continue
+
+    // Upstream image-generation node: { assets: [{ storageKey, localPath, type }] }
+    if (Array.isArray(content.assets)) {
+      for (const a of content.assets as Record<string, unknown>[]) {
+        const key = a.storageKey as string | undefined
+        const path = a.localPath as string | undefined
+        const type = a.type as string | undefined
+        if (key && path && (type === 'image' || /\.(jpg|jpeg|png|webp|gif)$/i.test(path))) {
+          refs.push({ storageKey: key, localPath: path })
+        }
+      }
+    }
+
+    // Manually uploaded reference file: { type: 'image', localPath, storageKey }
+    if (content.type === 'image' && content.localPath) {
+      // storageKey may not be present for old refs — derive from localPath
+      const path = content.localPath as string
+      const key = (content.storageKey as string | undefined) ?? path.replace(/^\/files\//, '')
+      refs.push({ storageKey: key, localPath: path })
+    }
+  }
+  return refs
+}
+
+/** Download asset bytes and return as ImageInput for vision models. */
+async function fetchImageInputs(refs: AssetRef[]): Promise<ImageInput[]> {
+  const results: ImageInput[] = []
+  for (const ref of refs) {
+    try {
+      const buf = await downloadBuffer(ref.storageKey)
+      const ext = ref.localPath.split('.').pop()?.toLowerCase() ?? 'jpg'
+      const mediaType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+      results.push({ base64: buf.toString('base64'), mediaType: mediaType as ImageInput['mediaType'] })
+    } catch (err) {
+      console.warn(`[imageGeneration] could not fetch reference ${ref.storageKey}:`, err)
+    }
+  }
+  return results
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt extraction / synthesis
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function extractPrompt(input: unknown, referenceImages: ImageInput[]): Promise<ImagePromptOutput> {
+  const hasRefs = referenceImages.length > 0
+
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
-    // Already a prompt object from ImagePromptBuilder
-    if (typeof obj.positivePrompt === 'string') {
+    // Already a fully-formed prompt from ImagePromptBuilder — use as-is
+    if (typeof obj.positivePrompt === 'string' && !hasRefs) {
       return obj as unknown as ImagePromptOutput
     }
-    // Structured multi-input: do quick LLM merge
-    if (Array.isArray(obj.inputs)) {
+    // Structured multi-input (or has reference images): use Claude vision to compose
+    if (Array.isArray(obj.inputs) || hasRefs) {
+      const textContext = Array.isArray(obj.inputs)
+        ? `Text inputs and context:\n${JSON.stringify(
+            (obj.inputs as Record<string, unknown>[]).filter(
+              (i) => !(i.content as Record<string, unknown>)?.assets
+            ),
+            null, 2
+          )}`
+        : typeof obj.positivePrompt === 'string'
+          ? `Existing prompt direction: ${obj.positivePrompt}`
+          : `Input: ${JSON.stringify(obj)}`
+
+      const systemPrompt = hasRefs ? IMAGE_COMPOSE_SYSTEM_PROMPT : IMAGE_MERGE_SYSTEM_PROMPT
+      const userPrompt = hasRefs
+        ? `${referenceImages.length} reference image(s) are attached above. ${textContext}\n\nCompose all subjects into one scene.`
+        : `Synthesize a single coherent image generation prompt from these inputs:\n\n${textContext}`
+
       const result = await callModel(
         {
           provider: 'anthropic',
           model: 'claude-haiku-4-5-20251001',
           api_key_ref: '',
-          system_prompt: IMAGE_MERGE_SYSTEM_PROMPT,
+          system_prompt: systemPrompt,
           temperature: 0.7,
           max_tokens: 512,
         },
-        `Synthesize a single coherent image generation prompt from these inputs:\n\n${JSON.stringify(obj.inputs, null, 2)}`,
+        userPrompt,
+        hasRefs ? referenceImages : undefined,
       )
       try {
         const cleaned = result.text.replace(/```(?:json)?/g, '').trim()
@@ -71,7 +175,7 @@ async function extractPrompt(input: unknown): Promise<ImagePromptOutput> {
       }
     }
   }
-  // Fallback: treat input as plain text
+  // Fallback: treat input as plain text prompt
   const text = typeof input === 'string' ? input : JSON.stringify(input)
   return {
     positivePrompt: text,
@@ -408,7 +512,12 @@ export class ImageGenerationExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as ImageGenerationConfig
     const provider: Provider = cfg.provider ?? 'dalle3'
-    const prompt = await extractPrompt(input)
+
+    // Extract reference images from connected upstream generation nodes
+    const assetRefs = extractAssetRefs(input)
+    const referenceImages = assetRefs.length > 0 ? await fetchImageInputs(assetRefs) : []
+
+    const prompt = await extractPrompt(input, referenceImages)
 
     let rawUrls: string[]
 

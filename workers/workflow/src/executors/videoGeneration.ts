@@ -1,6 +1,6 @@
 import { randomUUID, createHmac } from 'node:crypto'
-import { saveGeneratedFile } from '@contentnode/storage'
-import { callModel } from '@contentnode/ai'
+import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
+import { callModel, type ImageInput } from '@contentnode/ai'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { VideoPromptOutput } from './videoPromptBuilder.js'
 
@@ -53,7 +53,71 @@ Return ONLY valid JSON:
 
 Rules: aspectRatio ∈ {1:1,16:9,9:16,4:3}, cameraMotion ∈ {static,pan-left,pan-right,zoom-in,zoom-out,dolly,orbit}, motionIntensity ∈ {low,medium,high}, durationSeconds 3-10, referenceImageUrl always null.`
 
-async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig): Promise<VideoPromptOutput> {
+const VIDEO_COMPOSE_SYSTEM_PROMPT = `You are an expert at writing prompts for AI video generation models.
+
+You are given one or more REFERENCE IMAGES showing a scene, subjects, or composition that should be animated into a video.
+Write a prompt that brings the scene to life with natural motion.
+
+Return ONLY valid JSON:
+{
+  "positivePrompt": "detailed scene and motion description faithful to the reference images",
+  "negativePrompt": "what to avoid",
+  "durationSeconds": 5,
+  "aspectRatio": "16:9",
+  "cameraMotion": "static",
+  "motionIntensity": "medium",
+  "mode": "image-to-video",
+  "referenceImageUrl": null
+}
+
+Rules: aspectRatio ∈ {1:1,16:9,9:16,4:3}, cameraMotion ∈ {static,pan-left,pan-right,zoom-in,zoom-out,dolly,orbit}, motionIntensity ∈ {low,medium,high}, durationSeconds 3-10, referenceImageUrl always null (the caller sets it).`
+
+// Extract image asset refs from structured multi-inputs
+interface AssetRef { storageKey: string; localPath: string }
+
+function extractAssetRefs(input: unknown): AssetRef[] {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return []
+  const obj = input as Record<string, unknown>
+  if (!Array.isArray(obj.inputs)) return []
+  const refs: AssetRef[] = []
+  for (const item of obj.inputs as Record<string, unknown>[]) {
+    const content = item.content as Record<string, unknown> | undefined
+    if (!content) continue
+    if (Array.isArray(content.assets)) {
+      for (const a of content.assets as Record<string, unknown>[]) {
+        const key = a.storageKey as string | undefined
+        const path = a.localPath as string | undefined
+        const type = a.type as string | undefined
+        if (key && path && (type === 'image' || /\.(jpg|jpeg|png|webp|gif)$/i.test(path))) {
+          refs.push({ storageKey: key, localPath: path })
+        }
+      }
+    }
+    if (content.type === 'image' && content.localPath) {
+      const path = content.localPath as string
+      const key = (content.storageKey as string | undefined) ?? path.replace(/^\/files\//, '')
+      refs.push({ storageKey: key, localPath: path })
+    }
+  }
+  return refs
+}
+
+async function fetchImageInputs(refs: AssetRef[]): Promise<ImageInput[]> {
+  const results: ImageInput[] = []
+  for (const ref of refs.slice(0, 3)) { // cap at 3 for video (cost/speed)
+    try {
+      const buf = await downloadBuffer(ref.storageKey)
+      const ext = ref.localPath.split('.').pop()?.toLowerCase() ?? 'jpg'
+      const mediaType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+      results.push({ base64: buf.toString('base64'), mediaType: mediaType as ImageInput['mediaType'] })
+    } catch (err) {
+      console.warn(`[videoGeneration] could not fetch reference ${ref.storageKey}:`, err)
+    }
+  }
+  return results
+}
+
+async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig, referenceImages: ImageInput[] = []): Promise<VideoPromptOutput> {
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
     // VideoPromptOutput from Video Prompt Builder
@@ -77,40 +141,51 @@ async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig): P
         referenceImageUrl: asset.localPath,
       }
     }
-    // Structured multi-input: LLM merge
-    if (Array.isArray(obj.inputs)) {
-      // Extract reference image from uploaded references or image generation outputs
-      let referenceImageUrl: string | null = null
-      for (const inp of obj.inputs as Array<{ nodeType: string; content: unknown }>) {
-        if (inp.nodeType === 'uploaded-reference') {
-          const c = inp.content as { type?: string; localPath?: string }
-          if (c.type === 'image' && c.localPath) { referenceImageUrl = c.localPath; break }
-        }
-        if (inp.content && typeof inp.content === 'object') {
-          const c = inp.content as Record<string, unknown>
-          if (Array.isArray(c.assets) && c.assets.length > 0) {
-            const a = c.assets[0] as { localPath?: string }
-            if (a.localPath) { referenceImageUrl = a.localPath; break }
+    // Structured multi-input: LLM merge, with vision if reference images provided
+    if (Array.isArray(obj.inputs) || referenceImages.length > 0) {
+      const hasRefs = referenceImages.length > 0
+      // First image asset found becomes the start frame (localPath for providers)
+      let referenceImageLocalPath: string | null = null
+      if (Array.isArray(obj.inputs)) {
+        for (const inp of obj.inputs as Array<{ nodeType?: string; content: unknown }>) {
+          if (inp.nodeType === 'uploaded-reference') {
+            const c = inp.content as { type?: string; localPath?: string }
+            if (c.type === 'image' && c.localPath) { referenceImageLocalPath = c.localPath; break }
+          }
+          if (inp.content && typeof inp.content === 'object') {
+            const c = inp.content as Record<string, unknown>
+            if (Array.isArray(c.assets) && c.assets.length > 0) {
+              const a = c.assets[0] as { localPath?: string }
+              if (a.localPath) { referenceImageLocalPath = a.localPath; break }
+            }
           }
         }
       }
+
+      const textContext = Array.isArray(obj.inputs)
+        ? `Inputs:\n${JSON.stringify(obj.inputs, null, 2)}`
+        : 'Animate the reference image(s) into a video.'
+
       const result = await callModel(
         {
           provider: 'anthropic',
           model: 'claude-haiku-4-5-20251001',
           api_key_ref: '',
-          system_prompt: VIDEO_MERGE_SYSTEM_PROMPT,
+          system_prompt: hasRefs ? VIDEO_COMPOSE_SYSTEM_PROMPT : VIDEO_MERGE_SYSTEM_PROMPT,
           temperature: 0.7,
           max_tokens: 512,
         },
-        `Synthesize a single coherent video generation prompt from these inputs:\n\n${JSON.stringify(obj.inputs, null, 2)}`,
+        hasRefs
+          ? `${referenceImages.length} reference image(s) attached. ${textContext}\n\nWrite a video prompt that animates this scene.`
+          : `Synthesize a single coherent video generation prompt:\n\n${textContext}`,
+        hasRefs ? referenceImages : undefined,
       )
       try {
         const cleaned = result.text.replace(/```(?:json)?/g, '').trim()
         const parsed = JSON.parse(cleaned) as VideoPromptOutput
-        if (referenceImageUrl) {
+        if (referenceImageLocalPath) {
           parsed.mode = 'image-to-video'
-          parsed.referenceImageUrl = referenceImageUrl
+          parsed.referenceImageUrl = referenceImageLocalPath
         }
         return parsed
       } catch {
@@ -781,7 +856,12 @@ export class VideoGenerationExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as VideoGenerationConfig
     const provider: Provider = cfg.provider ?? 'runway'
-    const prompt = await extractVideoPrompt(input, cfg)
+
+    // Extract reference images from connected upstream generation nodes
+    const assetRefs = extractAssetRefs(input)
+    const referenceImages = assetRefs.length > 0 ? await fetchImageInputs(assetRefs) : []
+
+    const prompt = await extractVideoPrompt(input, cfg, referenceImages)
 
     // Merge manual start_frame into prompt if not already set by upstream
     if (cfg.start_frame && !prompt.referenceImageUrl) {

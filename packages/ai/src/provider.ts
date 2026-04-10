@@ -28,6 +28,12 @@ export interface ModelResult {
   model_used: string
 }
 
+/** A base64-encoded image to pass as a vision input. */
+export interface ImageInput {
+  base64: string
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Key resolution — reads from env, never logs the value
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,19 +51,28 @@ function resolveApiKey(ref: string): string {
 // Anthropic
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function callAnthropic(config: ModelConfig, prompt: string): Promise<ModelResult> {
+async function callAnthropic(config: ModelConfig, prompt: string, images?: ImageInput[]): Promise<ModelResult> {
   const apiKey = config.api_key_ref ? resolveApiKey(config.api_key_ref) : (process.env.ANTHROPIC_API_KEY ?? '')
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set')
 
   const client = new Anthropic({ apiKey })
 
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }]
+  const userContent: Anthropic.MessageParam['content'] = images && images.length > 0
+    ? [
+        ...images.map((img): Anthropic.ImageBlockParam => ({
+          type: 'image',
+          source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+        })),
+        { type: 'text', text: prompt },
+      ]
+    : prompt
+
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userContent }]
 
   const response = await client.messages.create({
     model: config.model,
     max_tokens: config.max_tokens ?? 4096,
     ...(config.system_prompt ? { system: config.system_prompt } : {}),
-    ...(config.temperature !== undefined ? {} : {}), // Anthropic uses temperature at top level
     messages,
   })
 
@@ -161,10 +176,10 @@ async function callOllama(config: ModelConfig, prompt: string): Promise<ModelRes
  * API keys are read from environment variables named by `config.api_key_ref`.
  * Keys are never written to logs or included in thrown error messages.
  */
-export async function callModel(config: ModelConfig, prompt: string): Promise<ModelResult> {
+export async function callModel(config: ModelConfig, prompt: string, images?: ImageInput[]): Promise<ModelResult> {
   switch (config.provider) {
     case 'anthropic':
-      return callAnthropic(config, prompt)
+      return callAnthropic(config, prompt, images)
     case 'openai':
       return callOpenAI(config, prompt)
     case 'ollama':
