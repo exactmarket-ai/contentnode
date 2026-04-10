@@ -27,8 +27,8 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
 }
 
 const ASPECT_RATIOS = [
-  { value: '',    label: 'Let LLM decide' },
-  { value: '1:1', label: '1:1 — Square' },
+  { value: 'auto', label: 'Let LLM decide' },
+  { value: '1:1',  label: '1:1 — Square' },
   { value: '16:9', label: '16:9 — Landscape' },
   { value: '9:16', label: '9:16 — Portrait' },
   { value: '4:3',  label: '4:3 — Classic' },
@@ -77,7 +77,7 @@ export function ImagePromptBuilderConfig({
 
       <FieldGroup label="Aspect Ratio Override">
         <Select
-          value={(config.aspect_ratio_override as string) ?? ''}
+          value={(config.aspect_ratio_override as string) || 'auto'}
           onValueChange={(v) => onChange('aspect_ratio_override', v)}
         >
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>

@@ -74,7 +74,7 @@ export class ImagePromptBuilderExecutor extends NodeExecutor {
     }
 
     // Apply overrides from node config
-    if (cfg.aspect_ratio_override) {
+    if (cfg.aspect_ratio_override && cfg.aspect_ratio_override !== 'auto') {
       parsed.aspectRatio = cfg.aspect_ratio_override as ImagePromptOutput['aspectRatio']
     }
 

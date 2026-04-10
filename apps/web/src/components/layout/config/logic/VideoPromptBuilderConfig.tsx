@@ -27,7 +27,7 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
 }
 
 const CAMERA_MOTIONS = [
-  { value: '',          label: 'Let LLM decide' },
+  { value: 'auto',      label: 'Let LLM decide' },
   { value: 'static',    label: 'Static' },
   { value: 'pan-left',  label: 'Pan left' },
   { value: 'pan-right', label: 'Pan right' },
@@ -92,7 +92,7 @@ export function VideoPromptBuilderConfig({
 
       <FieldGroup label="Camera Motion Hint">
         <Select
-          value={(config.camera_motion_hint as string) ?? ''}
+          value={(config.camera_motion_hint as string) || 'auto'}
           onValueChange={(v) => onChange('camera_motion_hint', v)}
         >
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
