@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { BatchRunModal } from '@/components/modals/BatchRunModal'
 import { ScheduleModal } from '@/components/modals/ScheduleModal'
+import { triggerRun } from '@/lib/runWorkflow'
 
 const ANTHROPIC_MODELS = [
   { value: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
@@ -202,88 +203,9 @@ export function TopBar() {
 
   const handleRun = async () => {
     if (runStatus === 'running') return
-
-    const store = useWorkflowStore.getState()
-    const { nodes, edges, workflow: wf } = store
-
-    // ── Require saved workflow before running ──────────────────────────────
-    if (!wf.id) {
-      setSaveDialogOpen(true)
-      return
-    }
-
-    // ── Pre-run validation ─────────────────────────────────────────────────
-    const unconfiguredSourceNodes = nodes.filter((n) => {
-      if (n.type !== 'source') return false
-      const cfg = (n.data?.config as Record<string, unknown>) ?? {}
-      const hasText = !!(cfg.text || cfg.inlineText || cfg.pasted_text)
-      const hasFiles = Array.isArray(cfg.uploaded_files) && cfg.uploaded_files.length > 0
-      const hasLibraryRefs = Array.isArray(cfg.library_refs) && cfg.library_refs.length > 0
-      const hasAudioFiles = Array.isArray(cfg.audio_files) && cfg.audio_files.length > 0
-      const hasDocumentId = !!cfg.documentId
-      const hasUrl = !!(cfg.url)
-      const hasRawText = !!(cfg.raw_text)  // instruction-translator
-      return !hasText && !hasFiles && !hasLibraryRefs && !hasAudioFiles && !hasDocumentId && !hasUrl && !hasRawText
-    })
-    if (unconfiguredSourceNodes.length > 0) {
-      const labels = unconfiguredSourceNodes.map((n) => (n.data?.label as string) || n.id).join(', ')
-      alert(`Please configure your source node${unconfiguredSourceNodes.length > 1 ? 's' : ''} before running.\n\nMissing content: ${labels}\n\nOpen the node and upload a file or paste text.`)
-      return
-    }
-
-    console.log('[run] clicked — workflow:', wf.id, 'nodes:', nodes.length, 'edges:', edges.length)
-
-    store.setRunStatus('running')
-    store.setNodeRunStatuses({})
-
-    try {
-      const res = await apiFetch('/api/v1/runs', {
-        method: 'POST',
-        body: JSON.stringify({
-          workflow_id: wf.id,
-          graph: { nodes, edges },
-          model_config: wf.default_model_config,
-          connectivity_mode: wf.connectivity_mode,
-        }),
-      })
-
-      if (!res.ok) {
-        const text = await res.text()
-        console.error('[run] POST /api/v1/runs failed:', res.status, text)
-        let errMsg = `Failed to start run (HTTP ${res.status})`
-        try { const j = JSON.parse(text); if (j.error) errMsg = j.error } catch { /* raw text */ }
-        store.setRunError(errMsg)
-        store.setRunStatus('failed')
-        return
-      }
-
-      const { runId, workflowId: createdWorkflowId } = await res.json() as { runId: string; workflowId: string }
-      console.log('[run] run created:', runId)
-      store.setActiveRunId(runId)
-      // If workflow was auto-created by the run engine (no prior ID), record it
-      if (!wf.id && createdWorkflowId) {
-        store.setWorkflow({ id: createdWorkflowId, autoCreated: true })
-      }
-      await pollRunUntilTerminal(runId)
-
-      // Auto-save graph after successful run so output is never lost due to unsaved config
-      if (useWorkflowStore.getState().runStatus === 'completed' && wf.id) {
-        const latest = useWorkflowStore.getState()
-        apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            nodes: latest.nodes,
-            edges: latest.edges,
-            name: latest.workflow.name,
-            defaultModelConfig: latest.workflow.default_model_config,
-          }),
-        }).then(() => { useWorkflowStore.getState().setWorkflow({ graphSaved: true }); useWorkflowStore.setState({ graphDirty: false }) }).catch(() => {})
-      }
-    } catch (err) {
-      console.error('[run] unexpected error:', err)
-      useWorkflowStore.getState().setRunError(err instanceof Error ? err.message : 'Unexpected error')
-      useWorkflowStore.getState().setRunStatus('failed')
-    }
+    const wf = useWorkflowStore.getState().workflow
+    if (!wf.id) { setSaveDialogOpen(true); return }
+    await triggerRun()
   }
 
   const handleSave = async (name: string, clientId: string, createNew = false) => {

@@ -264,6 +264,7 @@ export class WorkflowRunner {
   constructor(
     private readonly workflowRunId: string,
     private readonly agencyId: string,
+    private readonly stopAtNodeId?: string,
   ) {}
 
   async run(): Promise<void> {
@@ -306,6 +307,34 @@ export class WorkflowRunner {
       if (files) {
         node.config = { ...(node.config as Record<string, unknown>), ...files } as typeof node.config
       }
+    }
+
+    // ── Prune graph for "Run to here" (stopAtNodeId) ─────────────────────────
+    // BFS backwards from the target node to find all ancestors, then discard
+    // everything else. The existing execution engine then naturally stops after
+    // executing the target node since it has no successors in the pruned graph.
+    if (this.stopAtNodeId) {
+      const targetId = this.stopAtNodeId
+      const incoming = new Map<string, string[]>()
+      for (const n of workflow.nodes) incoming.set(n.id, [])
+      for (const e of workflow.edges) {
+        incoming.get(e.targetNodeId)?.push(e.sourceNodeId)
+      }
+
+      const ancestorIds = new Set<string>()
+      const bfsQueue = [targetId]
+      while (bfsQueue.length > 0) {
+        const cur = bfsQueue.shift()!
+        if (ancestorIds.has(cur)) continue
+        ancestorIds.add(cur)
+        for (const src of incoming.get(cur) ?? []) bfsQueue.push(src)
+      }
+
+      workflow.nodes = workflow.nodes.filter((n) => ancestorIds.has(n.id))
+      workflow.edges = workflow.edges.filter(
+        (e) => ancestorIds.has(e.sourceNodeId) && ancestorIds.has(e.targetNodeId),
+      )
+      console.log(`[runner] run-to-here: pruned to ${workflow.nodes.length} nodes (target: ${targetId})`)
     }
 
     // ── Compute content hash from source node inputs ─────────────────────────

@@ -42,6 +42,8 @@ const createRunBody = z.object({
   model_config: z.record(z.unknown()).optional(),
   connectivity_mode: z.string().optional(),
   input: z.record(z.unknown()).optional().default({}),
+  /** When set, the worker prunes the graph to ancestors of this node and stops after it executes */
+  stopAtNodeId: z.string().optional(),
 })
 
 // Default dev client used when no clientId is provided
@@ -224,7 +226,7 @@ export async function runRoutes(app: FastifyInstance) {
     const queue = getWorkflowRunsQueue()
     await queue.add(
       'run-workflow',
-      { workflowRunId: run.id, agencyId },
+      { workflowRunId: run.id, agencyId, ...(body.stopAtNodeId ? { stopAtNodeId: body.stopAtNodeId } : {}) },
       { jobId: run.id },
     )
 

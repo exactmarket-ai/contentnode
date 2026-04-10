@@ -22,9 +22,9 @@ import { runScheduleChecker } from './scheduleChecker.js'
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
   QUEUE_WORKFLOW_RUNS,
   async (job: Job<WorkflowRunJobData>) => {
-    const { workflowRunId, agencyId } = job.data
-    console.log(`[workflow-runs] starting run ${workflowRunId}`)
-    const runner = new WorkflowRunner(workflowRunId, agencyId)
+    const { workflowRunId, agencyId, stopAtNodeId } = job.data
+    console.log(`[workflow-runs] starting run ${workflowRunId}${stopAtNodeId ? ` (stop at ${stopAtNodeId})` : ''}`)
+    const runner = new WorkflowRunner(workflowRunId, agencyId, stopAtNodeId)
     try {
       await runner.run()
       console.log(`[workflow-runs] finished run ${workflowRunId}`)

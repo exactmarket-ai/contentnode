@@ -52,6 +52,13 @@ export interface PaletteNodeDef {
   category: NodeCategory
   icon: string         // lucide icon name
   defaultConfig: Record<string, unknown>
+  /**
+   * When true, this node requires a human to provide data at runtime
+   * (file upload, typed text, speaker assignment, stakeholder feedback, etc.).
+   * "Run to here" is suppressed for these nodes.
+   * New node types MUST set this explicitly if they block on human input.
+   */
+  requiresManualInput?: boolean
 }
 
 export const PALETTE_NODES: PaletteNodeDef[] = [
@@ -61,12 +68,14 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     label: 'Text Input', description: 'Static text or template literal',
     category: 'source', icon: 'Type',
     defaultConfig: { text: '' },
+    requiresManualInput: true,
   },
   {
     type: 'source', subtype: 'file-upload',
     label: 'File Upload', description: 'Upload a document or image',
     category: 'source', icon: 'Upload',
     defaultConfig: { accept: '*', maxSizeMb: 10 },
+    requiresManualInput: true,
   },
   {
     type: 'source', subtype: 'api-fetch',
@@ -116,6 +125,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     label: 'Human Review', description: 'Pause for human approval before continuing',
     category: 'logic', icon: 'UserCheck',
     defaultConfig: { subtype: 'human-review', instructions: '', assignee_email: '' },
+    requiresManualInput: true,
   },
   {
     type: 'logic', subtype: 'translate',
@@ -215,6 +225,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       api_key_ref: 'ASSEMBLYAI_API_KEY',
       audio_files: [],
     },
+    requiresManualInput: true, // requires audio upload + speaker assignment during run
   },
   {
     type: 'output', subtype: 'webhook',
@@ -250,6 +261,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     type: 'output', subtype: 'client-feedback',
     label: 'Client Feedback', description: 'Request stakeholder feedback via secure portal or manual entry',
     category: 'output', icon: 'MessageSquare',
+    requiresManualInput: true, // pauses run waiting for stakeholder response
     defaultConfig: {
       subtype: 'client-feedback',
       source_type: 'portal',

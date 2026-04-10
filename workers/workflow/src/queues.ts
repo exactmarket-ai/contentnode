@@ -18,6 +18,8 @@ export const QUEUE_SCHEDULE_CHECKER = 'schedule-checker'
 export interface WorkflowRunJobData {
   workflowRunId: string
   agencyId: string
+  /** When set, only ancestors of this node (+ the node itself) are executed */
+  stopAtNodeId?: string
 }
 
 export interface NodeExecutionJobData {

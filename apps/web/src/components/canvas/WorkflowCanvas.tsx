@@ -16,6 +16,7 @@ import { OutputNode } from './nodes/OutputNode'
 import { InsightNode } from './nodes/InsightNode'
 import { AlignmentToolbar } from './AlignmentToolbar'
 import { CanvasContextMenu } from './CanvasContextMenu'
+import { NodeContextMenu } from './NodeContextMenu'
 
 const nodeTypes = {
   source: SourceNode,
@@ -39,6 +40,7 @@ export function WorkflowCanvas() {
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
   const hasFitRef = useRef(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [nodeContextMenu, setNodeContextMenu] = useState<{ x: number; y: number; nodeId: string; subtype: string } | null>(null)
 
   // Fit view once after workflow nodes load asynchronously
   useEffect(() => {
@@ -58,6 +60,7 @@ export function WorkflowCanvas() {
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null)
     setContextMenu(null)
+    setNodeContextMenu(null)
   }, [setSelectedNodeId])
 
   // Drag-and-drop from palette
@@ -148,9 +151,12 @@ export function WorkflowCanvas() {
     setContextMenu({ x: e.clientX, y: e.clientY })
   }, [])
 
-  // Suppress browser context menu on nodes (don't intercept — just prevent default)
-  const onNodeContextMenu = useCallback((e: React.MouseEvent) => {
+  // Right-click on a node → show node context menu
+  const onNodeContextMenu = useCallback((e: React.MouseEvent, node: { id: string; data?: Record<string, unknown> }) => {
     e.preventDefault()
+    setContextMenu(null) // close canvas menu if open
+    const subtype = (node.data?.subtype as string) ?? (node.data?.config as Record<string, unknown> | undefined)?.subtype as string ?? ''
+    setNodeContextMenu({ x: e.clientX, y: e.clientY, nodeId: node.id, subtype })
   }, [])
 
   return (
@@ -211,6 +217,16 @@ export function WorkflowCanvas() {
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {nodeContextMenu && (
+        <NodeContextMenu
+          nodeId={nodeContextMenu.nodeId}
+          subtype={nodeContextMenu.subtype}
+          x={nodeContextMenu.x}
+          y={nodeContextMenu.y}
+          onClose={() => setNodeContextMenu(null)}
         />
       )}
     </>
