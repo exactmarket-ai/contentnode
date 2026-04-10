@@ -73,12 +73,17 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
   const effectiveModel: string = clientRequiresOffline ? 'gemma3:12b' : model
 
   useEffect(() => {
-    apiFetch('/api/v1/clients')
+    apiFetch('/api/v1/clients?status=active')
       .then((r) => r.json())
       .then(({ data }) => {
         const active = (data ?? []).filter((c: Client & { status: string }) => c.status !== 'archived')
         setClients(active)
-        if (!clientId && active.length > 0) setClientId(active[0].id)
+        if (active.length > 0) {
+          setClientId((current) => {
+            const isValid = active.some((c: Client) => c.id === current)
+            return isValid ? current : active[0].id
+          })
+        }
       })
       .catch(() => {})
     apiFetch('/api/v1/workflows/templates')

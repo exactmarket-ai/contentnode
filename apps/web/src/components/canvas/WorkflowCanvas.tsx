@@ -4,7 +4,6 @@ import ReactFlow, {
   BackgroundVariant,
   Controls,
   MiniMap,
-  Panel,
   type ReactFlowInstance,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -14,7 +13,6 @@ import { SourceNode } from './nodes/SourceNode'
 import { LogicNode } from './nodes/LogicNode'
 import { OutputNode } from './nodes/OutputNode'
 import { InsightNode } from './nodes/InsightNode'
-import { AlignmentToolbar } from './AlignmentToolbar'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { NodeContextMenu } from './NodeContextMenu'
 
@@ -195,9 +193,6 @@ export function WorkflowCanvas() {
           color="hsl(0 0% 18%)"
         />
         <Controls showInteractive={false} />
-        <Panel position="top-center">
-          <AlignmentToolbar />
-        </Panel>
         <MiniMap
           nodeColor={(node) => {
             if (node.type === 'source') return 'rgba(16,185,129,0.4)'

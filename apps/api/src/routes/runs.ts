@@ -150,7 +150,10 @@ export async function runRoutes(app: FastifyInstance) {
               workflowId: workflowId!,
               type: n.type,
               label: (data.label as string | undefined) ?? n.type,
-              config: { ...modelFields, subtype: data.subtype ?? config.subtype, ...config } as Prisma.InputJsonValue,
+              // modelFields must come LAST — it holds the resolved provider/model/temperature
+              // and must override any stale top-level fields that may exist on config from a
+              // previous run (e.g. config.provider was 'openai' before the user switched).
+              config: { subtype: data.subtype ?? config.subtype, ...config, ...modelFields } as Prisma.InputJsonValue,
               positionX: n.position?.x ?? 0,
               positionY: n.position?.y ?? 0,
             }

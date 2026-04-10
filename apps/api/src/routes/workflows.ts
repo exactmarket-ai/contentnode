@@ -207,7 +207,7 @@ export async function workflowRoutes(app: FastifyInstance) {
             workflowId,
             type: n.type,
             label: (data.label as string | undefined) ?? n.type,
-            config: { ...modelFields, subtype: data.subtype ?? config.subtype, ...configWithoutFiles } as Prisma.InputJsonValue,
+            config: { subtype: data.subtype ?? config.subtype, ...configWithoutFiles, ...modelFields } as Prisma.InputJsonValue,
             positionX: n.position?.x ?? 0,
             positionY: n.position?.y ?? 0,
           }

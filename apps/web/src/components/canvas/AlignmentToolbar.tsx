@@ -95,19 +95,30 @@ const V_BTNS: BtnDef[] = [
   { op: 'distribute-v',   Icon: Icons.AlignVerticalDistributeCenter, title: 'Distribute vertically' },
 ]
 
-export function AlignmentToolbar() {
+interface Props { workflowName?: string }
+
+export function AlignmentToolbar({ workflowName }: Props) {
   const nodes = useWorkflowStore((s) => s.nodes)
   const selected = nodes.filter((n) => n.selected)
 
-  if (selected.length < 2) return null
+  // Fewer than 2 selected → show the workflow name pill
+  if (selected.length < 2) {
+    if (!workflowName) return null
+    return (
+      <div className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+        {workflowName}
+      </div>
+    )
+  }
 
+  // 2+ selected → show alignment toolbar
   const run = (op: Op) => {
     const next = applyOp(nodes, selected, op)
     useWorkflowStore.setState({ nodes: next })
   }
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-lg">
+    <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-lg">
       {/* Horizontal */}
       <div className="flex items-center gap-0.5">
         {H_BTNS.map(({ op, Icon, title }) => (

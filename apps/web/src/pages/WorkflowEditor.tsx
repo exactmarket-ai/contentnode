@@ -10,6 +10,7 @@ import { SpeakerAssignmentPanel } from '@/components/transcription/SpeakerAssign
 import { InsightConfirmationBanner } from '@/components/insights/InsightConfirmationBanner'
 import { HumanReviewPanel } from '@/components/review/HumanReviewPanel'
 import { RunHistoryPanel } from '@/components/layout/RunHistoryPanel'
+import { AlignmentToolbar } from '@/components/canvas/AlignmentToolbar'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 
@@ -337,14 +338,10 @@ export function WorkflowEditor() {
           <main className="relative flex-1 overflow-hidden">
             <WorkflowCanvas />
 
-            {/* Workflow name — floating centered at top of canvas */}
-            {workflow.name && (
-              <div className="pointer-events-none absolute top-3 left-1/2 z-10 -translate-x-1/2">
-                <div className="rounded-full border border-border bg-card/80 backdrop-blur-sm px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-                  {workflow.name}
-                </div>
-              </div>
-            )}
+            {/* Top-center HUD: shows workflow name pill normally, alignment toolbar when 2+ nodes selected */}
+            <div className="pointer-events-none absolute top-3 left-1/2 z-20 -translate-x-1/2">
+              <AlignmentToolbar workflowName={workflow.name ?? undefined} />
+            </div>
 
             {/* Insight confirmation banners (non-blocking, stacked bottom-right) */}
             {insightConfirmations.length > 0 && (
