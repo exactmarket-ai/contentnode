@@ -78,6 +78,36 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
             Received {new Date(nodeStatuses[id].startedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </p>
         )}
+        {/* Video generation: generating indicator */}
+        {isRunning && subtype === 'video-generation' && (
+          <p className="mt-1 animate-pulse text-[10px]" style={{ color: spec.accent }}>
+            Generating video…
+          </p>
+        )}
+        {/* Video generation: looping preview after completion */}
+        {isPassed && subtype === 'video-generation' && (() => {
+          const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
+          const assets = output?.assets as { localPath: string }[] | undefined
+          if (!assets?.length) return null
+          return (
+            <div className="mt-1.5 overflow-hidden rounded" style={{ maxHeight: '112px' }}>
+              <video
+                src={assets[0].localPath}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full object-cover"
+                style={{ maxHeight: '112px' }}
+              />
+              {assets.length > 1 && (
+                <p className="text-center text-[9px]" style={{ color: '#b4b2a9' }}>
+                  +{assets.length - 1} more clip{assets.length > 2 ? 's' : ''}
+                </p>
+              )}
+            </div>
+          )
+        })()}
         {/* Image generation: show thumbnail strip on canvas */}
         {isPassed && subtype === 'image-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined

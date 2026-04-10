@@ -29,6 +29,7 @@ import { ConditionalBranchConfig } from './config/logic/ConditionalBranchConfig'
 import { TranslateConfig } from './config/logic/TranslateConfig'
 import { QualityReviewConfig } from './config/logic/QualityReviewConfig'
 import { ImagePromptBuilderConfig } from './config/logic/ImagePromptBuilderConfig'
+import { VideoPromptBuilderConfig } from './config/logic/VideoPromptBuilderConfig'
 
 import { WebhookConfig } from './config/output/WebhookConfig'
 import { EmailConfig } from './config/output/EmailConfig'
@@ -36,6 +37,7 @@ import { FileExportConfig, FileExportOutput } from './config/output/FileExportCo
 import { ContentOutputConfig, DisplayNodeOutput } from './config/output/ContentOutputConfig'
 import { ClientFeedbackConfig } from './config/output/ClientFeedbackConfig'
 import { ImageGenerationConfig } from './config/output/ImageGenerationConfig'
+import { VideoGenerationConfig } from './config/output/VideoGenerationConfig'
 
 import { InsightNodeConfig } from './config/insight/InsightNodeConfig'
 
@@ -89,6 +91,8 @@ function NodeConfigForm({
         return <QualityReviewConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'image-prompt-builder')
         return <ImagePromptBuilderConfig config={config} onChange={onChange} />
+      if (subtype === 'video-prompt-builder')
+        return <VideoPromptBuilderConfig config={config} onChange={onChange} />
       if (subtype === 'transform')
         return <TransformConfig config={config} onChange={onChange} />
       if (subtype === 'condition')
@@ -97,6 +101,8 @@ function NodeConfigForm({
     case 'output':
       if (subtype === 'image-generation')
         return <ImageGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'video-generation')
+        return <VideoGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'client-feedback')
         return <ClientFeedbackConfig config={config} onChange={onChange} />
       if (subtype === 'email')

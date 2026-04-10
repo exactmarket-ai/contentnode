@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import * as Icons from 'lucide-react'
+import * as Icons from 'lucide-react'  // Icons.Lock, Icons.Unlock still used
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { FieldGroup } from '../shared'
+import { AttachmentZone } from '../AttachmentZone'
+import { MediaFilmstrip, type MediaAsset } from '../MediaFilmstrip'
 
 // ─── Provider metadata ────────────────────────────────────────────────────────
 
@@ -101,74 +102,6 @@ function UnsupportedOverlay({ label, reason }: { label: string; reason: string }
   )
 }
 
-// ─── Post-run image filmstrip ─────────────────────────────────────────────────
-
-interface GeneratedAsset {
-  type: string
-  storageKey: string
-  localPath: string
-  provider: string
-  generatedAt: string
-}
-
-function ImageFilmstrip({ assets }: { assets: GeneratedAsset[] }) {
-  const [modalSrc, setModalSrc] = useState<string | null>(null)
-
-  if (assets.length === 0) return null
-
-  return (
-    <>
-      <div className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Generated ({assets.length})
-        </p>
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {assets.map((asset, i) => (
-            <button
-              key={i}
-              onClick={() => setModalSrc(asset.localPath)}
-              className="shrink-0 h-[140px] w-[140px] overflow-hidden rounded-md border border-border bg-muted transition-opacity hover:opacity-80"
-              title="Click to view full size"
-            >
-              <img
-                src={asset.localPath}
-                alt={`Generated image ${i + 1}`}
-                className="h-full w-full object-cover"
-              />
-            </button>
-          ))}
-        </div>
-        <p className="text-[9px] text-muted-foreground/60">
-          Generated {new Date(assets[0].generatedAt).toLocaleString()} via {assets[0].provider}
-        </p>
-      </div>
-
-      {/* Full-size modal */}
-      {modalSrc && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => setModalSrc(null)}
-        >
-          <div className="relative max-h-[90vh] max-w-[90vw]">
-            <img
-              src={modalSrc}
-              alt="Generated image"
-              className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <button
-              onClick={() => setModalSrc(null)}
-              className="absolute -right-3 -top-3 rounded-full bg-white p-1 shadow-lg"
-            >
-              <Icons.X className="h-4 w-4 text-black" />
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
 // ─── Main config panel ────────────────────────────────────────────────────────
 
 export function ImageGenerationConfig({
@@ -186,15 +119,15 @@ export function ImageGenerationConfig({
 
   // Extract generated assets from run output
   const runOutput = nodeRunStatus?.output as Record<string, unknown> | undefined
-  const assets = (runOutput?.assets as GeneratedAsset[] | undefined) ?? []
+  const assets = (runOutput?.assets as MediaAsset[] | undefined) ?? []
   const hasPassed = nodeRunStatus?.status === 'passed'
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Post-run filmstrip */}
+      {/* Post-run filmstrip (shared component) */}
       {hasPassed && assets.length > 0 && (
         <>
-          <ImageFilmstrip assets={assets} />
+          <MediaFilmstrip assets={assets} thumbnailHeight={140} />
           <Separator />
         </>
       )}
@@ -339,14 +272,15 @@ export function ImageGenerationConfig({
         </FieldGroup>
       )}
 
-      {/* Reference image (img2img) */}
+      {/* Reference image (img2img) — shared AttachmentZone */}
       {support.referenceImage && (
-        <FieldGroup label="Reference Image URL (optional)">
-          <Input
-            className="h-8 text-xs"
-            placeholder="https://… or leave blank for text-to-image"
+        <FieldGroup label="Reference Image (optional)">
+          <AttachmentZone
             value={(config.reference_image as string) ?? ''}
-            onChange={(e) => onChange('reference_image', e.target.value)}
+            onChange={(v) => onChange('reference_image', v)}
+            accept="image/*"
+            label="Drop reference image or click to browse"
+            hint="Used for image-to-image generation (AUTOMATIC1111)"
           />
         </FieldGroup>
       )}

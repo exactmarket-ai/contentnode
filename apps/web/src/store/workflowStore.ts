@@ -141,6 +141,19 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     },
   },
   {
+    type: 'logic', subtype: 'video-prompt-builder',
+    label: 'Video Prompt Builder', description: 'Translate a creative brief or image into a structured video generation prompt',
+    category: 'logic', icon: 'VideoIcon',
+    defaultConfig: {
+      subtype: 'video-prompt-builder',
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      duration_hint: undefined,
+      camera_motion_hint: '',
+      style_hint: '',
+    },
+  },
+  {
     type: 'logic', subtype: 'image-prompt-builder',
     label: 'Image Prompt Builder', description: 'Translate a creative brief into a structured image generation prompt',
     category: 'logic', icon: 'ImagePlay',
@@ -268,6 +281,23 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     label: 'Content Output', description: 'Format and deliver generated content',
     category: 'output', icon: 'FileText',
     defaultConfig: { output_type: 'blog-post', min_words: 800, max_words: 1200, format_options: {} },
+  },
+  {
+    type: 'output', subtype: 'video-generation',
+    label: 'Video Generation', description: 'Generate video clips using Runway, Kling, Luma, Pika, or local models',
+    category: 'output', icon: 'Film',
+    defaultConfig: {
+      subtype: 'video-generation',
+      provider: 'runway',
+      duration_seconds: 5,
+      resolution: '720p',
+      fps: 24,
+      camera_motion: 'static',
+      motion_intensity: 'medium',
+      seed: null,
+      start_frame: '',
+      end_frame: '',
+    },
   },
   {
     type: 'output', subtype: 'image-generation',
