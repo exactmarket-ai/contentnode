@@ -1,6 +1,7 @@
 node_modules
 .env
 .env.local
+!apps/web/.env.production
 dist
 .DS_Store
 *.log
