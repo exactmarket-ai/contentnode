@@ -1,14 +1,9 @@
 import crypto from 'node:crypto'
-import { pipeline } from 'node:stream/promises'
-import { createWriteStream, createReadStream, mkdirSync, existsSync, unlinkSync } from 'node:fs'
-import { join, extname } from 'node:path'
-import path from 'node:path'
+import { extname } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma, auditService } from '@contentnode/database'
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
-mkdirSync(UPLOAD_DIR, { recursive: true })
+import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentnode/storage'
 
 const LOGO_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -251,18 +246,10 @@ export async function clientRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: `Unsupported logo format. Use: ${Object.keys(LOGO_MIME).join(', ')}` })
     }
 
-    const storageKey = `logo-${req.params.id}-${crypto.randomUUID()}${ext}`
-    const filePath = join(UPLOAD_DIR, storageKey)
-
-    const resolvedUploadDir = path.resolve(UPLOAD_DIR)
-    const resolvedFilePath = path.resolve(filePath)
-    if (!resolvedFilePath.startsWith(resolvedUploadDir + path.sep)) {
-      file.resume()
-      return reply.code(400).send({ error: 'Invalid file path' })
-    }
+    const storageKey = `logos/logo-${req.params.id}-${crypto.randomUUID()}${ext}`
 
     try {
-      await pipeline(file, createWriteStream(filePath))
+      await uploadStream(storageKey, file, LOGO_MIME[ext] ?? 'application/octet-stream')
     } catch (err) {
       app.log.error(err, 'Failed to write logo file')
       return reply.code(500).send({ error: 'Failed to store logo' })
@@ -270,8 +257,7 @@ export async function clientRoutes(app: FastifyInstance) {
 
     // Delete old logo file if there was one
     if (existing.logoStorageKey) {
-      const oldPath = join(UPLOAD_DIR, existing.logoStorageKey)
-      try { if (existsSync(oldPath)) unlinkSync(oldPath) } catch {}
+      try { await deleteObject(existing.logoStorageKey) } catch {}
     }
 
     await prisma.client.update({
@@ -290,18 +276,17 @@ export async function clientRoutes(app: FastifyInstance) {
     })
     if (!client?.logoStorageKey) return reply.code(404).send({ error: 'No logo' })
 
-    const filePath = join(UPLOAD_DIR, client.logoStorageKey)
-    const resolvedUploadDir = path.resolve(UPLOAD_DIR)
-    const resolvedFilePath = path.resolve(filePath)
-    if (!resolvedFilePath.startsWith(resolvedUploadDir + path.sep) || !existsSync(filePath)) {
-      return reply.code(404).send({ error: 'Logo file not found' })
-    }
-
     const ext = extname(client.logoStorageKey).toLowerCase()
     const contentType = LOGO_MIME[ext] ?? 'application/octet-stream'
     reply.header('Content-Type', contentType)
-    reply.header('Cache-Control', 'public, max-age=31536000, immutable')
-    return reply.send(createReadStream(filePath))
+    reply.header('Cache-Control', 'public, max-age=86400')
+
+    try {
+      const buffer = await downloadBuffer(client.logoStorageKey)
+      return reply.send(buffer)
+    } catch {
+      return reply.code(404).send({ error: 'Logo file not found' })
+    }
   })
 
   // ── DELETE /:id — delete client ───────────────────────────────────────────

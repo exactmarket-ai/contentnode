@@ -5,7 +5,7 @@ export interface CurrentUser {
   id: string
   email: string
   name: string | null
-  role: 'owner' | 'admin' | 'lead' | 'member'
+  role: 'owner' | 'admin' | 'super_admin' | 'org_admin' | 'lead' | 'member' | string
   createdAt: string
 }
 
@@ -29,8 +29,8 @@ export function useCurrentUser() {
       .finally(() => setLoading(false))
   }, [])
 
-  const isOwner = user?.role === 'owner'
-  const isAdmin = user?.role === 'admin' || isOwner
+  const isOwner = user?.role === 'owner' || user?.role === 'super_admin'
+  const isAdmin = user?.role === 'admin' || user?.role === 'org_admin' || isOwner
   const isLead  = user?.role === 'lead' || isAdmin
   const isMember = !!user
 
