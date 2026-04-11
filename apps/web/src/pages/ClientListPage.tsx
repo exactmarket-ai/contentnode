@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, assetUrl } from '@/lib/api'
 
 interface Client {
   id: string
@@ -50,7 +50,7 @@ function LogoAvatar({
   if (logoUrl) {
     return (
       <img
-        src={logoUrl}
+        src={logoUrl.startsWith('/') ? assetUrl(logoUrl) : logoUrl}
         alt={name}
         className={`${dims} rounded-lg object-contain border border-border bg-white`}
       />
