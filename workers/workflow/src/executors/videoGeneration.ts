@@ -234,27 +234,32 @@ async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig, re
 }
 
 /**
- * Resolve any image reference (relative path, data URI, or URL) to an
- * absolute HTTP URL the provider can fetch.
+ * Resolve any image reference (relative path, data URI, or URL) to a form
+ * that external providers (Runway, Kling, etc.) can use as promptImage.
+ *
+ * Priority:
+ *   1. Already an http(s) URL — use as-is
+ *   2. Already a data URI — use as-is
+ *   3. /files/... path + API_BASE_URL set — return public API URL (preferred;
+ *      avoids large base64 payloads in the JSON request body)
+ *   4. /files/... path — read from storage and return as base64 data URI
  */
 async function resolveImageUrl(imageRef: string): Promise<string> {
   if (imageRef.startsWith('http')) return imageRef
 
   if (imageRef.startsWith('data:')) return imageRef
 
-  // Local file path — read from storage and return as base64 data URI
-  // This avoids needing API_BASE_URL to be set and works regardless of storage backend
   if (imageRef.startsWith('/files/')) {
+    // Prefer a publicly accessible URL — providers handle URLs more reliably
+    // than multi-MB base64 payloads in JSON request bodies.
+    const apiBase = process.env.API_BASE_URL
+    if (apiBase) return `${apiBase}${imageRef}`
+
+    // No public URL available — read from storage and encode as base64
     const storageKey = imageRef.replace(/^\/files\//, '')
-    try {
-      const buf = await downloadBuffer(storageKey)
-      const mime = detectMediaType(buf)
-      return `data:${mime};base64,${buf.toString('base64')}`
-    } catch {
-      // Fall back to URL if storage read fails
-      const base = process.env.API_BASE_URL ?? 'http://localhost:3001'
-      return `${base}${imageRef}`
-    }
+    const buf = await downloadBuffer(storageKey)
+    const mime = detectMediaType(buf)
+    return `data:${mime};base64,${buf.toString('base64')}`
   }
 
   return imageRef
