@@ -1947,7 +1947,7 @@ Use empty string "" or empty array [] for any field not found. Never invent info
       select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, storageKey: true, summaryStatus: true, summary: true },
     })
 
-    // Enqueue per-file processing (text extraction + Claude summarisation)
+    // Enqueue GTM framework processing (text extraction + Claude summarisation)
     await getAttachmentProcessQueue().add('process', {
       agencyId,
       attachmentId: attachment.id,
@@ -1957,6 +1957,22 @@ Use empty string "" or empty array [] for any field not found. Never invent info
       removeOnComplete: { count: 50 },
       removeOnFail: { count: 50 },
     })
+
+    // Cross-post to Branding brain — same storageKey, no re-upload
+    const brandVertical = await prisma.clientBrandVertical.findFirst({
+      where: { clientId, agencyId, sourceVerticalId: verticalId },
+    })
+    if (brandVertical) {
+      const brandAttachment = await prisma.clientBrandAttachment.create({
+        data: { agencyId, clientId, verticalId: brandVertical.id, filename, storageKey, mimeType: mimetype, sizeBytes },
+      })
+      await getBrandAttachmentProcessQueue().add('process', {
+        agencyId,
+        attachmentId: brandAttachment.id,
+        clientId,
+        verticalId: brandVertical.id,
+      }, { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } })
+    }
 
     return reply.code(201).send({ data: attachment })
   })
@@ -2012,8 +2028,16 @@ Use empty string "" or empty array [] for any field not found. Never invent info
       })
       if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
 
-      try { await deleteObject(attachment.storageKey) } catch { /* file may already be gone */ }
+      // Delete mirrored brand attachment (same storageKey, shared brain)
+      const mirrorBrand = await prisma.clientBrandAttachment.findFirst({
+        where: { clientId, agencyId, storageKey: attachment.storageKey },
+      })
+      if (mirrorBrand) {
+        await prisma.clientBrandAttachment.delete({ where: { id: mirrorBrand.id } })
+      }
+
       await prisma.clientFrameworkAttachment.delete({ where: { id: attachmentId } })
+      try { await deleteObject(attachment.storageKey) } catch { /* file may already be gone */ }
       return reply.code(204).send()
     },
   )
@@ -2401,6 +2425,31 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
       removeOnFail: { count: 50 },
     })
 
+    // Cross-post to GTM Framework brain — same storageKey, no re-upload
+    if (verticalId) {
+      const brandVert = await prisma.clientBrandVertical.findFirst({
+        where: { id: verticalId, clientId, agencyId },
+        select: { sourceVerticalId: true },
+      })
+      if (brandVert?.sourceVerticalId) {
+        const [clientRecord, verticalRecord] = await Promise.all([
+          prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { name: true } }),
+          prisma.vertical.findFirst({ where: { id: brandVert.sourceVerticalId, agencyId }, select: { name: true } }),
+        ])
+        if (clientRecord && verticalRecord) {
+          const fwAttachment = await prisma.clientFrameworkAttachment.create({
+            data: { agencyId, clientId, verticalId: brandVert.sourceVerticalId, filename, storageKey, mimeType: mimetype, sizeBytes },
+          })
+          await getAttachmentProcessQueue().add('process', {
+            agencyId,
+            attachmentId: fwAttachment.id,
+            clientName: clientRecord.name,
+            verticalName: verticalRecord.name,
+          }, { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } })
+        }
+      }
+    }
+
     return reply.code(201).send({ data: attachment })
   })
 
@@ -2412,8 +2461,17 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
       where: { id: attachmentId, clientId, agencyId },
     })
     if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
-    try { await deleteObject(attachment.storageKey) } catch {}
+
+    // Delete mirrored GTM framework attachment (same storageKey, shared brain)
+    const mirrorFw = await prisma.clientFrameworkAttachment.findFirst({
+      where: { clientId, agencyId, storageKey: attachment.storageKey },
+    })
+    if (mirrorFw) {
+      await prisma.clientFrameworkAttachment.delete({ where: { id: mirrorFw.id } })
+    }
+
     await prisma.clientBrandAttachment.delete({ where: { id: attachmentId } })
+    try { await deleteObject(attachment.storageKey) } catch {}
     return reply.code(204).send()
   })
 
