@@ -73,7 +73,7 @@ await app.register(cors, {
   maxAge: 86400, // cache preflight 24h — eliminates OPTIONS round-trip on every API call
 })
 await app.register(multipart, {
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB (matches bodyLimit)
 })
 
 // ── Auth ──────────────────────────────────────────────────────────────────
