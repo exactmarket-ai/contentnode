@@ -457,30 +457,27 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
     let durationSecs: number
 
     try {
-    if (provider === 'local') {
-      ;({ segments, durationSecs } = localMockTranscription(firstFile.name))
-    } else if (provider === 'deepgram') {
-      if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for Deepgram`)
-      ;({ segments, durationSecs } = await callDeeepgram(filePath, apiKey, enableDiarization, maxSpeakers))
-    } else if (provider === 'assemblyai') {
-      if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for AssemblyAI`)
-      console.log(`[transcription] calling AssemblyAI, file: ${filePath}, diarization: ${enableDiarization}, keyRef: ${apiKeyRef}, keyLen: ${apiKey.length}`)
-      try {
+      if (provider === 'local') {
+        ;({ segments, durationSecs } = localMockTranscription(firstFile.name))
+      } else if (provider === 'deepgram') {
+        if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for Deepgram`)
+        ;({ segments, durationSecs } = await callDeeepgram(filePath, apiKey, enableDiarization, maxSpeakers))
+      } else if (provider === 'assemblyai') {
+        if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for AssemblyAI`)
+        console.log(`[transcription] calling AssemblyAI, file: ${filePath}, diarization: ${enableDiarization}, keyRef: ${apiKeyRef}, keyLen: ${apiKey.length}`)
         ;({ segments, durationSecs } = await callAssemblyAI(filePath, apiKey, enableDiarization))
         console.log(`[transcription] AssemblyAI returned ${segments.length} segments`)
-      } catch (err) {
-        console.error(`[transcription] AssemblyAI threw:`, err)
-        throw err
+      } else if (provider === 'openai-whisper') {
+        if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for OpenAI Whisper`)
+        ;({ segments, durationSecs } = await callWhisper(filePath, apiKey))
+      } else {
+        throw new Error(`Unknown transcription provider: ${provider}`)
       }
-    } else if (provider === 'openai-whisper') {
-      if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for OpenAI Whisper`)
-      ;({ segments, durationSecs } = await callWhisper(filePath, apiKey))
-    } else {
-      throw new Error(`Unknown transcription provider: ${provider}`)
-    }
-    } finally {
+    } catch (err) {
+      // Clean up temp files before re-throwing
       if (tempAudioPath) try { unlinkSync(tempAudioPath) } catch { /* ignore */ }
       if (tempDownloadPath) try { unlinkSync(tempDownloadPath) } catch { /* ignore */ }
+      throw err
     }
 
     // ── Determine unique speakers ────────────────────────────────────────────
@@ -500,6 +497,10 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
         speakerClipKeys.set(speakerLabel, clipKey)
       }
     }
+
+    // Clean up temp files now that clip extraction is done
+    if (tempAudioPath) try { unlinkSync(tempAudioPath) } catch { /* ignore */ }
+    if (tempDownloadPath) try { unlinkSync(tempDownloadPath) } catch { /* ignore */ }
 
     // ── Persist TranscriptSession + TranscriptSegments ───────────────────────
     const clientId = await this.resolveClientId(ctx)

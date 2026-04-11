@@ -237,7 +237,8 @@ export function DisplayNodeOutput({
   const raw = nodeRunStatus?.output ?? finalOutput
   const output = raw as Record<string, unknown> | string | undefined
   const content = typeof output === 'string' ? output
-    : typeof output === 'object' && output !== null ? (output.content as string | undefined) ?? JSON.stringify(output, null, 2)
+    : typeof output === 'object' && output !== null
+      ? (output.content as string | undefined) ?? (output.text as string | undefined) ?? JSON.stringify(output, null, 2)
     : null
 
   const handleCopy = () => {

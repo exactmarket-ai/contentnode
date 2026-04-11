@@ -325,7 +325,10 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           if (subtype === 'display' && isPassed) {
             const rawOut = nodeStatuses[id]?.output
             const text = typeof rawOut === 'string' ? rawOut
-              : typeof rawOut === 'object' && rawOut !== null ? ((rawOut as Record<string,unknown>).content as string | undefined) ?? JSON.stringify(rawOut)
+              : typeof rawOut === 'object' && rawOut !== null
+                ? ((rawOut as Record<string,unknown>).content as string | undefined)
+                  ?? ((rawOut as Record<string,unknown>).text as string | undefined)
+                  ?? JSON.stringify(rawOut)
               : null
             return text ? <DisplayInlineOutput id={id} text={text} accentColor={spec.accent} /> : null
           }

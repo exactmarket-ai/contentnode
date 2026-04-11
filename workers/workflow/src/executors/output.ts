@@ -27,10 +27,9 @@ function coerceToString(value: unknown): string {
   }
   if (value && typeof value === 'object') {
     const obj = value as Record<string, unknown>
-    // Any node that returns { content: string, ... } — extract the text
-    if (typeof obj.content === 'string') {
-      return obj.content
-    }
+    // Unwrap common text wrapper shapes
+    if (typeof obj.content === 'string') return obj.content
+    if (typeof obj.text === 'string') return obj.text
   }
   return JSON.stringify(value, null, 2)
 }
