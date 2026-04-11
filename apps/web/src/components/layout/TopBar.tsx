@@ -207,6 +207,7 @@ export function TopBar() {
   const [nameValue, setNameValue] = useState(workflow.name)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [pendingRunAfterSave, setPendingRunAfterSave] = useState(false)
 
   // Keep nameValue in sync when a different workflow is loaded
   useEffect(() => {
@@ -241,13 +242,13 @@ export function TopBar() {
   const handleRun = async () => {
     if (runStatus === 'running') return
     const wf = useWorkflowStore.getState().workflow
-    if (!wf.id) { setSaveDialogOpen(true); return }
+    if (!wf.id) { setPendingRunAfterSave(true); setSaveDialogOpen(true); return }
     await triggerRun()
   }
 
   const handleSave = async (name: string, clientId: string, createNew = false) => {
     const { workflow: wf, nodes, edges } = useWorkflowStore.getState()
-    if (!wf.id) return
+    if (!wf.id && !createNew) return
     try {
       if (createNew) {
         // Save As — create a brand new workflow and write this graph into it
@@ -543,6 +544,10 @@ export function TopBar() {
           onSave={async (name, clientId, createNew) => {
             await handleSave(name, clientId, createNew)
             setSaveDialogOpen(false)
+            if (pendingRunAfterSave) {
+              setPendingRunAfterSave(false)
+              await triggerRun()
+            }
           }}
         />
       )}
@@ -570,9 +575,9 @@ function SaveWorkflowDialog({
   const [saving, setSaving] = useState(false)
 
   // If the workflow has already been saved before and the name changed → create new
-  const isExisting = !!workflow.graphSaved
-  const nameChanged = name.trim() !== originalName.trim()
-  const createNew = isExisting && nameChanged
+  const isNewWorkflow = !workflow.id
+  const isSaveAs = !!workflow.id && !!workflow.graphSaved && name.trim() !== originalName.trim()
+  const createNew = isNewWorkflow || isSaveAs
 
   useEffect(() => {
     apiFetch('/api/v1/clients')
