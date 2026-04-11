@@ -197,7 +197,7 @@ export async function workflowRoutes(app: FastifyInstance) {
               provider: isOfflineSave ? 'ollama' : resolvedProvider,
               model: isOfflineSave
                 ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
-                : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-5',
+                : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-6',
               temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
             } : {}
             // Strip file arrays — files are stored in client_workflow_files, not the template

@@ -149,7 +149,7 @@ export async function runRoutes(app: FastifyInstance) {
               provider: isOfflineRun ? 'ollama' : resolvedProvider,
               model: isOfflineRun
                 ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
-                : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-5',
+                : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-6',
               temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
             } : {}
 
@@ -259,7 +259,7 @@ export async function runRoutes(app: FastifyInstance) {
         if (n.type === 'logic' && subtype !== 'humanizer' && subtype !== 'humanizer-pro') {
           // LLM node — check provider/model access
           const provider = (cfg.provider as string | undefined) ?? 'anthropic'
-          const model    = (cfg.model    as string | undefined) ?? 'claude-sonnet-4-5'
+          const model    = (cfg.model    as string | undefined) ?? 'claude-sonnet-4-6'
           if (!permissionService.isLlmAllowed(resolvedPermissions, provider, model)) {
             return reply.code(403).send({ error: `LLM provider/model "${provider}/${model}" is not allowed by your permissions.` })
           }

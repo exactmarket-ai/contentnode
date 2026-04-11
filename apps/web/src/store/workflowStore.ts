@@ -188,7 +188,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       insight_threshold: 7,
       auto_create_insight: true,
       provider: 'anthropic',
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
     },
   },
   // Detection-Humanization loop
@@ -452,7 +452,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     connectivity_mode: 'online',
     default_model_config: {
       provider: 'anthropic',
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       temperature: 0.7,
     },
   },

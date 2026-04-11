@@ -106,7 +106,7 @@ export async function instructionTranslatorRoutes(app: FastifyInstance) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1200,
         temperature: 0.2,
         messages: [{ role: 'user', content: prompt }],
@@ -178,7 +178,7 @@ Provide a concise, specific suggested value for this missing piece of informatio
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 200,
         temperature: 0.4,
         messages: [{ role: 'user', content: prompt }],

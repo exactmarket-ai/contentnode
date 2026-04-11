@@ -151,7 +151,7 @@ One sentence: "[Brand] helps [audience] [achieve outcome] by [differentiating me
 How will we know this campaign worked? (clicks, leads, engagement rate, etc.)`,
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.6,
               max_tokens: 2000,
             },
@@ -219,7 +219,7 @@ Urgency/scarcity signals to use (if any):
 - Unique angle vs. competitors:`,
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.5,
               max_tokens: 1800,
             },
@@ -276,7 +276,7 @@ Prompt: [detailed visual description for social-optimized imagery]
 Negative prompt: [what to exclude]`,
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.6,
               max_tokens: 1500,
             },
@@ -316,7 +316,7 @@ Negative prompt: [what to exclude]`,
 Write in the exact voice and tone specified in the brief. If the brief says casual, write casual. If formal, write formal.`,
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.7,
               max_tokens: 2000,
             },
@@ -353,7 +353,7 @@ Write 2 LinkedIn post variations (label them Version A and Version B — differe
 Match the voice and tone from the brief exactly.`,
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.72,
               max_tokens: 800,
             },
@@ -394,7 +394,7 @@ P.S. line: Optional but often gets the second-highest click rate — use it to r
 Total body length: 200–350 words. Scannable. No walls of text.`,
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.65,
               max_tokens: 1000,
             },
@@ -445,7 +445,7 @@ One set of copy for standard display sizes:
 Lead with the primary emotion from the brief. Every character counts.`,
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.75,
               max_tokens: 1500,
             },
@@ -705,7 +705,7 @@ Lead with the primary emotion from the brief. Every character counts.`,
             prompt: '',
             model_config: {
               provider: 'anthropic',
-              model: 'claude-sonnet-4-5',
+              model: 'claude-sonnet-4-6',
               temperature: 0.7,
             },
           },

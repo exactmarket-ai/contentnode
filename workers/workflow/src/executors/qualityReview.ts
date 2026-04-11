@@ -44,7 +44,7 @@ export class QualityReviewNodeExecutor extends NodeExecutor {
 
     const modelConfig: ModelConfig = {
       provider: cfg.provider ?? 'anthropic',
-      model: cfg.model ?? 'claude-sonnet-4-5',
+      model: cfg.model ?? 'claude-sonnet-4-6',
       api_key_ref: cfg.api_key_ref || 'ANTHROPIC_API_KEY',
       system_prompt: 'You are an expert content quality reviewer and prompt engineer. Always respond with valid JSON only.',
       temperature: 0.3,

@@ -494,7 +494,7 @@ export class HumanizerNodeExecutor extends NodeExecutor {
       const modelCfg = config.model_config as Record<string, unknown> | null
       const modelConfig: ModelConfig = {
         provider: ((modelCfg?.provider as string) ?? 'anthropic') as 'anthropic' | 'ollama',
-        model:    (modelCfg?.model as string) ?? 'claude-sonnet-4-5',
+        model:    (modelCfg?.model as string) ?? 'claude-sonnet-4-6',
         api_key_ref: 'ANTHROPIC_API_KEY',
         temperature: (modelCfg?.temperature as number) ?? 0.95,
       }
