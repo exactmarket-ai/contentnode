@@ -8,7 +8,7 @@ import { apiFetch } from '@/lib/api'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { FieldGroup, formatBytes, UploadedAudioFile, CONTENT_ROLES } from '../shared'
 
-const AUDIO_ACCEPTED_EXTENSIONS = '.mp3,.wav,.m4a,.ogg,.flac'
+const AUDIO_ACCEPTED_EXTENSIONS = '.mp3,.wav,.m4a,.ogg,.flac,audio/*'
 const AUDIO_FILE_SIZE_LIMIT_MB = 500
 
 const TRANSCRIPTION_PROVIDERS = [
