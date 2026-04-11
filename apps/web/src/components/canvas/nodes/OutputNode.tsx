@@ -12,23 +12,35 @@ const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
 const IMAGE_PROVIDERS = [
   { value: 'dalle3',        label: 'DALL-E 3' },
-  { value: 'stability',     label: 'Stability' },
-  { value: 'fal',           label: 'FAL' },
-  { value: 'comfyui',       label: 'ComfyUI' },
-  { value: 'automatic1111', label: 'A1111' },
+  { value: 'stability',     label: 'Stability AI' },
+  { value: 'fal',           label: 'Fal.ai' },
+  { value: 'comfyui',       label: 'ComfyUI (local)' },
+  { value: 'automatic1111', label: 'A1111 (local)' },
 ]
 
 const VIDEO_PROVIDERS = [
-  { value: 'runway',              label: 'Runway' },
-  { value: 'kling',               label: 'Kling' },
-  { value: 'luma',                label: 'Luma' },
-  { value: 'pika',                label: 'Pika' },
-  { value: 'stability',           label: 'Stability' },
-  { value: 'veo2',                label: 'Veo 2' },
-  { value: 'comfyui-animatediff', label: 'AnimateDiff' },
-  { value: 'cogvideox',           label: 'CogVideoX' },
-  { value: 'wan21',               label: 'Wan 2.1' },
+  { value: 'runway',              label: 'Runway Gen-3' },
+  { value: 'kling',               label: 'Kling AI' },
+  { value: 'luma',                label: 'Luma Dream Machine' },
+  { value: 'pika',                label: 'Pika Labs' },
+  { value: 'stability',           label: 'Stability (SVD)' },
+  { value: 'veo2',                label: 'Google Veo 2' },
+  { value: 'comfyui-animatediff', label: 'AnimateDiff (local)' },
+  { value: 'cogvideox',           label: 'CogVideoX (local)' },
+  { value: 'wan21',               label: 'Wan 2.1 (local)' },
 ]
+
+const VIDEO_DURATIONS: Record<string, number[]> = {
+  runway:              [5, 10],
+  kling:               [5, 10],
+  luma:                [5],
+  pika:                [3, 5],
+  stability:           [4],
+  veo2:                [5, 8],
+  'comfyui-animatediff': [5, 10, 15, 30],
+  cogvideox:           [6],
+  wan21:               [5, 10, 14],
+}
 
 function estimateCost(subtype: string, provider: string, config: Record<string, unknown>): string | null {
   if (subtype === 'image-generation') {
@@ -57,6 +69,14 @@ function estimateCost(subtype: string, provider: string, config: Record<string, 
 
 interface HistoryEntry { localPath: string; type: 'image' | 'video'; timestamp: string }
 
+// Shared style for inline select controls on the node
+const selectStyle: React.CSSProperties = {
+  borderColor: '#e0deda',
+  color: '#1a1a14',
+  backgroundColor: '#fafaf8',
+  cursor: 'pointer',
+}
+
 export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
   const edges = useWorkflowStore((s) => s.edges)
@@ -73,23 +93,24 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const isFailed   = status === 'failed'
   const isSkipped  = status === 'skipped'
 
-  // Connected upstream nodes
   const incomingEdges = edges.filter((e) => e.target === id)
   const connectedSources = incomingEdges.map((e) => {
     const src = nodes.find((n) => n.id === e.source)
     return src?.data?.label as string || 'Source'
   }).filter(Boolean)
 
-  // Reference files and config
   const config = (data.config as Record<string, unknown>) ?? {}
-  const isLocked   = config.locked === true
+  const isLocked = config.locked === true
   const referenceFiles = (config.reference_files as ReferenceFile[]) ?? []
 
-  // Generation-specific config values
+  // Generation config
   const provider = (config.provider as string) ?? (subtype === 'video-generation' ? 'runway' : 'dalle3')
   const providerList = subtype === 'video-generation' ? VIDEO_PROVIDERS : IMAGE_PROVIDERS
+  const validDurations = VIDEO_DURATIONS[provider] ?? [5, 10]
+  const costEstimate = isGeneration ? estimateCost(subtype, provider, config) : null
+  const runHistory = (config.run_history as HistoryEntry[]) ?? []
 
-  // Prompt preview: extract text from upstream source nodes
+  // Prompt preview from upstream source nodes
   const promptPreview = isGeneration ? (() => {
     const texts: string[] = []
     for (const edge of incomingEdges) {
@@ -102,8 +123,8 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
     return texts.length > 0 ? texts.join(' · ') : null
   })() : null
 
-  const costEstimate = isGeneration ? estimateCost(subtype, provider, config) : null
-  const runHistory = (config.run_history as HistoryEntry[]) ?? []
+  const set = (key: string, value: unknown) =>
+    updateNodeData(id, { config: { ...config, [key]: value } })
 
   const handleAddRef = (file: ReferenceFile) => {
     const current = (config.reference_files as ReferenceFile[]) ?? []
@@ -113,7 +134,6 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
     const current = (config.reference_files as ReferenceFile[]) ?? []
     updateNodeData(id, { config: { ...config, reference_files: current.filter((f) => f.localPath !== localPath) } })
   }
-
   const handleRerun = (e: React.MouseEvent) => {
     e.stopPropagation()
     updateNodeData(id, { config: { ...config, locked: false, stored_assets: undefined } })
@@ -144,7 +164,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   }
 
   const titleColor = selected ? spec.activeTextColor : '#1a1a14'
-  const nodeWidth = isGeneration ? 260 : 200
+  const nodeWidth = isGeneration ? 280 : 200
 
   return (
     <div
@@ -178,16 +198,14 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
         {(isSkipped || (isPassed && isLocked)) && <Icons.Lock className="ml-1 h-3.5 w-3.5 shrink-0 text-amber-400" />}
         {isFailed  && <Icons.XCircle className="ml-1 h-3.5 w-3.5 shrink-0 text-red-500" />}
         {isLocked  && !isRunning && !isFailed && (
-          <span className="ml-1 rounded-full bg-amber-500/20 px-1.5 py-px text-[8px] font-semibold text-amber-400">
-            SKIP
-          </span>
+          <span className="ml-1 rounded-full bg-amber-500/20 px-1.5 py-px text-[8px] font-semibold text-amber-400">SKIP</span>
         )}
       </div>
 
       {/* Body */}
-      <div className="px-2.5 py-1.5 space-y-1.5">
+      <div className="px-2.5 py-2 space-y-2">
 
-        {/* Connected sources (generation nodes) */}
+        {/* Connected sources (generation) */}
         {isGeneration && connectedSources.length > 0 && (
           <div className="space-y-0.5">
             {connectedSources.map((label, i) => (
@@ -206,17 +224,17 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           </p>
         )}
 
-        {/* Prompt preview from upstream source nodes */}
+        {/* Prompt preview */}
         {isGeneration && promptPreview && (
           <div
             className="rounded px-1.5 py-1 text-[9px] leading-[1.35] line-clamp-2 italic"
-            style={{ backgroundColor: spec.accent + '12', color: spec.accent + 'cc' }}
+            style={{ backgroundColor: spec.accent + '10', color: spec.accent + 'cc' }}
           >
             &ldquo;{promptPreview}&rdquo;
           </div>
         )}
 
-        {/* Reference file upload zone (generation nodes only) */}
+        {/* Reference files */}
         {isGeneration && (
           <NodeUploadZone
             files={referenceFiles}
@@ -226,76 +244,123 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           />
         )}
 
-        {/* Settings footer: inline provider switcher + settings pills + cost */}
+        {/* ── Inline config controls ───────────────────────────────────── */}
         {isGeneration && (
-          <div className="flex items-center gap-1 flex-wrap">
-            {/* Inline provider switcher */}
-            <select
-              className="nodrag nopan h-4 min-w-0 rounded bg-transparent py-0 px-0 text-[9px] font-semibold cursor-pointer outline-none appearance-none hover:underline"
-              style={{ color: spec.accent, border: 'none', maxWidth: 72 }}
-              value={provider}
-              onChange={(e) => {
-                e.stopPropagation()
-                updateNodeData(id, { config: { ...config, provider: e.target.value } })
-              }}
-              onClick={(e) => e.stopPropagation()}
-              title="Click to switch provider"
-            >
-              {providerList.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
+          <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5 space-y-1.5">
 
-            {/* Image settings pills */}
+            {/* Provider row */}
+            <div className="flex items-center gap-1.5">
+              <span className="w-14 shrink-0 text-[9px] font-medium" style={{ color: '#9ca3af' }}>Provider</span>
+              <select
+                className="nodrag nopan flex-1 h-6 rounded border text-[10px] font-medium px-1 outline-none"
+                style={selectStyle}
+                value={provider}
+                onChange={(e) => { e.stopPropagation(); set('provider', e.target.value) }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {providerList.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              {costEstimate && (
+                <span className="shrink-0 text-[9px] tabular-nums font-medium" style={{ color: '#b4b2a9' }}>
+                  {costEstimate}
+                </span>
+              )}
+            </div>
+
+            {/* Image-specific settings */}
             {subtype === 'image-generation' && (
-              <>
-                <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
-                  {(config.aspect_ratio as string) ?? '1:1'}
-                </span>
-                <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
-                  {(config.quality as string) ?? 'standard'}
-                </span>
-                {((config.num_outputs as number) ?? 1) > 1 && (
-                  <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
-                    ×{config.num_outputs as number}
-                  </span>
-                )}
-              </>
+              <div className="grid grid-cols-3 gap-1">
+                <div>
+                  <p className="mb-0.5 text-[8px] font-medium" style={{ color: '#9ca3af' }}>Ratio</p>
+                  <select
+                    className="nodrag nopan w-full h-6 rounded border text-[9px] px-1 outline-none"
+                    style={selectStyle}
+                    value={(config.aspect_ratio as string) ?? '1:1'}
+                    onChange={(e) => { e.stopPropagation(); set('aspect_ratio', e.target.value) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="1:1">1:1</option>
+                    <option value="16:9">16:9</option>
+                    <option value="9:16">9:16</option>
+                    <option value="4:3">4:3</option>
+                  </select>
+                </div>
+                <div>
+                  <p className="mb-0.5 text-[8px] font-medium" style={{ color: '#9ca3af' }}>Quality</p>
+                  <select
+                    className="nodrag nopan w-full h-6 rounded border text-[9px] px-1 outline-none"
+                    style={selectStyle}
+                    value={(config.quality as string) ?? 'standard'}
+                    onChange={(e) => { e.stopPropagation(); set('quality', e.target.value) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="standard">Std</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div>
+                  <p className="mb-0.5 text-[8px] font-medium" style={{ color: '#9ca3af' }}>Count</p>
+                  <select
+                    className="nodrag nopan w-full h-6 rounded border text-[9px] px-1 outline-none"
+                    style={selectStyle}
+                    value={(config.num_outputs as number) ?? 1}
+                    onChange={(e) => { e.stopPropagation(); set('num_outputs', Number(e.target.value)) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                  </select>
+                </div>
+              </div>
             )}
 
-            {/* Video settings pills */}
+            {/* Video-specific settings */}
             {subtype === 'video-generation' && (
-              <>
-                <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
-                  {(config.duration_seconds as number) ?? 5}s
-                </span>
-                {(config.resolution as string) && (
-                  <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
-                    {config.resolution as string}
-                  </span>
-                )}
-              </>
-            )}
-
-            {/* Cost estimate */}
-            {costEstimate && (
-              <span className="ml-auto text-[8px] font-medium tabular-nums" style={{ color: '#b4b2a9' }}>
-                {costEstimate}
-              </span>
+              <div className="grid grid-cols-2 gap-1">
+                <div>
+                  <p className="mb-0.5 text-[8px] font-medium" style={{ color: '#9ca3af' }}>Duration</p>
+                  <select
+                    className="nodrag nopan w-full h-6 rounded border text-[9px] px-1 outline-none"
+                    style={selectStyle}
+                    value={(config.duration_seconds as number) ?? validDurations[0]}
+                    onChange={(e) => { e.stopPropagation(); set('duration_seconds', Number(e.target.value)) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {validDurations.map((d) => (
+                      <option key={d} value={d}>{d}s</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <p className="mb-0.5 text-[8px] font-medium" style={{ color: '#9ca3af' }}>Resolution</p>
+                  <select
+                    className="nodrag nopan w-full h-6 rounded border text-[9px] px-1 outline-none"
+                    style={selectStyle}
+                    value={(config.resolution as string) ?? '720p'}
+                    onChange={(e) => { e.stopPropagation(); set('resolution', e.target.value) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="720p">720p</option>
+                    <option value="1080p">1080p</option>
+                  </select>
+                </div>
+              </div>
             )}
           </div>
         )}
 
-        {/* Skip toggle — always visible on generation nodes */}
+        {/* Skip toggle */}
         {isGeneration && (
           <div className="flex items-center justify-between">
             <button
               className="nodrag flex items-center gap-1.5"
               title={isLocked ? 'Click to unlock — node will regenerate on next run' : 'Click to skip — node will reuse cached output'}
-              onClick={(e) => {
-                e.stopPropagation()
-                updateNodeData(id, { config: { ...config, locked: !isLocked } })
-              }}
+              onClick={(e) => { e.stopPropagation(); updateNodeData(id, { config: { ...config, locked: !isLocked } }) }}
             >
               <div
                 className="relative inline-flex h-3.5 w-6 shrink-0 rounded-full border border-transparent transition-colors"
@@ -306,9 +371,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   style={{ transform: isLocked ? 'translateX(10px)' : 'translateX(1px)' }}
                 />
               </div>
-              <span className="text-[9px]" style={{ color: isLocked ? '#f59e0b' : '#9ca3af' }}>
-                Skip
-              </span>
+              <span className="text-[9px]" style={{ color: isLocked ? '#f59e0b' : '#9ca3af' }}>Skip</span>
             </button>
             {isLocked && (
               <button
@@ -330,11 +393,9 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           </p>
         )}
 
-        {/* Video generation: generating indicator */}
+        {/* Generating indicator */}
         {isRunning && subtype === 'video-generation' && (
-          <p className="animate-pulse text-[10px]" style={{ color: spec.accent }}>
-            Generating video…
-          </p>
+          <p className="animate-pulse text-[10px]" style={{ color: spec.accent }}>Generating video…</p>
         )}
 
         {/* History filmstrip: thumbnails from previous runs */}
@@ -344,31 +405,12 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
             {runHistory.slice(-3).map((entry, i) => (
               <div key={i} className="group/hist relative shrink-0">
                 {entry.type === 'video' ? (
-                  <video
-                    src={assetUrl(entry.localPath)}
-                    className="h-8 w-8 rounded-sm object-cover border"
-                    style={{ borderColor: spec.accent + '44' }}
-                    muted
-                    playsInline
-                  />
+                  <video src={assetUrl(entry.localPath)} className="h-8 w-8 rounded-sm object-cover border" style={{ borderColor: spec.accent + '44' }} muted playsInline />
                 ) : (
-                  <img
-                    src={assetUrl(entry.localPath)}
-                    alt={`Run ${i + 1}`}
-                    draggable={false}
-                    className="h-8 w-8 rounded-sm object-cover border"
-                    style={{ borderColor: spec.accent + '44' }}
-                  />
+                  <img src={assetUrl(entry.localPath)} alt={`Run ${i + 1}`} draggable={false} className="h-8 w-8 rounded-sm object-cover border" style={{ borderColor: spec.accent + '44' }} />
                 )}
                 <div className="absolute inset-0 hidden group-hover/hist:flex items-center justify-center rounded-sm bg-black/50">
-                  <button
-                    className="nodrag"
-                    title="Download"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      downloadAsset(entry.localPath, makeFilename(data.label as string, entry.localPath))
-                    }}
-                  >
+                  <button className="nodrag" title="Download" onClick={(e) => { e.stopPropagation(); downloadAsset(entry.localPath, makeFilename(data.label as string, entry.localPath)) }}>
                     <Icons.Download className="h-2.5 w-2.5 text-white" />
                   </button>
                 </div>
@@ -377,7 +419,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           </div>
         )}
 
-        {/* Video generation: looping full-width preview after completion or when cached */}
+        {/* Video preview */}
         {(isPassed || isSkipped || status === 'idle') && subtype === 'video-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
           const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
@@ -386,47 +428,26 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           return (
             <div className="overflow-hidden rounded-sm" style={{ marginLeft: -10, marginRight: -10 }}>
               <div className="relative group">
-                <video
-                  src={assetUrl(assets[0].localPath)}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="w-full object-cover"
-                  style={{ maxHeight: 240, display: 'block' }}
-                />
-                {/* Re-run button — top left on hover */}
+                <video src={assetUrl(assets[0].localPath)} autoPlay loop muted playsInline className="w-full object-cover" style={{ maxHeight: 240, display: 'block' }} />
                 <div className="absolute top-1.5 left-1.5 hidden group-hover:flex">
-                  <button
-                    className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors"
-                    title="Clear cache and re-generate"
-                    onClick={handleRerun}
-                  >
-                    <Icons.RotateCcw className="h-3 w-3" />
-                    Re-run
+                  <button className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors" onClick={handleRerun}>
+                    <Icons.RotateCcw className="h-3 w-3" />Re-run
                   </button>
                 </div>
-                {/* Download button — top right */}
                 <div className="absolute top-1.5 right-1.5 hidden group-hover:flex">
-                  <button
-                    className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors"
-                    title="Download"
-                    onClick={(e) => { e.stopPropagation(); downloadAsset(assets[0].localPath, makeFilename(label, assets[0].localPath)) }}
-                  >
+                  <button className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors" title="Download" onClick={(e) => { e.stopPropagation(); downloadAsset(assets[0].localPath, makeFilename(label, assets[0].localPath)) }}>
                     <Icons.Download className="h-3 w-3 text-white" />
                   </button>
                 </div>
               </div>
               {assets.length > 1 && (
-                <p className="text-center text-[9px] py-0.5" style={{ color: '#b4b2a9' }}>
-                  +{assets.length - 1} more clip{assets.length > 2 ? 's' : ''}
-                </p>
+                <p className="text-center text-[9px] py-0.5" style={{ color: '#b4b2a9' }}>+{assets.length - 1} more clip{assets.length > 2 ? 's' : ''}</p>
               )}
             </div>
           )
         })()}
 
-        {/* Image generation: full-width thumbnail after completion or when cached */}
+        {/* Image preview */}
         {(isPassed || isSkipped || status === 'idle') && subtype === 'image-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
           const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
@@ -434,64 +455,33 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           const label = data.label as string
           return (
             <div style={{ marginLeft: -10, marginRight: -10 }}>
-              {/* Primary image — full width */}
               <div className="relative overflow-hidden group" style={{ height: 240 }}>
-                <img
-                  src={assetUrl(assets[0].localPath)}
-                  alt="Generated"
-                  draggable={false}
-                  className="w-full h-full object-cover"
-                />
-                {/* Re-run button — top left on hover */}
+                <img src={assetUrl(assets[0].localPath)} alt="Generated" draggable={false} className="w-full h-full object-cover" />
                 <div className="absolute top-1.5 left-1.5 hidden group-hover:flex">
-                  <button
-                    className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors"
-                    title="Clear cache and re-generate"
-                    onClick={handleRerun}
-                  >
-                    <Icons.RotateCcw className="h-3 w-3" />
-                    Re-run
+                  <button className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors" onClick={handleRerun}>
+                    <Icons.RotateCcw className="h-3 w-3" />Re-run
                   </button>
                 </div>
-                {/* Download button — top right */}
                 <div className="absolute top-1.5 right-1.5 hidden group-hover:flex">
-                  <button
-                    className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors"
-                    title="Download"
-                    onClick={(e) => { e.stopPropagation(); downloadAsset(assets[0].localPath, makeFilename(label, assets[0].localPath)) }}
-                  >
+                  <button className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors" title="Download" onClick={(e) => { e.stopPropagation(); downloadAsset(assets[0].localPath, makeFilename(label, assets[0].localPath)) }}>
                     <Icons.Download className="h-3 w-3 text-white" />
                   </button>
                 </div>
               </div>
-              {/* Additional images as small strip */}
               {assets.length > 1 && (
                 <div className="flex gap-0.5 pt-0.5 px-2.5">
                   {assets.slice(1, 4).map((a, i) => (
                     <div key={i} className="relative group/thumb shrink-0">
-                      <img
-                        src={assetUrl(a.localPath)}
-                        alt={`Generated ${i + 2}`}
-                        draggable={false}
-                        className="h-8 w-8 rounded-sm object-cover border"
-                        style={{ borderColor: spec.accent + '44' }}
-                      />
+                      <img src={assetUrl(a.localPath)} alt={`Generated ${i + 2}`} draggable={false} className="h-8 w-8 rounded-sm object-cover border" style={{ borderColor: spec.accent + '44' }} />
                       <div className="absolute inset-0 hidden group-hover/thumb:flex items-center justify-center rounded-sm bg-black/50">
-                        <button
-                          className="nodrag"
-                          title="Download"
-                          onClick={(e) => { e.stopPropagation(); downloadAsset(a.localPath, makeFilename(label, a.localPath, i + 1)) }}
-                        >
+                        <button className="nodrag" title="Download" onClick={(e) => { e.stopPropagation(); downloadAsset(a.localPath, makeFilename(label, a.localPath, i + 1)) }}>
                           <Icons.Download className="h-2.5 w-2.5 text-white" />
                         </button>
                       </div>
                     </div>
                   ))}
                   {assets.length > 4 && (
-                    <div
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border text-[9px] font-medium"
-                      style={{ borderColor: spec.accent + '44', color: spec.accent }}
-                    >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border text-[9px] font-medium" style={{ borderColor: spec.accent + '44', color: spec.accent }}>
                       +{assets.length - 4}
                     </div>
                   )}

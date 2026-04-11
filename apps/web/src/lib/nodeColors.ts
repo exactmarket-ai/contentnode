@@ -2,7 +2,7 @@
 // Implements the ContentNodeAI card spec exactly.
 // Each node subtype maps to one of 5 types: prompt | input | ai-model | transform | eval
 
-export type NodeSpecType = 'prompt' | 'input' | 'ai-model' | 'transform' | 'eval'
+export type NodeSpecType = 'prompt' | 'input' | 'ai-model' | 'transform' | 'eval' | 'generate'
 
 export interface NodeSpec {
   accent: string
@@ -61,6 +61,17 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
     badgeText:      '#27500a',
     label:          'Transform',
   },
+  generate: {
+    accent:         '#d4500a',
+    headerBg:       '#fff7f2',
+    headerBorder:   '#ffd4b8',
+    headerBgHover:  '#ffeedd',
+    activeRing:     'rgba(212,80,10,0.12)',
+    activeTextColor:'#ffffff',
+    badgeBg:        '#ffeedd',
+    badgeText:      '#a03200',
+    label:          'Generate',
+  },
   eval: {
     accent:         '#888780',
     headerBg:       '#fafaf7',
@@ -84,6 +95,8 @@ export function getNodeSpec(type: string, subtype?: string): NodeSpec {
     specType = 'ai-model' // all logic nodes are orange
   } else if (type === 'insight') {
     specType = 'ai-model'
+  } else if (subtype === 'image-generation' || subtype === 'video-generation') {
+    specType = 'generate'
   } else {
     specType = 'transform' // output nodes are green
   }
