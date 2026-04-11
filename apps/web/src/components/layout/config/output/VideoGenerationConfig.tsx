@@ -147,22 +147,19 @@ export function VideoGenerationConfig({
       </FieldGroup>
 
       {/* Duration */}
-      {support.duration ? (
-        <FieldGroup label={`Duration (seconds, max ${support.maxDuration})`}>
-          <Input
-            type="number"
-            min={3}
-            max={support.maxDuration}
-            className="h-8 text-xs"
-            value={(config.duration_seconds as number) ?? 5}
-            onChange={(e) => onChange('duration_seconds', Math.max(1, Math.min(support.maxDuration, Number(e.target.value))))}
-          />
-        </FieldGroup>
-      ) : (
-        <FieldGroup label="Duration">
-          <Unsupported reason="Duration is fixed for this provider" />
-        </FieldGroup>
-      )}
+      <FieldGroup label="Duration (seconds)">
+        <Select
+          value={String((config.duration_seconds as number) ?? 5)}
+          onValueChange={(v) => onChange('duration_seconds', Number(v))}
+        >
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {[3,4,5,6,7,8,9,10,11,12,13,14,15].map((d) => (
+              <SelectItem key={d} value={String(d)} className="text-xs">{d}s</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FieldGroup>
 
       {/* Resolution */}
       {support.resolution ? (

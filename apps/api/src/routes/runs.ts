@@ -228,11 +228,7 @@ export async function runRoutes(app: FastifyInstance) {
     const resolvedPermissions = await permissionService.resolvePermissions(agencyId, userId, workflow.clientId ?? null)
 
     // Super-admin and owner bypass all node-level permission checks
-    const callerRecord = await prisma.user.findFirst({
-      where: { agencyId, clerkUserId: userId },
-      select: { role: true },
-    })
-    const isSuperUser = callerRecord?.role === 'super_admin' || callerRecord?.role === 'owner'
+    const isSuperUser = req.auth.role === 'super_admin' || req.auth.role === 'owner'
 
     if (!isSuperUser && body.graph?.nodes) {
       for (const n of body.graph.nodes) {

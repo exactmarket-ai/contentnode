@@ -30,17 +30,7 @@ const VIDEO_PROVIDERS = [
   { value: 'wan21',               label: 'Wan 2.1 (local)' },
 ]
 
-const VIDEO_DURATIONS: Record<string, number[]> = {
-  runway:              [5, 10],
-  kling:               [5, 10],
-  luma:                [5],
-  pika:                [3, 5],
-  stability:           [4],
-  veo2:                [5, 8],
-  'comfyui-animatediff': [5, 10, 15, 30],
-  cogvideox:           [6],
-  wan21:               [5, 10, 14],
-}
+const VIDEO_DURATIONS = [3,4,5,6,7,8,9,10,11,12,13,14,15]
 
 function estimateCost(subtype: string, provider: string, config: Record<string, unknown>): string | null {
   if (subtype === 'image-generation') {
@@ -106,7 +96,6 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   // Generation config
   const provider = (config.provider as string) ?? (subtype === 'video-generation' ? 'runway' : 'dalle3')
   const providerList = subtype === 'video-generation' ? VIDEO_PROVIDERS : IMAGE_PROVIDERS
-  const validDurations = VIDEO_DURATIONS[provider] ?? [5, 10]
   const costEstimate = isGeneration ? estimateCost(subtype, provider, config) : null
   const runHistory = (config.run_history as HistoryEntry[]) ?? []
 
@@ -331,7 +320,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                     onChange={(e) => { e.stopPropagation(); set('duration_seconds', Number(e.target.value)) }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {validDurations.map((d) => (
+                    {VIDEO_DURATIONS.map((d) => (
                       <option key={d} value={d}>{d}s</option>
                     ))}
                   </select>
