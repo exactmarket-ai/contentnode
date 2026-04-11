@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -28,22 +28,67 @@ interface AppNavProps {
   onSignOut?: () => void
 }
 
+// Custom nav link that fully owns click handling so we can intercept
+// navigation when the workflow editor has unsaved changes.
+function NavItem({
+  to,
+  collapsed,
+  icon: Icon,
+  label,
+  activeBg,
+  activeText,
+  activeBorder,
+}: {
+  to: string
+  collapsed: boolean
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  activeBg?: string
+  activeText?: string
+  activeBorder?: string
+}) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const setPendingNavPath = useWorkflowStore((s) => s.setPendingNavPath)
+  const isActive = location.pathname === to || location.pathname.startsWith(to + '/')
+
+  function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault()
+    // Check for unsaved changes when on the workflow editor
+    const onEditor = /^\/workflows\/(new|[^/]+)/.test(location.pathname)
+    if (onEditor) {
+      const { workflow: wf, nodes: n, graphDirty: dirty } = useWorkflowStore.getState()
+      const hasChanges = wf.id ? dirty : n.length > 0
+      if (hasChanges) {
+        setPendingNavPath(to)
+        return
+      }
+    }
+    navigate(to)
+  }
+
+  return (
+    <a
+      href={to}
+      onClick={handleClick}
+      title={collapsed ? label : undefined}
+      className={cn(
+        'flex items-center rounded-md px-2 py-2 text-sm transition-colors',
+        collapsed ? 'justify-center gap-0' : 'gap-3',
+        !isActive && 'text-muted-foreground hover:bg-accent hover:text-foreground',
+        isActive && !activeBg && 'bg-blue-600 text-white',
+      )}
+      style={isActive && activeBg ? { backgroundColor: activeBg, color: activeText, border: `1px solid ${activeBorder}` } : undefined}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      {!collapsed && <span>{label}</span>}
+    </a>
+  )
+}
+
 export function AppNav({ onSignOut }: AppNavProps) {
   const [collapsed, setCollapsed] = useState(false)
   const { isAdmin, isOwner } = useCurrentUser()
-  const location = useLocation()
-  const setPendingNavPath = useWorkflowStore((s) => s.setPendingNavPath)
-
-  // Intercept nav clicks when on the workflow editor with unsaved changes
-  function guardClick(e: React.MouseEvent, to: string) {
-    const onEditor = /^\/workflows\/(new|[^/]+)/.test(location.pathname)
-    if (!onEditor) return
-    const { workflow: wf, nodes: n, graphDirty: dirty } = useWorkflowStore.getState()
-    const hasChanges = wf.id ? dirty : n.length > 0
-    if (!hasChanges) return
-    e.preventDefault()
-    setPendingNavPath(to)
-  }
 
   return (
     <aside
@@ -81,78 +126,26 @@ export function AppNav({ onSignOut }: AppNavProps) {
 
       <div className="my-1 h-px w-full bg-border" />
 
-      {NAV_ITEMS.map(({ to, icon: Icon, label, activeBg, activeText, activeBorder }) => (
-        <NavLink
-          key={to}
-          to={to}
-          title={collapsed ? label : undefined}
-          onClick={(e) => guardClick(e, to)}
-          className={({ isActive }) =>
-            cn(
-              'flex items-center rounded-md px-2 py-2 text-sm transition-colors',
-              collapsed ? 'justify-center gap-0' : 'gap-3',
-              !isActive && 'text-muted-foreground hover:bg-accent hover:text-foreground',
-              isActive && !activeBg && 'bg-blue-600 text-white',
-            )
-          }
-          style={({ isActive }) =>
-            isActive && activeBg
-              ? { backgroundColor: activeBg, color: activeText, border: `1px solid ${activeBorder}` }
-              : undefined
-          }
-        >
-          <Icon className="h-4 w-4 shrink-0" />
-          {!collapsed && <span>{label}</span>}
-        </NavLink>
+      {NAV_ITEMS.map((item) => (
+        <NavItem key={item.to} {...item} collapsed={collapsed} />
       ))}
 
       <div className="mt-auto pt-2">
         <div className="my-1 h-px w-full bg-border" />
-        {BOTTOM_NAV_ITEMS.map(({ to, icon: Icon, label, activeBg, activeText, activeBorder }) => (
-          <NavLink
-            key={to}
-            to={to}
-            title={collapsed ? label : undefined}
-            onClick={(e) => guardClick(e, to)}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center rounded-md px-2 py-2 text-sm transition-colors',
-                collapsed ? 'justify-center gap-0' : 'gap-3',
-                !isActive && 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                isActive && !activeBg && 'bg-blue-600 text-white',
-              )
-            }
-            style={({ isActive }) =>
-              isActive && activeBg
-                ? { backgroundColor: activeBg, color: activeText, border: `1px solid ${activeBorder}` }
-                : undefined
-            }
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>{label}</span>}
-          </NavLink>
+        {BOTTOM_NAV_ITEMS.map((item) => (
+          <NavItem key={item.to} {...item} collapsed={collapsed} />
         ))}
         {/* Invite — admin/owner only */}
         {(isAdmin || isOwner) && (
-          <NavLink
+          <NavItem
             to="/team/invite"
-            title={collapsed ? 'Invite members' : undefined}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center rounded-md px-2 py-2 text-sm transition-colors',
-                collapsed ? 'justify-center gap-0' : 'gap-3',
-                !isActive && 'text-muted-foreground hover:bg-accent hover:text-foreground',
-              )
-            }
-            style={({ isActive }) =>
-              isActive
-                ? { backgroundColor: '#fdf5ff', color: '#a200ee', border: '1px solid #e9c8ff' }
-                : undefined
-            }
-          >
-            <Icons.UserPlus className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>Invite</span>}
-          </NavLink>
+            collapsed={collapsed}
+            icon={Icons.UserPlus}
+            label="Invite"
+            activeBg="#fdf5ff"
+            activeText="#a200ee"
+            activeBorder="#e9c8ff"
+          />
         )}
         {onSignOut && <button
           onClick={onSignOut}
