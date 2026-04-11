@@ -112,7 +112,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   // Card border/shadow
   const cardStyle: React.CSSProperties = selected ? {
     border: `2px solid ${spec.accent}`,
-    boxShadow: `0 0 0 3px ${spec.activeRing}`,
+    boxShadow: `0 0 0 3px ${spec.activeRing}, 0 0 24px 6px ${spec.activeRing}, 0 8px 32px rgba(0,0,0,0.18)`,
   } : isRunning ? {
     border: `1.5px solid ${spec.accent}`,
     boxShadow: `0 0 20px 4px ${spec.activeRing}`,
