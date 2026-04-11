@@ -617,16 +617,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         : n.position
     }
 
-    const PAD_TOP = 36  // room for the label bar
-    const PAD     = 20  // padding on left/right/bottom
+    const PAD_TOP = 40  // room for the label bar
+    const PAD     = 40  // padding on all sides (handles extend ~8px beyond node body)
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const n of selected) {
       const p = absPos(n)
+      // Fall back to generous defaults — handles extend ~8px past node body
+      // and some nodes haven't been measured by React Flow yet
+      const nw = n.width  ? n.width  + 16 : 240  // +16 for left+right handles
+      const nh = n.height ? n.height + 8  : 100  // +8 for top+bottom handles
       minX = Math.min(minX, p.x)
       minY = Math.min(minY, p.y)
-      maxX = Math.max(maxX, p.x + (n.width  ?? 200))
-      maxY = Math.max(maxY, p.y + (n.height ?? 80))
+      maxX = Math.max(maxX, p.x + nw)
+      maxY = Math.max(maxY, p.y + nh)
     }
 
     const gx = minX - PAD
