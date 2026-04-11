@@ -293,17 +293,24 @@ async function generateRunway(prompt: VideoPromptOutput, cfg: VideoGenerationCon
   const duration = cfg.duration_seconds === 10 ? 10 : 5
   const ratio = prompt.aspectRatio === '9:16' ? '768:1280' : '1280:768'
 
+  // Runway's image_to_video endpoint always requires promptImage
+  const imageUrl = prompt.referenceImageUrl ?? cfg.start_frame ?? null
+  if (!imageUrl) {
+    throw new Error(
+      'Runway requires a start frame image. ' +
+      'Attach a Start Frame in the Video Generation node config, ' +
+      'or connect an Image Generation node upstream.'
+    )
+  }
+
   const body: Record<string, unknown> = {
     model: 'gen3a_turbo',
     promptText: prompt.positivePrompt,
+    promptImage: await resolveImageUrl(imageUrl),
     duration,
     ratio,
     watermark: false,
     ...(cfg.seed != null ? { seed: cfg.seed } : {}),
-  }
-
-  if (prompt.mode === 'image-to-video' && prompt.referenceImageUrl) {
-    body.promptImage = await resolveImageUrl(prompt.referenceImageUrl)
   }
 
   const submitRes = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
