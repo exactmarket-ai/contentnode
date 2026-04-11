@@ -6,6 +6,7 @@ import { prisma, auditService } from '@contentnode/database'
 import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue } from '../lib/queues.js'
+import { markStaleIfBrainChanged } from './templateLibrary.js'
 
 const LOGO_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -2249,6 +2250,8 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
         data: { agencyId, clientId, verticalId, extractionStatus: 'idle', ...updateData },
       })
     }
+    // Mark AI templates stale if the Brain changed (fire-and-forget)
+    markStaleIfBrainChanged(clientId, agencyId).catch(() => {})
     return reply.send({ data: profile })
   })
 
@@ -2396,6 +2399,8 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     } else {
       builder = await prisma.clientBrandBuilder.create({ data: { agencyId, clientId, verticalId, dataJson } })
     }
+    // Mark AI templates stale if the Brain changed (fire-and-forget)
+    markStaleIfBrainChanged(clientId, agencyId).catch(() => {})
     return reply.send({ data: builder })
   })
 

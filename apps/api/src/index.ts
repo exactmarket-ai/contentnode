@@ -33,6 +33,7 @@ import { referenceFileRoutes } from './routes/referenceFiles.js'
 import { permissionRoutes } from './routes/permissions.js'
 import { divisionRoutes } from './routes/divisions.js'
 import { verticalRoutes } from './routes/verticals.js'
+import { templateLibraryRoutes } from './routes/templateLibrary.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -136,7 +137,8 @@ await app.register(referenceFileRoutes, { prefix: '/api/v1/reference-files' })
 await app.register(generatedFileRoutes, { prefix: '/files' })
 await app.register(permissionRoutes,    { prefix: '/api/v1/permissions' })
 await app.register(divisionRoutes,      { prefix: '/api/v1/clients' })
-await app.register(verticalRoutes,     { prefix: '/api/v1/verticals' })
+await app.register(verticalRoutes,         { prefix: '/api/v1/verticals' })
+await app.register(templateLibraryRoutes,  { prefix: '/api/v1/template-library' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

@@ -11,6 +11,7 @@ import { downloadBrandProfileDocx, downloadCompanyProfileDocx } from '@/lib/down
 import { ClientReportsTab } from './ClientReportsTab'
 import { ClientFrameworkTab } from './ClientFrameworkTab'
 import { ClientBrandingTab } from './ClientBrandingTab'
+import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -4836,7 +4837,7 @@ function StructureTab({ client }: { client: Client }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'library', 'prompts', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4907,6 +4908,7 @@ export function ClientDetailPage() {
     overview:     'Overview',
     workflows:    'Workflows',
     library:      'Library',
+    prompts:      'Prompt Library',
     framework:    'GTM Framework',
     branding:     'Branding',
     stakeholders: 'Contacts',
@@ -4999,6 +5001,7 @@ export function ClientDetailPage() {
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={setActiveTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
         {activeTab === 'library' && <ClientLibraryTab clientId={client.id} />}
+        {activeTab === 'prompts' && <ClientPromptLibraryTab clientId={client.id} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}
         {activeTab === 'access' && <AccessTab client={client} />}
         {activeTab === 'reviews' && <ReviewsTab clientId={client.id} clientName={client.name} />}

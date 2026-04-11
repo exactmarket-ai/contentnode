@@ -886,23 +886,28 @@ model HumanizerExample {
 // PromptTemplate — reusable instruction sets for AI nodes
 // ─────────────────────────────────────────────
 model PromptTemplate {
-  id          String   @id @default(cuid())
-  agencyId    String   @map("agency_id")
-  clientId    String?  @map("client_id")   // null = agency-wide; set = client-scoped
-  name        String
-  body        String
-  category    String   @default("general") // general | content | seo | social | email | other
-  description String?
-  parentId    String?  @map("parent_id")   // set when saved as new from an existing template
-  useCount    Int      @default(0) @map("use_count")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                   String   @id @default(cuid())
+  agencyId             String   @map("agency_id")
+  clientId             String?  @map("client_id")              // null = Global Library
+  name                 String
+  body                 String
+  category             String   @default("general")            // Copy|Creative|Strategy|Marketing|Design|Business (new) or general|content|seo|social|email|other (legacy)
+  description          String?
+  parentId             String?  @map("parent_id")              // set when saved as new from an existing template
+  useCount             Int      @default(0) @map("use_count")
+  source               String   @default("user")               // user | ai | global
+  brainSnapshotVersion String?  @map("brain_snapshot_version") // SHA-256 of Brain JSON at generation time
+  isStale              Boolean  @default(false) @map("is_stale")
+  createdBy            String?  @map("created_by")             // userId or 'system'
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   agency Agency  @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([agencyId])
   @@index([clientId])
+  @@index([source])
   @@map("prompt_templates")
 }
 
