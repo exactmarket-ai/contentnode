@@ -8,6 +8,9 @@
  * Records a UsageEvent per run so each org is billed for their usage.
  *
  * Flow: upload to Gemini File API → poll until ACTIVE → generateContent → return text
+ *
+ * Model discovery: on first run, calls ListModels to find what's actually available
+ * under this API key, then picks the best video-capable model. Cached per process.
  */
 
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs'
@@ -21,16 +24,35 @@ import { usageEventService } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
 // Cost per second of video by model (USD) — approximate Gemini pricing
 const COST_PER_SECOND: Record<string, number> = {
+  'gemini-1.5-flash':     0.00004,
+  'gemini-1.5-flash-001': 0.00004,
   'gemini-1.5-flash-002': 0.00004,
   'gemini-1.5-flash-8b':  0.00002,
+  'gemini-1.5-pro':       0.001,
+  'gemini-1.5-pro-001':   0.001,
   'gemini-1.5-pro-002':   0.001,
+  'gemini-2.0-flash':     0.00006,
+  'gemini-2.0-flash-exp': 0.00006,
 }
 
-const VALID_MODELS = new Set(['gemini-1.5-flash-002', 'gemini-1.5-flash-8b', 'gemini-1.5-pro-002'])
-const DEFAULT_MODEL = 'gemini-1.5-flash-002'
+// Ordered preference — first match wins
+const MODEL_PREFERENCE = [
+  'gemini-1.5-flash-002',
+  'gemini-1.5-flash-001',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+  'gemini-1.5-pro-002',
+  'gemini-1.5-pro-001',
+  'gemini-1.5-pro',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-exp',
+]
+
+const VALID_MODELS = new Set(MODEL_PREFERENCE)
 
 const MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo',
@@ -53,6 +75,46 @@ function parseDurationSecs(durationStr?: string): number {
   return parseFloat(durationStr.replace('s', '')) || 0
 }
 
+// Module-level cache — discovered once per worker process start
+let resolvedModel: string | null = null
+
+async function discoverModel(preferredModel: string, apiKey: string): Promise<string> {
+  if (resolvedModel) return resolvedModel
+
+  try {
+    const res = await fetch(`${GEMINI_BASE}/v1beta/models?key=${apiKey}&pageSize=100`)
+    const data = await res.json() as {
+      models?: Array<{ name: string; supportedGenerationMethods?: string[] }>
+    }
+    const available = new Set(
+      (data.models ?? [])
+        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m) => m.name.replace('models/', ''))
+    )
+    console.log(`[video-intelligence] available models: ${[...available].join(', ')}`)
+
+    // Use preferred if available, otherwise fall through preference list
+    if (available.has(preferredModel)) {
+      resolvedModel = preferredModel
+    } else {
+      for (const m of MODEL_PREFERENCE) {
+        if (available.has(m)) { resolvedModel = m; break }
+      }
+    }
+    if (!resolvedModel) {
+      throw new Error(`No supported Gemini model found. Available: ${[...available].join(', ')}`)
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('No supported')) throw err
+    // ListModels failed — fall back to preferred and let generateContent surface any real error
+    console.warn('[video-intelligence] ListModels failed, falling back to preferred model:', err)
+    resolvedModel = preferredModel
+  }
+
+  console.log(`[video-intelligence] using model: ${resolvedModel}`)
+  return resolvedModel
+}
+
 export class VideoIntelligenceExecutor extends NodeExecutor {
   async execute(
     input: unknown,
@@ -63,7 +125,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     if (!apiKey) throw new Error('Video Intelligence: GEMINI_API_KEY is not set on the worker')
 
     const rawModel = (config.model as string) ?? ''
-    const model = VALID_MODELS.has(rawModel) ? rawModel : DEFAULT_MODEL
+    const preferredModel = VALID_MODELS.has(rawModel) ? rawModel : 'gemini-1.5-flash-002'
     const prompt = (config.prompt as string) ??
       'Analyze this video and provide: (1) what it is about, (2) key topics and visuals, (3) any on-screen text or graphics, (4) the tone and purpose, (5) a 2–3 sentence summary for content planning.'
 
@@ -71,6 +133,9 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     if (!videoRef) {
       throw new Error('Video Intelligence: connect a Video Upload node to this node\'s input')
     }
+
+    // Discover which model is actually available under this API key
+    const model = await discoverModel(preferredModel, apiKey)
 
     // Load video into buffer
     let videoBuffer: Buffer
@@ -122,7 +187,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
       videoSecs = parseDurationSecs(durationStr)
 
       const genAI = new GoogleGenerativeAI(apiKey)
-      const genModel = genAI.getGenerativeModel({ model }, { apiVersion: 'v1' })
+      const genModel = genAI.getGenerativeModel({ model })
 
       const result = await genModel.generateContent([
         { fileData: { mimeType, fileUri: file.uri } },
