@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d8f5' }
 
@@ -28,6 +29,7 @@ interface AppNavProps {
 
 export function AppNav({ onSignOut }: AppNavProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const { isAdmin, isOwner } = useCurrentUser()
 
   return (
     <aside
@@ -114,6 +116,28 @@ export function AppNav({ onSignOut }: AppNavProps) {
             {!collapsed && <span>{label}</span>}
           </NavLink>
         ))}
+        {/* Invite — admin/owner only */}
+        {(isAdmin || isOwner) && (
+          <NavLink
+            to="/team/invite"
+            title={collapsed ? 'Invite members' : undefined}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center rounded-md px-2 py-2 text-sm transition-colors',
+                collapsed ? 'justify-center gap-0' : 'gap-3',
+                !isActive && 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )
+            }
+            style={({ isActive }) =>
+              isActive
+                ? { backgroundColor: '#fdf5ff', color: '#a200ee', border: '1px solid #e9c8ff' }
+                : undefined
+            }
+          >
+            <Icons.UserPlus className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>Invite</span>}
+          </NavLink>
+        )}
         {onSignOut && <button
           onClick={onSignOut}
           title={collapsed ? 'Sign out' : undefined}

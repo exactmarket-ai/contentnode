@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { ClerkProvider, SignIn, SignedIn, SignedOut, useAuth, useClerk } from '@clerk/clerk-react'
+import { ClerkProvider, SignIn, SignedIn, useAuth, useClerk } from '@clerk/clerk-react'
 import { AppNav } from '@/components/layout/AppNav'
 import { WorkflowEditor } from '@/pages/WorkflowEditor'
 import { WorkflowListPage } from '@/pages/WorkflowListPage'
@@ -13,9 +13,11 @@ import { RunsDashboard } from '@/pages/RunsDashboard'
 import { CalendarPage } from '@/pages/CalendarPage'
 import { ReviewPage } from '@/pages/ReviewPage'
 import { TeamPage } from '@/pages/TeamPage'
+import { InvitePage } from '@/pages/InvitePage'
 import { AccessPage } from '@/pages/AccessPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
+import { LandingPage } from '@/pages/LandingPage'
 import { PortalPage } from '@/pages/portal/PortalPage'
 import { PortalReviewPage } from '@/pages/portal/PortalReviewPage'
 import { WriterPortalPage } from '@/pages/writer/WriterPortalPage'
@@ -54,6 +56,7 @@ function AppRoutes({ onSignOut }: { onSignOut?: () => void }) {
             <Route path="/quality" element={<QualityPage />} />
             <Route path="/humanizer" element={<HumanizerDashboard />} />
             <Route path="/team" element={<TeamPage />} />
+            <Route path="/team/invite" element={<InvitePage />} />
             <Route path="/access" element={<AccessPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
@@ -63,10 +66,31 @@ function AppRoutes({ onSignOut }: { onSignOut?: () => void }) {
   )
 }
 
+// Standalone sign-in page (public)
+function SignInPage() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4" style={{ backgroundColor: '#fafaf8' }}>
+      <img src="/logo.png" alt="ContentNode AI" className="h-12 w-auto object-contain" />
+      <SignIn routing="hash" afterSignInUrl="/workflows" afterSignUpUrl="/workflows" />
+      <a
+        href="/"
+        className="text-xs transition-colors"
+        style={{ color: '#b4b2a9' }}
+        onMouseEnter={e => (e.currentTarget.style.color = '#5c5b52')}
+        onMouseLeave={e => (e.currentTarget.style.color = '#b4b2a9')}
+      >
+        ← Back to home
+      </a>
+    </div>
+  )
+}
+
 // Public routes that must never hit the Clerk auth wall
 function PublicRoutes() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/sign-in" element={<SignInPage />} />
       <Route path="/writer" element={<WriterPortalPage />} />
       <Route path="/portal" element={<PortalPage />} />
       <Route path="/portal/review/:runId" element={<PortalReviewPage />} />
@@ -76,7 +100,13 @@ function PublicRoutes() {
 }
 
 function isPublicPath(pathname: string) {
-  return pathname === '/writer' || pathname.startsWith('/portal') || pathname.startsWith('/accept-invite')
+  // Landing + sign-in only bypass auth when Clerk is configured
+  if (PUBLISHABLE_KEY && (pathname === '/' || pathname === '/sign-in')) return true
+  return (
+    pathname === '/writer' ||
+    pathname.startsWith('/portal') ||
+    pathname.startsWith('/accept-invite')
+  )
 }
 
 function AuthedApp() {
@@ -92,14 +122,7 @@ function AuthedApp() {
   }
 
   if (!isSignedIn) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-6">
-          <img src="/logo.png" alt="ContentNode AI" className="h-14 w-auto object-contain" />
-          <SignIn routing="hash" />
-        </div>
-      </div>
-    )
+    return <SignInPage />
   }
 
   return (
