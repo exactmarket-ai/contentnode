@@ -10,6 +10,51 @@ import { callModel } from '@contentnode/ai'
 import type { BrandAttachmentProcessJobData } from './queues.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// JSON repair — recovers a partial brand JSON object when Claude's response
+// was cut off mid-string due to a token limit or network issue.
+// Closes any open string, then closes open objects/arrays in reverse order.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function repairTruncatedJson(raw: string): Record<string, unknown> | null {
+  try {
+    let s = raw.trimEnd()
+
+    // Close an open string if the last non-whitespace char suggests truncation
+    const inString = (str: string) => {
+      let open = false
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === '"' && (i === 0 || str[i - 1] !== '\\')) open = !open
+      }
+      return open
+    }
+    if (inString(s)) s += '"'
+
+    // Remove trailing comma before we close containers
+    s = s.replace(/,\s*$/, '')
+
+    // Count unclosed braces/brackets
+    const stack: string[] = []
+    let inStr = false
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i]
+      if (ch === '"' && (i === 0 || s[i - 1] !== '\\')) { inStr = !inStr; continue }
+      if (inStr) continue
+      if (ch === '{' || ch === '[') stack.push(ch)
+      else if (ch === '}' || ch === ']') stack.pop()
+    }
+
+    // Close them in reverse
+    for (let i = stack.length - 1; i >= 0; i--) {
+      s += stack[i] === '{' ? '}' : ']'
+    }
+
+    return JSON.parse(s) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Text extraction (mirrors frameworkResearch.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -248,7 +293,7 @@ async function runBrandExtraction(
           provider: 'anthropic',
           model: 'claude-sonnet-4-6',
           api_key_ref: 'ANTHROPIC_API_KEY',
-          max_tokens: 2000,
+          max_tokens: 8192,
           temperature: 0.1,
           system_prompt: systemPrompt,
         },
@@ -259,7 +304,20 @@ async function runBrandExtraction(
       if (raw.startsWith('```')) {
         raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
       }
-      extractedJson = JSON.parse(raw) as Record<string, unknown>
+
+      // If the response was truncated mid-JSON, attempt to close it gracefully
+      // before parsing so we get a partial profile rather than a hard failure.
+      try {
+        extractedJson = JSON.parse(raw) as Record<string, unknown>
+      } catch {
+        const repaired = repairTruncatedJson(raw)
+        if (repaired) {
+          console.warn('[brand-extraction] JSON was truncated — used repaired partial response')
+          extractedJson = repaired
+        } else {
+          throw new Error(`JSON parse failed and repair was not possible. Raw length: ${raw.length}`)
+        }
+      }
     } catch (err) {
       errorMessage = err instanceof Error ? err.message : String(err)
       console.error('[brand-extraction] Claude call failed:', errorMessage)
