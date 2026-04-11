@@ -226,15 +226,7 @@ export function WorkflowEditor() {
   const isAutoCreated = !!(workflow.autoCreated && workflow.id)
   const navigate = useNavigate()
 
-  // When a new workflow was created via modal but never saved, delete it when the user leaves
-  useEffect(() => {
-    return () => {
-      const state = useWorkflowStore.getState()
-      if (state.workflow.id && !state.workflow.graphSaved) {
-        apiFetch(`/api/v1/workflows/${state.workflow.id}`, { method: 'DELETE' }).catch(() => {})
-      }
-    }
-  }, [])
+  // (auto-delete on unmount removed — too risky, could silently destroy user work)
 
   const [historyOpen, setHistoryOpen] = useState(false)
 

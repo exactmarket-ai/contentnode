@@ -140,9 +140,16 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
         clientId,
         connectivity_mode: effectiveMode,
         default_model_config: { provider: effectiveProvider, model: effectiveModel, temperature: 0.7 },
+        graphSaved: true, // workflow record exists in DB — prevent accidental cleanup deletion
       })
       if (selectedTemplate) {
         loadTemplate(selectedTemplate.nodes, selectedTemplate.edges)
+        // Save the template graph immediately so the workflow is never blank on reload
+        const { nodes: tNodes, edges: tEdges } = useWorkflowStore.getState()
+        apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
+          method: 'PUT',
+          body: JSON.stringify({ nodes: tNodes, edges: tEdges, name: trimmed }),
+        }).catch(() => {})
       } else if (selectedOrgTemplateId) {
         // Load the org template's graph into the canvas
         try {
@@ -165,8 +172,12 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
               label: e.label as string | undefined,
               animated: false,
             }))
-            // Load the template graph into the canvas
             useWorkflowStore.setState({ nodes: rfNodes, edges: rfEdges, graphDirty: true })
+            // Save the org template graph immediately
+            apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
+              method: 'PUT',
+              body: JSON.stringify({ nodes: rfNodes, edges: rfEdges, name: trimmed }),
+            }).catch(() => {})
           }
         } catch { /* non-critical — user gets a blank canvas */ }
       }

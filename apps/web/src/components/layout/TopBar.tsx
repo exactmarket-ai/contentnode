@@ -567,17 +567,14 @@ function SaveWorkflowDialog({
   onSave: (name: string, clientId: string, createNew: boolean) => Promise<void>
 }) {
   const { workflow } = useWorkflowStore()
-  const originalName = workflow.name
   // Use the live workflow name — dialog may open after workflow loaded from API
   const [name, setName] = useState(() => workflow.name || 'Untitled Workflow')
   const [clientId, setClientId] = useState(workflow.clientId ?? '')
   const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)
 
-  // If the workflow has already been saved before and the name changed → create new
-  const isNewWorkflow = !workflow.id
-  const isSaveAs = !!workflow.id && !!workflow.graphSaved && name.trim() !== originalName.trim()
-  const createNew = isNewWorkflow || isSaveAs
+  // createNew only when no workflow record exists yet in DB
+  const createNew = !workflow.id
 
   useEffect(() => {
     apiFetch('/api/v1/clients')
@@ -629,7 +626,7 @@ function SaveWorkflowDialog({
             {createNew && (
               <p className="flex items-center gap-1.5 text-[11px]" style={{ color: '#7a00b4' }}>
                 <Icons.Copy className="h-3 w-3 shrink-0" />
-                A new workflow will be created — the original <strong>"{originalName}"</strong> stays unchanged.
+                A new workflow will be created.
               </p>
             )}
           </div>
