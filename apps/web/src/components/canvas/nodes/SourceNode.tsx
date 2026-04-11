@@ -17,6 +17,7 @@ const selectStyle: React.CSSProperties = {
 export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
   const updateNodeData = useWorkflowStore((s) => s.updateNodeData)
+  const hasIncomingEdge = useWorkflowStore((s) => s.edges.some((e) => e.target === id))
   const status = nodeStatuses[id]?.status ?? 'idle'
   const [dropping, setDropping] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -53,7 +54,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
     if (cfg.raw_text) return true  // instruction-translator
     return false
   })()
-  const needsContent = !hasContent && status === 'idle'
+  const needsContent = !hasContent && status === 'idle' && !hasIncomingEdge
 
   const handleDragOver = (e: React.DragEvent) => {
     if (!acceptsFiles || !e.dataTransfer.types.includes('Files')) return

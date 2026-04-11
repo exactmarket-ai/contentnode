@@ -60,6 +60,9 @@ export async function triggerRun(stopAtNodeId?: string): Promise<void> {
   const unconfigured = nodes.filter((n) => {
     if (n.type !== 'source') return false
     if (relevantNodeIds && !relevantNodeIds.has(n.id)) return false
+    // Source nodes with incoming edges receive data from upstream — no content required
+    const hasIncomingEdge = edges.some((e) => e.target === n.id)
+    if (hasIncomingEdge) return false
     return !isSourceNodeConfigured(n)
   })
 
