@@ -91,13 +91,10 @@ const QUALITY_OPTIONS = [
 
 // ─── Unsupported field tooltip ────────────────────────────────────────────────
 
-function UnsupportedOverlay({ label, reason }: { label: string; reason: string }) {
+function UnsupportedOverlay({ reason }: { label?: string; reason: string }) {
   return (
-    <div className="relative">
-      <div className="pointer-events-none select-none rounded-md border border-border bg-muted px-2 py-1.5 text-xs text-muted-foreground opacity-50">
-        {label}
-      </div>
-      <div className="absolute -top-5 left-0 text-[9px] text-muted-foreground/60">{reason}</div>
+    <div className="pointer-events-none select-none rounded-md border border-border bg-muted px-2 py-1.5 text-xs text-muted-foreground/50">
+      {reason}
     </div>
   )
 }

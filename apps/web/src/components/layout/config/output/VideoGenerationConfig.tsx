@@ -59,13 +59,8 @@ const CAMERA_MOTIONS = [
 
 function Unsupported({ reason }: { reason: string }) {
   return (
-    <div className="relative" title={reason}>
-      <div className="pointer-events-none select-none rounded-md border border-border bg-muted px-2 py-1.5 text-[11px] text-muted-foreground/50">
-        Not supported
-      </div>
-      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/40">
-        N/A
-      </span>
+    <div className="pointer-events-none select-none rounded-md border border-border bg-muted px-2 py-1.5 text-[11px] text-muted-foreground/50">
+      {reason}
     </div>
   )
 }
