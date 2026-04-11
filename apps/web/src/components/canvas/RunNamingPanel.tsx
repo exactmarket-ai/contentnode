@@ -121,7 +121,7 @@ export function RunNamingPanel() {
     <div
       className={cn(
         'absolute bottom-4 left-1/2 z-40 w-[480px] -translate-x-1/2',
-        'rounded-xl border border-border bg-card shadow-2xl',
+        'rounded-xl border border-border bg-white shadow-2xl',
         'transition-all duration-300',
       )}
     >
