@@ -26,6 +26,29 @@ export async function getClerkUserEmails(clerkUserId: string): Promise<string[]>
 }
 
 /**
+ * Batch-fetch full names for a list of Clerk user IDs.
+ * Returns a map of clerkUserId → "First Last" (or email if no name set).
+ * Returns {} if Clerk is not configured (dev mode) or all IDs are pending.
+ */
+export async function getClerkUserNames(clerkUserIds: string[]): Promise<Record<string, string>> {
+  if (!clerkClient) return {}
+  const realIds = clerkUserIds.filter((id) => !id.startsWith('pending-'))
+  if (realIds.length === 0) return {}
+  try {
+    const { data: users } = await clerkClient.users.getUserList({ userId: realIds, limit: 100 })
+    const result: Record<string, string> = {}
+    for (const u of users) {
+      const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
+      const primary = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ?? ''
+      result[u.id] = fullName || primary
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+/**
  * Revokes all active sessions for a Clerk user.
  * Called when a team member is removed so they lose access immediately.
  * Silently no-ops in dev mode or if the user doesn't exist in Clerk.

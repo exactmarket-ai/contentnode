@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma, usageQueryService } from '@contentnode/database'
 import type { UsageFilters } from '@contentnode/database'
+import { getClerkUserNames } from '../lib/clerk.js'
 
 function currentPeriod() {
   const now = new Date()
@@ -188,7 +189,29 @@ export async function usageRoutes(app: FastifyInstance) {
           select: { clerkUserId: true, name: true, email: true },
         })
       : []
-    const userNameMap = Object.fromEntries(userRows.map((u) => [u.clerkUserId, u.name || u.email || u.clerkUserId]))
+
+    // For users whose name is missing in our DB, fetch from Clerk and backfill
+    const missingNameIds = userRows.filter((u) => !u.name).map((u) => u.clerkUserId)
+    let clerkNames: Record<string, string> = {}
+    if (missingNameIds.length > 0) {
+      clerkNames = await getClerkUserNames(missingNameIds)
+      // Backfill DB in background so subsequent calls are instant
+      for (const [clerkId, fullName] of Object.entries(clerkNames)) {
+        if (fullName) {
+          prisma.user.updateMany({
+            where: { agencyId, clerkUserId: clerkId, name: null },
+            data: { name: fullName },
+          }).catch(() => {})
+        }
+      }
+    }
+
+    const userNameMap = Object.fromEntries(
+      userRows.map((u) => [
+        u.clerkUserId,
+        u.name || clerkNames[u.clerkUserId] || u.email || u.clerkUserId,
+      ])
+    )
 
     type UserBucket = {
       userId: string; userName: string
