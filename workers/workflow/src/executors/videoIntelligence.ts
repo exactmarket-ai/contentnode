@@ -24,13 +24,13 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
 
 // Cost per second of video by model (USD) — approximate Gemini pricing
 const COST_PER_SECOND: Record<string, number> = {
-  'gemini-1.5-flash':    0.00004,
-  'gemini-1.5-flash-8b': 0.00002,
-  'gemini-1.5-pro':      0.001,
+  'gemini-1.5-flash-002': 0.00004,
+  'gemini-1.5-flash-8b':  0.00002,
+  'gemini-1.5-pro-002':   0.001,
 }
 
-const VALID_MODELS = new Set(['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro'])
-const DEFAULT_MODEL = 'gemini-1.5-flash'
+const VALID_MODELS = new Set(['gemini-1.5-flash-002', 'gemini-1.5-flash-8b', 'gemini-1.5-pro-002'])
+const DEFAULT_MODEL = 'gemini-1.5-flash-002'
 
 const MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo',

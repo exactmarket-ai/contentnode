@@ -163,7 +163,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     type: 'logic', subtype: 'video-intelligence',
     label: 'Video Intelligence', description: 'Watch a video with Gemini AI — understand visuals, on-screen text, topics and tone',
     category: 'logic', icon: 'Eye',
-    defaultConfig: { subtype: 'video-intelligence', model: 'gemini-1.5-flash', prompt: '' },
+    defaultConfig: { subtype: 'video-intelligence', model: 'gemini-1.5-flash-002', prompt: '' },
   },
   {
     type: 'logic', subtype: 'video-prompt-builder',
@@ -177,6 +177,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       camera_motion_hint: '',
       style_hint: '',
     },
+  },
+  {
+    type: 'logic', subtype: 'image-resize',
+    label: 'Image Resize', description: 'Resize an image to a social, web, or custom size',
+    category: 'logic', icon: 'Maximize2',
+    defaultConfig: { subtype: 'image-resize', preset: 'instagram-square', fit: 'cover', format: 'same', quality: 85 },
   },
   {
     type: 'logic', subtype: 'image-prompt-builder',

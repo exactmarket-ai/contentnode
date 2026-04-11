@@ -37,6 +37,7 @@ import { ImagePromptBuilderConfig } from './config/logic/ImagePromptBuilderConfi
 import { VideoPromptBuilderConfig } from './config/logic/VideoPromptBuilderConfig'
 import { VideoTranscriptionConfig } from './config/logic/VideoTranscriptionConfig'
 import { VideoIntelligenceConfig } from './config/logic/VideoIntelligenceConfig'
+import { ImageResizeConfig } from './config/logic/ImageResizeConfig'
 
 import { WebhookConfig } from './config/output/WebhookConfig'
 import { EmailConfig } from './config/output/EmailConfig'
@@ -119,6 +120,8 @@ function NodeConfigForm({
         return <VideoTranscriptionConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'video-intelligence')
         return <VideoIntelligenceConfig config={config} onChange={onChange} />
+      if (subtype === 'image-resize')
+        return <ImageResizeConfig config={config} onChange={onChange} />
       if (subtype === 'transform')
         return <TransformConfig config={config} onChange={onChange} />
       if (subtype === 'condition')

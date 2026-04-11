@@ -23,6 +23,7 @@ import { VideoFrameExtractorExecutor } from './executors/videoFrameExtractor.js'
 import { VideoUploadExecutor } from './executors/videoUpload.js'
 import { VideoTranscriptionExecutor } from './executors/videoTranscription.js'
 import { VideoIntelligenceExecutor } from './executors/videoIntelligence.js'
+import { ImageResizeExecutor } from './executors/imageResize.js'
 import { MediaDownloadExecutor } from './executors/mediaDownload.js'
 import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
 import { GtmFrameworkExecutor } from './executors/gtmFramework.js'
@@ -102,6 +103,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:video-frame-extractor':   VideoFrameExtractorExecutor,
   'logic:video-transcription':     VideoTranscriptionExecutor,
   'logic:video-intelligence':      VideoIntelligenceExecutor,
+  'logic:image-resize':            ImageResizeExecutor,
   'output:video-generation':       VideoGenerationExecutor,
   'output:media-download':         MediaDownloadExecutor,
 }
