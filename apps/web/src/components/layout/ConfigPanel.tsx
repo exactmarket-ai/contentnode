@@ -16,6 +16,7 @@ import { TextInputConfig } from './config/source/TextInputConfig'
 import { ApiFetchConfig } from './config/source/ApiFetchConfig'
 import { WebScrapeConfig } from './config/source/WebScrapeConfig'
 import { TranscriptionConfig } from './config/source/TranscriptionConfig'
+import { VideoFrameExtractorConfig } from './config/source/VideoFrameExtractorConfig'
 import { InstructionTranslatorConfig } from './config/source/InstructionTranslatorConfig'
 import { WorkflowOutputConfig } from './config/source/WorkflowOutputConfig'
 import { GtmFrameworkConfig } from './config/source/GtmFrameworkConfig'
@@ -74,6 +75,8 @@ function NodeConfigForm({
     case 'source':
       if (subtype === 'transcription')
         return <TranscriptionConfig config={config} onChange={onChange} />
+      if (subtype === 'video-frame-extractor')
+        return <VideoFrameExtractorConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'text-input')
         return <TextInputConfig config={config} onChange={onChange} />
       if (subtype === 'api-fetch')

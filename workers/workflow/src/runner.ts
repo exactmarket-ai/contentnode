@@ -19,6 +19,7 @@ import { ImagePromptBuilderExecutor } from './executors/imagePromptBuilder.js'
 import { ImageGenerationExecutor } from './executors/imageGeneration.js'
 import { VideoPromptBuilderExecutor } from './executors/videoPromptBuilder.js'
 import { VideoGenerationExecutor } from './executors/videoGeneration.js'
+import { VideoFrameExtractorExecutor } from './executors/videoFrameExtractor.js'
 import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
 import { GtmFrameworkExecutor } from './executors/gtmFramework.js'
 import { BrandContextExecutor } from './executors/brandContext.js'
@@ -71,7 +72,8 @@ export interface RunOutput {
 
 const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   source:                      SourceNodeExecutor,
-  'source:transcription':      TranscriptionNodeExecutor,
+  'source:transcription':          TranscriptionNodeExecutor,
+  'source:video-frame-extractor':  VideoFrameExtractorExecutor,
   'source:instruction-translator': InstructionTranslatorExecutor,
   'source:workflow-output':    WorkflowOutputExecutor,
   logic:                       LogicNodeExecutor,

@@ -1087,4 +1087,112 @@ Lead with the primary emotion from the brief. Every character counts.`,
       { id: 'e-trans-1-out-1', source: 'trans-1', target: 'out-1' },
     ],
   },
+
+  // ★ Video Extractor: Title, Description, Thumbnail
+  {
+    id: 'video-extractor',
+    name: 'Video Extractor: Title, Description, Thumbnail',
+    description:
+      'Upload a video to extract a thumbnail frame, then generate an SEO-optimised title (max 100 characters) and a 1000–1500 word description from a transcript or brief.',
+    category: 'general',
+    icon: 'Film',
+    nodes: [
+      // ─── INPUTS ────────────────────────────────────────────────────────────
+
+      {
+        id: 'vid-transcript',
+        type: 'source',
+        position: { x: 80, y: 80 },
+        data: {
+          label: 'Video Transcript or Brief',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: '',
+            placeholder:
+              'Paste the video transcript here, or describe what the video is about. Include key topics, speakers, and any important points you want highlighted in the title and description.',
+          },
+        },
+      },
+      {
+        id: 'vid-frame',
+        type: 'source',
+        position: { x: 80, y: 340 },
+        data: {
+          label: 'Upload Video',
+          subtype: 'video-frame-extractor',
+          config: {
+            subtype: 'video-frame-extractor',
+            video_files: [],
+            timestamp_mode: 'percent',
+            timestamp_value: 50,
+          },
+        },
+      },
+
+      // ─── TITLE GENERATION ──────────────────────────────────────────────────
+
+      {
+        id: 'vid-title-gen',
+        type: 'logic',
+        position: { x: 420, y: 80 },
+        data: {
+          label: 'Generate Title',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'generate-headlines',
+            additional_instructions:
+              'Create a YouTube video title for this content. Requirements:\n- Maximum 100 characters (including spaces)\n- Compelling and click-worthy without clickbait\n- Specific — include the main topic or key benefit\n- Front-load the most important keyword\n\nOutput ONLY the title — no quotes, no numbering, no explanation.',
+            model_config: null,
+          },
+        },
+      },
+      {
+        id: 'vid-title-out',
+        type: 'output',
+        position: { x: 760, y: 80 },
+        data: {
+          label: 'Video Title',
+          subtype: 'display',
+          config: { subtype: 'display' },
+        },
+      },
+
+      // ─── DESCRIPTION GENERATION ────────────────────────────────────────────
+
+      {
+        id: 'vid-desc-gen',
+        type: 'logic',
+        position: { x: 420, y: 220 },
+        data: {
+          label: 'Generate Description',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'expand',
+            additional_instructions:
+              'Write a YouTube video description based on this content. Requirements:\n- Length: 1000–1500 words\n- Structure:\n  1. Opening hook (2–3 sentences that grab attention and state the value)\n  2. What viewers will learn or gain (3–5 bullet points)\n  3. Key topics covered with placeholder timestamps (e.g. 0:00 Intro, 2:30 Topic 1, etc.)\n  4. About the presenter or channel (1 short paragraph — leave placeholder if unknown)\n  5. Call-to-action (subscribe, like, comment with a question)\n  6. 8–12 relevant hashtags on the final line\n- Tone: informative, conversational, SEO-friendly\n- Include the primary keyword naturally in the first 100 characters',
+            model_config: null,
+          },
+        },
+      },
+      {
+        id: 'vid-desc-out',
+        type: 'output',
+        position: { x: 760, y: 220 },
+        data: {
+          label: 'Video Description',
+          subtype: 'display',
+          config: { subtype: 'display' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-vid-transcript-title', source: 'vid-transcript', target: 'vid-title-gen' },
+      { id: 'e-vid-transcript-desc',  source: 'vid-transcript', target: 'vid-desc-gen' },
+      { id: 'e-vid-title-out',        source: 'vid-title-gen',  target: 'vid-title-out' },
+      { id: 'e-vid-desc-out',         source: 'vid-desc-gen',   target: 'vid-desc-out' },
+    ],
+  },
 ]

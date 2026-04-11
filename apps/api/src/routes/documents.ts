@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { uploadStream } from '@contentnode/storage'
 
-const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'txt', 'md', 'csv', 'json', 'html', 'mp3', 'wav', 'm4a', 'ogg', 'flac'])
+const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'txt', 'md', 'csv', 'json', 'html', 'mp3', 'wav', 'm4a', 'ogg', 'flac', 'mp4', 'mov', 'avi', 'webm', 'mkv', 'm4v'])
 
 export async function documentRoutes(app: FastifyInstance) {
   // POST /api/v1/documents — accepts multipart file upload

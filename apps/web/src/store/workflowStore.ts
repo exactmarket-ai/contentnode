@@ -254,6 +254,19 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     },
   },
   // Output
+  // Video Frame Extractor (source type — extracts thumbnail JPEG from a video file)
+  {
+    type: 'source', subtype: 'video-frame-extractor',
+    label: 'Video Frame Extractor', description: 'Extract a thumbnail frame from a video file',
+    category: 'source', icon: 'Camera',
+    defaultConfig: {
+      subtype: 'video-frame-extractor',
+      video_files: [],
+      timestamp_mode: 'percent',
+      timestamp_value: 50,
+    },
+    requiresManualInput: true,
+  },
   // Transcription (source type — produces transcript text from audio)
   {
     type: 'source', subtype: 'transcription',
