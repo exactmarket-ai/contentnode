@@ -4,6 +4,8 @@ import * as Icons from 'lucide-react'
 import { PALETTE_NODES, useWorkflowStore } from '@/store/workflowStore'
 import { triggerRun } from '@/lib/runWorkflow'
 
+const ITEM_CLS = 'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed'
+
 const MENU_STYLE: React.CSSProperties = {
   backgroundColor: '#ffffff',
   boxShadow: '0 10px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)',
@@ -21,9 +23,11 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
   const [adjustedPos, setAdjustedPos] = useState({ x, y })
   const runStatus = useWorkflowStore((s) => s.runStatus)
+  const ungroupNode = useWorkflowStore((s) => s.ungroupNode)
 
+  const isGroup = subtype === 'group'
   const def = PALETTE_NODES.find((n) => n.subtype === subtype)
-  const canRunToHere = !def?.requiresManualInput
+  const canRunToHere = !isGroup && !def?.requiresManualInput
 
   // Close on outside click
   useEffect(() => {
@@ -47,7 +51,7 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
     if (nx !== x || ny !== y) setAdjustedPos({ x: nx, y: ny })
   }, [x, y])
 
-  if (!canRunToHere) return null
+  if (!canRunToHere && !isGroup) return null
 
   const handleRunToHere = async () => {
     onClose()
@@ -63,22 +67,41 @@ export function NodeContextMenu({ nodeId, subtype, x, y, onClose }: Props) {
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="py-1">
-        <button
-          onClick={handleRunToHere}
-          disabled={runStatus === 'running'}
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <div
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
-            style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac' }}
+        {isGroup && (
+          <button
+            onClick={() => { ungroupNode(nodeId); onClose() }}
+            className={ITEM_CLS}
           >
-            <Icons.Play className="h-3 w-3" style={{ color: '#16a34a' }} />
-          </div>
-          <div>
-            <p className="font-medium text-foreground leading-none">Run to here</p>
-            <p className="mt-0.5 text-muted-foreground">Run ancestors + stop at this node</p>
-          </div>
-        </button>
+            <div
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
+              style={{ backgroundColor: '#fdf5ff', border: '1px solid #e9b8ff' }}
+            >
+              <Icons.Ungroup className="h-3 w-3" style={{ color: '#a200ee' }} />
+            </div>
+            <div>
+              <p className="font-medium text-foreground leading-none">Ungroup</p>
+              <p className="mt-0.5 text-muted-foreground">Release nodes and remove frame</p>
+            </div>
+          </button>
+        )}
+        {canRunToHere && (
+          <button
+            onClick={handleRunToHere}
+            disabled={runStatus === 'running'}
+            className={ITEM_CLS}
+          >
+            <div
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
+              style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac' }}
+            >
+              <Icons.Play className="h-3 w-3" style={{ color: '#16a34a' }} />
+            </div>
+            <div>
+              <p className="font-medium text-foreground leading-none">Run to here</p>
+              <p className="mt-0.5 text-muted-foreground">Run ancestors + stop at this node</p>
+            </div>
+          </button>
+        )}
       </div>
     </div>,
     document.body

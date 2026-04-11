@@ -37,7 +37,7 @@ interface Props {
   onClose: () => void
 }
 
-const CATEGORIES: NodeCategory[] = ['source', 'logic', 'output', 'canvas']
+const CATEGORIES: NodeCategory[] = ['source', 'logic', 'output']
 
 export function CanvasContextMenu({ x, y, onClose }: Props) {
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)

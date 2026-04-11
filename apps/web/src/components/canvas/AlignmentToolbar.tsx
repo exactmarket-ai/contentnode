@@ -82,26 +82,44 @@ function applyOp(nodes: Node[], selected: Node[], op: Op): Node[] {
 interface BtnDef { op: Op; Icon: React.ComponentType<{ className?: string }>; title: string }
 
 const H_BTNS: BtnDef[] = [
-  { op: 'align-left',     Icon: Icons.AlignStartVertical,           title: 'Align left edges'    },
-  { op: 'align-center-h', Icon: Icons.AlignCenterVertical,          title: 'Align centers (H)'   },
-  { op: 'align-right',    Icon: Icons.AlignEndVertical,             title: 'Align right edges'   },
-  { op: 'distribute-h',   Icon: Icons.AlignHorizontalDistributeCenter, title: 'Distribute horizontally' },
+  { op: 'align-left',     Icon: Icons.AlignStartVertical,              title: 'Align left edges'         },
+  { op: 'align-center-h', Icon: Icons.AlignCenterVertical,             title: 'Align centers (H)'        },
+  { op: 'align-right',    Icon: Icons.AlignEndVertical,                title: 'Align right edges'        },
+  { op: 'distribute-h',   Icon: Icons.AlignHorizontalDistributeCenter, title: 'Distribute horizontally'  },
 ]
 
 const V_BTNS: BtnDef[] = [
-  { op: 'align-top',      Icon: Icons.AlignStartHorizontal,         title: 'Align top edges'     },
-  { op: 'align-middle-v', Icon: Icons.AlignCenterHorizontal,        title: 'Align middles (V)'   },
-  { op: 'align-bottom',   Icon: Icons.AlignEndHorizontal,           title: 'Align bottom edges'  },
-  { op: 'distribute-v',   Icon: Icons.AlignVerticalDistributeCenter, title: 'Distribute vertically' },
+  { op: 'align-top',      Icon: Icons.AlignStartHorizontal,            title: 'Align top edges'          },
+  { op: 'align-middle-v', Icon: Icons.AlignCenterHorizontal,           title: 'Align middles (V)'        },
+  { op: 'align-bottom',   Icon: Icons.AlignEndHorizontal,              title: 'Align bottom edges'       },
+  { op: 'distribute-v',   Icon: Icons.AlignVerticalDistributeCenter,   title: 'Distribute vertically'    },
 ]
 
 interface Props { workflowName?: string }
 
 export function AlignmentToolbar({ workflowName }: Props) {
-  const nodes = useWorkflowStore((s) => s.nodes)
-  const selected = nodes.filter((n) => n.selected)
+  const nodes              = useWorkflowStore((s) => s.nodes)
+  const groupSelectedNodes = useWorkflowStore((s) => s.groupSelectedNodes)
+  const ungroupNode        = useWorkflowStore((s) => s.ungroupNode)
+  const selected           = nodes.filter((n) => n.selected)
 
-  // Fewer than 2 selected → show the workflow name pill
+  // ── Single group selected → Ungroup ────────────────────────────────────────
+  if (selected.length === 1 && selected[0].type === 'group') {
+    return (
+      <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-lg">
+        <button
+          title="Remove group frame and release nodes"
+          onClick={() => ungroupNode(selected[0].id)}
+          className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Icons.Ungroup className="h-3.5 w-3.5" />
+          Ungroup
+        </button>
+      </div>
+    )
+  }
+
+  // ── Fewer than 2 selected → workflow name pill ──────────────────────────────
   if (selected.length < 2) {
     if (!workflowName) return null
     return (
@@ -111,15 +129,18 @@ export function AlignmentToolbar({ workflowName }: Props) {
     )
   }
 
-  // 2+ selected → show alignment toolbar
+  // ── 2+ selected → alignment toolbar + optional Group button ────────────────
   const run = (op: Op) => {
     const next = applyOp(nodes, selected, op)
     useWorkflowStore.setState({ nodes: next })
   }
 
+  const selectedNonGroup = selected.filter((n) => n.type !== 'group')
+  const canGroup = selectedNonGroup.length >= 2
+
   return (
     <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-lg">
-      {/* Horizontal */}
+      {/* Horizontal alignment */}
       <div className="flex items-center gap-0.5">
         {H_BTNS.map(({ op, Icon, title }) => (
           <button
@@ -138,7 +159,7 @@ export function AlignmentToolbar({ workflowName }: Props) {
 
       <div className="h-4 w-px bg-border" />
 
-      {/* Vertical */}
+      {/* Vertical alignment */}
       <div className="flex items-center gap-0.5">
         {V_BTNS.map(({ op, Icon, title }) => (
           <button
@@ -158,9 +179,25 @@ export function AlignmentToolbar({ workflowName }: Props) {
       <div className="h-4 w-px bg-border" />
 
       {/* Selection count */}
-      <span className="pl-1 text-[11px] tabular-nums text-muted-foreground">
+      <span className="pl-1 pr-1 text-[11px] tabular-nums text-muted-foreground">
         {selected.length} selected
       </span>
+
+      {/* Group button — only when 2+ non-group nodes are selected */}
+      {canGroup && (
+        <>
+          <div className="h-4 w-px bg-border" />
+          <button
+            title="Wrap selected nodes in a group frame"
+            onClick={groupSelectedNodes}
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors hover:bg-accent"
+            style={{ color: '#a200ee' }}
+          >
+            <Icons.Group className="h-3.5 w-3.5" />
+            Group
+          </button>
+        </>
+      )}
     </div>
   )
 }

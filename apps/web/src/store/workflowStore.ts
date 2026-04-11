@@ -459,6 +459,8 @@ interface WorkflowState {
   loadTemplate: (nodes: Node[], edges: Edge[]) => void
   updateNodeData: (id: string, data: Partial<Record<string, unknown>>) => void
   setNodeParent: (nodeId: string, parentId: string | null, position: { x: number; y: number }) => void
+  groupSelectedNodes: () => void
+  ungroupNode: (groupId: string) => void
 
   // Actions — UI
   setSelectedNodeId: (id: string | null) => void
@@ -599,6 +601,81 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       }),
       graphDirty: true,
     }),
+
+  groupSelectedNodes: () => {
+    const { nodes } = get()
+    const selected = nodes.filter((n) => n.selected && n.type !== 'group')
+    if (selected.length < 2) return
+
+    // Resolve absolute canvas position for each node (handles already-parented nodes)
+    const absPos = (n: Node) => {
+      const typed = n as Node & { parentNode?: string }
+      if (!typed.parentNode) return n.position
+      const parent = nodes.find((p) => p.id === typed.parentNode)
+      return parent
+        ? { x: parent.position.x + n.position.x, y: parent.position.y + n.position.y }
+        : n.position
+    }
+
+    const PAD_TOP = 36  // room for the label bar
+    const PAD     = 20  // padding on left/right/bottom
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const n of selected) {
+      const p = absPos(n)
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x + (n.width  ?? 200))
+      maxY = Math.max(maxY, p.y + (n.height ?? 80))
+    }
+
+    const gx = minX - PAD
+    const gy = minY - PAD_TOP
+    const gw = maxX - minX + PAD * 2
+    const gh = maxY - minY + PAD_TOP + PAD
+
+    const groupId = `node_${Date.now()}_grp`
+    const groupNode: Node = {
+      id: groupId,
+      type: 'group',
+      position: { x: gx, y: gy },
+      style:    { width: gw, height: gh },
+      zIndex:   -1,
+      selected: false,
+      data: { label: 'Group', subtype: 'group', config: { subtype: 'group' } },
+    }
+
+    const updated = nodes.map((n) => {
+      if (!n.selected || n.type === 'group') return { ...n, selected: false }
+      const p = absPos(n)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { parentNode: _pn, ...rest } = n as Node & { parentNode?: string }
+      return { ...rest, parentNode: groupId, position: { x: p.x - gx, y: p.y - gy }, selected: false }
+    })
+
+    set({ nodes: [groupNode, ...updated], graphDirty: true, selectedNodeId: null })
+  },
+
+  ungroupNode: (groupId) => {
+    const { nodes } = get()
+    const group = nodes.find((n) => n.id === groupId)
+    if (!group) return
+
+    const updated = nodes
+      .filter((n) => n.id !== groupId)
+      .map((n) => {
+        const typed = n as Node & { parentNode?: string }
+        if (typed.parentNode !== groupId) return n
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { parentNode: _pn, ...rest } = typed
+        return {
+          ...rest,
+          position: { x: group.position.x + n.position.x, y: group.position.y + n.position.y },
+        }
+      })
+
+    set({ nodes: updated, graphDirty: true, selectedNodeId: null })
+  },
 
   // UI actions
   setSelectedNodeId: (id) => set({ selectedNodeId: id }),

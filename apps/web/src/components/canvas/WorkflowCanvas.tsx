@@ -5,7 +5,6 @@ import ReactFlow, {
   Controls,
   MiniMap,
   type ReactFlowInstance,
-  type Node,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
@@ -39,7 +38,7 @@ export function WorkflowCanvas() {
   const {
     nodes, edges,
     onNodesChange, onEdgesChange, onConnect,
-    setSelectedNodeId, addNode, setRfInstance, setNodeParent,
+    setSelectedNodeId, addNode, setRfInstance,
   } = useWorkflowStore()
   const canvasTool = useWorkflowStore((s) => s.canvasTool)
   const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
@@ -166,47 +165,6 @@ export function WorkflowCanvas() {
     setSelectedNodeId(newId)
   }, [addNode, setSelectedNodeId])
 
-  // When a node finishes dragging, check if it landed inside (or outside) a group frame
-  const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
-    if (node.type === 'group') return  // groups don't get parented to other groups
-
-    const currentNodes = useWorkflowStore.getState().nodes
-    const groups = currentNodes.filter((n) => n.type === 'group')
-    if (groups.length === 0 && !node.parentNode) return
-
-    // Compute absolute canvas position of the dragged node
-    const parentNode = node.parentNode ? currentNodes.find((n) => n.id === node.parentNode) : null
-    const absX = parentNode ? parentNode.position.x + node.position.x : node.position.x
-    const absY = parentNode ? parentNode.position.y + node.position.y : node.position.y
-    const nodeW = (node.width ?? 200)
-    const nodeH = (node.height ?? 80)
-    const centerX = absX + nodeW / 2
-    const centerY = absY + nodeH / 2
-
-    // Find the first group whose bounds contain the node's center
-    for (const group of groups) {
-      if (group.id === node.parentNode) continue  // already in this group
-      const gw = (group.style?.width as number) ?? 400
-      const gh = (group.style?.height as number) ?? 280
-      if (
-        centerX >= group.position.x && centerX <= group.position.x + gw &&
-        centerY >= group.position.y && centerY <= group.position.y + gh
-      ) {
-        // Attach to this group — convert position to relative
-        setNodeParent(node.id, group.id, {
-          x: absX - group.position.x,
-          y: absY - group.position.y,
-        })
-        return
-      }
-    }
-
-    // Not inside any group — detach if it had a parent
-    if (node.parentNode) {
-      setNodeParent(node.id, null, { x: absX, y: absY })
-    }
-  }, [setNodeParent])
-
   // Right-click on canvas pane → show context menu
   const onPaneContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -233,7 +191,6 @@ export function WorkflowCanvas() {
         onPaneClick={onPaneClick}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        onNodeDragStop={onNodeDragStop}
         onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
         onInit={(instance) => {

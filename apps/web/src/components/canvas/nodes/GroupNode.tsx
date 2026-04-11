@@ -10,7 +10,6 @@ export const GroupNode = memo(({ id, data, selected }: NodeProps) => {
   const [draft, setDraft] = useState(label)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Sync draft when label changes externally
   useEffect(() => { setDraft(label) }, [label])
 
   const commitLabel = useCallback(() => {
@@ -22,20 +21,41 @@ export const GroupNode = memo(({ id, data, selected }: NodeProps) => {
   return (
     <>
       <NodeResizer
-        minWidth={180}
-        minHeight={120}
+        minWidth={160}
+        minHeight={100}
         isVisible={selected}
-        lineStyle={{ borderColor: 'rgba(147,197,253,0.6)' }}
-        handleStyle={{ width: 8, height: 8, borderRadius: 2, backgroundColor: '#93c5fd', borderColor: '#3b82f6' }}
+        lineStyle={{ borderColor: 'rgba(162,0,238,0.4)' }}
+        handleStyle={{ width: 8, height: 8, borderRadius: 2, backgroundColor: '#e9b8ff', borderColor: '#a200ee' }}
       />
 
-      {/* Label bar at top */}
+      {/* Purple background fill */}
       <div
-        className="nodrag absolute left-0 top-0 right-0 flex h-7 items-center px-2.5"
         style={{
-          background: 'rgba(59,130,246,0.12)',
-          borderBottom: '1px solid rgba(59,130,246,0.2)',
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(162,0,238,0.06)',
+          border: `1.5px ${selected ? 'solid' : 'dashed'} rgba(162,0,238,${selected ? '0.45' : '0.25'})`,
+          borderRadius: 8,
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Label bar */}
+      <div
+        className="nodrag"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 28,
+          background: 'rgba(162,0,238,0.10)',
+          borderBottom: '1px solid rgba(162,0,238,0.2)',
           borderRadius: '6px 6px 0 0',
+          display: 'flex',
+          alignItems: 'center',
+          paddingLeft: 10,
+          cursor: 'text',
         }}
         onDoubleClick={() => { setEditing(true); setTimeout(() => inputRef.current?.select(), 10) }}
       >
@@ -51,11 +71,15 @@ export const GroupNode = memo(({ id, data, selected }: NodeProps) => {
               if (e.key === 'Escape') { setDraft(label); setEditing(false) }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full bg-transparent text-xs font-semibold text-blue-300 outline-none placeholder:text-blue-300/50"
-            style={{ caretColor: '#93c5fd' }}
+            className="w-full bg-transparent text-xs font-semibold outline-none"
+            style={{ color: '#7a00b4', caretColor: '#a200ee' }}
           />
         ) : (
-          <span className="select-none truncate text-xs font-semibold" style={{ color: 'rgba(147,197,253,0.9)' }}>
+          <span
+            className="select-none truncate text-xs font-semibold"
+            style={{ color: 'rgba(122,0,180,0.8)' }}
+            title="Double-click to rename"
+          >
             {label}
           </span>
         )}

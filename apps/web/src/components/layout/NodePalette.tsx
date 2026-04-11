@@ -260,7 +260,7 @@ function NodesPalette() {
           )}
 
           {/* Categories, alphabetically sorted */}
-          {(['source', 'logic', 'output', 'canvas'] as NodeCategory[]).map((cat) => {
+          {(['source', 'logic', 'output'] as NodeCategory[]).map((cat) => {
             const items = byCategory(cat).filter((n) => !frequentSubtypes.has(n.subtype))
             const allItems = byCategory(cat)
             if (allItems.length === 0) return null
