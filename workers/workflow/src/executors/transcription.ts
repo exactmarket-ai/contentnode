@@ -424,16 +424,39 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
 
     // Use first audio file for now (future: merge multiple files)
     const firstFile = audioFiles[0]
-    const filePath = join(UPLOAD_DIR, firstFile.storageKey)
+    const isVideoFile = /\.(mp4|mov|avi|webm|mkv|m4v)(\?|$)/i.test(firstFile.storageKey)
 
-    if (!existsSync(filePath)) {
-      throw new Error(`Audio file not found: ${firstFile.storageKey}`)
+    // Locate or download the source file (S3/R2 vs local)
+    let sourcePath: string
+    let tempDownloadPath: string | null = null
+    if (isS3Mode()) {
+      const buffer = await downloadBuffer(firstFile.storageKey)
+      const ext = isVideoFile ? 'mp4' : 'mp3'
+      tempDownloadPath = join(tmpdir(), `src_${randomUUID()}.${ext}`)
+      writeFileSync(tempDownloadPath, Buffer.from(buffer))
+      sourcePath = tempDownloadPath
+    } else {
+      sourcePath = join(UPLOAD_DIR, firstFile.storageKey)
+      if (!existsSync(sourcePath)) {
+        throw new Error(`Audio file not found: ${firstFile.storageKey}`)
+      }
+    }
+
+    // Extract audio from video if needed
+    let filePath: string
+    let tempAudioPath: string | null = null
+    if (isVideoFile) {
+      filePath = extractAudioFromVideo(sourcePath)
+      tempAudioPath = filePath
+    } else {
+      filePath = sourcePath
     }
 
     // ── Transcribe ───────────────────────────────────────────────────────────
     let segments: ParsedSegment[]
     let durationSecs: number
 
+    try {
     if (provider === 'local') {
       ;({ segments, durationSecs } = localMockTranscription(firstFile.name))
     } else if (provider === 'deepgram') {
@@ -454,6 +477,10 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
       ;({ segments, durationSecs } = await callWhisper(filePath, apiKey))
     } else {
       throw new Error(`Unknown transcription provider: ${provider}`)
+    }
+    } finally {
+      if (tempAudioPath) try { unlinkSync(tempAudioPath) } catch { /* ignore */ }
+      if (tempDownloadPath) try { unlinkSync(tempDownloadPath) } catch { /* ignore */ }
     }
 
     // ── Determine unique speakers ────────────────────────────────────────────
