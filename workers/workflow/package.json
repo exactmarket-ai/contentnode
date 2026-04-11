@@ -14,6 +14,7 @@
     "@contentnode/ai": "workspace:*",
     "@contentnode/database": "workspace:*",
     "@contentnode/storage": "workspace:*",
+    "@google/generative-ai": "^0.24.1",
     "bullmq": "^5.12.0",
     "croner": "^10.0.1",
     "ioredis": "^5.4.1",

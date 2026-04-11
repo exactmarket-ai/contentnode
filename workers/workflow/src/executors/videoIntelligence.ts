@@ -10,24 +10,23 @@
  * Flow: upload to Gemini File API → poll until ACTIVE → generateContent → return text
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { randomUUID } from 'node:crypto'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleAIFileManager, FileState } from '@google/generative-ai/server'
 import { isS3Mode, downloadBuffer } from '@contentnode/storage'
 import { usageEventService } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
 // Cost per second of video by model (USD) — approximate Gemini pricing
 const COST_PER_SECOND: Record<string, number> = {
-  'gemini-2.0-flash':            0.00006,
-  'gemini-2.0-flash-lite':       0.00003,
-  'gemini-1.5-flash':            0.00004,
-  'gemini-1.5-flash-latest':     0.00004,
-  'gemini-1.5-flash-8b':         0.00002,
-  'gemini-1.5-pro':              0.001,
-  'gemini-1.5-pro-latest':       0.001,
+  'gemini-1.5-flash':    0.00004,
+  'gemini-1.5-flash-8b': 0.00002,
+  'gemini-1.5-pro':      0.001,
 }
 
 const VALID_MODELS = new Set(['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro'])
@@ -49,89 +48,9 @@ function extractVideoRef(input: unknown): VideoRef | null {
   return null
 }
 
-interface GeminiFile {
-  name: string
-  uri: string
-  state: 'PROCESSING' | 'ACTIVE' | 'FAILED'
-  videoMetadata?: { videoDuration?: string }
-}
-
-async function uploadToGemini(videoBuffer: Buffer, mimeType: string, apiKey: string): Promise<GeminiFile> {
-  // Initiate resumable upload
-  const initRes = await fetch(
-    `${GEMINI_BASE}/upload/v1beta/files?uploadType=resumable&key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Upload-Protocol': 'resumable',
-        'X-Goog-Upload-Command': 'start',
-        'X-Goog-Upload-Header-Content-Length': String(videoBuffer.length),
-        'X-Goog-Upload-Header-Content-Type': mimeType,
-      },
-      body: JSON.stringify({ file: { displayName: 'contentnode_video' } }),
-    }
-  )
-  const uploadUrl = initRes.headers.get('x-goog-upload-url')
-  if (!uploadUrl) throw new Error('Gemini File API: no upload URL in response')
-
-  // Upload bytes
-  const uploadRes = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Length': String(videoBuffer.length),
-      'X-Goog-Upload-Offset': '0',
-      'X-Goog-Upload-Command': 'upload, finalize',
-    },
-    body: videoBuffer,
-  })
-  const data = await uploadRes.json() as { file?: GeminiFile }
-  if (!data.file?.name) throw new Error(`Gemini File API: upload failed — ${JSON.stringify(data)}`)
-  return data.file
-}
-
-async function pollUntilActive(fileName: string, apiKey: string): Promise<GeminiFile> {
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 5000))
-    const res = await fetch(`${GEMINI_BASE}/v1beta/${fileName}?key=${apiKey}`)
-    const file = await res.json() as GeminiFile
-    if (file.state === 'ACTIVE') return file
-    if (file.state === 'FAILED') throw new Error('Gemini File API: file processing failed')
-  }
-  throw new Error('Gemini File API: timed out waiting for file to be ready (5 min)')
-}
-
-async function generateContent(fileUri: string, mimeType: string, prompt: string, model: string, apiKey: string): Promise<string> {
-  const res = await fetch(
-    `${GEMINI_BASE}/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { fileData: { mimeType, fileUri } },
-            { text: prompt },
-          ],
-        }],
-        generationConfig: { maxOutputTokens: 2048 },
-      }),
-    }
-  )
-  const data = await res.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-    error?: { message: string }
-  }
-  if (data.error) throw new Error(`Gemini API error: ${data.error.message}`)
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) throw new Error('Gemini: no text in response')
-  return text
-}
-
-function parseDurationSecs(videoDuration?: string): number {
-  // Gemini returns duration as "Xs" e.g. "127.5s"
-  if (!videoDuration) return 0
-  return parseFloat(videoDuration.replace('s', '')) || 0
+function parseDurationSecs(durationStr?: string): number {
+  if (!durationStr) return 0
+  return parseFloat(durationStr.replace('s', '')) || 0
 }
 
 export class VideoIntelligenceExecutor extends NodeExecutor {
@@ -165,20 +84,59 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     const mimeType = MIME_TYPES[ext] ?? 'video/mp4'
     const startMs = Date.now()
 
-    console.log(`[video-intelligence] uploading ${videoRef.filename ?? videoRef.storageKey} (${Math.round(videoBuffer.length / 1024 / 1024)}MB) to Gemini`)
+    const displayName = videoRef.filename ?? videoRef.storageKey
+    console.log(`[video-intelligence] uploading ${displayName} (${Math.round(videoBuffer.length / 1024 / 1024)}MB) to Gemini`)
 
-    // Upload → poll → generate
-    const uploadedFile = await uploadToGemini(videoBuffer, mimeType, apiKey)
-    console.log(`[video-intelligence] uploaded as ${uploadedFile.name}, waiting for processing`)
+    // Write buffer to a temp file — GoogleAIFileManager requires a file path
+    const tmpPath = join(tmpdir(), `contentnode_video_${randomUUID()}.${ext}`)
+    writeFileSync(tmpPath, videoBuffer)
 
-    const activeFile = await pollUntilActive(uploadedFile.name, apiKey)
-    console.log(`[video-intelligence] file active, generating content with ${model}`)
+    let text: string
+    let videoSecs = 0
 
-    const text = await generateContent(activeFile.uri, mimeType, prompt, model, apiKey)
+    try {
+      const fileManager = new GoogleAIFileManager(apiKey)
+
+      const uploadResult = await fileManager.uploadFile(tmpPath, {
+        mimeType,
+        displayName: 'contentnode_video',
+      })
+
+      console.log(`[video-intelligence] uploaded as ${uploadResult.file.name}, waiting for processing`)
+
+      // Poll until ACTIVE
+      let file = uploadResult.file
+      while (file.state === FileState.PROCESSING) {
+        await new Promise((r) => setTimeout(r, 5000))
+        file = await fileManager.getFile(file.name)
+      }
+
+      if (file.state === FileState.FAILED) {
+        throw new Error('Gemini File API: file processing failed')
+      }
+
+      console.log(`[video-intelligence] file active, generating content with ${model}`)
+
+      // Parse video duration from metadata for cost tracking
+      const durationStr = (file.videoMetadata as { videoDuration?: string } | undefined)?.videoDuration
+      videoSecs = parseDurationSecs(durationStr)
+
+      const genAI = new GoogleGenerativeAI(apiKey)
+      const genModel = genAI.getGenerativeModel({ model })
+
+      const result = await genModel.generateContent([
+        { fileData: { mimeType, fileUri: file.uri } },
+        { text: prompt },
+      ])
+
+      text = result.response.text()
+      if (!text) throw new Error('Gemini: no text in response')
+
+    } finally {
+      try { unlinkSync(tmpPath) } catch { /* ignore */ }
+    }
+
     const durationMs = Date.now() - startMs
-
-    // Parse video duration from Gemini metadata for accurate cost tracking
-    const videoSecs = parseDurationSecs(activeFile.videoMetadata?.videoDuration)
     const costPerSec = COST_PER_SECOND[model] ?? 0.001
     const estimatedCostUsd = videoSecs > 0 ? videoSecs * costPerSec : videoBuffer.length / (1024 * 1024) * 0.01
 
