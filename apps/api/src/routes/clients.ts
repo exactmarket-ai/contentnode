@@ -233,38 +233,40 @@ export async function clientRoutes(app: FastifyInstance) {
   })
 
   // ── POST /:id/logo — upload client logo ──────────────────────────────────
+  // Logos are stored as base64 data URLs in the DB column so they survive
+  // container restarts on Railway without needing S3/R2 configured.
   app.post<{ Params: { id: string } }>('/:id/logo', async (req, reply) => {
     const { agencyId } = req.auth
     const existing = await prisma.client.findFirst({ where: { id: req.params.id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Client not found' })
 
-    const data = await req.file()
+    const data = await req.file({ limits: { fileSize: 5 * 1024 * 1024 } }) // 5 MB max
     if (!data) return reply.code(400).send({ error: 'No file uploaded' })
 
-    const { filename, file, mimetype } = data
+    const { filename, file } = data
     const ext = extname(filename).toLowerCase()
     if (!LOGO_MIME[ext]) {
       file.resume()
       return reply.code(400).send({ error: `Unsupported logo format. Use: ${Object.keys(LOGO_MIME).join(', ')}` })
     }
 
-    const storageKey = `logos/logo-${req.params.id}-${crypto.randomUUID()}${ext}`
-
-    try {
-      await uploadStream(storageKey, file, LOGO_MIME[ext] ?? 'application/octet-stream')
-    } catch (err) {
-      app.log.error(err, 'Failed to write logo file')
-      return reply.code(500).send({ error: 'Failed to store logo' })
+    // Read into memory and encode as a data URL — persists in the DB across restarts
+    const chunks: Buffer[] = []
+    for await (const chunk of file) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
     }
+    const fileBuffer = Buffer.concat(chunks)
+    const contentType = LOGO_MIME[ext] ?? 'application/octet-stream'
+    const dataUrl = `data:${contentType};base64,${fileBuffer.toString('base64')}`
 
-    // Delete old logo file if there was one
-    if (existing.logoStorageKey) {
+    // Clean up old file-based logo if it was previously stored on disk/S3
+    if (existing.logoStorageKey && !existing.logoStorageKey.startsWith('data:')) {
       try { await deleteObject(existing.logoStorageKey) } catch {}
     }
 
     await prisma.client.update({
       where: { id: req.params.id },
-      data: { logoStorageKey: storageKey },
+      data: { logoStorageKey: dataUrl },
     })
 
     return reply.send({ data: { logoUrl: `/api/v1/clients/${req.params.id}/logo` } })
@@ -278,11 +280,19 @@ export async function clientRoutes(app: FastifyInstance) {
     })
     if (!client?.logoStorageKey) return reply.code(404).send({ error: 'No logo' })
 
+    reply.header('Cache-Control', 'public, max-age=86400')
+
+    // Data URL stored directly in DB (current approach — no S3 needed)
+    if (client.logoStorageKey.startsWith('data:')) {
+      const [header, base64] = client.logoStorageKey.split(',')
+      const contentType = header.replace('data:', '').replace(';base64', '')
+      return reply.header('Content-Type', contentType).send(Buffer.from(base64, 'base64'))
+    }
+
+    // Legacy: file stored on disk or S3
     const ext = extname(client.logoStorageKey).toLowerCase()
     const contentType = LOGO_MIME[ext] ?? 'application/octet-stream'
     reply.header('Content-Type', contentType)
-    reply.header('Cache-Control', 'public, max-age=86400')
-
     try {
       const buffer = await downloadBuffer(client.logoStorageKey)
       return reply.send(buffer)
