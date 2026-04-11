@@ -141,7 +141,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     if (!apiKey) throw new Error('Video Intelligence: GEMINI_API_KEY is not set on the worker')
 
     const rawModel = (config.model as string) ?? ''
-    const model = rawModel.startsWith('gemini-') ? rawModel : 'gemini-2.0-flash'
+    const model = rawModel.startsWith('gemini-') ? rawModel : 'gemini-1.5-flash'
     const prompt = (config.prompt as string) ??
       'Analyze this video and provide: (1) what it is about, (2) key topics and visuals, (3) any on-screen text or graphics, (4) the tone and purpose, (5) a 2–3 sentence summary for content planning.'
 
