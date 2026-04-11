@@ -4,9 +4,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import * as Icons from 'lucide-react'
 
 const GEMINI_MODELS = [
-  { value: 'gemini-1.5-flash-002', label: 'Gemini 1.5 Flash (default)' },
-  { value: 'gemini-1.5-flash-8b',  label: 'Gemini 1.5 Flash 8B (fastest, cheapest)' },
-  { value: 'gemini-1.5-pro-002',   label: 'Gemini 1.5 Pro (best quality)' },
+  { value: 'gemini-2.5-flash',          label: 'Gemini 2.5 Flash (default)' },
+  { value: 'gemini-2.5-pro',            label: 'Gemini 2.5 Pro (best quality)' },
+  { value: 'gemini-2.0-flash-lite-001', label: 'Gemini 2.0 Flash Lite (fastest, cheapest)' },
 ]
 
 const DEFAULT_PROMPT =
@@ -19,7 +19,7 @@ export function VideoIntelligenceConfig({
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
 }) {
-  const model  = (config.model  as string) ?? 'gemini-1.5-flash-002'
+  const model  = (config.model  as string) ?? 'gemini-2.5-flash'
   const prompt = (config.prompt as string) ?? DEFAULT_PROMPT
 
   return (

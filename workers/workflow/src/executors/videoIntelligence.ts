@@ -27,24 +27,23 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
 
 // Cost per second of video by model (USD) — approximate Gemini pricing
 const COST_PER_SECOND: Record<string, number> = {
-  'gemini-1.5-flash':     0.00004,
-  'gemini-1.5-flash-001': 0.00004,
-  'gemini-1.5-flash-002': 0.00004,
-  'gemini-1.5-flash-8b':  0.00002,
-  'gemini-1.5-pro':       0.001,
-  'gemini-1.5-pro-001':   0.001,
-  'gemini-1.5-pro-002':   0.001,
+  'gemini-2.5-flash':          0.00015,
+  'gemini-2.5-pro':            0.0015,
+  'gemini-2.0-flash-lite-001': 0.00005,
+  'gemini-flash-latest':       0.00015,
+  'gemini-pro-latest':         0.0015,
+  // legacy — kept for cost lookup on old runs
+  'gemini-1.5-flash':          0.00004,
+  'gemini-1.5-pro':            0.001,
 }
 
 // Ordered fallback list — first working model wins
 const MODEL_FALLBACK = [
-  'gemini-1.5-flash-002',
-  'gemini-1.5-flash-001',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
-  'gemini-1.5-pro-002',
-  'gemini-1.5-pro-001',
-  'gemini-1.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-2.0-flash-lite-001',
+  'gemini-flash-latest',
+  'gemini-pro-latest',
 ]
 
 const VALID_MODELS = new Set(MODEL_FALLBACK)
@@ -78,6 +77,11 @@ const MODEL_BLOCKLIST = new Set(['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'g
 function isModelUnavailableError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)
   return msg.includes('404') || msg.includes('not found') || msg.includes('no longer available')
+}
+
+function isTransientError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return msg.includes('503') || msg.includes('high demand') || msg.includes('try again later') || msg.includes('overloaded')
 }
 
 // Cached per worker process — set once the first successful model is found
@@ -120,27 +124,43 @@ async function generateContent(
   const errors: string[] = []
 
   for (const model of modelsToTry) {
-    try {
-      console.log(`[video-intelligence] trying: ${model}`)
-      const genModel = genAI.getGenerativeModel({ model })
-      const result = await genModel.generateContent([
-        { fileData: { mimeType, fileUri } },
-        { text: prompt },
-      ])
-      const text = result.response.text()
-      if (!text) throw new Error('empty response')
-      cachedWorkingModel = model
-      console.log(`[video-intelligence] success with: ${model}`)
-      return { text, model }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      errors.push(`${model}: ${msg}`)
-      if (isModelUnavailableError(err)) {
-        console.warn(`[video-intelligence] ${model}: unavailable, trying next`)
-        continue
+    let lastErr: unknown
+    // Retry up to 3 times on transient 503s before moving to next model
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`[video-intelligence] trying: ${model}${attempt > 1 ? ` (attempt ${attempt})` : ''}`)
+        const genModel = genAI.getGenerativeModel({ model })
+        const result = await genModel.generateContent([
+          { fileData: { mimeType, fileUri } },
+          { text: prompt },
+        ])
+        const text = result.response.text()
+        if (!text) throw new Error('empty response')
+        cachedWorkingModel = model
+        console.log(`[video-intelligence] success with: ${model}`)
+        return { text, model }
+      } catch (err) {
+        lastErr = err
+        if (isTransientError(err) && attempt < 3) {
+          const delay = attempt * 4000
+          console.warn(`[video-intelligence] ${model}: 503 overloaded, retrying in ${delay / 1000}s`)
+          await new Promise((r) => setTimeout(r, delay))
+          continue
+        }
+        break
       }
-      throw err
     }
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr)
+    errors.push(`${model}: ${msg}`)
+    if (isModelUnavailableError(lastErr)) {
+      console.warn(`[video-intelligence] ${model}: unavailable, trying next`)
+      continue
+    }
+    if (isTransientError(lastErr)) {
+      console.warn(`[video-intelligence] ${model}: still overloaded after retries, trying next`)
+      continue
+    }
+    throw lastErr
   }
 
   throw new Error(`No Gemini model succeeded.\n${errors.join('\n')}`)
