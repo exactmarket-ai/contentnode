@@ -70,13 +70,43 @@ function parseDurationSecs(durationStr?: string): number {
   return parseFloat(durationStr.replace('s', '')) || 0
 }
 
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
+
+// Models confirmed not callable even when listed by ListModels
+const MODEL_BLOCKLIST = new Set(['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash-001'])
+
 function isModelUnavailableError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)
   return msg.includes('404') || msg.includes('not found') || msg.includes('no longer available')
 }
 
-// Cached per worker process — the first model that successfully ran
+// Cached per worker process — set once the first successful model is found
 let cachedWorkingModel: string | null = null
+
+async function getModelsToTry(preferredModel: string, apiKey: string): Promise<string[]> {
+  if (cachedWorkingModel) return [cachedWorkingModel]
+
+  // Ask the API what's actually available under this key
+  try {
+    const res = await fetch(`${GEMINI_BASE}/v1beta/models?key=${apiKey}&pageSize=200`)
+    const data = await res.json() as {
+      models?: Array<{ name: string; supportedGenerationMethods?: string[] }>
+    }
+    const listed = (data.models ?? [])
+      .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+      .map((m) => m.name.replace('models/', ''))
+      .filter((m) => !MODEL_BLOCKLIST.has(m))
+
+    console.log(`[video-intelligence] available models: ${listed.join(', ')}`)
+
+    // Preferred first, then everything else listed
+    return [preferredModel, ...listed.filter((m) => m !== preferredModel)]
+  } catch {
+    // ListModels failed — fall back to our standard list
+    console.warn('[video-intelligence] ListModels failed, using default fallback list')
+    return [preferredModel, ...MODEL_FALLBACK.filter((m) => m !== preferredModel)]
+  }
+}
 
 async function generateContent(
   fileUri: string,
@@ -85,36 +115,31 @@ async function generateContent(
   preferredModel: string,
   apiKey: string,
 ): Promise<{ text: string; model: string }> {
-  // Try cached model first, then preferred, then full fallback list
-  const order = [
-    ...(cachedWorkingModel ? [cachedWorkingModel] : []),
-    preferredModel,
-    ...MODEL_FALLBACK.filter((m) => m !== cachedWorkingModel && m !== preferredModel),
-  ]
-
+  const modelsToTry = await getModelsToTry(preferredModel, apiKey)
   const genAI = new GoogleGenerativeAI(apiKey)
   const errors: string[] = []
 
-  for (const model of order) {
+  for (const model of modelsToTry) {
     try {
-      console.log(`[video-intelligence] trying model: ${model}`)
+      console.log(`[video-intelligence] trying: ${model}`)
       const genModel = genAI.getGenerativeModel({ model })
       const result = await genModel.generateContent([
         { fileData: { mimeType, fileUri } },
         { text: prompt },
       ])
       const text = result.response.text()
-      if (!text) throw new Error('Gemini: empty response')
+      if (!text) throw new Error('empty response')
       cachedWorkingModel = model
+      console.log(`[video-intelligence] success with: ${model}`)
       return { text, model }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       errors.push(`${model}: ${msg}`)
       if (isModelUnavailableError(err)) {
-        console.warn(`[video-intelligence] model ${model} unavailable, trying next`)
+        console.warn(`[video-intelligence] ${model}: unavailable, trying next`)
         continue
       }
-      throw err // Non-availability error — don't swallow it
+      throw err
     }
   }
 
