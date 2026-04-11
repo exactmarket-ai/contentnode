@@ -160,6 +160,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     },
   },
   {
+    type: 'logic', subtype: 'video-intelligence',
+    label: 'Video Intelligence', description: 'Watch a video with Gemini AI — understand visuals, on-screen text, topics and tone',
+    category: 'logic', icon: 'Eye',
+    defaultConfig: { subtype: 'video-intelligence', model: 'gemini-1.5-flash', prompt: '' },
+  },
+  {
     type: 'logic', subtype: 'video-prompt-builder',
     label: 'Video Prompt Builder', description: 'Translate a creative brief or image into a structured video generation prompt',
     category: 'logic', icon: 'Video',

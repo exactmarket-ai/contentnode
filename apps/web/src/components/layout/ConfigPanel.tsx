@@ -36,6 +36,7 @@ import { QualityReviewConfig } from './config/logic/QualityReviewConfig'
 import { ImagePromptBuilderConfig } from './config/logic/ImagePromptBuilderConfig'
 import { VideoPromptBuilderConfig } from './config/logic/VideoPromptBuilderConfig'
 import { VideoTranscriptionConfig } from './config/logic/VideoTranscriptionConfig'
+import { VideoIntelligenceConfig } from './config/logic/VideoIntelligenceConfig'
 
 import { WebhookConfig } from './config/output/WebhookConfig'
 import { EmailConfig } from './config/output/EmailConfig'
@@ -116,6 +117,8 @@ function NodeConfigForm({
         return <VideoFrameExtractorConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'video-transcription')
         return <VideoTranscriptionConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'video-intelligence')
+        return <VideoIntelligenceConfig config={config} onChange={onChange} />
       if (subtype === 'transform')
         return <TransformConfig config={config} onChange={onChange} />
       if (subtype === 'condition')
