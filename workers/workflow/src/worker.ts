@@ -23,6 +23,7 @@ import {
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns } from './patternDetector.js'
 import { runScheduleChecker } from './scheduleChecker.js'
+import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
 import { processBrandAttachment } from './brandExtraction.js'
 
@@ -175,6 +176,25 @@ const brandAttachmentProcessWorker = createWorker<BrandAttachmentProcessJobData>
   5
 )
 
+// ── file-cleanup — runs once per day ─────────────────────────────────────────
+const QUEUE_FILE_CLEANUP = 'file-cleanup'
+const fileCleanupQueue = createQueue(QUEUE_FILE_CLEANUP)
+await fileCleanupQueue.add(
+  'daily',
+  {},
+  {
+    jobId: 'file-cleanup-singleton',
+    repeat: { every: 24 * 60 * 60_000 }, // every 24 hours
+    removeOnComplete: { count: 5 },
+    removeOnFail: { count: 5 },
+  }
+)
+const fileCleanupWorker = createWorker(
+  QUEUE_FILE_CLEANUP,
+  async () => { await runFileCleanup() },
+  1
+)
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -188,6 +208,7 @@ async function shutdown() {
     frameworkResearchWorker.close(),
     attachmentProcessWorker.close(),
     brandAttachmentProcessWorker.close(),
+    fileCleanupWorker.close(),
   ])
   process.exit(0)
 }
