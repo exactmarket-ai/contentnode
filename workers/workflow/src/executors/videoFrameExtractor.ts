@@ -1,9 +1,9 @@
 import { execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { downloadBuffer, saveGeneratedFile, isS3Mode, UPLOAD_DIR } from '@contentnode/storage'
+import { downloadToFile, saveGeneratedFile, isS3Mode, UPLOAD_DIR } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 interface VideoFile {
@@ -62,10 +62,11 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     let tempFilePath: string | null = null
 
     if (isS3Mode()) {
-      const buffer = await downloadBuffer(videoFile.storageKey)
       const ext = videoFile.name.split('.').pop()?.toLowerCase() ?? 'mp4'
       tempFilePath = join(tmpdir(), `vid_${randomUUID()}.${ext}`)
-      writeFileSync(tempFilePath, buffer)
+      await downloadToFile(videoFile.storageKey, tempFilePath)
+      const sizeBytes = statSync(tempFilePath).size
+      console.log(`[video-frame-extractor] downloaded ${videoFile.name}: ${Math.round(sizeBytes / 1024 / 1024)}MB`)
       filePath = tempFilePath
     } else {
       filePath = join(UPLOAD_DIR, videoFile.storageKey)

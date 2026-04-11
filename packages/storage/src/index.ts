@@ -132,6 +132,30 @@ export async function downloadBuffer(storageKey: string): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
+/**
+ * Download an S3 object directly to a file path (streaming — no large in-memory buffer).
+ * Preferred for large files (videos, etc.) where buffering the whole object would be wasteful.
+ * In local mode: copies from UPLOAD_DIR.
+ */
+export async function downloadToFile(storageKey: string, destPath: string): Promise<void> {
+  if (!isS3Mode()) {
+    const src = join(UPLOAD_DIR, storageKey)
+    const data = readFileSync(src)
+    await writeFile(destPath, data)
+    return
+  }
+
+  const { GetObjectCommand } = await import('@aws-sdk/client-s3')
+  const s3 = await getS3Client()
+  const res = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: storageKey }))
+  if (!res.Body) throw new Error(`S3: empty body for key "${storageKey}"`)
+
+  await pipeline(
+    Readable.from(res.Body as AsyncIterable<Uint8Array>),
+    createWriteStream(destPath),
+  )
+}
+
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
 /**

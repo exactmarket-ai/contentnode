@@ -13,14 +13,14 @@
  * preference list until one succeeds. The working model is cached per process.
  */
 
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
+import { writeFileSync, unlinkSync, existsSync, statSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { GoogleAIFileManager, FileState } from '@google/generative-ai/server'
-import { isS3Mode, downloadBuffer } from '@contentnode/storage'
+import { isS3Mode, downloadToFile } from '@contentnode/storage'
 import { usageEventService } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
@@ -186,24 +186,21 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
       throw new Error('Video Intelligence: connect a Video Upload node to this node\'s input')
     }
 
-    // Load video into buffer
-    let videoBuffer: Buffer
-    if (isS3Mode()) {
-      videoBuffer = Buffer.from(await downloadBuffer(videoRef.storageKey))
-    } else {
-      videoBuffer = readFileSync(join(UPLOAD_DIR, videoRef.storageKey))
-    }
-
     const ext = (videoRef.filename ?? videoRef.storageKey).split('.').pop()?.toLowerCase() ?? 'mp4'
     const mimeType = MIME_TYPES[ext] ?? 'video/mp4'
     const startMs = Date.now()
 
-    const displayName = videoRef.filename ?? videoRef.storageKey
-    console.log(`[video-intelligence] uploading ${displayName} (${Math.round(videoBuffer.length / 1024 / 1024)}MB) to Gemini`)
-
-    // Write buffer to a temp file — GoogleAIFileManager requires a file path
+    // Stream video directly to a temp file (avoids holding large buffer in memory)
     const tmpPath = join(tmpdir(), `contentnode_video_${randomUUID()}.${ext}`)
-    writeFileSync(tmpPath, videoBuffer)
+    if (isS3Mode()) {
+      await downloadToFile(videoRef.storageKey, tmpPath)
+    } else {
+      const { readFileSync: rfs } = await import('node:fs')
+      writeFileSync(tmpPath, rfs(join(UPLOAD_DIR, videoRef.storageKey)))
+    }
+    const fileSizeMb = Math.round(statSync(tmpPath).size / 1024 / 1024)
+    const displayName = videoRef.filename ?? videoRef.storageKey
+    console.log(`[video-intelligence] downloaded ${displayName}: ${fileSizeMb}MB`)
 
     // Fix MP4 files where moov atom is at end of file (common with screen recorders).
     // Use a large probesize so ffmpeg scans the full file before giving up on the moov.
@@ -280,7 +277,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
 
     const durationMs = Date.now() - startMs
     const costPerSec = COST_PER_SECOND[usedModel!] ?? 0.001
-    const estimatedCostUsd = videoSecs > 0 ? videoSecs * costPerSec : videoBuffer.length / (1024 * 1024) * 0.01
+    const estimatedCostUsd = videoSecs > 0 ? videoSecs * costPerSec : fileSizeMb * 0.01
 
     console.log(`[video-intelligence] ~$${estimatedCostUsd.toFixed(4)}`)
 
