@@ -547,7 +547,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setViewport: (viewport) => set({ viewport }),
 
   addNode: (node) => set({ nodes: [...get().nodes, node], graphDirty: true }),
-  loadTemplate: (nodes, edges) => set({ nodes, edges, graphDirty: false }),
+  loadTemplate: (nodes, edges) => {
+    // Remap template node IDs to fresh UUIDs — template nodes have hardcoded IDs
+    // ('vid-frame', 'src-brief', etc.) that collide when multiple workflows use
+    // the same template. Edges reference nodes by ID so they must be remapped too.
+    const idMap = new Map(nodes.map((n) => [n.id, crypto.randomUUID()]))
+    const remappedNodes = nodes.map((n) => ({ ...n, id: idMap.get(n.id)! }))
+    const remappedEdges = edges.map((e) => ({
+      ...e,
+      id: crypto.randomUUID(),
+      source: idMap.get(e.source) ?? e.source,
+      target: idMap.get(e.target) ?? e.target,
+    }))
+    set({ nodes: remappedNodes, edges: remappedEdges, graphDirty: false })
+  },
 
   updateNodeData: (id, data) =>
     set({
