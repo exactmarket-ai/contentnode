@@ -444,11 +444,11 @@ function BrandProfileSection({
                 </div>
                 {/* Inline status badge */}
                 <span className={cn(
-                  'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium',
-                  a.extractionStatus === 'pending' && 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
-                  a.extractionStatus === 'processing' && 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
-                  a.extractionStatus === 'ready' && 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
-                  a.extractionStatus === 'failed' && 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+                  'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                  a.extractionStatus === 'pending' && 'border-border bg-muted text-muted-foreground',
+                  a.extractionStatus === 'processing' && 'border-border bg-muted text-foreground',
+                  a.extractionStatus === 'ready' && 'border-border bg-muted text-foreground',
+                  a.extractionStatus === 'failed' && 'border-destructive/40 bg-destructive/10 text-destructive',
                 )}>
                   {a.extractionStatus === 'pending' && 'Queued'}
                   {a.extractionStatus === 'processing' && 'Extracting…'}
