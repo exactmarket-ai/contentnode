@@ -453,7 +453,6 @@ export async function teamRoutes(app: FastifyInstance) {
 
     const member = await prisma.user.findFirst({ where: { id: memberId, agencyId } })
     if (!member) return reply.code(404).send({ error: 'Member not found.' })
-    if (!member.inviteToken) return reply.code(400).send({ error: 'Member is already active.' })
 
     if (!clerkClient) {
       return reply.code(503).send({ error: 'Clerk not configured — cannot look up user.' })
@@ -534,13 +533,34 @@ export async function teamRoutes(app: FastifyInstance) {
   app.get('/me', async (req, reply) => {
     const { agencyId, userId } = req.auth
 
-    const me = await prisma.user.findFirst({
+    let me = await prisma.user.findFirst({
       where: { agencyId, clerkUserId: userId },
       select: { id: true, email: true, name: true, title: true, department: true, role: true, createdAt: true },
     })
 
+    // Fallback: clerkUserId in DB doesn't match current Clerk session (e.g. seeded with placeholder).
+    // Look up the Clerk account by userId, find the matching DB record by email, and auto-fix the ID.
+    if (!me && clerkClient) {
+      try {
+        const clerkUser = await clerkClient.users.getUser(userId)
+        const email = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
+        if (email) {
+          const byEmail = await prisma.user.findFirst({
+            where: { agencyId, email },
+            select: { id: true, email: true, name: true, title: true, department: true, role: true, createdAt: true },
+          })
+          if (byEmail) {
+            await prisma.user.update({ where: { id: byEmail.id }, data: { clerkUserId: userId } })
+            req.log.info({ agencyId, userId, email }, '[team/me] auto-fixed clerkUserId mismatch')
+            me = byEmail
+          }
+        }
+      } catch (err) {
+        req.log.warn({ err }, '[team/me] fallback Clerk lookup failed')
+      }
+    }
+
     if (!me) {
-      // User is authenticated with Clerk but has no DB record for this org yet
       return reply.code(404).send({ error: 'User not found in this organization.' })
     }
 
