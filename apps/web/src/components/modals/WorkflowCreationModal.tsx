@@ -140,7 +140,9 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
         clientId,
         connectivity_mode: effectiveMode,
         default_model_config: { provider: effectiveProvider, model: effectiveModel, temperature: 0.7 },
-        graphSaved: true, // workflow record exists in DB — prevent accidental cleanup deletion
+        graphSaved: true,
+        // Mark blank-canvas workflows so they get cleaned up if user navigates away without adding nodes
+        autoCreated: !selectedTemplate && !selectedOrgTemplateId,
       })
       if (selectedTemplate) {
         loadTemplate(selectedTemplate.nodes, selectedTemplate.edges)
