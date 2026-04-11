@@ -75,6 +75,13 @@ function parseDurationSecs(durationStr?: string): number {
   return parseFloat(durationStr.replace('s', '')) || 0
 }
 
+// Models that appear in ListModels but are not actually callable
+const MODEL_BLOCKLIST = new Set([
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash-001',
+])
+
 // Module-level cache — discovered once per worker process start
 let resolvedModel: string | null = null
 
@@ -82,27 +89,34 @@ async function discoverModel(preferredModel: string, apiKey: string): Promise<st
   if (resolvedModel) return resolvedModel
 
   try {
-    const res = await fetch(`${GEMINI_BASE}/v1beta/models?key=${apiKey}&pageSize=100`)
+    const res = await fetch(`${GEMINI_BASE}/v1beta/models?key=${apiKey}&pageSize=200`)
     const data = await res.json() as {
       models?: Array<{ name: string; supportedGenerationMethods?: string[] }>
     }
-    const available = new Set(
-      (data.models ?? [])
-        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
-        .map((m) => m.name.replace('models/', ''))
-    )
-    console.log(`[video-intelligence] available models: ${[...available].join(', ')}`)
+    const available = (data.models ?? [])
+      .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+      .map((m) => m.name.replace('models/', ''))
+      .filter((m) => !MODEL_BLOCKLIST.has(m))
 
-    // Use preferred if available, otherwise fall through preference list
-    if (available.has(preferredModel)) {
-      resolvedModel = preferredModel
+    console.log(`[video-intelligence] available models: ${available.join(', ')}`)
+
+    // Prefer configured model if available (exact or prefix match)
+    const findModel = (name: string) =>
+      available.find((a) => a === name || a.startsWith(name + '-') || a.startsWith(name + '_'))
+
+    const preferred = findModel(preferredModel)
+    if (preferred) {
+      resolvedModel = preferred
     } else {
+      // Walk preference list with prefix matching
       for (const m of MODEL_PREFERENCE) {
-        if (available.has(m)) { resolvedModel = m; break }
+        const match = findModel(m)
+        if (match) { resolvedModel = match; break }
       }
     }
+
     if (!resolvedModel) {
-      throw new Error(`No supported Gemini model found. Available: ${[...available].join(', ')}`)
+      throw new Error(`No supported Gemini model found. Available: ${available.join(', ')}`)
     }
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('No supported')) throw err
