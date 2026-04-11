@@ -10,6 +10,7 @@ import { apiFetch, assetUrl } from '@/lib/api'
 import { downloadBrandProfileDocx, downloadCompanyProfileDocx } from '@/lib/downloadDocx'
 import { ClientReportsTab } from './ClientReportsTab'
 import { ClientFrameworkTab } from './ClientFrameworkTab'
+import { ClientBrandingTab } from './ClientBrandingTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -4835,7 +4836,7 @@ function StructureTab({ client }: { client: Client }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'framework', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'library', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4907,6 +4908,7 @@ export function ClientDetailPage() {
     workflows:    'Workflows',
     library:      'Library',
     framework:    'GTM Framework',
+    branding:     'Branding',
     stakeholders: 'Contacts',
     access:       'Access',
     reviews:      'Reviews',
@@ -4991,6 +4993,8 @@ export function ClientDetailPage() {
       {/* Tab content */}
       {activeTab === 'framework'
         ? <div className="flex-1 overflow-hidden"><ClientFrameworkTab clientId={client.id} clientName={client.name} /></div>
+        : activeTab === 'branding'
+        ? <div className="flex-1 overflow-hidden"><ClientBrandingTab clientId={client.id} clientName={client.name} /></div>
         : <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={setActiveTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}

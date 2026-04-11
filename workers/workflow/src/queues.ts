@@ -12,6 +12,7 @@ export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
 export const QUEUE_SCHEDULE_CHECKER = 'schedule-checker'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
+export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -63,6 +64,13 @@ export interface AttachmentProcessJobData {
   attachmentId: string
   clientName: string
   verticalName: string
+}
+
+export interface BrandAttachmentProcessJobData {
+  agencyId: string
+  attachmentId: string
+  clientId: string
+  verticalId: string | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import {
   QUEUE_SCHEDULE_CHECKER,
   QUEUE_FRAMEWORK_RESEARCH,
   QUEUE_ATTACHMENT_PROCESS,
+  QUEUE_BRAND_ATTACHMENT_PROCESS,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
   type TranscriptionJobData,
@@ -17,11 +18,13 @@ import {
   type PatternDetectionJobData,
   type FrameworkResearchJobData,
   type AttachmentProcessJobData,
+  type BrandAttachmentProcessJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns } from './patternDetector.js'
 import { runScheduleChecker } from './scheduleChecker.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
+import { processBrandAttachment } from './brandExtraction.js'
 
 // ── workflow-runs ─────────────────────────────────────────────────────────────
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
@@ -157,6 +160,21 @@ const attachmentProcessWorker = createWorker<AttachmentProcessJobData>(
   5
 )
 
+// ── brand-attachment-process ──────────────────────────────────────────────────
+const brandAttachmentProcessWorker = createWorker<BrandAttachmentProcessJobData>(
+  QUEUE_BRAND_ATTACHMENT_PROCESS,
+  async (job: Job<BrandAttachmentProcessJobData>) => {
+    console.log(`[brand-attachment-process] job started for attachment=${job.data.attachmentId}`)
+    try {
+      await processBrandAttachment(job.data)
+    } catch (err) {
+      console.error('[brand-attachment-process] job failed:', err)
+      throw err
+    }
+  },
+  5
+)
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -169,6 +187,7 @@ async function shutdown() {
     scheduleCheckerWorker.close(),
     frameworkResearchWorker.close(),
     attachmentProcessWorker.close(),
+    brandAttachmentProcessWorker.close(),
   ])
   process.exit(0)
 }

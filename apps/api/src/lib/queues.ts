@@ -5,6 +5,7 @@ export const QUEUE_WORKFLOW_RUNS = 'workflow-runs'
 export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
+export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -31,10 +32,18 @@ export interface AttachmentProcessJobData {
   verticalName: string
 }
 
+export interface BrandAttachmentProcessJobData {
+  agencyId: string
+  attachmentId: string
+  clientId: string
+  verticalId: string | null
+}
+
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
 let patternDetectionQueue: Queue<PatternDetectionJobData> | null = null
 let frameworkResearchQueue: Queue<FrameworkResearchJobData> | null = null
 let attachmentProcessQueue: Queue<AttachmentProcessJobData> | null = null
+let brandAttachmentProcessQueue: Queue<BrandAttachmentProcessJobData> | null = null
 
 /**
  * Returns the singleton Queue instance for dispatching workflow run jobs.
@@ -83,4 +92,13 @@ export function getAttachmentProcessQueue(): Queue<AttachmentProcessJobData> {
     })
   }
   return attachmentProcessQueue
+}
+
+export function getBrandAttachmentProcessQueue(): Queue<BrandAttachmentProcessJobData> {
+  if (!brandAttachmentProcessQueue) {
+    brandAttachmentProcessQueue = new Queue<BrandAttachmentProcessJobData>(QUEUE_BRAND_ATTACHMENT_PROCESS, {
+      connection: getRedis(),
+    })
+  }
+  return brandAttachmentProcessQueue
 }

@@ -107,6 +107,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'Target',
     defaultConfig: { subtype: 'gtm-framework', verticalId: '', verticalName: '', sections: ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18'] },
   },
+  {
+    type: 'brand_context', subtype: 'brand-context',
+    label: 'Brand Context', description: 'Inject client brand profile and voice guidelines into downstream nodes',
+    category: 'source', icon: 'Fingerprint',
+    defaultConfig: { subtype: 'brand-context', clientId: '', clientName: '', verticalId: '', verticalName: '', dataSource: 'both' },
+  },
   // Logic
   {
     type: 'logic', subtype: 'ai-generate',

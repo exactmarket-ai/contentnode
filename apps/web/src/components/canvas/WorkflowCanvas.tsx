@@ -14,6 +14,7 @@ import { LogicNode } from './nodes/LogicNode'
 import { OutputNode } from './nodes/OutputNode'
 import { InsightNode } from './nodes/InsightNode'
 import { GtmFrameworkNode } from './nodes/GtmFrameworkNode'
+import { BrandContextNode } from './nodes/BrandContextNode'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { NodeContextMenu } from './NodeContextMenu'
 
@@ -23,6 +24,7 @@ const nodeTypes = {
   output: OutputNode,
   insight: InsightNode,
   gtm_framework: GtmFrameworkNode,
+  brand_context: BrandContextNode,
 }
 
 let nodeIdCounter = 1
@@ -217,6 +219,7 @@ export function WorkflowCanvas() {
             if (node.type === 'logic') return 'rgba(59,130,246,0.4)'
             if (node.type === 'output') return 'rgba(168,85,247,0.4)'
             if (node.type === 'insight') return 'rgba(234,179,8,0.5)'
+            if (node.type === 'gtm_framework' || node.type === 'brand_context') return 'rgba(24,95,165,0.4)'
             return 'rgba(255,255,255,0.1)'
           }}
           maskColor="rgba(0,0,0,0.6)"

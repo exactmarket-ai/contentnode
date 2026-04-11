@@ -46,6 +46,10 @@ model Agency {
   verticals          Vertical[]
   frameworkAttachments ClientFrameworkAttachment[]
   frameworkResearch    ClientFrameworkResearch[]
+  brandVerticals     ClientBrandVertical[]
+  brandProfiles      ClientBrandProfile[]
+  brandBuilders      ClientBrandBuilder[]
+  brandAttachments   ClientBrandAttachment[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -103,6 +107,10 @@ model Client {
   clientVerticals ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
   frameworkResearch    ClientFrameworkResearch[]
+  brandVerticals   ClientBrandVertical[]
+  brandProfiles    ClientBrandProfile[]
+  brandBuilders    ClientBrandBuilder[]
+  brandAttachments ClientBrandAttachment[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -1075,4 +1083,103 @@ model ClientWorkflowFiles {
   @@index([agencyId])
   @@index([workflowId])
   @@map("client_workflow_files")
+}
+
+// ─────────────────────────────────────────────
+// ClientBrandVertical — client-specific brand verticals (separate from GTM verticals)
+// ─────────────────────────────────────────────
+model ClientBrandVertical {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  clientId  String   @map("client_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agency      Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client      Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  profiles    ClientBrandProfile[]
+  builders    ClientBrandBuilder[]
+  attachments ClientBrandAttachment[]
+
+  @@index([clientId])
+  @@index([agencyId])
+  @@map("client_brand_verticals")
+}
+
+// ─────────────────────────────────────────────
+// ClientBrandProfile — AI-extracted brand profile per client+vertical
+// verticalId null = "General" brand
+// ─────────────────────────────────────────────
+model ClientBrandProfile {
+  id                String    @id @default(cuid())
+  agencyId          String    @map("agency_id")
+  clientId          String    @map("client_id")
+  verticalId        String?   @map("vertical_id")
+  // idle | extracting | ready | failed
+  extractionStatus  String    @default("idle") @map("extraction_status")
+  extractedJson     Json?     @map("extracted_json")
+  editedJson        Json?     @map("edited_json")
+  sourceText        String?   @map("source_text") @db.Text
+  errorMessage      String?   @map("error_message")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  agency   Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical ClientBrandVertical? @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([agencyId])
+  @@map("client_brand_profiles")
+}
+
+// ─────────────────────────────────────────────
+// ClientBrandBuilder — manually entered brand attributes per client+vertical
+// verticalId null = "General" brand
+// ─────────────────────────────────────────────
+model ClientBrandBuilder {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clientId   String   @map("client_id")
+  verticalId String?  @map("vertical_id")
+  dataJson   Json     @default("{}") @map("data_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  agency   Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical ClientBrandVertical? @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([agencyId])
+  @@map("client_brand_builder")
+}
+
+// ─────────────────────────────────────────────
+// ClientBrandAttachment — files uploaded to a brand profile
+// verticalId null = "General" brand
+// ─────────────────────────────────────────────
+model ClientBrandAttachment {
+  id                String   @id @default(cuid())
+  agencyId          String   @map("agency_id")
+  clientId          String   @map("client_id")
+  verticalId        String?  @map("vertical_id")
+  filename          String
+  storageKey        String   @map("storage_key")
+  mimeType          String   @map("mime_type")
+  sizeBytes         Int      @map("size_bytes")
+  // pending | processing | ready | failed
+  extractionStatus  String   @default("pending") @map("extraction_status")
+  extractedText     String?  @map("extracted_text") @db.Text
+  errorMessage      String?  @map("error_message")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  agency   Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical ClientBrandVertical? @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([agencyId])
+  @@map("client_brand_attachments")
 }

@@ -19,6 +19,7 @@ import { TranscriptionConfig } from './config/source/TranscriptionConfig'
 import { InstructionTranslatorConfig } from './config/source/InstructionTranslatorConfig'
 import { WorkflowOutputConfig } from './config/source/WorkflowOutputConfig'
 import { GtmFrameworkConfig } from './config/source/GtmFrameworkConfig'
+import { BrandContextConfig } from './config/source/BrandContextConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -68,6 +69,8 @@ function NodeConfigForm({
   switch (nodeType) {
     case 'gtm_framework':
       return <GtmFrameworkConfig config={config} onChange={onChange} />
+    case 'brand_context':
+      return <BrandContextConfig config={config} onChange={onChange} />
     case 'source':
       if (subtype === 'transcription')
         return <TranscriptionConfig config={config} onChange={onChange} />

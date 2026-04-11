@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { prisma, auditService } from '@contentnode/database'
 import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
-import { getFrameworkResearchQueue, getAttachmentProcessQueue } from '../lib/queues.js'
+import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue } from '../lib/queues.js'
 
 const LOGO_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -2166,5 +2166,247 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     })
 
     return reply.code(201).send({ data: example })
+  })
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BRAND — verticals, profiles, builder, attachments
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── GET /:id/brand-verticals ───────────────────────────────────────────────
+  app.get<{ Params: { id: string } }>('/:id/brand-verticals', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const verticals = await prisma.clientBrandVertical.findMany({
+      where: { clientId, agencyId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, createdAt: true },
+    })
+    return reply.send({ data: verticals })
+  })
+
+  // ── POST /:id/brand-verticals ──────────────────────────────────────────────
+  app.post<{ Params: { id: string } }>('/:id/brand-verticals', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const { name } = (req.body ?? {}) as { name?: string }
+    if (!name?.trim()) return reply.code(400).send({ error: 'name is required' })
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const vertical = await prisma.clientBrandVertical.create({
+      data: { agencyId, clientId, name: name.trim() },
+      select: { id: true, name: true, createdAt: true },
+    })
+    return reply.code(201).send({ data: vertical })
+  })
+
+  // ── DELETE /:id/brand-verticals/:verticalId ────────────────────────────────
+  app.delete<{ Params: { id: string; verticalId: string } }>('/:id/brand-verticals/:verticalId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const vertical = await prisma.clientBrandVertical.findFirst({
+      where: { id: verticalId, clientId, agencyId },
+    })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+    await prisma.clientBrandVertical.delete({ where: { id: verticalId } })
+    return reply.code(204).send()
+  })
+
+  // ── GET /:id/brand-profile ─────────────────────────────────────────────────
+  // ?verticalId= omitted or empty → General brand
+  app.get<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-profile', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const profile = await prisma.clientBrandProfile.findFirst({
+      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+    })
+    return reply.send({ data: profile ?? null })
+  })
+
+  // ── PATCH /:id/brand-profile ───────────────────────────────────────────────
+  app.patch<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-profile', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+    const { editedJson } = (req.body ?? {}) as { editedJson?: Record<string, unknown> }
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const existing = await prisma.clientBrandProfile.findFirst({
+      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+    })
+    let profile
+    if (existing) {
+      profile = await prisma.clientBrandProfile.update({
+        where: { id: existing.id },
+        data: { editedJson: editedJson ?? null },
+      })
+    } else {
+      profile = await prisma.clientBrandProfile.create({
+        data: { agencyId, clientId, verticalId, editedJson: editedJson ?? null, extractionStatus: 'idle' },
+      })
+    }
+    return reply.send({ data: profile })
+  })
+
+  // ── GET /:id/brand-profile/attachments ────────────────────────────────────
+  app.get<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-profile/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const attachments = await prisma.clientBrandAttachment.findMany({
+      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true },
+    })
+    return reply.send({ data: attachments })
+  })
+
+  // ── POST /:id/brand-profile/attachments ───────────────────────────────────
+  app.post<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-profile/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    if (verticalId) {
+      const vert = await prisma.clientBrandVertical.findFirst({ where: { id: verticalId, clientId, agencyId } })
+      if (!vert) return reply.code(404).send({ error: 'Vertical not found' })
+    }
+
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const { filename, file, mimetype } = data
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storageKey = `brand-attachments/${agencyId}/${clientId}/${verticalId ?? 'general'}/${crypto.randomUUID()}-${safeName}`
+
+    try {
+      await uploadStream(storageKey, file, mimetype)
+    } catch (err) {
+      app.log.error(err, 'Failed to store brand attachment')
+      return reply.code(500).send({ error: 'Failed to store file' })
+    }
+
+    const sizeBytes = (file as unknown as { bytesRead?: number }).bytesRead ?? 0
+
+    const attachment = await prisma.clientBrandAttachment.create({
+      data: { agencyId, clientId, verticalId, filename, storageKey, mimeType: mimetype, sizeBytes },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true },
+    })
+
+    await getBrandAttachmentProcessQueue().add('process', {
+      agencyId,
+      attachmentId: attachment.id,
+      clientId,
+      verticalId,
+    }, {
+      removeOnComplete: { count: 50 },
+      removeOnFail: { count: 50 },
+    })
+
+    return reply.code(201).send({ data: attachment })
+  })
+
+  // ── DELETE /:id/brand-profile/attachments/:attachmentId ───────────────────
+  app.delete<{ Params: { id: string; attachmentId: string } }>('/:id/brand-profile/attachments/:attachmentId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, attachmentId } = req.params
+    const attachment = await prisma.clientBrandAttachment.findFirst({
+      where: { id: attachmentId, clientId, agencyId },
+    })
+    if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+    try { await deleteObject(attachment.storageKey) } catch {}
+    await prisma.clientBrandAttachment.delete({ where: { id: attachmentId } })
+    return reply.code(204).send()
+  })
+
+  // ── GET /:id/brand-builder ─────────────────────────────────────────────────
+  app.get<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-builder', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const builder = await prisma.clientBrandBuilder.findFirst({
+      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+    })
+    return reply.send({ data: builder ?? null })
+  })
+
+  // ── PUT /:id/brand-builder ─────────────────────────────────────────────────
+  app.put<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-builder', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+    const { dataJson } = (req.body ?? {}) as { dataJson?: Record<string, unknown> }
+    if (!dataJson) return reply.code(400).send({ error: 'dataJson is required' })
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const existing = await prisma.clientBrandBuilder.findFirst({
+      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+    })
+    let builder
+    if (existing) {
+      builder = await prisma.clientBrandBuilder.update({ where: { id: existing.id }, data: { dataJson } })
+    } else {
+      builder = await prisma.clientBrandBuilder.create({ data: { agencyId, clientId, verticalId, dataJson } })
+    }
+    return reply.send({ data: builder })
+  })
+
+  // ── GET /:id/brand ─────────────────────────────────────────────────────────
+  // Returns merged brand data for workflow node consumption
+  app.get<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+
+    const [client, profile, builder] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true, name: true } }),
+      prisma.clientBrandProfile.findFirst({
+        where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+        select: { editedJson: true, extractedJson: true },
+      }),
+      prisma.clientBrandBuilder.findFirst({
+        where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+        select: { dataJson: true },
+      }),
+    ])
+
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const profileData = (profile?.editedJson ?? profile?.extractedJson ?? null) as Record<string, unknown> | null
+    const builderData = (builder?.dataJson ?? null) as Record<string, unknown> | null
+
+    // Merge: builder values take priority, profile fills gaps
+    const merged = profileData || builderData
+      ? { ...(profileData ?? {}), ...(builderData ?? {}) }
+      : null
+
+    let verticalName: string | null = null
+    if (verticalId) {
+      const vert = await prisma.clientBrandVertical.findFirst({ where: { id: verticalId, clientId, agencyId }, select: { name: true } })
+      verticalName = vert?.name ?? null
+    }
+
+    return reply.send({
+      data: {
+        clientId,
+        clientName: client.name,
+        vertical: verticalName ?? 'General',
+        brand: merged,
+        hasBrandProfile: profileData !== null,
+        hasBrandBuilder: builderData !== null,
+        source: profileData && builderData ? 'merged' : profileData ? 'brand_profile' : builderData ? 'brand_builder' : null,
+      },
+    })
   })
 }
