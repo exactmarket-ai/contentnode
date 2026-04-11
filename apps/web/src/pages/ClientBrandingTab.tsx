@@ -17,6 +17,7 @@ interface BrandAttachment {
   createdAt: string
   extractionStatus: 'pending' | 'processing' | 'ready' | 'failed'
   errorMessage?: string | null
+  extractedText?: string | null
 }
 
 interface BrandJson {
@@ -231,7 +232,9 @@ function ColorArrayInput({ values, onChange }: { values: string[]; onChange: (v:
 function fileIcon(mimeType: string): string {
   if (mimeType.includes('pdf')) return '📄'
   if (mimeType.includes('word') || mimeType.includes('docx')) return '📝'
-  if (mimeType.includes('image')) return '🖼️'
+  if (mimeType.includes('csv') || mimeType.includes('excel')) return '📊'
+  if (mimeType.includes('json')) return '🗂️'
+  if (mimeType.includes('html')) return '🌐'
   if (mimeType.includes('text') || mimeType.includes('markdown')) return '📃'
   return '📎'
 }
@@ -240,6 +243,114 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Brand Attachment Row (GTM-style expandable file row)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BrandAttachmentRow({
+  attachment: a,
+  deletingId,
+  onDelete,
+}: {
+  attachment: BrandAttachment
+  deletingId: string | null
+  onDelete: (a: BrandAttachment) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  function statusBadge() {
+    if (a.extractionStatus === 'pending') {
+      return (
+        <span className="inline-flex items-center rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">
+          Queued
+        </span>
+      )
+    }
+    if (a.extractionStatus === 'processing') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">
+          <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" />
+          Extracting…
+        </span>
+      )
+    }
+    if (a.extractionStatus === 'ready') {
+      return (
+        <span className="inline-flex items-center rounded-full border border-green-500/40 bg-green-500/10 px-1.5 py-0 text-[10px] font-medium text-green-600 dark:text-green-400">
+          ✓ Ready
+        </span>
+      )
+    }
+    if (a.extractionStatus === 'failed') {
+      return (
+        <span className="inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0 text-[10px] text-destructive">
+          Failed
+        </span>
+      )
+    }
+    return null
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div
+        className="flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/20"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="w-3 shrink-0 text-[11px] text-muted-foreground">
+          {expanded ? '▼' : '▶'}
+        </span>
+        <span className="shrink-0 text-lg">{fileIcon(a.mimeType)}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{a.filename}</p>
+          <div className="mt-0.5 flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground">
+              {formatBytes(a.sizeBytes)} · {new Date(a.createdAt).toLocaleDateString()}
+            </span>
+            {statusBadge()}
+          </div>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(a) }}
+          disabled={deletingId === a.id}
+          className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-red-500 disabled:opacity-40"
+        >
+          {deletingId === a.id ? (
+            <Icons.Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-border px-4 pb-4 pt-3">
+          {a.extractionStatus === 'ready' && a.extractedText ? (
+            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[11px] text-muted-foreground">
+              {a.extractedText}
+            </pre>
+          ) : a.extractionStatus === 'processing' || a.extractionStatus === 'pending' ? (
+            <p className="text-[11px] text-muted-foreground">
+              File is being read — extracted content will appear here once ready.
+            </p>
+          ) : a.extractionStatus === 'failed' ? (
+            <p className="text-[11px] text-destructive">
+              {a.errorMessage ?? 'Extraction failed. Try re-uploading the file.'}
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">No content extracted.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,7 +374,6 @@ function BrandProfileSection({
   const [editedJson, setEditedJson] = useState<BrandJson>({})
   const [saving, setSaving] = useState(false)
   const [showSource, setShowSource] = useState(false)
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -442,61 +552,44 @@ function BrandProfileSection({
           </div>
         )}
 
+        {/* Brain summary */}
+        {!loadingAttachments && attachments.length > 0 && (() => {
+          const ready = attachments.filter((a) => a.extractionStatus === 'ready').length
+          const processing = attachments.filter((a) => a.extractionStatus === 'pending' || a.extractionStatus === 'processing').length
+          const failed = attachments.filter((a) => a.extractionStatus === 'failed').length
+          return (
+            <div className="mt-3 flex items-start gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-foreground">
+                  {ready > 0 ? `✓ ${ready} file${ready !== 1 ? 's' : ''} in brain` : 'Files processing…'}
+                  {processing > 0 && ` · ${processing} processing`}
+                  {failed > 0 && ` · ${failed} failed`}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {ready > 0
+                    ? 'Claude has read these files and extracted a structured brand profile below.'
+                    : 'Files are being read — the brand profile will appear when ready.'}
+                </p>
+              </div>
+              {ready > 0 && (
+                <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  Brain active
+                </span>
+              )}
+            </div>
+          )
+        })()}
+
         {/* Attachment list */}
         {!loadingAttachments && attachments.length > 0 && (
           <div className="mt-3 space-y-2">
             {attachments.map((a) => (
-              <div
+              <BrandAttachmentRow
                 key={a.id}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
-              >
-                <span className="text-base shrink-0">{fileIcon(a.mimeType)}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">{a.filename}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {formatBytes(a.sizeBytes)} · {new Date(a.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                {/* Inline status badge */}
-                <span className={cn(
-                  'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                  a.extractionStatus === 'pending' && 'border-border bg-muted text-muted-foreground',
-                  a.extractionStatus === 'processing' && 'border-border bg-muted text-foreground',
-                  a.extractionStatus === 'ready' && 'border-border bg-muted text-foreground',
-                  a.extractionStatus === 'failed' && 'border-destructive/40 bg-destructive/10 text-destructive',
-                )}>
-                  {a.extractionStatus === 'pending' && 'Queued'}
-                  {a.extractionStatus === 'processing' && 'Extracting…'}
-                  {a.extractionStatus === 'ready' && '✓ Ready'}
-                  {a.extractionStatus === 'failed' && 'Failed'}
-                </span>
-                {/* Action dropdown */}
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setOpenMenuId(openMenuId === a.id ? null : a.id)}
-                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                  >
-                    <Icons.MoreHorizontal className="h-3.5 w-3.5" />
-                  </button>
-                  {openMenuId === a.id && (
-                    <div
-                      className="absolute right-0 top-7 z-50 min-w-[110px] rounded-lg border border-border bg-popover shadow-lg"
-                      onMouseLeave={() => setOpenMenuId(null)}
-                    >
-                      <button
-                        type="button"
-                        disabled={deletingId === a.id}
-                        onClick={() => { setOpenMenuId(null); handleDelete(a) }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 rounded-lg"
-                      >
-                        <Icons.Trash2 className="h-3.5 w-3.5" />
-                        {deletingId === a.id ? 'Removing…' : 'Remove'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+                attachment={a}
+                deletingId={deletingId}
+                onDelete={handleDelete}
+              />
             ))}
           </div>
         )}
