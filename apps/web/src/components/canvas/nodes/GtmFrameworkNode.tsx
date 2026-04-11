@@ -40,19 +40,31 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
   const spec = NODE_SPEC['input']
   const config = (data.config as Record<string, unknown>) ?? {}
   const sections = (config.sections as string[]) ?? SECTIONS.map((s) => s.num)
+  const verticalId   = (config.verticalId as string) || ''
   const verticalName = (config.verticalName as string) || null
   const [resolvedClientName, setResolvedClientName] = useState<string | null>((config.clientName as string) || null)
+  const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
 
-  // Fetch client name from API if not already in config
+  // Fetch client name + verticals
   useEffect(() => {
     const stored = (config.clientName as string) || null
-    if (stored) { setResolvedClientName(stored); return }
     if (!workflowClientId) return
-    apiFetch(`/api/v1/clients/${workflowClientId}`)
-      .then((r) => r.json())
-      .then((c) => { if (c?.data?.name) setResolvedClientName(c.data.name) })
-      .catch(() => {})
+    Promise.all([
+      stored ? Promise.resolve(stored) : apiFetch(`/api/v1/clients/${workflowClientId}`).then((r) => r.json()).then((c) => c?.data?.name ?? null),
+      apiFetch(`/api/v1/clients/${workflowClientId}/verticals`).then((r) => r.json()).then(({ data }) => data ?? []),
+    ]).then(([name, verts]) => {
+      if (name) setResolvedClientName(name)
+      setVerticals(verts)
+    }).catch(() => {})
   }, [workflowClientId, config.clientName])
+
+  const handleVerticalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    e.stopPropagation()
+    const selected = verticals.find((v) => v.id === e.target.value)
+    if (!selected) return
+    const currentConfig = (useWorkflowStore.getState().nodes.find((n) => n.id === id)?.data?.config as Record<string, unknown>) ?? {}
+    updateNodeData(id, { config: { ...currentConfig, verticalId: selected.id, verticalName: selected.name } })
+  }
 
   const resolveShort = (short: string) =>
     resolvedClientName ? short.replace('[Client]', resolvedClientName) : short
@@ -116,15 +128,6 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
         {isPassed && <span className="ml-1 text-[10px]" style={{ color: spec.accent }}>✓</span>}
         {isFailed && <span className="ml-1 text-[10px] text-red-500">✗</span>}
       </div>
-
-      {/* Vertical label */}
-      {verticalName && (
-        <div className="border-b px-3 py-1.5" style={{ borderColor: spec.headerBorder, backgroundColor: spec.headerBg }}>
-          <span className="text-[10px] font-medium" style={{ color: spec.accent }}>
-            Vertical: {verticalName}
-          </span>
-        </div>
-      )}
 
       {/* Section grid */}
       <div className="px-2.5 py-2">
@@ -196,6 +199,34 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
             })}
           </div>
         </div>
+      </div>
+
+      {/* Vertical dropdown */}
+      <div
+        className="border-t px-2.5 py-2"
+        style={{ borderColor: spec.headerBorder, backgroundColor: '#fafafa' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {verticals.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground">
+            {workflowClientId ? 'No verticals — add one in the config panel.' : 'Assign a client to select a vertical.'}
+          </p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">Vertical</span>
+            <select
+              value={verticalId}
+              onChange={handleVerticalChange}
+              className="nodrag flex-1 rounded border border-border bg-white px-2 py-0.5 text-[11px] text-foreground focus:outline-none focus:ring-1"
+              style={{ borderColor: verticalId ? spec.accent : undefined }}
+            >
+              <option value="">— select —</option>
+              {verticals.map((v) => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Output handle */}
