@@ -5,9 +5,12 @@ export interface CurrentUser {
   id: string
   email: string
   name: string | null
-  role: 'owner' | 'admin' | 'super_admin' | 'org_admin' | 'lead' | 'member' | string
+  role: string
   createdAt: string
 }
+
+const ADMIN_ROLES  = new Set(['owner', 'super_admin', 'admin', 'org_admin'])
+const OWNER_ROLES  = new Set(['owner', 'super_admin'])
 
 let cached: CurrentUser | null = null
 
@@ -29,9 +32,10 @@ export function useCurrentUser() {
       .finally(() => setLoading(false))
   }, [])
 
-  const isOwner = user?.role === 'owner' || user?.role === 'super_admin'
-  const isAdmin = user?.role === 'admin' || user?.role === 'org_admin' || isOwner
-  const isLead  = user?.role === 'lead' || isAdmin
+  const role    = user?.role ?? ''
+  const isOwner = OWNER_ROLES.has(role)
+  const isAdmin = ADMIN_ROLES.has(role)
+  const isLead  = role === 'lead' || isAdmin
   const isMember = !!user
 
   return { user, loading, isOwner, isAdmin, isLead, isMember }

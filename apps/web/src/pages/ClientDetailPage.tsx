@@ -695,7 +695,7 @@ function InviteResult({ data, onClose }: { data: { portalUrl: string; expiresAt:
 // ── Tab components ────────────────────────────────────────────────────────────
 
 function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabChange: (tab: Tab) => void; onUpdate: (updated: Partial<Client>) => void }) {
-  const { isAdmin } = useCurrentUser()
+  const { isAdmin, loading: roleLoading } = useCurrentUser()
   const [togglingOffline, setTogglingOffline] = useState(false)
   const [toggleError, setToggleError] = useState<string | null>(null)
 
@@ -749,8 +749,8 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
         </div>
       )}
 
-      {/* AI Policy — admin only */}
-      {isAdmin && (
+      {/* AI Policy — admin only (hide while role is loading to avoid flash-hide) */}
+      {(isAdmin || roleLoading) && (
         <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50' : 'border-border bg-card'}`}>
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-2.5">
