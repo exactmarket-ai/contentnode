@@ -119,41 +119,20 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
     setError(null)
     try {
       const trimmed = name.trim() || 'Untitled Workflow'
-      const res = await apiFetch('/api/v1/workflows', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: trimmed,
-          clientId,
-          connectivityMode: effectiveMode,
-          defaultModelConfig: { provider: effectiveProvider, model: effectiveModel, temperature: 0.7 },
-        }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setError(body.error ?? `Failed to create workflow (${res.status})`)
-        return
-      }
-      const { data: wf } = await res.json()
+
+      // Set up local state only — no DB record created here.
+      // The workflow is saved to the DB when the user explicitly saves or runs.
       setWorkflowName(trimmed)
       setWorkflow({
-        id: wf.id,
+        id: null,
         clientId,
         connectivity_mode: effectiveMode,
         default_model_config: { provider: effectiveProvider, model: effectiveModel, temperature: 0.7 },
-        graphSaved: true,
-        // Mark blank-canvas workflows so they get cleaned up if user navigates away without adding nodes
-        autoCreated: !selectedTemplate && !selectedOrgTemplateId,
       })
+
       if (selectedTemplate) {
         loadTemplate(selectedTemplate.nodes, selectedTemplate.edges)
-        // Save the template graph immediately so the workflow is never blank on reload
-        const { nodes: tNodes, edges: tEdges } = useWorkflowStore.getState()
-        apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
-          method: 'PUT',
-          body: JSON.stringify({ nodes: tNodes, edges: tEdges, name: trimmed }),
-        }).catch(() => {})
       } else if (selectedOrgTemplateId) {
-        // Load the org template's graph into the canvas
         try {
           const tRes = await apiFetch(`/api/v1/workflows/${selectedOrgTemplateId}`)
           if (tRes.ok) {
@@ -174,15 +153,11 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
               label: e.label as string | undefined,
               animated: false,
             }))
-            useWorkflowStore.setState({ nodes: rfNodes, edges: rfEdges, graphDirty: true })
-            // Save the org template graph immediately
-            apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
-              method: 'PUT',
-              body: JSON.stringify({ nodes: rfNodes, edges: rfEdges, name: trimmed }),
-            }).catch(() => {})
+            useWorkflowStore.setState({ nodes: rfNodes, edges: rfEdges, graphDirty: false })
           }
         } catch { /* non-critical — user gets a blank canvas */ }
       }
+
       onClose()
     } catch {
       setError('Network error — is the API running?')

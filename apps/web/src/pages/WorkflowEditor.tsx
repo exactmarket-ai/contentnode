@@ -226,16 +226,6 @@ export function WorkflowEditor() {
   const isAutoCreated = !!(workflow.autoCreated && workflow.id)
   const navigate = useNavigate()
 
-  // Clean up workflows that were created via the modal but abandoned with no nodes
-  useEffect(() => {
-    return () => {
-      const state = useWorkflowStore.getState()
-      if (state.workflow.id && state.workflow.autoCreated && state.nodes.length === 0) {
-        apiFetch(`/api/v1/workflows/${state.workflow.id}`, { method: 'DELETE' }).catch(() => {})
-      }
-    }
-  }, [])
-
   const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
