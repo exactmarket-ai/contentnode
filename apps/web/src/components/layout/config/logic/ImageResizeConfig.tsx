@@ -1,7 +1,6 @@
 import { FieldGroup } from '../shared'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { Slider } from '@/components/ui/slider'
 
 const PRESETS = [
   // Social
@@ -136,12 +135,14 @@ export function ImageResizeConfig({
 
       {showQuality && (
         <FieldGroup label={`Quality — ${quality}%`}>
-          <Slider
+          <input
+            type="range"
             min={1}
             max={100}
             step={1}
-            value={[quality]}
-            onValueChange={([v]) => onChange('quality', v)}
+            value={quality}
+            onChange={(e) => onChange('quality', Number(e.target.value))}
+            className="w-full accent-primary"
           />
           <p className="text-[11px] text-muted-foreground">
             Higher quality = larger file size. 85% is a good default.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
@@ -11,6 +11,35 @@ import { InsightsSidebar } from '@/components/insights/InsightsSidebar'
 import { NODE_SPEC, getNodeSpec } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+// ─── Node usage tracking (localStorage, per browser) ─────────────────────────
+
+const USAGE_KEY = 'contentnode:nodeUsage'
+const FREQUENT_THRESHOLD = 3
+const FREQUENT_MAX = 5
+
+function readUsage(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(USAGE_KEY) ?? '{}') } catch { return {} }
+}
+
+function incrementUsage(subtype: string) {
+  const usage = readUsage()
+  usage[subtype] = (usage[subtype] ?? 0) + 1
+  try { localStorage.setItem(USAGE_KEY, JSON.stringify(usage)) } catch { /* ignore */ }
+}
+
+function useNodeUsage() {
+  const [usage, setUsage] = useState<Record<string, number>>(readUsage)
+  const track = useCallback((subtype: string) => {
+    incrementUsage(subtype)
+    setUsage(readUsage())
+  }, [])
+  return { usage, track }
+}
+
+// Sort palette nodes alphabetically within a category
+const sortedByLabel = (nodes: PaletteNodeDef[]) =>
+  [...nodes].sort((a, b) => a.label.localeCompare(b.label))
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   source: 'Source', logic: 'Logic', output: 'Output', insight: 'Insight',
@@ -34,20 +63,21 @@ const CATEGORY_TOOLBAR_ICONS: Record<string, IconComponent> = {
 
 // ─── PaletteItem ──────────────────────────────────────────────────────────────
 
-function PaletteItem({ def, onClick }: { def: PaletteNodeDef; onClick?: () => void }) {
+function PaletteItem({ def, onClick, onTrack }: { def: PaletteNodeDef; onClick?: () => void; onTrack?: (s: string) => void }) {
   const spec = getNodeSpec(def.type ?? def.category, def.subtype)
   const IconComp = (Icons as unknown as Record<string, IconComponent>)[def.icon] ?? Icons.Box
 
   const onDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/contentnode-subtype', def.subtype)
     e.dataTransfer.effectAllowed = 'move'
+    onTrack?.(def.subtype)
   }
 
   return (
     <div
       draggable
       onDragStart={onDragStart}
-      onClick={onClick}
+      onClick={() => { onTrack?.(def.subtype); onClick?.() }}
       className={cn(
         'flex cursor-grab items-start gap-2.5 rounded-md border p-2.5 transition-colors active:cursor-grabbing hover:bg-accent',
         onClick && 'cursor-pointer active:cursor-pointer',
@@ -167,6 +197,7 @@ function ClientTemplatesSection() {
 function NodesPalette() {
   const [search, setSearch] = useState('')
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
+  const { usage, track } = useNodeUsage()
 
   const filtered = PALETTE_NODES.filter(
     (n) =>
@@ -174,7 +205,18 @@ function NodesPalette() {
       n.description.toLowerCase().includes(search.toLowerCase())
   )
 
-  const byCategory = (cat: NodeCategory) => filtered.filter((n) => n.category === cat)
+  const byCategory = (cat: NodeCategory) =>
+    sortedByLabel(filtered.filter((n) => n.category === cat))
+
+  // Frequently used: used ≥ threshold times, sorted by count desc, capped
+  const frequent = !search
+    ? PALETTE_NODES
+        .filter((n) => (usage[n.subtype] ?? 0) >= FREQUENT_THRESHOLD)
+        .sort((a, b) => (usage[b.subtype] ?? 0) - (usage[a.subtype] ?? 0))
+        .slice(0, FREQUENT_MAX)
+    : []
+
+  const frequentSubtypes = new Set(frequent.map((n) => n.subtype))
 
   return (
     <>
@@ -197,19 +239,41 @@ function NodesPalette() {
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-4 px-3 py-3">
+          {/* Frequently used */}
+          {frequent.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b4b2a9' }}>
+                Frequently Used
+              </p>
+              <div className="space-y-1.5">
+                {frequent.map((def) => (
+                  <PaletteItem
+                    key={def.subtype}
+                    def={def}
+                    onTrack={track}
+                    onClick={() => addNodeBySubtype(def.subtype)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Categories, alphabetically sorted */}
           {(['source', 'logic', 'output'] as NodeCategory[]).map((cat) => {
-            const items = byCategory(cat)
-            if (items.length === 0) return null
+            const items = byCategory(cat).filter((n) => !frequentSubtypes.has(n.subtype))
+            const allItems = byCategory(cat)
+            if (allItems.length === 0) return null
             return (
               <div key={cat}>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b4b2a9' }}>
                   {CATEGORY_LABELS[cat]}
                 </p>
                 <div className="space-y-1.5">
-                  {items.map((def) => (
+                  {(search ? allItems : items).map((def) => (
                     <PaletteItem
                       key={def.subtype}
                       def={def}
+                      onTrack={track}
                       onClick={() => addNodeBySubtype(def.subtype)}
                     />
                   ))}
@@ -368,10 +432,11 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
 
           {/* Node list */}
           <div className="max-h-[60vh] overflow-y-auto py-1.5 px-2 space-y-1">
-            {PALETTE_NODES.filter((n) => n.category === openCat).map((def) => (
+            {sortedByLabel(PALETTE_NODES.filter((n) => n.category === openCat)).map((def) => (
               <PaletteItem
                 key={def.subtype}
                 def={def}
+                onTrack={incrementUsage}
                 onClick={() => {
                   addNodeBySubtype(def.subtype)
                   setOpenCat(null)
