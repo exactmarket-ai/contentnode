@@ -2232,24 +2232,61 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     const { agencyId } = req.auth
     const clientId = req.params.id
     const verticalId = req.query.verticalId?.trim() || null
-    const { editedJson } = (req.body ?? {}) as { editedJson?: Record<string, unknown> }
+    const { editedJson, websiteUrl } = (req.body ?? {}) as { editedJson?: Record<string, unknown>; websiteUrl?: string }
     const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
     if (!client) return reply.code(404).send({ error: 'Client not found' })
     const existing = await prisma.clientBrandProfile.findFirst({
       where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
     })
+    const updateData: Record<string, unknown> = {}
+    if (editedJson !== undefined) updateData.editedJson = editedJson ?? null
+    if (websiteUrl !== undefined) updateData.websiteUrl = websiteUrl?.trim() || null
     let profile
     if (existing) {
-      profile = await prisma.clientBrandProfile.update({
-        where: { id: existing.id },
-        data: { editedJson: editedJson ?? null },
-      })
+      profile = await prisma.clientBrandProfile.update({ where: { id: existing.id }, data: updateData })
     } else {
       profile = await prisma.clientBrandProfile.create({
-        data: { agencyId, clientId, verticalId, editedJson: editedJson ?? null, extractionStatus: 'idle' },
+        data: { agencyId, clientId, verticalId, extractionStatus: 'idle', ...updateData },
       })
     }
     return reply.send({ data: profile })
+  })
+
+  // ── POST /:id/brand-profile/scrape ────────────────────────────────────────
+  // Enqueue a brand-scrape job that fetches the website URL and re-runs extraction
+  app.post<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-profile/scrape', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    // Get or create profile to confirm websiteUrl is set
+    const profile = await prisma.clientBrandProfile.findFirst({
+      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+      select: { id: true, websiteUrl: true },
+    })
+    if (!profile?.websiteUrl) {
+      return reply.code(422).send({ error: 'No website URL saved on the brand profile. Save a URL first.' })
+    }
+
+    await prisma.clientBrandProfile.update({
+      where: { id: profile.id },
+      data: { extractionStatus: 'extracting', errorMessage: null },
+    })
+
+    // Enqueue via brand-attachment queue — the processor will detect website source
+    await getBrandAttachmentProcessQueue().add('scrape', {
+      agencyId,
+      attachmentId: '', // empty signals website-scrape mode
+      clientId,
+      verticalId,
+    }, {
+      removeOnComplete: { count: 50 },
+      removeOnFail: { count: 50 },
+    })
+
+    return reply.send({ data: { status: 'extracting' } })
   })
 
   // ── GET /:id/brand-profile/attachments ────────────────────────────────────

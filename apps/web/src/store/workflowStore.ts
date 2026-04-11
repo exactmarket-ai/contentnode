@@ -18,6 +18,7 @@ export interface WorkflowMeta {
   id: string | null
   name: string
   clientId: string | null
+  clientName: string | null
   /** Locked after first run — never change after that */
   connectivity_mode: ConnectivityMode
   default_model_config: ModelConfig
@@ -455,6 +456,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     id: null,
     name: 'Untitled Workflow',
     clientId: null,
+    clientName: null,
     connectivity_mode: 'online',
     default_model_config: {
       provider: 'anthropic',

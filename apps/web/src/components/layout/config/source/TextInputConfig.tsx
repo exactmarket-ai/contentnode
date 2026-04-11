@@ -9,6 +9,7 @@ import { useWorkflowStore } from '@/store/workflowStore'
 
 export function TextInputConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
+  const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
   const [showPromptPicker, setShowPromptPicker] = useState(false)
   const [loadedTemplate, setLoadedTemplate] = useState<PromptTemplate | null>(null)
   const [showSaveInput, setShowSaveInput] = useState(false)
@@ -171,6 +172,7 @@ export function TextInputConfig({ config, onChange }: { config: Record<string, u
           onSelect={handleLoadTemplate}
           onClose={() => setShowPromptPicker(false)}
           clientId={clientId}
+          clientName={clientName}
         />
       )}
     </>

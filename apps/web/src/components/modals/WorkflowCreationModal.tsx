@@ -126,6 +126,7 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
       setWorkflow({
         id: null,
         clientId,
+        clientName: selectedClient?.name ?? null,
         connectivity_mode: effectiveMode,
         default_model_config: { provider: effectiveProvider, model: effectiveModel, temperature: 0.7 },
       })

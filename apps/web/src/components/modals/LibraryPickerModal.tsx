@@ -118,11 +118,13 @@ export function LibraryPickerModal({
   onConfirm,
   onClose,
   clientId,
+  clientName,
 }: {
   selectedIds: string[]
   onConfirm: (files: Array<{ id: string; name: string }>) => void
   onClose: () => void
   clientId?: string
+  clientName?: string
 }) {
   const [agencyFiles, setAgencyFiles] = useState<AgencyFile[]>([])
   const [clientFiles, setClientFiles] = useState<AgencyFile[]>([])
@@ -207,7 +209,7 @@ export function LibraryPickerModal({
             <>
               {clientId && (
                 <FileGroup
-                  title="Client Library"
+                  title={clientName ? `${clientName} Library` : 'Client Library'}
                   files={clientFiles}
                   picked={picked}
                   toggle={toggle}

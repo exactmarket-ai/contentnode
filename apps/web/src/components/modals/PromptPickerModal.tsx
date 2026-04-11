@@ -95,10 +95,12 @@ export function PromptPickerModal({
   onSelect,
   onClose,
   clientId,
+  clientName,
 }: {
   onSelect: (template: PromptTemplate) => void
   onClose: () => void
   clientId?: string
+  clientName?: string
 }) {
   const [agencyTemplates, setAgencyTemplates] = useState<PromptTemplate[]>([])
   const [clientTemplates, setClientTemplates] = useState<PromptTemplate[]>([])
@@ -187,7 +189,7 @@ export function PromptPickerModal({
                 {clientId && (
                   <>
                     <TemplateList
-                      title="Client Templates"
+                      title={clientName ? `${clientName} Templates` : 'Client Templates'}
                       templates={filteredClient}
                       activeId={previewing?.id ?? null}
                       onSelect={setPreviewing}

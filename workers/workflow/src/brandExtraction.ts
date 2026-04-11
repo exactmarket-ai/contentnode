@@ -109,13 +109,55 @@ const BRAND_EXTRACTION_SYSTEM_PROMPT = `You are a brand analyst. The user has up
 
 Return only JSON. No preamble, no explanation, no markdown code fences.`
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Website scraping (fetches home + /about + /brand)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function scrapeWebsiteForBrand(url: string): Promise<string> {
+  const base = url.replace(/\/$/, '')
+  const pages = [base, `${base}/about`, `${base}/about-us`, `${base}/brand`]
+
+  const strip = (html: string) =>
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .slice(0, 10000)
+
+  const texts: string[] = []
+  for (const page of pages) {
+    try {
+      const res = await fetch(page, {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      })
+      if (res.ok) {
+        const text = strip(await res.text())
+        if (text.length > 200) texts.push(`[${page}]\n${text}`)
+      }
+    } catch { /* skip unreachable pages */ }
+  }
+  return texts.join('\n\n---\n\n')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core extraction — combines attachment text + website text → Claude JSON
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function runBrandExtraction(
   agencyId: string,
   clientId: string,
   verticalId: string | null,
 ): Promise<void> {
   await withAgency(agencyId, async () => {
-    // Load all ready attachments for this client+vertical
+    const profile = await prisma.clientBrandProfile.findFirst({
+      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
+      select: { id: true, websiteUrl: true },
+    })
+
+    // Load all ready file attachments
     const attachments = await prisma.clientBrandAttachment.findMany({
       where: {
         clientId,
@@ -127,35 +169,31 @@ async function runBrandExtraction(
       select: { filename: true, extractedText: true },
     })
 
-    if (attachments.length === 0) return
-
-    const combinedText = attachments
+    const parts: string[] = attachments
       .filter((a) => a.extractedText?.trim())
       .map((a) => `--- ${a.filename} ---\n${a.extractedText}`)
-      .join('\n\n')
 
-    if (!combinedText.trim()) return
-
-    // Mark profile as extracting
-    const existing = await prisma.clientBrandProfile.findFirst({
-      where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
-    })
-
-    const profileData = {
-      agencyId,
-      clientId,
-      verticalId: verticalId ?? null,
-      extractionStatus: 'extracting',
-      sourceText: combinedText.slice(0, 500_000),
+    // Scrape website if URL is set
+    const websiteUrl = profile?.websiteUrl
+    if (websiteUrl) {
+      try {
+        const scraped = await scrapeWebsiteForBrand(websiteUrl)
+        if (scraped.trim()) parts.push(`--- Website: ${websiteUrl} ---\n${scraped}`)
+      } catch (err) {
+        console.error('[brand-extraction] website scrape failed:', err)
+      }
     }
 
-    if (existing) {
-      await prisma.clientBrandProfile.update({
-        where: { id: existing.id },
-        data: profileData,
-      })
+    if (parts.length === 0) return
+
+    const combinedText = parts.join('\n\n')
+
+    // Mark profile as extracting
+    const upsertBase = { agencyId, clientId, verticalId: verticalId ?? null, extractionStatus: 'extracting', sourceText: combinedText.slice(0, 500_000) }
+    if (profile) {
+      await prisma.clientBrandProfile.update({ where: { id: profile.id }, data: upsertBase })
     } else {
-      await prisma.clientBrandProfile.create({ data: profileData })
+      await prisma.clientBrandProfile.create({ data: upsertBase })
     }
 
     // Call Claude for structured brand JSON
@@ -175,7 +213,6 @@ async function runBrandExtraction(
         combinedText.slice(0, 50_000),
       )
 
-      // Strip any markdown fences Claude might still add
       let raw = result.text.trim()
       if (raw.startsWith('```')) {
         raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
@@ -186,13 +223,13 @@ async function runBrandExtraction(
       console.error('[brand-extraction] Claude call failed:', errorMessage)
     }
 
-    // Update profile record
-    const profile = await prisma.clientBrandProfile.findFirst({
+    // Persist result
+    const final = await prisma.clientBrandProfile.findFirst({
       where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
     })
-    if (profile) {
+    if (final) {
       await prisma.clientBrandProfile.update({
-        where: { id: profile.id },
+        where: { id: final.id },
         data: {
           extractionStatus: extractedJson ? 'ready' : 'failed',
           extractedJson: (extractedJson ?? undefined) as object | undefined,
@@ -210,6 +247,16 @@ async function runBrandExtraction(
 
 export async function processBrandAttachment(job: BrandAttachmentProcessJobData): Promise<void> {
   const { agencyId, attachmentId, clientId, verticalId } = job
+
+  // Website-scrape-only mode — no file to extract, just re-run full extraction
+  // which will now include the websiteUrl stored on the profile
+  if (!attachmentId) {
+    console.log(`[brand-attachment-process] website scrape for client=${clientId}`)
+    await runBrandExtraction(agencyId, clientId, verticalId)
+    console.log(`[brand-attachment-process] website scrape done for client=${clientId}`)
+    return
+  }
+
   console.log(`[brand-attachment-process] processing attachment=${attachmentId}`)
 
   await withAgency(agencyId, async () => {

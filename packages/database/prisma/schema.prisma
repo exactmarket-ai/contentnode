@@ -1120,6 +1120,7 @@ model ClientBrandProfile {
   extractedJson     Json?     @map("extracted_json")
   editedJson        Json?     @map("edited_json")
   sourceText        String?   @map("source_text") @db.Text
+  websiteUrl        String?   @map("website_url")
   errorMessage      String?   @map("error_message")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")

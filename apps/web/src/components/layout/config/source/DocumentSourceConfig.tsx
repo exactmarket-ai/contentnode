@@ -40,6 +40,7 @@ export function DocumentSourceConfig({
   onChange: (k: string, v: unknown) => void
 }) {
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
+  const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -278,6 +279,7 @@ export function DocumentSourceConfig({
         <LibraryPickerModal
           selectedIds={libraryRefs.map((r) => r.id)}
           clientId={clientId}
+          clientName={clientName}
           onConfirm={(selected) => {
             onChange('library_refs', selected)
             setShowLibrary(false)
@@ -377,6 +379,7 @@ export function DocumentSourceConfig({
           onSelect={handleLoadTemplate}
           onClose={() => setShowPromptPicker(false)}
           clientId={clientId}
+          clientName={clientName}
         />
       )}
     </>

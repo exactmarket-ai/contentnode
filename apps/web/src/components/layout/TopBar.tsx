@@ -196,6 +196,7 @@ export function TopBar() {
         id: null,
         name: 'Untitled Workflow',
         clientId: null,
+        clientName: null,
         connectivity_mode: 'online',
         default_model_config: { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 },
       },

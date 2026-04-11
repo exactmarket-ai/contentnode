@@ -59,6 +59,7 @@ export function WorkflowEditor() {
           id: null,
           name: 'Untitled Workflow',
           clientId: null,
+          clientName: null,
           connectivity_mode: 'online',
           default_model_config: { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 },
         },
@@ -107,6 +108,7 @@ export function WorkflowEditor() {
           id: data.id as string,
           name: data.name as string,
           clientId: (data.clientId as string | null) ?? null,
+          clientName: ((data.client as { name?: string } | null)?.name) ?? null,
           connectivity_mode: (data.connectivityMode as 'online' | 'offline') ?? 'online',
           graphSaved: true,
         })

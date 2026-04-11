@@ -31,6 +31,7 @@ export function AiGenerateConfig({
   nodeRunStatus?: { status?: string; output?: unknown }
 }) {
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
+  const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
   const [copied, setCopied] = useState(false)
   const [showPromptPicker, setShowPromptPicker] = useState(false)
   const [loadedTemplate, setLoadedTemplate] = useState<PromptTemplate | null>(null)
@@ -296,6 +297,7 @@ export function AiGenerateConfig({
           onSelect={handleLoadTemplate}
           onClose={() => setShowPromptPicker(false)}
           clientId={clientId}
+          clientName={clientName}
         />
       )}
 
