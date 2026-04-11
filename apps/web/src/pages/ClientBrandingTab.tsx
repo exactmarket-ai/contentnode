@@ -264,6 +264,7 @@ function BrandProfileSection({
   const [saving, setSaving] = useState(false)
   const [showSource, setShowSource] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const qs = verticalId ? `?verticalId=${verticalId}` : ''
@@ -306,7 +307,14 @@ function BrandProfileSection({
       const form = new FormData()
       form.append('file', file)
       const res = await apiFetch(`${baseAttachments}${qs}`, { method: 'POST', body: form })
-      if (!res.ok) return
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        const msg = (body as { error?: string }).error ?? 'Upload failed'
+        setUploadError(msg)
+        setTimeout(() => setUploadError(null), 6000)
+        return
+      }
+      setUploadError(null)
       const { data } = await res.json()
       setAttachments((prev) => [data, ...prev])
     } catch { /* ignore */ } finally {
@@ -409,7 +417,7 @@ function BrandProfileSection({
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.png,.jpg,.jpeg"
+            accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm"
             onChange={(e) => handleFiles(e.target.files)}
           />
           {uploading ? (
@@ -422,10 +430,17 @@ function BrandProfileSection({
                   browse
                 </button>
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF, DOCX, TXT, MD, CSV, JSON, HTML, PNG, JPG</p>
+              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · TXT · MD · CSV · JSON · HTML</p>
             </>
           )}
         </div>
+
+        {uploadError && (
+          <div className="mt-2 flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+            <Icons.AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {uploadError}
+          </div>
+        )}
 
         {/* Attachment list */}
         {!loadingAttachments && attachments.length > 0 && (

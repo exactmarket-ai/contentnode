@@ -2325,6 +2325,14 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     if (!data) return reply.code(400).send({ error: 'No file uploaded' })
 
     const { filename, file, mimetype } = data
+
+    const allowedExts = new Set(['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+    const fileExt = filename.slice(filename.lastIndexOf('.')).toLowerCase()
+    if (!allowedExts.has(fileExt)) {
+      file.resume()
+      return reply.code(400).send({ error: `Unsupported file type "${fileExt}". Accepted: PDF, DOCX, TXT, MD, CSV, JSON, HTML` })
+    }
+
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
     const storageKey = `brand-attachments/${agencyId}/${clientId}/${verticalId ?? 'general'}/${crypto.randomUUID()}-${safeName}`
 
