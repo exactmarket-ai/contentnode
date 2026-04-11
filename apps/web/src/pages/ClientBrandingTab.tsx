@@ -1092,10 +1092,6 @@ export function ClientBrandingTab({
   const [loadingVerticals, setLoadingVerticals] = useState(true)
   const [activeVerticalId, setActiveVerticalId] = useState<string | null>(null) // null = General
   const [subTab, setSubTab] = useState<SubTab>('profile')
-  const [addingVertical, setAddingVertical] = useState(false)
-  const [newVerticalName, setNewVerticalName] = useState('')
-  const [savingVertical, setSavingVertical] = useState(false)
-  const [deletingVerticalId, setDeletingVerticalId] = useState<string | null>(null)
 
   const fetchVerticals = useCallback(async () => {
     const res = await apiFetch(`/api/v1/clients/${clientId}/brand-verticals`)
@@ -1108,44 +1104,6 @@ export function ClientBrandingTab({
     fetchVerticals().finally(() => setLoadingVerticals(false))
   }, [fetchVerticals])
 
-  const handleCreateVertical = async () => {
-    const name = newVerticalName.trim()
-    if (!name) return
-    setSavingVertical(true)
-    try {
-      const res = await apiFetch(`/api/v1/clients/${clientId}/brand-verticals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
-      if (res.ok) {
-        const { data } = await res.json()
-        setVerticals((prev) => [...prev, data])
-        setActiveVerticalId(data.id)
-        setNewVerticalName('')
-        setAddingVertical(false)
-      }
-    } catch { /* ignore */ } finally {
-      setSavingVertical(false)
-    }
-  }
-
-  const handleDeleteVertical = async (v: BrandVertical) => {
-    if (!confirm(`Delete vertical "${v.name}"? This will also delete all brand data for this vertical.`)) return
-    setDeletingVerticalId(v.id)
-    try {
-      await apiFetch(`/api/v1/clients/${clientId}/brand-verticals/${v.id}`, { method: 'DELETE' })
-      setVerticals((prev) => prev.filter((x) => x.id !== v.id))
-      if (activeVerticalId === v.id) setActiveVerticalId(null)
-    } catch { /* ignore */ } finally {
-      setDeletingVerticalId(null)
-    }
-  }
-
-  const activeVerticalName = activeVerticalId
-    ? verticals.find((v) => v.id === activeVerticalId)?.name ?? 'Unknown'
-    : 'General'
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Page header */}
@@ -1157,102 +1115,38 @@ export function ClientBrandingTab({
         </p>
       </div>
 
-      {/* Vertical tabs row */}
-      <div className="shrink-0 border-b border-border bg-muted/20 px-6">
-        <div className="flex items-center gap-0 overflow-x-auto">
-          {/* General tab */}
-          <button
-            onClick={() => setActiveVerticalId(null)}
-            className={cn(
-              'flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
-              activeVerticalId === null
-                ? 'border-foreground text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            )}
-          >
-            General
-          </button>
-
-          {loadingVerticals
-            ? null
-            : verticals.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => setActiveVerticalId(v.id)}
-                  className={cn(
-                    'group flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
-                    activeVerticalId === v.id
-                      ? 'border-foreground text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {v.name}
-                  <span
-                    onClick={(e) => { e.stopPropagation(); handleDeleteVertical(v) }}
-                    className="hidden group-hover:inline text-muted-foreground hover:text-red-500 cursor-pointer"
-                    title={`Delete ${v.name}`}
-                  >
-                    {deletingVerticalId === v.id ? '…' : '×'}
-                  </span>
-                </button>
-              ))}
-
-          {/* Add vertical */}
-          {addingVertical ? (
-            <div className="flex shrink-0 items-center gap-1 px-2 py-1.5">
-              <input
-                type="text"
-                autoFocus
-                value={newVerticalName}
-                onChange={(e) => setNewVerticalName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateVertical(); if (e.key === 'Escape') { setAddingVertical(false); setNewVerticalName('') } }}
-                placeholder="Vertical name"
-                className="w-32 rounded border border-border bg-background px-2 py-0.5 text-sm focus:outline-none focus:border-ring"
-              />
-              <button
-                type="button"
-                onClick={handleCreateVertical}
-                disabled={savingVertical || !newVerticalName.trim()}
-                className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {savingVertical ? '…' : 'Add'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAddingVertical(false); setNewVerticalName('') }}
-                className="text-muted-foreground hover:text-foreground text-xs"
-              >
-                ×
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setAddingVertical(true)}
-              className="shrink-0 border-b-2 border-transparent px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              + Add Vertical
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Sub-tab row: Brand Profile / Brand Builder */}
+      {/* Sub-tab row: Brand Profile / Brand Builder + vertical selector */}
       <div className="shrink-0 border-b border-border px-6">
-        <div className="flex gap-4">
-          {(['profile', 'builder'] as SubTab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setSubTab(t)}
-              className={cn(
-                'border-b-2 py-2 text-sm font-medium transition-colors',
-                subTab === t
-                  ? 'border-foreground text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              )}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-4">
+            {(['profile', 'builder'] as SubTab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setSubTab(t)}
+                className={cn(
+                  'border-b-2 py-2 text-sm font-medium transition-colors',
+                  subTab === t
+                    ? 'border-foreground text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {t === 'profile' ? 'Brand Profile' : 'Brand Builder'}
+              </button>
+            ))}
+          </div>
+
+          {!loadingVerticals && verticals.length > 0 && (
+            <select
+              value={activeVerticalId ?? ''}
+              onChange={(e) => setActiveVerticalId(e.target.value || null)}
+              className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring"
             >
-              {t === 'profile' ? 'Brand Profile' : 'Brand Builder'}
-            </button>
-          ))}
+              <option value="">General</option>
+              {verticals.map((v) => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
