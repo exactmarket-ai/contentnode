@@ -192,6 +192,8 @@ export function WorkflowCanvas() {
           setRfInstance(instance)
         }}
         nodeTypes={nodeTypes}
+        minZoom={0.05}
+        maxZoom={2}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         deleteKeyCode="Backspace"
