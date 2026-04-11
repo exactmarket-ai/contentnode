@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
+import * as Icons from 'lucide-react'
 
 const SECTIONS = [
   { num: '01', label: 'Vertical Overview' },
@@ -35,7 +37,13 @@ export function GtmFrameworkConfig({
   onChange: (k: string, v: unknown) => void
 }) {
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
+  const { isLead } = useCurrentUser()
   const [verticals, setVerticals] = useState<Vertical[]>([])
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const sections = (config.sections as string[] | undefined) ?? ALL_NUMS
   const verticalId = (config.verticalId as string) ?? ''
@@ -69,34 +77,117 @@ export function GtmFrameworkConfig({
   const resolveLabel = (label: string) =>
     clientName ? label.replace('[Client]', clientName) : label
 
+  const handleAddVertical = async () => {
+    const name = newName.trim()
+    if (!name || !clientId) return
+    setSaving(true)
+    setAddError(null)
+    try {
+      // 1. Create the vertical
+      const res = await apiFetch('/api/v1/verticals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setAddError(json.error ?? 'Failed to create vertical')
+        setSaving(false)
+        return
+      }
+      const vertical: Vertical = json.data
+      // 2. Assign to client
+      await apiFetch(`/api/v1/clients/${clientId}/verticals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verticalId: vertical.id }),
+      })
+      setVerticals((prev) => [...prev, vertical].sort((a, b) => a.name.localeCompare(b.name)))
+      selectVertical(vertical)
+      setNewName('')
+      setAdding(false)
+    } catch {
+      setAddError('Something went wrong')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Vertical selector */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-foreground">Vertical</label>
+        <div className="mb-1.5 flex items-center justify-between">
+          <label className="text-xs font-semibold text-foreground">Vertical</label>
+          {isLead && clientId && !adding && (
+            <button
+              onClick={() => { setAdding(true); setAddError(null); setTimeout(() => inputRef.current?.focus(), 50) }}
+              className="flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-700"
+            >
+              <Icons.Plus className="h-3 w-3" />Add vertical
+            </button>
+          )}
+        </div>
         {!clientId ? (
           <p className="text-[11px] text-muted-foreground">No client is associated with this workflow.</p>
-        ) : verticals.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">No verticals found — add verticals in the client's Structure tab.</p>
         ) : (
-          <div className="space-y-1">
-            {verticals.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => selectVertical(v)}
-                className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
-                style={verticalId === v.id
-                  ? { borderColor: '#185fa5', backgroundColor: '#f0f6fd', color: '#0c447c' }
-                  : { borderColor: 'hsl(var(--border))' }
-                }
-              >
-                {verticalId === v.id && (
-                  <span style={{ color: '#185fa5' }}>✓</span>
-                )}
-                <span className="flex-1">{v.name}</span>
-              </button>
-            ))}
-          </div>
+          <>
+            {verticals.length === 0 && !adding && (
+              <p className="text-[11px] text-muted-foreground">
+                No verticals found.{isLead ? ' Use the button above to add one.' : ' Add verticals in the client\'s Structure tab.'}
+              </p>
+            )}
+            {verticals.length > 0 && (
+              <div className="space-y-1">
+                {verticals.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => selectVertical(v)}
+                    className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+                    style={verticalId === v.id
+                      ? { borderColor: '#185fa5', backgroundColor: '#f0f6fd', color: '#0c447c' }
+                      : { borderColor: 'hsl(var(--border))' }
+                    }
+                  >
+                    {verticalId === v.id && (
+                      <span style={{ color: '#185fa5' }}>✓</span>
+                    )}
+                    <span className="flex-1">{v.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {adding && (
+              <div className="mt-1 space-y-1.5">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddVertical(); if (e.key === 'Escape') { setAdding(false); setNewName('') } }}
+                  placeholder="Vertical name…"
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+                />
+                {addError && <p className="text-[11px] text-red-500">{addError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddVertical}
+                    disabled={saving || !newName.trim()}
+                    className="flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50 hover:bg-blue-700"
+                  >
+                    {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    {saving ? 'Saving…' : 'Add'}
+                  </button>
+                  <button
+                    onClick={() => { setAdding(false); setNewName(''); setAddError(null) }}
+                    className="rounded-md border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-muted/30"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
