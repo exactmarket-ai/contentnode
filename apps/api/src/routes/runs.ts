@@ -227,7 +227,14 @@ export async function runRoutes(app: FastifyInstance) {
     // Client-side checks are UX only — this is the authoritative gate.
     const resolvedPermissions = await permissionService.resolvePermissions(agencyId, userId, workflow.clientId ?? null)
 
-    if (body.graph?.nodes) {
+    // Super-admin and owner bypass all node-level permission checks
+    const callerRecord = await prisma.user.findFirst({
+      where: { agencyId, clerkUserId: userId },
+      select: { role: true },
+    })
+    const isSuperUser = callerRecord?.role === 'super_admin' || callerRecord?.role === 'owner'
+
+    if (!isSuperUser && body.graph?.nodes) {
       for (const n of body.graph.nodes) {
         const data   = (n.data ?? {}) as Record<string, unknown>
         const cfg    = (data.config as Record<string, unknown>) ?? data
@@ -266,7 +273,7 @@ export async function runRoutes(app: FastifyInstance) {
           return reply.code(403).send({ error: 'Your permissions do not allow humanizer nodes.' })
         }
       }
-    }
+    } // end !isSuperUser permission check
 
     // If the caller pre-seeded node statuses (e.g. "run to here" reusing existing outputs),
     // use them as the initial output so the runner skips already-passed nodes.
