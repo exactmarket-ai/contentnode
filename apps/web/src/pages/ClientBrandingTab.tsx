@@ -508,6 +508,9 @@ function BrandProfileSection({
   const [noteText, setNoteText] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [showNoteInput, setShowNoteInput] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
+  const [addingUrl, setAddingUrl] = useState(false)
+  const [showUrlInput, setShowUrlInput] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const qs = verticalId ? `?verticalId=${verticalId}` : ''
@@ -611,6 +614,32 @@ function BrandProfileSection({
     }
   }
 
+  const handleAddUrl = async () => {
+    const trimmed = urlInput.trim()
+    if (!trimmed) return
+    setAddingUrl(true)
+    try {
+      const res = await apiFetch(`${baseAttachments}/from-url${qs}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: trimmed }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        const msg = (body as { error?: string }).error ?? 'Failed to add URL'
+        setUploadError(msg)
+        setTimeout(() => setUploadError(null), 6000)
+        return
+      }
+      const { data } = await res.json()
+      setAttachments((prev) => [data, ...prev])
+      setUrlInput('')
+      setShowUrlInput(false)
+    } catch { /* ignore */ } finally {
+      setAddingUrl(false)
+    }
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -708,47 +737,81 @@ function BrandProfileSection({
           )}
         </div>
 
-        {/* Paste notes option */}
-        <div className="mt-2">
+        {/* Intake options row */}
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
           <button
             type="button"
-            onClick={() => setShowNoteInput((v) => !v)}
+            onClick={() => { setShowNoteInput((v) => !v); setShowUrlInput(false) }}
             className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <span className="text-[10px]">{showNoteInput ? '▼' : '▶'}</span>
-            Or type / paste notes directly
+            Paste notes
           </button>
-
-          {showNoteInput && (
-            <div className="mt-2 space-y-2">
-              <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Paste brand guidelines, messaging notes, tone rules, or any context you want Claude to learn from…"
-                rows={5}
-                className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddNote}
-                  disabled={addingNote || !noteText.trim()}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {addingNote ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.Plus className="h-3 w-3" />}
-                  Add to brain
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowNoteInput(false); setNoteText('') }}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => { setShowUrlInput((v) => !v); setShowNoteInput(false) }}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span className="text-[10px]">{showUrlInput ? '▼' : '▶'}</span>
+            Add URL
+          </button>
         </div>
+
+        {showNoteInput && (
+          <div className="mt-2 space-y-2">
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Paste brand guidelines, messaging notes, tone rules, or any context you want Claude to learn from…"
+              rows={5}
+              className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAddNote}
+                disabled={addingNote || !noteText.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {addingNote ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.Plus className="h-3 w-3" />}
+                Add to brain
+              </button>
+              <button type="button" onClick={() => { setShowNoteInput(false); setNoteText('') }} className="text-xs text-muted-foreground hover:text-foreground">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showUrlInput && (
+          <div className="mt-2 space-y-2">
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddUrl()}
+              placeholder="https://example.com/brand-guidelines"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Claude will scrape and read the page content. Works with brand pages, press releases, LinkedIn, case studies, etc.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAddUrl}
+                disabled={addingUrl || !urlInput.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {addingUrl ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.Link className="h-3 w-3" />}
+                Add to brain
+              </button>
+              <button type="button" onClick={() => { setShowUrlInput(false); setUrlInput('') }} className="text-xs text-muted-foreground hover:text-foreground">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {uploadError && (
           <div className="mt-2 flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">

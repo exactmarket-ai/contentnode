@@ -2505,6 +2505,44 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     return reply.send({ data: { text: attachment.extractedText ?? '', filename: attachment.filename } })
   })
 
+  // ── POST /:id/brand-profile/attachments/from-url — ingest a URL into the brain
+  app.post<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-profile/attachments/from-url', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const verticalId = req.query.verticalId?.trim() || null
+    const { url } = (req.body ?? {}) as { url?: string }
+
+    if (!url?.trim()) return reply.code(400).send({ error: 'url is required' })
+    let parsedUrl: URL
+    try { parsedUrl = new URL(url.trim()) } catch {
+      return reply.code(400).send({ error: 'Invalid URL' })
+    }
+
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    if (verticalId) {
+      const vert = await prisma.clientBrandVertical.findFirst({ where: { id: verticalId, clientId, agencyId } })
+      if (!vert) return reply.code(404).send({ error: 'Vertical not found' })
+    }
+
+    const hostname = parsedUrl.hostname.replace(/^www\./, '')
+    const date = new Date().toISOString().slice(0, 10)
+    const filename = `${hostname}-${date}.txt`
+    const storageKey = `url-import/${agencyId}/${clientId}/${verticalId ?? 'general'}/${crypto.randomUUID()}`
+
+    const attachment = await prisma.clientBrandAttachment.create({
+      data: { agencyId, clientId, verticalId, filename, storageKey, mimeType: 'text/plain', sizeBytes: 0, extractionStatus: 'processing' },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, summaryStatus: true },
+    })
+
+    await getBrandAttachmentProcessQueue().add('process', {
+      agencyId, attachmentId: attachment.id, clientId, verticalId, url: parsedUrl.toString(),
+    }, { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } })
+
+    return reply.code(201).send({ data: attachment })
+  })
+
   // ── GET /:id/brand-builder ─────────────────────────────────────────────────
   app.get<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/brand-builder', async (req, reply) => {
     const { agencyId } = req.auth

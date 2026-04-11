@@ -396,7 +396,7 @@ async function generateFileSummary(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function processBrandAttachment(job: BrandAttachmentProcessJobData): Promise<void> {
-  const { agencyId, attachmentId, clientId, verticalId } = job
+  const { agencyId, attachmentId, clientId, verticalId, url } = job
 
   // Website-scrape-only mode — no file to extract, just re-run full extraction
   // which will now include the websiteUrl stored on the profile
@@ -407,7 +407,7 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
     return
   }
 
-  console.log(`[brand-attachment-process] processing attachment=${attachmentId}`)
+  console.log(`[brand-attachment-process] processing attachment=${attachmentId}${url ? ` (url: ${url})` : ''}`)
 
   await withAgency(agencyId, async () => {
     const attachment = await prisma.clientBrandAttachment.findFirst({
@@ -427,12 +427,33 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
     let extractedText: string | null = null
     let errorMessage: string | null = null
 
-    try {
-      const buffer = await downloadBuffer(attachment.storageKey)
-      extractedText = await extractText(buffer, attachment.filename, attachment.mimeType)
-    } catch (err) {
-      errorMessage = err instanceof Error ? err.message : String(err)
-      console.error(`[brand-attachment-process] text extraction failed:`, errorMessage)
+    if (url) {
+      // URL mode — scrape the page instead of downloading from storage
+      try {
+        const scraped = await scrapeWebsiteForBrand(url)
+        extractedText = scraped.trim() || null
+        if (!extractedText) throw new Error('No readable content found at this URL')
+        // Update sizeBytes now that we know the content length
+        await prisma.clientBrandAttachment.update({
+          where: { id: attachmentId },
+          data: { sizeBytes: Buffer.byteLength(extractedText, 'utf8') },
+        })
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : String(err)
+        console.error(`[brand-attachment-process] URL scrape failed:`, errorMessage)
+      }
+    } else if (attachment.extractedText) {
+      // Pre-populated mode (feedback/approved content injected directly)
+      extractedText = attachment.extractedText
+    } else {
+      // Normal file mode — download from storage and extract text
+      try {
+        const buffer = await downloadBuffer(attachment.storageKey)
+        extractedText = await extractText(buffer, attachment.filename, attachment.mimeType)
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : String(err)
+        console.error(`[brand-attachment-process] text extraction failed:`, errorMessage)
+      }
     }
 
     await prisma.clientBrandAttachment.update({

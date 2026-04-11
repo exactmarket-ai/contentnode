@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { verifyToken } from '@clerk/backend'
 import { prisma, withAgency, auditService, agencyStorage } from '@contentnode/database'
-import { getWorkflowRunsQueue, getPatternDetectionQueue } from '../lib/queues.js'
+import { getWorkflowRunsQueue, getPatternDetectionQueue, getBrandAttachmentProcessQueue } from '../lib/queues.js'
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? ''
 const DEV_MODE = !CLERK_SECRET_KEY || CLERK_SECRET_KEY === 'sk_test_...'
@@ -436,6 +436,96 @@ export async function portalRoutes(app: FastifyInstance) {
           }
         }
       }
+    }
+
+    // ── Auto-ingest feedback into brand brain (non-blocking) ──────────────
+    // Every piece of feedback makes the brain smarter — corrections, tone
+    // guidance, and approved examples all feed back as brain entries.
+    if (clientId) {
+      ;(async () => {
+        try {
+          const agencyId = stakeholder.agencyId
+          const date = new Date().toISOString().slice(0, 10)
+
+          // Build a structured text entry from the feedback
+          const lines: string[] = [
+            `Stakeholder Feedback — ${date}`,
+            `Decision: ${decision}`,
+          ]
+          if (starRating) lines.push(`Rating: ${starRating}/5`)
+          if (toneFeedback) lines.push(`Tone: ${toneFeedback.replace(/_/g, ' ')}`)
+          if (contentTags?.length) lines.push(`Tags: ${contentTags.join(', ')}`)
+          if (comment) lines.push(`\nComment: ${comment}`)
+          if (specificChanges?.length) {
+            lines.push('\nRequested changes:')
+            for (const c of specificChanges) {
+              lines.push(`• Original: "${c.text}"`)
+              lines.push(`  Instruction: "${c.instruction}"`)
+            }
+          }
+
+          const feedbackText = lines.join('\n')
+          const hasContent = comment || (specificChanges?.length ?? 0) > 0 || toneFeedback
+
+          if (hasContent) {
+            const fbAttachment = await prisma.clientBrandAttachment.create({
+              data: {
+                agencyId, clientId,
+                verticalId: null, // feedback goes into General brain — applies across verticals
+                filename: `feedback-${date}-${feedback.id.slice(-6)}.txt`,
+                storageKey: `synthetic/feedback/${agencyId}/${clientId}/${feedback.id}`,
+                mimeType: 'text/plain',
+                sizeBytes: Buffer.byteLength(feedbackText, 'utf8'),
+                extractionStatus: 'ready',
+                extractedText: feedbackText,
+                summaryStatus: 'pending',
+              },
+            })
+            await getBrandAttachmentProcessQueue().add('process', {
+              agencyId, attachmentId: fbAttachment.id, clientId, verticalId: null,
+            }, { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } })
+          }
+
+          // If approved, add the run output as a reference example
+          if ((decision === 'approved' || decision === 'approved_with_changes') && run.output) {
+            const output = run.output as Record<string, unknown>
+            const nodeStatuses = output.nodeStatuses as Record<string, { output?: unknown }> | undefined
+            const outputTexts = nodeStatuses
+              ? Object.values(nodeStatuses)
+                  .map((n) => (typeof n?.output === 'string' ? n.output : null))
+                  .filter(Boolean)
+              : []
+            const approvedText = outputTexts[outputTexts.length - 1] // last output node
+            if (approvedText) {
+              const approvedEntry = [
+                `Approved Content Example — ${date}`,
+                `Decision: ${decision}${starRating ? ` (${starRating}/5 stars)` : ''}`,
+                '',
+                approvedText,
+              ].join('\n')
+
+              const approvedAttachment = await prisma.clientBrandAttachment.create({
+                data: {
+                  agencyId, clientId,
+                  verticalId: null,
+                  filename: `approved-example-${date}-${runId.slice(-6)}.txt`,
+                  storageKey: `synthetic/approved/${agencyId}/${clientId}/${runId}`,
+                  mimeType: 'text/plain',
+                  sizeBytes: Buffer.byteLength(approvedEntry, 'utf8'),
+                  extractionStatus: 'ready',
+                  extractedText: approvedEntry,
+                  summaryStatus: 'pending',
+                },
+              })
+              await getBrandAttachmentProcessQueue().add('process', {
+                agencyId, attachmentId: approvedAttachment.id, clientId, verticalId: null,
+              }, { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } })
+            }
+          }
+        } catch (err) {
+          console.error('[portal] brain ingestion failed:', err)
+        }
+      })()
     }
 
     return reply.code(201).send({ data: { feedbackId: feedback.id } })

@@ -71,6 +71,7 @@ export interface BrandAttachmentProcessJobData {
   attachmentId: string
   clientId: string
   verticalId: string | null
+  url?: string // if set, scrape this URL instead of downloading from storage
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
