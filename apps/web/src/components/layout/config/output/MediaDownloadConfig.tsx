@@ -1,6 +1,8 @@
 import * as Icons from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { assetUrl } from '@/lib/api'
+import { downloadAsset } from '@/lib/downloadAsset'
+import { useWorkflowStore } from '@/store/workflowStore'
 
 interface MediaOutput {
   storageKey?: string
@@ -42,10 +44,18 @@ export function MediaDownloadConfig({
     )
   }
 
+  const workflowName = useWorkflowStore((s) => s.workflow.name)
+
   const filePath    = output.localPath ?? `/files/${output.storageKey}`
-  const filename    = output.filename ?? output.videoName ?? 'download'
-  const isImage     = isImagePath(filePath) || isImagePath(filename)
-  const isVideo     = isVideoPath(filePath) || isVideoPath(filename)
+  const rawFilename = output.filename ?? output.videoName ?? 'download'
+  const isImage     = isImagePath(filePath) || isImagePath(rawFilename)
+  const isVideo     = isVideoPath(filePath) || isVideoPath(rawFilename)
+
+  // For thumbnails, name the file "{workflow}_thumbnail.{ext}"
+  const ext = (rawFilename.match(/\.[^.]+$/) ?? [''])[0]
+  const filename = isImage && workflowName
+    ? `${workflowName.replace(/[^a-z0-9_\-]/gi, '_')}_thumbnail${ext || '.jpg'}`
+    : rawFilename
 
   return (
     <div className="space-y-3">
@@ -87,14 +97,13 @@ export function MediaDownloadConfig({
       {output.localPath && (
         <>
           <Label className="text-xs text-muted-foreground">Download</Label>
-          <a
-            href={assetUrl(output.localPath)}
-            download={filename}
+          <button
+            onClick={() => downloadAsset(assetUrl(output.localPath!), filename)}
             className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent transition-colors"
           >
             <Icons.Download className="h-3.5 w-3.5" />
             {filename}
-          </a>
+          </button>
         </>
       )}
     </div>

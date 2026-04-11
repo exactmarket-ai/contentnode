@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch, assetUrl } from '@/lib/api'
+import { downloadAsset } from '@/lib/downloadAsset'
 import { FieldGroup, formatBytes } from '../shared'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -207,15 +208,13 @@ export function VideoFrameExtractorConfig({
                 className="w-full object-cover"
                 style={{ maxHeight: 180 }}
               />
-              <a
-                href={assetUrl(frameOutput.localPath)}
-                download={frameOutput.filename ?? 'thumbnail.jpg'}
+              <button
+                onClick={(e) => { e.stopPropagation(); downloadAsset(assetUrl(frameOutput.localPath!), frameOutput.filename ?? 'thumbnail.jpg') }}
                 className="absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-[10px] text-white hover:bg-black/80"
-                onClick={(e) => e.stopPropagation()}
               >
                 <Icons.Download className="h-3 w-3" />
                 Download JPG
-              </a>
+              </button>
             </div>
           )}
           {frameOutput.timestampSecs != null && (
