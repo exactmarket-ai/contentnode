@@ -4,9 +4,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import * as Icons from 'lucide-react'
 
 const GEMINI_MODELS = [
-  { value: 'gemini-1.5-flash',   label: 'Gemini 1.5 Flash (default)' },
-  { value: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B (cheapest)' },
-  { value: 'gemini-1.5-pro',     label: 'Gemini 1.5 Pro (best quality)' },
+  { value: 'gemini-1.5-flash',    label: 'Gemini 1.5 Flash (default)' },
+  { value: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B (fastest, cheapest)' },
+  { value: 'gemini-1.5-pro',      label: 'Gemini 1.5 Pro (best quality)' },
 ]
 
 const DEFAULT_PROMPT =

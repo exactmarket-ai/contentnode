@@ -32,12 +32,13 @@ const COST_PER_SECOND: Record<string, number> = {
 
 // Preferred model order — first available one wins
 const PREFERRED_MODELS = [
-  'gemini-2.0-flash-lite',
   'gemini-1.5-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-2.0-flash',
+  'gemini-1.5-flash-8b',
   'gemini-1.5-pro',
+  'gemini-1.5-flash-latest',
   'gemini-1.5-pro-latest',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash',
 ]
 
 let _cachedModel: string | null = null
