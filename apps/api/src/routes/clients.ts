@@ -281,6 +281,7 @@ export async function clientRoutes(app: FastifyInstance) {
     if (!client?.logoStorageKey) return reply.code(404).send({ error: 'No logo' })
 
     reply.header('Cache-Control', 'public, max-age=86400')
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin')
 
     // Data URL stored directly in DB (current approach — no S3 needed)
     if (client.logoStorageKey.startsWith('data:')) {
