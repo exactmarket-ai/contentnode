@@ -381,7 +381,7 @@ function BrandAttachmentRow({
 
       {/* Expanded content */}
       {expanded && (
-        <div className="border-t border-border px-4 pb-4 pt-3">
+        <div className="border-t border-border bg-card px-4 pb-4 pt-3">
           {a.extractionStatus === 'failed' ? (
             <p className="text-[11px] text-destructive">
               {a.errorMessage ?? 'Extraction failed. Try re-uploading the file.'}
@@ -397,7 +397,7 @@ function BrandAttachmentRow({
                 Edit Claude's Interpretation
               </p>
               <textarea
-                className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full resize-y rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 rows={8}
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
