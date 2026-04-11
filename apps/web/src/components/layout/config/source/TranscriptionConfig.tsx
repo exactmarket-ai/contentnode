@@ -8,7 +8,7 @@ import { apiFetch } from '@/lib/api'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { FieldGroup, formatBytes, UploadedAudioFile, CONTENT_ROLES } from '../shared'
 
-const AUDIO_ACCEPTED_EXTENSIONS = '.mp3,.wav,.m4a,.ogg,.flac,audio/*'
+const AUDIO_ACCEPTED_EXTENSIONS = '.mp3,.wav,.m4a,.ogg,.flac,.mp4,.mov,.avi,.webm,.mkv,.m4v,audio/*,video/*'
 const AUDIO_FILE_SIZE_LIMIT_MB = 500
 
 const TRANSCRIPTION_PROVIDERS = [
@@ -41,7 +41,7 @@ export function TranscriptionConfig({
     async (files: File[]) => {
       const allowed = files.filter((f) => {
         const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
-        return ['mp3', 'wav', 'm4a', 'ogg', 'flac'].includes(ext) &&
+        return ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'mp4', 'mov', 'avi', 'webm', 'mkv', 'm4v'].includes(ext) &&
           f.size <= AUDIO_FILE_SIZE_LIMIT_MB * 1024 * 1024
       })
       if (allowed.length === 0) return
@@ -137,7 +137,7 @@ export function TranscriptionConfig({
               {uploading ? 'Uploading…' : 'Drop audio files or click to browse'}
             </p>
             <p className="mt-0.5 break-words text-[11px] text-muted-foreground">
-              MP3, WAV, M4A, OGG, FLAC — up to {AUDIO_FILE_SIZE_LIMIT_MB} MB each
+              MP3, WAV, M4A, OGG, FLAC, MP4, MOV — up to {AUDIO_FILE_SIZE_LIMIT_MB} MB each
             </p>
           </div>
           <input
