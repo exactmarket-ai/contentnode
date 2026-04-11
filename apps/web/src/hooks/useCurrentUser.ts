@@ -32,11 +32,12 @@ export function useCurrentUser() {
       .finally(() => setLoading(false))
   }, [])
 
-  const role    = user?.role ?? ''
-  const isOwner = OWNER_ROLES.has(role)
-  const isAdmin = ADMIN_ROLES.has(role)
-  const isLead  = role === 'lead' || isAdmin
-  const isMember = !!user
+  const role      = user?.role ?? ''
+  const isOwner   = OWNER_ROLES.has(role)
+  const isAdmin   = ADMIN_ROLES.has(role)
+  const isManager = role === 'manager' || isAdmin
+  const isLead    = role === 'lead' || isManager
+  const isMember  = !!user
 
-  return { user, loading, isOwner, isAdmin, isLead, isMember }
+  return { user, loading, isOwner, isAdmin, isManager, isLead, isMember }
 }

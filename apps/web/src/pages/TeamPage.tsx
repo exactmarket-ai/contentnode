@@ -12,7 +12,7 @@ interface TeamMember {
   name: string | null
   title: string | null
   department: string | null
-  role: 'owner' | 'admin' | 'lead' | 'member'
+  role: 'owner' | 'admin' | 'manager' | 'lead' | 'member'
   createdAt: string
   lastActiveAt: string | null
   pending: boolean
@@ -73,10 +73,11 @@ function relativeTime(iso: string | null | undefined): string {
 // ─── Role config ──────────────────────────────────────────────────────────────
 
 const ROLE_STYLES: Record<string, { bg: string; border: string; color: string; label: string }> = {
-  owner:  { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Owner' },
-  admin:  { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Admin' },
-  lead:   { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Lead' },
-  member: { bg: '#f4f4f2', border: '#dddcd6', color: '#5c5b52', label: 'Member' },
+  owner:   { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Owner' },
+  admin:   { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Admin' },
+  manager: { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Manager' },
+  lead:    { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Lead' },
+  member:  { bg: '#f4f4f2', border: '#dddcd6', color: '#5c5b52', label: 'Member' },
 }
 
 // ─── Invite modal ─────────────────────────────────────────────────────────────
@@ -89,7 +90,7 @@ interface InviteModalProps {
 function InviteModal({ onClose, onInvited }: InviteModalProps) {
   const [name, setName]     = useState('')
   const [email, setEmail]   = useState('')
-  const [role, setRole]     = useState<'admin' | 'lead' | 'member'>('member')
+  const [role, setRole]     = useState<'admin' | 'manager' | 'lead' | 'member'>('member')
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
@@ -155,11 +156,12 @@ function InviteModal({ onClose, onInvited }: InviteModalProps) {
             <label className="block text-[12px] font-medium text-[#5c5b52] mb-1">Role</label>
             <select
               value={role}
-              onChange={e => setRole(e.target.value as 'admin' | 'lead' | 'member')}
+              onChange={e => setRole(e.target.value as 'admin' | 'manager' | 'lead' | 'member')}
               className="w-full rounded-md border border-[#dddcd6] px-3 py-2 text-[13px] text-[#1a1a14] bg-white outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
             >
               <option value="member">Member — can view and run workflows</option>
               <option value="lead">Lead — manages client-level external access</option>
+              <option value="manager">Manager — manages clients, workflows, and leads/members</option>
               <option value="admin">Admin — can create and manage workflows + org access</option>
             </select>
           </div>

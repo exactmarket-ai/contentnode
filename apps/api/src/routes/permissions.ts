@@ -17,7 +17,7 @@ export async function permissionRoutes(app: FastifyInstance) {
     const roles = [
       'super_admin', 'org_admin', 'client_manager',
       'editor', 'reviewer', 'viewer', 'api_user',
-      'owner', 'admin', 'lead', 'member',
+      'owner', 'admin', 'manager', 'lead', 'member',
     ]
     const data = Object.fromEntries(
       roles.map((r) => [r, permissionService.getRoleDefaults(r)])

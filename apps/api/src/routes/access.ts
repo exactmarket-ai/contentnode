@@ -19,7 +19,7 @@ function generateAccessToken() {
 export async function accessRoutes(app: FastifyInstance) {
 
   // ── GET / — list all access grants (Admin/Owner: all org, Lead: their clients) ──
-  app.get('/', { preHandler: requireRole('owner', 'admin', 'lead') }, async (req, reply) => {
+  app.get('/', { preHandler: requireRole('owner', 'admin', 'manager', 'lead') }, async (req, reply) => {
     const { agencyId, userId, role } = req.auth
 
     // Leads only see their clients — find which clients they manage
@@ -68,7 +68,7 @@ export async function accessRoutes(app: FastifyInstance) {
   })
 
   // ── GET /runs/:runId — list all access grants for a specific run ───────────
-  app.get('/runs/:runId', { preHandler: requireRole('owner', 'admin', 'lead') }, async (req, reply) => {
+  app.get('/runs/:runId', { preHandler: requireRole('owner', 'admin', 'manager', 'lead') }, async (req, reply) => {
     const { agencyId } = req.auth
     const { runId } = req.params as { runId: string }
 
@@ -93,7 +93,7 @@ export async function accessRoutes(app: FastifyInstance) {
   })
 
   // ── POST /runs/:runId/grant — grant access to a stakeholder for a run ──────
-  app.post('/runs/:runId/grant', { preHandler: requireRole('owner', 'admin', 'lead') }, async (req, reply) => {
+  app.post('/runs/:runId/grant', { preHandler: requireRole('owner', 'admin', 'manager', 'lead') }, async (req, reply) => {
     const { agencyId, userId } = req.auth
     const { runId } = req.params as { runId: string }
     const { stakeholderId, sendEmail = true } = req.body as { stakeholderId: string; sendEmail?: boolean }
@@ -154,7 +154,7 @@ export async function accessRoutes(app: FastifyInstance) {
   })
 
   // ── POST /grants/:grantId/revoke — revoke a specific grant ─────────────────
-  app.post('/grants/:grantId/revoke', { preHandler: requireRole('owner', 'admin', 'lead') }, async (req, reply) => {
+  app.post('/grants/:grantId/revoke', { preHandler: requireRole('owner', 'admin', 'manager', 'lead') }, async (req, reply) => {
     const { agencyId, userId } = req.auth
     const { grantId } = req.params as { grantId: string }
 
@@ -182,7 +182,7 @@ export async function accessRoutes(app: FastifyInstance) {
   })
 
   // ── POST /grants/:grantId/resend — resend access email with fresh token ───
-  app.post('/grants/:grantId/resend', { preHandler: requireRole('owner', 'admin', 'lead') }, async (req, reply) => {
+  app.post('/grants/:grantId/resend', { preHandler: requireRole('owner', 'admin', 'manager', 'lead') }, async (req, reply) => {
     const { agencyId, userId } = req.auth
     const { grantId } = req.params as { grantId: string }
 

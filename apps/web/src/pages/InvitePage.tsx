@@ -8,7 +8,7 @@ interface PendingMember {
   id: string
   email: string
   name: string | null
-  role: 'admin' | 'lead' | 'member'
+  role: 'admin' | 'manager' | 'lead' | 'member'
   createdAt: string
   inviteExpiresAt?: string | null
   inviteExpired: boolean
@@ -24,6 +24,11 @@ const ROLE_INFO: Record<string, { label: string; description: string; color: str
     label: 'Lead',
     description: 'All Member permissions plus client-level access management and external portal grants.',
     color: '#166534', bg: '#f0fdf4', border: '#86efac',
+  },
+  manager: {
+    label: 'Manager',
+    description: 'Manages client workflows and team members. Can invite leads and members. Cannot change org settings.',
+    color: '#b45309', bg: '#fffbeb', border: '#fde68a',
   },
   admin: {
     label: 'Admin',
@@ -58,7 +63,7 @@ export function InvitePage() {
 
   const [name, setName]         = useState('')
   const [email, setEmail]       = useState('')
-  const [role, setRole]         = useState<'admin' | 'lead' | 'member'>('member')
+  const [role, setRole]         = useState<'admin' | 'manager' | 'lead' | 'member'>('member')
   const [sending, setSending]   = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sent, setSent]         = useState<string | null>(null)
@@ -234,7 +239,7 @@ export function InvitePage() {
                   Role
                 </label>
                 <div className="space-y-2">
-                  {(['member', 'lead', 'admin'] as const).map((r) => {
+                  {(['member', 'lead', 'manager', 'admin'] as const).map((r) => {
                     const info = ROLE_INFO[r]
                     const selected = role === r
                     return (

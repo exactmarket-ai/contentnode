@@ -19,11 +19,11 @@ function generateInviteToken() {
 const inviteBody = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
-  role: z.enum(['admin', 'lead', 'member']).default('member'),
+  role: z.enum(['admin', 'manager', 'lead', 'member']).default('member'),
 })
 
 const updateRoleBody = z.object({
-  role: z.enum(['owner', 'admin', 'lead', 'member']),
+  role: z.enum(['owner', 'admin', 'manager', 'lead', 'member']),
 })
 
 const updateProfileBody = z.object({
