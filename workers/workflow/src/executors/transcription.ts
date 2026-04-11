@@ -160,12 +160,16 @@ async function callAssemblyAI(
     if (data.status === 'completed') {
       const durationSecs = (data.audio_duration ?? 0) / 1000
       console.log(`[assemblyai] completed — utterances: ${data.utterances?.length ?? 0}, text preview: ${data.text?.slice(0, 100)}`)
-      const segments: ParsedSegment[] = (data.utterances ?? []).map((u) => ({
+      let segments: ParsedSegment[] = (data.utterances ?? []).map((u) => ({
         speaker: u.speaker,
         startMs: u.start,
         endMs: u.end,
         text: u.text,
       }))
+      // When diarization is off, utterances is empty — fall back to the full transcript text
+      if (segments.length === 0 && data.text) {
+        segments = [{ speaker: '0', startMs: 0, endMs: Math.round(durationSecs * 1000), text: data.text }]
+      }
       return { segments, durationSecs }
     }
     if (data.status === 'error') throw new Error(`AssemblyAI transcription failed: ${JSON.stringify(data)}`)
