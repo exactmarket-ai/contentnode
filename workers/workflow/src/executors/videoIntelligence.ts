@@ -122,7 +122,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
       videoSecs = parseDurationSecs(durationStr)
 
       const genAI = new GoogleGenerativeAI(apiKey)
-      const genModel = genAI.getGenerativeModel({ model })
+      const genModel = genAI.getGenerativeModel({ model }, { apiVersion: 'v1' })
 
       const result = await genModel.generateContent([
         { fileData: { mimeType, fileUri: file.uri } },
