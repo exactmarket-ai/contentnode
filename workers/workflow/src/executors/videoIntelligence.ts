@@ -30,45 +30,8 @@ const COST_PER_SECOND: Record<string, number> = {
   'gemini-1.5-pro-latest':       0.001,
 }
 
-// Preferred model order — first available one wins
-const PREFERRED_MODELS = [
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
-  'gemini-1.5-pro',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro-latest',
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-flash',
-]
-
-let _cachedModel: string | null = null
-
-async function resolveModel(requestedModel: string, apiKey: string): Promise<string> {
-  // If explicitly configured and looks valid, try it directly
-  if (requestedModel && requestedModel.startsWith('gemini-')) {
-    return requestedModel
-  }
-  // Use cached discovery result
-  if (_cachedModel) return _cachedModel
-
-  try {
-    const res = await fetch(`${GEMINI_BASE}/v1beta/models?key=${apiKey}`)
-    const data = await res.json() as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> }
-    const available = new Set(
-      (data.models ?? [])
-        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
-        .map((m) => m.name.replace('models/', ''))
-    )
-    console.log(`[video-intelligence] available models: ${[...available].join(', ')}`)
-    const picked = PREFERRED_MODELS.find((m) => available.has(m))
-    if (!picked) throw new Error(`No supported Gemini model found. Available: ${[...available].join(', ')}`)
-    _cachedModel = picked
-    return picked
-  } catch (err) {
-    console.warn('[video-intelligence] model discovery failed, falling back to gemini-1.5-flash:', err)
-    return 'gemini-1.5-flash'
-  }
-}
+const VALID_MODELS = new Set(['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro'])
+const DEFAULT_MODEL = 'gemini-1.5-flash'
 
 const MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo',
@@ -181,7 +144,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     if (!apiKey) throw new Error('Video Intelligence: GEMINI_API_KEY is not set on the worker')
 
     const rawModel = (config.model as string) ?? ''
-    const model = await resolveModel(rawModel, apiKey)
+    const model = VALID_MODELS.has(rawModel) ? rawModel : DEFAULT_MODEL
     const prompt = (config.prompt as string) ??
       'Analyze this video and provide: (1) what it is about, (2) key topics and visuals, (3) any on-screen text or graphics, (4) the tone and purpose, (5) a 2–3 sentence summary for content planning.'
 
