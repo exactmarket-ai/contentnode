@@ -21,11 +21,13 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
 // Cost per second of video by model (USD) — approximate Gemini pricing
 const COST_PER_SECOND: Record<string, number> = {
-  'gemini-1.5-pro':         0.001,
-  'gemini-1.5-flash':       0.00004,
-  'gemini-1.5-flash-8b':    0.00002,
-  'gemini-2.0-flash':       0.00006,
-  'gemini-2.0-flash-lite':  0.00003,
+  'gemini-2.0-flash':            0.00006,
+  'gemini-2.0-flash-lite':       0.00003,
+  'gemini-1.5-flash':            0.00004,
+  'gemini-1.5-flash-latest':     0.00004,
+  'gemini-1.5-flash-8b':         0.00002,
+  'gemini-1.5-pro':              0.001,
+  'gemini-1.5-pro-latest':       0.001,
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -98,7 +100,7 @@ async function pollUntilActive(fileName: string, apiKey: string): Promise<Gemini
 
 async function generateContent(fileUri: string, mimeType: string, prompt: string, model: string, apiKey: string): Promise<string> {
   const res = await fetch(
-    `${GEMINI_BASE}/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `${GEMINI_BASE}/v1/models/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -138,7 +140,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     const apiKey = process.env.GEMINI_API_KEY ?? ''
     if (!apiKey) throw new Error('Video Intelligence: GEMINI_API_KEY is not set on the worker')
 
-    const model = (config.model as string) ?? 'gemini-1.5-flash'
+    const model = (config.model as string) ?? 'gemini-2.0-flash'
     const prompt = (config.prompt as string) ??
       'Analyze this video and provide: (1) what it is about, (2) key topics and visuals, (3) any on-screen text or graphics, (4) the tone and purpose, (5) a 2–3 sentence summary for content planning.'
 
