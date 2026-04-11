@@ -9,8 +9,8 @@
  *
  * Flow: upload to Gemini File API → poll until ACTIVE → generateContent → return text
  *
- * Model discovery: on first run, calls ListModels to find what's actually available
- * under this API key, then picks the best video-capable model. Cached per process.
+ * Model selection: tries the configured model first, then falls through the
+ * preference list until one succeeds. The working model is cached per process.
  */
 
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs'
@@ -24,7 +24,6 @@ import { usageEventService } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
 // Cost per second of video by model (USD) — approximate Gemini pricing
 const COST_PER_SECOND: Record<string, number> = {
@@ -35,12 +34,10 @@ const COST_PER_SECOND: Record<string, number> = {
   'gemini-1.5-pro':       0.001,
   'gemini-1.5-pro-001':   0.001,
   'gemini-1.5-pro-002':   0.001,
-  'gemini-2.0-flash':     0.00006,
-  'gemini-2.0-flash-exp': 0.00006,
 }
 
-// Ordered preference — first match wins
-const MODEL_PREFERENCE = [
+// Ordered fallback list — first working model wins
+const MODEL_FALLBACK = [
   'gemini-1.5-flash-002',
   'gemini-1.5-flash-001',
   'gemini-1.5-flash',
@@ -48,11 +45,9 @@ const MODEL_PREFERENCE = [
   'gemini-1.5-pro-002',
   'gemini-1.5-pro-001',
   'gemini-1.5-pro',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-exp',
 ]
 
-const VALID_MODELS = new Set(MODEL_PREFERENCE)
+const VALID_MODELS = new Set(MODEL_FALLBACK)
 
 const MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo',
@@ -75,58 +70,55 @@ function parseDurationSecs(durationStr?: string): number {
   return parseFloat(durationStr.replace('s', '')) || 0
 }
 
-// Models that appear in ListModels but are not actually callable
-const MODEL_BLOCKLIST = new Set([
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-flash-001',
-])
+function isModelUnavailableError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return msg.includes('404') || msg.includes('not found') || msg.includes('no longer available')
+}
 
-// Module-level cache — discovered once per worker process start
-let resolvedModel: string | null = null
+// Cached per worker process — the first model that successfully ran
+let cachedWorkingModel: string | null = null
 
-async function discoverModel(preferredModel: string, apiKey: string): Promise<string> {
-  if (resolvedModel) return resolvedModel
+async function generateContent(
+  fileUri: string,
+  mimeType: string,
+  prompt: string,
+  preferredModel: string,
+  apiKey: string,
+): Promise<{ text: string; model: string }> {
+  // Try cached model first, then preferred, then full fallback list
+  const order = [
+    ...(cachedWorkingModel ? [cachedWorkingModel] : []),
+    preferredModel,
+    ...MODEL_FALLBACK.filter((m) => m !== cachedWorkingModel && m !== preferredModel),
+  ]
 
-  try {
-    const res = await fetch(`${GEMINI_BASE}/v1beta/models?key=${apiKey}&pageSize=200`)
-    const data = await res.json() as {
-      models?: Array<{ name: string; supportedGenerationMethods?: string[] }>
-    }
-    const available = (data.models ?? [])
-      .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
-      .map((m) => m.name.replace('models/', ''))
-      .filter((m) => !MODEL_BLOCKLIST.has(m))
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const errors: string[] = []
 
-    console.log(`[video-intelligence] available models: ${available.join(', ')}`)
-
-    // Prefer configured model if available (exact or prefix match)
-    const findModel = (name: string) =>
-      available.find((a) => a === name || a.startsWith(name + '-') || a.startsWith(name + '_'))
-
-    const preferred = findModel(preferredModel)
-    if (preferred) {
-      resolvedModel = preferred
-    } else {
-      // Walk preference list with prefix matching
-      for (const m of MODEL_PREFERENCE) {
-        const match = findModel(m)
-        if (match) { resolvedModel = match; break }
+  for (const model of order) {
+    try {
+      console.log(`[video-intelligence] trying model: ${model}`)
+      const genModel = genAI.getGenerativeModel({ model })
+      const result = await genModel.generateContent([
+        { fileData: { mimeType, fileUri } },
+        { text: prompt },
+      ])
+      const text = result.response.text()
+      if (!text) throw new Error('Gemini: empty response')
+      cachedWorkingModel = model
+      return { text, model }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push(`${model}: ${msg}`)
+      if (isModelUnavailableError(err)) {
+        console.warn(`[video-intelligence] model ${model} unavailable, trying next`)
+        continue
       }
+      throw err // Non-availability error — don't swallow it
     }
-
-    if (!resolvedModel) {
-      throw new Error(`No supported Gemini model found. Available: ${available.join(', ')}`)
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message.startsWith('No supported')) throw err
-    // ListModels failed — fall back to preferred and let generateContent surface any real error
-    console.warn('[video-intelligence] ListModels failed, falling back to preferred model:', err)
-    resolvedModel = preferredModel
   }
 
-  console.log(`[video-intelligence] using model: ${resolvedModel}`)
-  return resolvedModel
+  throw new Error(`No Gemini model succeeded.\n${errors.join('\n')}`)
 }
 
 export class VideoIntelligenceExecutor extends NodeExecutor {
@@ -148,9 +140,6 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
       throw new Error('Video Intelligence: connect a Video Upload node to this node\'s input')
     }
 
-    // Discover which model is actually available under this API key
-    const model = await discoverModel(preferredModel, apiKey)
-
     // Load video into buffer
     let videoBuffer: Buffer
     if (isS3Mode()) {
@@ -171,6 +160,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     writeFileSync(tmpPath, videoBuffer)
 
     let text: string
+    let usedModel: string
     let videoSecs = 0
 
     try {
@@ -194,34 +184,25 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
         throw new Error('Gemini File API: file processing failed')
       }
 
-      console.log(`[video-intelligence] file active, generating content with ${model}`)
-
       // Parse video duration from metadata for cost tracking
       const durationStr = (file.videoMetadata as { videoDuration?: string } | undefined)?.videoDuration
       videoSecs = parseDurationSecs(durationStr)
 
-      const genAI = new GoogleGenerativeAI(apiKey)
-      const genModel = genAI.getGenerativeModel({ model })
-
-      const result = await genModel.generateContent([
-        { fileData: { mimeType, fileUri: file.uri } },
-        { text: prompt },
-      ])
-
-      text = result.response.text()
-      if (!text) throw new Error('Gemini: no text in response')
+      const result = await generateContent(file.uri, mimeType, prompt, preferredModel, apiKey)
+      text = result.text
+      usedModel = result.model
+      console.log(`[video-intelligence] done with ${usedModel} — ${videoSecs}s video`)
 
     } finally {
       try { unlinkSync(tmpPath) } catch { /* ignore */ }
     }
 
     const durationMs = Date.now() - startMs
-    const costPerSec = COST_PER_SECOND[model] ?? 0.001
+    const costPerSec = COST_PER_SECOND[usedModel!] ?? 0.001
     const estimatedCostUsd = videoSecs > 0 ? videoSecs * costPerSec : videoBuffer.length / (1024 * 1024) * 0.01
 
-    console.log(`[video-intelligence] done — ${videoSecs}s video, ~$${estimatedCostUsd.toFixed(4)}`)
+    console.log(`[video-intelligence] ~$${estimatedCostUsd.toFixed(4)}`)
 
-    // Record usage for billing
     usageEventService.record({
       agencyId:         ctx.agencyId,
       userId:           ctx.userId ?? undefined,
@@ -233,7 +214,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
       toolType:         'video',
       toolSubtype:      'video_intelligence',
       provider:         'gemini',
-      model,
+      model:            usedModel!,
       isOnline:         true,
       inputMediaCount:  1,
       estimatedCostUsd,
