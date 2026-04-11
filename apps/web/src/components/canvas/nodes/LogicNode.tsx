@@ -79,6 +79,7 @@ export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
   const edges = useWorkflowStore((s) => s.edges)
   const nodes = useWorkflowStore((s) => s.nodes)
+  const updateNodeData = useWorkflowStore((s) => s.updateNodeData)
   const status = nodeStatuses[id]?.status ?? 'idle'
   const subtype = data.subtype as string
   const portConfig = getPortConfig(subtype)

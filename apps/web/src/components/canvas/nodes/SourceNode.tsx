@@ -8,6 +8,7 @@ import { EditableLabel } from './EditableLabel'
 
 export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
+  const updateNodeData = useWorkflowStore((s) => s.updateNodeData)
   const status = nodeStatuses[id]?.status ?? 'idle'
   const [dropping, setDropping] = useState(false)
   const [uploading, setUploading] = useState(false)

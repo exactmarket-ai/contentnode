@@ -10,6 +10,53 @@ import { EditableLabel } from './EditableLabel'
 
 const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
+const IMAGE_PROVIDERS = [
+  { value: 'dalle3',        label: 'DALL-E 3' },
+  { value: 'stability',     label: 'Stability' },
+  { value: 'fal',           label: 'FAL' },
+  { value: 'comfyui',       label: 'ComfyUI' },
+  { value: 'automatic1111', label: 'A1111' },
+]
+
+const VIDEO_PROVIDERS = [
+  { value: 'runway',              label: 'Runway' },
+  { value: 'kling',               label: 'Kling' },
+  { value: 'luma',                label: 'Luma' },
+  { value: 'pika',                label: 'Pika' },
+  { value: 'stability',           label: 'Stability' },
+  { value: 'veo2',                label: 'Veo 2' },
+  { value: 'comfyui-animatediff', label: 'AnimateDiff' },
+  { value: 'cogvideox',           label: 'CogVideoX' },
+  { value: 'wan21',               label: 'Wan 2.1' },
+]
+
+function estimateCost(subtype: string, provider: string, config: Record<string, unknown>): string | null {
+  if (subtype === 'image-generation') {
+    const count = (config.num_outputs as number) ?? 1
+    const quality = (config.quality as string) ?? 'standard'
+    const rateMap: Record<string, number> = {
+      dalle3: quality === 'high' ? 0.08 : 0.04,
+      stability: 0.003,
+      fal: 0.005,
+    }
+    const rate = rateMap[provider]
+    if (!rate) return 'Local'
+    return `~$${(rate * count).toFixed(2)}`
+  }
+  if (subtype === 'video-generation') {
+    const dur = (config.duration_seconds as number) ?? 5
+    const rateMap: Record<string, number> = {
+      runway: 0.05, kling: 0.03, luma: 0.04, pika: 0.016, veo2: 0.10,
+    }
+    const rate = rateMap[provider]
+    if (!rate) return 'Local'
+    return `~$${(rate * dur).toFixed(2)}`
+  }
+  return null
+}
+
+interface HistoryEntry { localPath: string; type: 'image' | 'video'; timestamp: string }
+
 export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
   const edges = useWorkflowStore((s) => s.edges)
@@ -26,17 +73,37 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const isFailed   = status === 'failed'
   const isSkipped  = status === 'skipped'
 
-  // Connected upstream nodes (for multi-input display)
+  // Connected upstream nodes
   const incomingEdges = edges.filter((e) => e.target === id)
   const connectedSources = incomingEdges.map((e) => {
     const src = nodes.find((n) => n.id === e.source)
     return src?.data?.label as string || 'Source'
   }).filter(Boolean)
 
-  // Reference files stored in node config
+  // Reference files and config
   const config = (data.config as Record<string, unknown>) ?? {}
   const isLocked   = config.locked === true
   const referenceFiles = (config.reference_files as ReferenceFile[]) ?? []
+
+  // Generation-specific config values
+  const provider = (config.provider as string) ?? (subtype === 'video-generation' ? 'runway' : 'dalle3')
+  const providerList = subtype === 'video-generation' ? VIDEO_PROVIDERS : IMAGE_PROVIDERS
+
+  // Prompt preview: extract text from upstream source nodes
+  const promptPreview = isGeneration ? (() => {
+    const texts: string[] = []
+    for (const edge of incomingEdges) {
+      const src = nodes.find((n) => n.id === edge.source)
+      if (!src) continue
+      const cfg = (src.data?.config as Record<string, unknown>) ?? {}
+      const text = (cfg.text as string) || (cfg.inlineText as string) || (cfg.pasted_text as string) || ''
+      if (text.trim()) texts.push(text.trim())
+    }
+    return texts.length > 0 ? texts.join(' · ') : null
+  })() : null
+
+  const costEstimate = isGeneration ? estimateCost(subtype, provider, config) : null
+  const runHistory = (config.run_history as HistoryEntry[]) ?? []
 
   const handleAddRef = (file: ReferenceFile) => {
     const current = (config.reference_files as ReferenceFile[]) ?? []
@@ -49,7 +116,6 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
 
   const handleRerun = (e: React.MouseEvent) => {
     e.stopPropagation()
-    // Unlock and clear stored assets so the runner will re-generate this node
     updateNodeData(id, { config: { ...config, locked: false, stored_assets: undefined } })
   }
 
@@ -78,7 +144,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   }
 
   const titleColor = selected ? spec.activeTextColor : '#1a1a14'
-  const nodeWidth = isGeneration ? 240 : 200
+  const nodeWidth = isGeneration ? 260 : 200
 
   return (
     <div
@@ -140,6 +206,16 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           </p>
         )}
 
+        {/* Prompt preview from upstream source nodes */}
+        {isGeneration && promptPreview && (
+          <div
+            className="rounded px-1.5 py-1 text-[9px] leading-[1.35] line-clamp-2 italic"
+            style={{ backgroundColor: spec.accent + '12', color: spec.accent + 'cc' }}
+          >
+            &ldquo;{promptPreview}&rdquo;
+          </div>
+        )}
+
         {/* Reference file upload zone (generation nodes only) */}
         {isGeneration && (
           <NodeUploadZone
@@ -148,6 +224,66 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
             onRemove={handleRemoveRef}
             accentColor={spec.accent}
           />
+        )}
+
+        {/* Settings footer: inline provider switcher + settings pills + cost */}
+        {isGeneration && (
+          <div className="flex items-center gap-1 flex-wrap">
+            {/* Inline provider switcher */}
+            <select
+              className="nodrag nopan h-4 min-w-0 rounded bg-transparent py-0 px-0 text-[9px] font-semibold cursor-pointer outline-none appearance-none hover:underline"
+              style={{ color: spec.accent, border: 'none', maxWidth: 72 }}
+              value={provider}
+              onChange={(e) => {
+                e.stopPropagation()
+                updateNodeData(id, { config: { ...config, provider: e.target.value } })
+              }}
+              onClick={(e) => e.stopPropagation()}
+              title="Click to switch provider"
+            >
+              {providerList.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+
+            {/* Image settings pills */}
+            {subtype === 'image-generation' && (
+              <>
+                <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
+                  {(config.aspect_ratio as string) ?? '1:1'}
+                </span>
+                <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
+                  {(config.quality as string) ?? 'standard'}
+                </span>
+                {((config.num_outputs as number) ?? 1) > 1 && (
+                  <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
+                    ×{config.num_outputs as number}
+                  </span>
+                )}
+              </>
+            )}
+
+            {/* Video settings pills */}
+            {subtype === 'video-generation' && (
+              <>
+                <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
+                  {(config.duration_seconds as number) ?? 5}s
+                </span>
+                {(config.resolution as string) && (
+                  <span className="rounded px-1 py-px text-[8px] font-medium" style={{ backgroundColor: spec.badgeBg, color: spec.badgeText }}>
+                    {config.resolution as string}
+                  </span>
+                )}
+              </>
+            )}
+
+            {/* Cost estimate */}
+            {costEstimate && (
+              <span className="ml-auto text-[8px] font-medium tabular-nums" style={{ color: '#b4b2a9' }}>
+                {costEstimate}
+              </span>
+            )}
+          </div>
         )}
 
         {/* Skip toggle — always visible on generation nodes */}
@@ -171,7 +307,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                 />
               </div>
               <span className="text-[9px]" style={{ color: isLocked ? '#f59e0b' : '#9ca3af' }}>
-                {isLocked ? 'Skip' : 'Skip'}
+                Skip
               </span>
             </button>
             {isLocked && (
@@ -201,6 +337,46 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           </p>
         )}
 
+        {/* History filmstrip: thumbnails from previous runs */}
+        {isGeneration && runHistory.length > 0 && (
+          <div className="flex items-center gap-0.5" style={{ marginLeft: -10, marginRight: -10, paddingLeft: 10, paddingRight: 10 }}>
+            <span className="mr-0.5 shrink-0 text-[8px]" style={{ color: '#b4b2a9' }}>prev:</span>
+            {runHistory.slice(-3).map((entry, i) => (
+              <div key={i} className="group/hist relative shrink-0">
+                {entry.type === 'video' ? (
+                  <video
+                    src={assetUrl(entry.localPath)}
+                    className="h-8 w-8 rounded-sm object-cover border"
+                    style={{ borderColor: spec.accent + '44' }}
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={assetUrl(entry.localPath)}
+                    alt={`Run ${i + 1}`}
+                    draggable={false}
+                    className="h-8 w-8 rounded-sm object-cover border"
+                    style={{ borderColor: spec.accent + '44' }}
+                  />
+                )}
+                <div className="absolute inset-0 hidden group-hover/hist:flex items-center justify-center rounded-sm bg-black/50">
+                  <button
+                    className="nodrag"
+                    title="Download"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      downloadAsset(entry.localPath, makeFilename(data.label as string, entry.localPath))
+                    }}
+                  >
+                    <Icons.Download className="h-2.5 w-2.5 text-white" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Video generation: looping full-width preview after completion or when cached */}
         {(isPassed || isSkipped || status === 'idle') && subtype === 'video-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
@@ -219,7 +395,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   className="w-full object-cover"
                   style={{ maxHeight: 240, display: 'block' }}
                 />
-                {/* Re-run button — top left on hover (generation nodes with stored assets) */}
+                {/* Re-run button — top left on hover */}
                 <div className="absolute top-1.5 left-1.5 hidden group-hover:flex">
                   <button
                     className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors"
@@ -258,7 +434,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           const label = data.label as string
           return (
             <div style={{ marginLeft: -10, marginRight: -10 }}>
-              {/* Primary image — full width, 240px tall */}
+              {/* Primary image — full width */}
               <div className="relative overflow-hidden group" style={{ height: 240 }}>
                 <img
                   src={assetUrl(assets[0].localPath)}
@@ -288,7 +464,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   </button>
                 </div>
               </div>
-              {/* Additional images as small strip with download on hover */}
+              {/* Additional images as small strip */}
               {assets.length > 1 && (
                 <div className="flex gap-0.5 pt-0.5 px-2.5">
                   {assets.slice(1, 4).map((a, i) => (
