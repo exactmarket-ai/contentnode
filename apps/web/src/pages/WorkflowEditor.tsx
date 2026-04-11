@@ -265,10 +265,14 @@ export function WorkflowEditor() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isUnsaved])
 
-  // Block in-app navigation when there are unsaved changes
-  // New workflow: block if nodes have been added. Existing: block if graphDirty.
-  const hasUnsavedChanges = workflow.id ? graphDirty : nodes.length > 0
-  const blocker = useBlocker(hasUnsavedChanges)
+  // Block in-app navigation when there are unsaved changes.
+  // Reads live state from the store at navigation time to avoid stale closures.
+  const blocker = useBlocker(
+    useCallback(() => {
+      const { workflow: wf, nodes: n, graphDirty: dirty } = useWorkflowStore.getState()
+      return wf.id ? dirty : n.length > 0
+    }, [])
+  )
 
   const handleOpenSaveDialog = useCallback(() => {
     window.dispatchEvent(new CustomEvent('contentnode:open-save-dialog'))
