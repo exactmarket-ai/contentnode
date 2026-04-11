@@ -6,6 +6,7 @@ import { getNodeSpec } from '@/lib/nodeColors'
 import { assetUrl } from '@/lib/api'
 import { NodeUploadZone, type ReferenceFile } from './NodeUploadZone'
 import { downloadAsset, makeFilename } from '@/lib/downloadAsset'
+import { EditableLabel } from './EditableLabel'
 
 const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
@@ -93,9 +94,11 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           className="shrink-0"
           style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: selected ? 'rgba(255,255,255,0.7)' : spec.accent }}
         />
-        <span className="text-[11px] font-semibold truncate" style={{ color: titleColor }}>
-          {data.label as string}
-        </span>
+        <EditableLabel
+          value={data.label as string}
+          onSave={(v) => updateNodeData(id, { label: v })}
+          color={titleColor}
+        />
         <span
           className="ml-auto shrink-0 rounded-full px-1.5 py-px text-[9px] font-semibold"
           style={{ backgroundColor: selected ? 'rgba(255,255,255,0.2)' : spec.badgeBg, color: selected ? spec.activeTextColor : spec.badgeText }}

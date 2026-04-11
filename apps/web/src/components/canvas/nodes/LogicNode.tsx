@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
+import { EditableLabel } from './EditableLabel'
 
 const MULTI_INPUT_LOGIC = new Set(['image-prompt-builder', 'video-prompt-builder'])
 
@@ -139,9 +140,11 @@ export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
             backgroundColor: selected ? 'rgba(255,255,255,0.7)' : spec.accent,
           }}
         />
-        <span className="text-[11px] font-semibold truncate" style={{ color: titleColor }}>
-          {data.label as string}
-        </span>
+        <EditableLabel
+          value={data.label as string}
+          onSave={(v) => updateNodeData(id, { label: v })}
+          color={titleColor}
+        />
         <span
           className="ml-auto shrink-0 rounded-full px-1.5 py-px text-[9px] font-semibold"
           style={{ backgroundColor: selected ? 'rgba(255,255,255,0.2)' : spec.badgeBg, color: selected ? spec.activeTextColor : spec.badgeText }}
