@@ -69,9 +69,7 @@ async function extractText(buffer: Buffer, filename: string, mimeType: string): 
 // Brand JSON extraction via Claude
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BRAND_EXTRACTION_SYSTEM_PROMPT = `You are a brand analyst. The user has uploaded brand-related documents. Extract and structure the brand profile from this content. Return only valid JSON matching this schema:
-
-{
+const BRAND_JSON_SCHEMA = `{
   "brand_name": "",
   "tagline": "",
   "mission": "",
@@ -105,9 +103,32 @@ const BRAND_EXTRACTION_SYSTEM_PROMPT = `You are a brand analyst. The user has up
     "value_propositions": []
   },
   "do_not_use": []
-}
+}`
+
+const BRAND_EXTRACTION_SYSTEM_PROMPT = `You are a brand analyst. The user has uploaded brand-related documents. Extract and structure the brand profile from this content. Return only valid JSON matching this schema:
+
+${BRAND_JSON_SCHEMA}
 
 Return only JSON. No preamble, no explanation, no markdown code fences.`
+
+function buildVerticalExtractionPrompt(verticalName: string, baseBrandJson: string): string {
+  return `You are a brand analyst. This brand has an established base profile shown below. The user has uploaded additional documents specific to the "${verticalName}" vertical.
+
+Extract how this brand's voice, tone, messaging, and positioning adapts for the "${verticalName}" vertical. The result should represent how the brand expresses itself in this vertical context — inheriting the core identity but specialised for this vertical's audience, language, and goals.
+
+Rules:
+- Keep brand_name, tagline, mission, vision, and values from the base unless the vertical documents explicitly override them
+- Adapt voice_and_tone, target_audience, positioning, and messaging to reflect the vertical's specific context
+- Only add vocabulary_to_avoid or do_not_use terms that are specific to this vertical
+- If a vertical document adds new information not in the base, include it
+
+Base brand profile (JSON):
+${baseBrandJson}
+
+Return only valid JSON matching this schema. No preamble, no explanation, no markdown code fences:
+
+${BRAND_JSON_SCHEMA}`
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Website scraping (fetches home + /about + /brand)
@@ -157,7 +178,7 @@ async function runBrandExtraction(
       select: { id: true, websiteUrl: true },
     })
 
-    // Load all ready file attachments
+    // Load all ready file attachments for this brain (general or vertical-specific)
     const attachments = await prisma.clientBrandAttachment.findMany({
       where: {
         clientId,
@@ -188,6 +209,27 @@ async function runBrandExtraction(
 
     const combinedText = parts.join('\n\n')
 
+    // For vertical extractions, load the main brand profile as base context
+    let systemPrompt = BRAND_EXTRACTION_SYSTEM_PROMPT
+    if (verticalId) {
+      const vertical = await prisma.clientBrandVertical.findFirst({
+        where: { id: verticalId, agencyId },
+        select: { name: true },
+      })
+      const mainProfile = await prisma.clientBrandProfile.findFirst({
+        where: { clientId, agencyId, verticalId: null },
+        select: { editedJson: true, extractedJson: true },
+      })
+      const mainJson = mainProfile?.editedJson ?? mainProfile?.extractedJson
+      if (vertical?.name && mainJson) {
+        systemPrompt = buildVerticalExtractionPrompt(
+          vertical.name,
+          JSON.stringify(mainJson, null, 2),
+        )
+        console.log(`[brand-extraction] vertical "${vertical.name}" — using main brand as base context`)
+      }
+    }
+
     // Mark profile as extracting
     const upsertBase = { agencyId, clientId, verticalId: verticalId ?? null, extractionStatus: 'extracting', sourceText: combinedText.slice(0, 500_000) }
     if (profile) {
@@ -208,7 +250,7 @@ async function runBrandExtraction(
           api_key_ref: 'ANTHROPIC_API_KEY',
           max_tokens: 2000,
           temperature: 0.1,
-          system_prompt: BRAND_EXTRACTION_SYSTEM_PROMPT,
+          system_prompt: systemPrompt,
         },
         combinedText.slice(0, 50_000),
       )
