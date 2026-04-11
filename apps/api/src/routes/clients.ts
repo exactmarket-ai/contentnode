@@ -1229,7 +1229,7 @@ Rules:
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2000,
         temperature: 0.2,
         messages: [{ role: 'user', content: prompt }],
@@ -1640,14 +1640,18 @@ Use empty string "" or empty array [] for any field not found. Never invent info
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4000,
         temperature: 0,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
 
-    if (!aiRes.ok) return reply.code(502).send({ error: 'AI service unavailable' })
+    if (!aiRes.ok) {
+      const errBody = await aiRes.json().catch(() => ({}))
+      req.log.error({ status: aiRes.status, errBody }, '[autofill] Anthropic API error')
+      return reply.code(502).send({ error: `AI service error ${aiRes.status}`, detail: errBody })
+    }
 
     const aiBody = await aiRes.json() as { content: Array<{ text: string }> }
     const text = aiBody.content?.[0]?.text ?? ''
