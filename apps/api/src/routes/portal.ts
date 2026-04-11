@@ -73,7 +73,7 @@ export async function portalRoutes(app: FastifyInstance) {
   // In dev mode, the token is returned in the response; in production, send via email.
   // CRITICAL #1: This endpoint requires a valid Clerk JWT even though it lives under
   // /portal/* (which skips the global preHandler). We verify it manually here.
-  app.post<{ Body: { stakeholderId: string; runId: string } }>('/auth/send-link', async (req, reply) => {
+  app.post<{ Body: { stakeholderId: string; runId: string } }>('/auth/send-link', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (req, reply) => {
     // ── Manual Clerk JWT check ─────────────────────────────────────────────
     let agencyId: string
     let grantedBy: string | undefined

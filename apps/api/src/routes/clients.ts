@@ -510,7 +510,7 @@ export async function clientRoutes(app: FastifyInstance) {
     })
     if (!stakeholder) return reply.code(404).send({ error: 'Stakeholder not found' })
 
-    const token = crypto.randomUUID()
+    const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + TOKEN_TTL_MS)
 
     await prisma.stakeholder.update({
@@ -1661,22 +1661,17 @@ Use empty string "" or empty array [] for any field not found. Never invent info
     try {
       type DDGItem = { label?: string; value?: unknown }
       type DDGResponse = { AbstractText?: string; Infobox?: { content?: DDGItem[] } }
-      console.log('[enrich] querying DDG for:', researchedCompanyName, '(client:', client.name, ')')
       const ddgRes = await fetch(
         `https://api.duckduckgo.com/?q=${encodeURIComponent(researchedCompanyName)}&format=json&no_html=1&skip_disambig=1`,
         { headers: { 'User-Agent': 'ContentNode-ResearchBot/1.0' }, signal: AbortSignal.timeout(8000) }
       )
-      console.log('[enrich] DDG status:', ddgRes.status)
       if (ddgRes.ok) {
         const d = await ddgRes.json() as DDGResponse
-        console.log('[enrich] DDG infobox items:', d.Infobox?.content?.length ?? 0)
-        console.log('[enrich] DDG abstract:', d.AbstractText?.slice(0, 100))
         const facts: Record<string, string> = {}
         for (const item of (d.Infobox?.content ?? [])) {
           if (typeof item.label === 'string' && typeof item.value === 'string' && item.value.trim())
             facts[item.label.toLowerCase()] = item.value.trim()
         }
-        console.log('[enrich] DDG facts keys:', Object.keys(facts))
         if (facts['founded']) enrich.founded = facts['founded']
 
         // Parse "Key people" from DDG infobox and merge with Claude's website extraction
@@ -1713,7 +1708,7 @@ Use empty string "" or empty array [] for any field not found. Never invent info
             .trim()
         }
       }
-    } catch (err) { console.error('[enrich] DDG error:', err) }
+    } catch { /* DDG lookup failed — continue with other sources */ }
 
     // Step 2: Web search + Haiku — for companies not in Wikipedia, searches the open web
     const stillNeeded = (['founded', 'headquarters', 'employees', 'phone', 'generalInquiries', 'headquartersAddress'] as const).filter((f) => !enrich[f] && (!extracted[f] || extracted[f] === ''))
@@ -1763,9 +1758,6 @@ Use empty string "" or empty array [] for any field not found. Never invent info
       } catch { /* continue */ }
     }
 
-    console.log('[enrich] final enrich result:', enrich)
-    console.log('[enrich] claude extracted founded/hq/employees:', extracted.founded, '|', extracted.headquarters, '|', extracted.employees)
-
     // Apply: external sources win over Claude's website extraction
     if (enrich.founded)             extracted.founded             = enrich.founded
     if (enrich.headquarters)        extracted.headquarters        = enrich.headquarters
@@ -1773,8 +1765,6 @@ Use empty string "" or empty array [] for any field not found. Never invent info
     if (enrich.phone)               extracted.phone               = enrich.phone
     if (enrich.generalInquiries)    extracted.generalInquiries    = enrich.generalInquiries
     if (enrich.headquartersAddress) extracted.headquartersAddress = enrich.headquartersAddress
-
-    console.log('[enrich] after merge:', extracted.founded, '|', extracted.headquarters, '|', extracted.employees)
 
     const companyData = {
       label:              existingCompanyProfile.label ?? hostname,

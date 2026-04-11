@@ -59,7 +59,7 @@ export async function writerRoutes(app: FastifyInstance) {
 
   // ── POST /api/v1/runs/:runId/assign-writer ─────────────────────────────────
   // Agency creates a writer assignment and gets back a magic link
-  app.post<{ Params: { runId: string } }>('/assign', async (req, reply) => {
+  app.post<{ Params: { runId: string } }>('/assign', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (req, reply) => {
     const { agencyId } = req.auth
     const { writerEmail, writerName } = req.body as { writerEmail: string; writerName?: string }
 
@@ -76,7 +76,7 @@ export async function writerRoutes(app: FastifyInstance) {
       where: { workflowRunId: req.params.runId, writerEmail: writerEmail.trim(), agencyId },
     })
 
-    const token = crypto.randomUUID()
+    const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
 
     const assignment = await prisma.writerAssignment.create({
