@@ -32,7 +32,7 @@ export function AcceptInvitePage() {
   // 1. Load invite details (public — no auth needed)
   useEffect(() => {
     if (!token) { setError('Invalid invite link — no token found.'); return }
-    fetch(`/api/v1/team/accept-invite/${token}`)
+    apiFetch(`/api/v1/team/accept-invite/${token}`)
       .then(async (res) => {
         const json = await res.json()
         if (!res.ok) { setError(json.error ?? 'Invalid invite link.'); return }
