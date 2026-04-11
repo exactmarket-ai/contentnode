@@ -1,11 +1,10 @@
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { saveGeneratedFile } from '@contentnode/storage'
+import { downloadBuffer, saveGeneratedFile, isS3Mode, UPLOAD_DIR } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
 
 interface VideoFile {
   id: string
@@ -36,10 +35,22 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     }
 
     const videoFile = videoFiles[0]
-    const filePath = join(UPLOAD_DIR, videoFile.storageKey)
 
-    if (!existsSync(filePath)) {
-      throw new Error(`Video file not found on disk: ${videoFile.storageKey}`)
+    // Resolve video file path — in S3/R2 mode download to a temp file for ffmpeg
+    let filePath: string
+    let tempFilePath: string | null = null
+
+    if (isS3Mode()) {
+      const buffer = await downloadBuffer(videoFile.storageKey)
+      const ext = videoFile.name.split('.').pop()?.toLowerCase() ?? 'mp4'
+      tempFilePath = join(tmpdir(), `vid_${randomUUID()}.${ext}`)
+      writeFileSync(tempFilePath, buffer)
+      filePath = tempFilePath
+    } else {
+      filePath = join(UPLOAD_DIR, videoFile.storageKey)
+      if (!existsSync(filePath)) {
+        throw new Error(`Video file not found on disk: ${videoFile.storageKey}`)
+      }
     }
 
     // Get video duration via ffprobe
@@ -88,6 +99,10 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     // Read extracted frame and save to storage
     const frameBuffer = Buffer.from(readFileSync(framePath))
     const storageKey = await saveGeneratedFile(frameBuffer, frameFilename, 'image/jpeg')
+
+    // Clean up temp files
+    try { unlinkSync(framePath) } catch { /* ignore */ }
+    if (tempFilePath) { try { unlinkSync(tempFilePath) } catch { /* ignore */ } }
 
     // Build the text output that downstream AI nodes will use
     const contextLines: string[] = []
