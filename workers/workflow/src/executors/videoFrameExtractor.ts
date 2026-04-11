@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -96,20 +96,19 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     }
     seekSecs = Math.max(0, seekSecs)
 
-    // Extract frame to a temp location inside UPLOAD_DIR
-    const framesDir = join(UPLOAD_DIR, 'frames')
-    mkdirSync(framesDir, { recursive: true })
+    // Extract frame to a temp file (always use /tmp — UPLOAD_DIR may not exist in containers)
     const frameFilename = `frame_${randomUUID()}.jpg`
-    const framePath = join(framesDir, frameFilename)
+    const framePath = join(tmpdir(), frameFilename)
 
     try {
       execSync(
         `ffmpeg -y -ss ${seekSecs.toFixed(3)} -i "${filePath}" -vframes 1 -q:v 2 "${framePath}"`,
-        { stdio: 'ignore', timeout: 30000 },
+        { stdio: 'pipe', timeout: 30000 },
       )
     } catch (err) {
+      const stderr = (err as { stderr?: Buffer }).stderr?.toString().trim() ?? ''
       throw new Error(
-        `ffmpeg frame extraction failed: ${err instanceof Error ? err.message : String(err)}`,
+        `ffmpeg frame extraction failed: ${stderr || (err instanceof Error ? err.message : String(err))}`,
       )
     }
 

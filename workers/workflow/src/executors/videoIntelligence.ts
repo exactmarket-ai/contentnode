@@ -176,7 +176,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     if (!apiKey) throw new Error('Video Intelligence: GEMINI_API_KEY is not set on the worker')
 
     const rawModel = (config.model as string) ?? ''
-    const preferredModel = VALID_MODELS.has(rawModel) ? rawModel : 'gemini-1.5-flash-002'
+    const preferredModel = VALID_MODELS.has(rawModel) ? rawModel : 'gemini-2.5-flash'
     const prompt = (config.prompt as string) ??
       'Analyze this video and provide: (1) what it is about, (2) key topics and visuals, (3) any on-screen text or graphics, (4) the tone and purpose, (5) a 2–3 sentence summary for content planning.'
 
@@ -211,29 +211,38 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     try {
       const fileManager = new GoogleAIFileManager(apiKey)
 
-      const uploadResult = await fileManager.uploadFile(tmpPath, {
-        mimeType,
-        displayName: 'contentnode_video',
-      })
+      // Retry upload+poll up to 2 times — Gemini occasionally fails large file processing
+      let file: Awaited<ReturnType<typeof fileManager.getFile>> | null = null
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const uploadResult = await fileManager.uploadFile(tmpPath, {
+          mimeType,
+          displayName: 'contentnode_video',
+        })
+        console.log(`[video-intelligence] uploaded as ${uploadResult.file.name}, waiting for processing`)
 
-      console.log(`[video-intelligence] uploaded as ${uploadResult.file.name}, waiting for processing`)
+        let f = uploadResult.file
+        while (f.state === FileState.PROCESSING) {
+          await new Promise((r) => setTimeout(r, 5000))
+          f = await fileManager.getFile(f.name)
+        }
 
-      // Poll until ACTIVE
-      let file = uploadResult.file
-      while (file.state === FileState.PROCESSING) {
-        await new Promise((r) => setTimeout(r, 5000))
-        file = await fileManager.getFile(file.name)
+        if (f.state === FileState.FAILED) {
+          if (attempt < 2) {
+            console.warn('[video-intelligence] file processing failed, re-uploading...')
+            continue
+          }
+          throw new Error('Gemini File API: file processing failed after 2 attempts')
+        }
+        file = f
+        break
       }
-
-      if (file.state === FileState.FAILED) {
-        throw new Error('Gemini File API: file processing failed')
-      }
+      if (!file) throw new Error('Gemini File API: file processing failed')
 
       // Parse video duration from metadata for cost tracking
       const durationStr = (file.videoMetadata as { videoDuration?: string } | undefined)?.videoDuration
       videoSecs = parseDurationSecs(durationStr)
 
-      const result = await generateContent(file.uri, mimeType, prompt, preferredModel, apiKey)
+      const result = await generateContent(file!.uri, mimeType, prompt, preferredModel, apiKey)
       text = result.text
       usedModel = result.model
       console.log(`[video-intelligence] done with ${usedModel} — ${videoSecs}s video`)
