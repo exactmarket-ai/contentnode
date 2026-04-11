@@ -6,7 +6,7 @@ import { NODE_SPEC } from '@/lib/nodeColors'
 import { cn } from '@/lib/utils'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
-  source: 'Source', logic: 'Logic', output: 'Output', insight: 'Insight',
+  source: 'Source', logic: 'Logic', output: 'Output', insight: 'Insight', canvas: 'Canvas',
 }
 
 type IconComponent = React.ComponentType<{ className?: string; style?: React.CSSProperties }>
@@ -15,6 +15,7 @@ const CATEGORY_ICONS: Record<string, IconComponent> = {
   source: Icons.Database,
   logic:  Icons.GitBranch,
   output: Icons.Share2,
+  canvas: Icons.RectangleHorizontal,
 }
 
 const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
@@ -22,6 +23,7 @@ const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPE
   logic:   NODE_SPEC['ai-model'],
   output:  NODE_SPEC['transform'],
   insight: NODE_SPEC['ai-model'],
+  canvas:  NODE_SPEC['input'],
 }
 
 const MENU_STYLE: React.CSSProperties = {
@@ -35,7 +37,7 @@ interface Props {
   onClose: () => void
 }
 
-const CATEGORIES: NodeCategory[] = ['source', 'logic', 'output']
+const CATEGORIES: NodeCategory[] = ['source', 'logic', 'output', 'canvas']
 
 export function CanvasContextMenu({ x, y, onClose }: Props) {
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)

@@ -156,7 +156,15 @@ export async function workflowRoutes(app: FastifyInstance) {
     const workflowId = req.params.id
 
     const body = req.body as {
-      nodes?: Array<{ id?: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>
+      nodes?: Array<{
+        id?: string
+        type: string
+        position: { x: number; y: number }
+        data: Record<string, unknown>
+        parentNode?: string
+        style?: { width?: number; height?: number }
+        zIndex?: number
+      }>
       edges?: Array<{ id?: string; source: string; target: string; sourceHandle?: string; label?: string }>
       name?: string
       defaultModelConfig?: Record<string, unknown>
@@ -212,9 +220,16 @@ export async function workflowRoutes(app: FastifyInstance) {
             // Strip file arrays — files are stored in client_workflow_files, not the template
             // Keep stored_assets — needed so locked nodes can skip re-generation on next run
             const { uploaded_files: _uf, audio_files: _af, ...configWithoutFiles } = config as Record<string, unknown>
+            // Persist group layout properties so they survive save/load
+            const groupFields = n.type === 'group' ? {
+              _groupWidth: n.style?.width,
+              _groupHeight: n.style?.height,
+            } : {}
+            const parentFields = n.parentNode ? { _parentNode: n.parentNode } : {}
+
             // JSON.parse/stringify strips undefined values which Prisma's Json column rejects
             const safeConfig = JSON.parse(JSON.stringify(
-              { subtype: data.subtype ?? config.subtype, ...configWithoutFiles, ...modelFields }
+              { subtype: data.subtype ?? config.subtype, ...configWithoutFiles, ...modelFields, ...groupFields, ...parentFields }
             )) as Prisma.InputJsonValue
             return {
               id: n.id ?? randomUUID(),

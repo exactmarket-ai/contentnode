@@ -44,6 +44,7 @@ export function DocumentSourceConfig({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [sizeError, setSizeError] = useState<string | null>(null)
   const [showLibrary, setShowLibrary] = useState(false)
   const [showPromptPicker, setShowPromptPicker] = useState(false)
   const [loadedTemplate, setLoadedTemplate] = useState<PromptTemplate | null>(null)
@@ -111,10 +112,20 @@ export function DocumentSourceConfig({
       if (files.length === 0) return
       setUploading(true)
 
+      const limitBytes = FILE_SIZE_LIMIT_MB * 1024 * 1024
+      const tooBig = files.find((f) => f.size > limitBytes)
+      if (tooBig) {
+        const mb = (tooBig.size / 1024 / 1024).toFixed(1)
+        setSizeError(`${tooBig.name} is ${mb} MB — max is ${FILE_SIZE_LIMIT_MB} MB`)
+        setTimeout(() => setSizeError(null), 6000)
+        setUploading(false)
+        return
+      }
+      setSizeError(null)
+
       const results: UploadedFile[] = []
 
       for (const file of files) {
-        if (file.size > FILE_SIZE_LIMIT_MB * 1024 * 1024) continue
 
         const fd = new FormData()
         fd.append('file', file)
@@ -212,6 +223,12 @@ export function DocumentSourceConfig({
             onChange={handleInputChange}
           />
         </div>
+        {sizeError && (
+          <div className="mt-1 flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-600">
+            <Icons.AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span className="break-all">{sizeError}</span>
+          </div>
+        )}
       </FieldGroup>
 
       {/* Uploaded file list */}

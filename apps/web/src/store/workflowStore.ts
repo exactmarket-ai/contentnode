@@ -43,7 +43,7 @@ export interface NodeRunStatus {
 
 // ─── Node palette definition (used by NodePalette + node factories) ───────────
 
-export type NodeCategory = 'source' | 'logic' | 'output' | 'insight'
+export type NodeCategory = 'source' | 'logic' | 'output' | 'insight' | 'canvas'
 
 export interface PaletteNodeDef {
   type: string         // matches executor registry key prefix
@@ -396,6 +396,13 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       },
     },
   },
+  // Canvas utilities
+  {
+    type: 'group', subtype: 'group',
+    label: 'Group Frame', description: 'Organize nodes into a labeled group',
+    category: 'canvas', icon: 'RectangleHorizontal',
+    defaultConfig: { subtype: 'group' },
+  },
 ]
 
 // ─── Insight state for confirmation banner ────────────────────────────────────
@@ -451,6 +458,7 @@ interface WorkflowState {
   addNode: (node: Node) => void
   loadTemplate: (nodes: Node[], edges: Edge[]) => void
   updateNodeData: (id: string, data: Partial<Record<string, unknown>>) => void
+  setNodeParent: (nodeId: string, parentId: string | null, position: { x: number; y: number }) => void
 
   // Actions — UI
   setSelectedNodeId: (id: string | null) => void
@@ -547,7 +555,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setViewport: (viewport) => set({ viewport }),
 
-  addNode: (node) => set({ nodes: [...get().nodes, node], graphDirty: true }),
+  addNode: (node) => {
+    // Group frames go at the front so they render below regular nodes
+    if (node.type === 'group') {
+      set({ nodes: [node, ...get().nodes], graphDirty: true })
+    } else {
+      set({ nodes: [...get().nodes, node], graphDirty: true })
+    }
+  },
   loadTemplate: (nodes, edges) => {
     // Remap template node IDs to fresh UUIDs — template nodes have hardcoded IDs
     // ('vid-frame', 'src-brief', etc.) that collide when multiple workflows use
@@ -568,6 +583,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       nodes: get().nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, ...data } } : n
       ),
+      graphDirty: true,
+    }),
+
+  setNodeParent: (nodeId, parentId, position) =>
+    set({
+      nodes: get().nodes.map((n) => {
+        if (n.id !== nodeId) return n
+        if (parentId === null) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { parentNode: _p, extent: _e, ...rest } = n as Node & { parentNode?: string; extent?: string }
+          return { ...rest, position }
+        }
+        return { ...n, parentNode: parentId, position }
+      }),
       graphDirty: true,
     }),
 
@@ -642,10 +671,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
 
     const newId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const isGroup = def.type === 'group'
     addNode({
       id: newId,
       type: def.type,
       position,
+      // Group frames get a large default size and render behind other nodes
+      ...(isGroup ? { style: { width: 400, height: 280 }, zIndex: -1 } : {}),
       data: {
         label: def.label,
         description: def.description,

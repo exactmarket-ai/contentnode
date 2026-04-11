@@ -236,7 +236,8 @@ function buildExecutionWaves(
   skipEdgeKeys: Set<string> = new Set(),
 ): GraphNode[][] {
   // Filter out nodes and edges involving loop-managed nodes, plus explicit back-edges
-  const executableNodes = nodes.filter((n) => !skipNodeIds.has(n.id))
+  // Group frame nodes are purely visual — they have no executor and are never run
+  const executableNodes = nodes.filter((n) => !skipNodeIds.has(n.id) && n.type !== 'group')
   const executableEdges = edges.filter(
     (e) =>
       !skipNodeIds.has(e.sourceNodeId) &&
@@ -430,8 +431,9 @@ export class WorkflowRunner {
     } else {
       // Fresh start
       runOutput = {
+        // Group frame nodes are purely visual — exclude from run statuses
         nodeStatuses: Object.fromEntries(
-          workflow.nodes.map((n) => [n.id, { status: 'idle' as NodeRunStatus }]),
+          workflow.nodes.filter((n) => n.type !== 'group').map((n) => [n.id, { status: 'idle' as NodeRunStatus }]),
         ),
       }
     }

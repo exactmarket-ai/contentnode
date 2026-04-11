@@ -83,16 +83,23 @@ export function WorkflowEditor() {
         // Convert DB nodes → React Flow nodes
         const rfNodes = (data.nodes ?? []).map((n: Record<string, unknown>) => {
           const dbConfig = (n.config as Record<string, unknown>) ?? {}
+          const { _parentNode, _groupWidth, _groupHeight, ...restConfig } = dbConfig
+          const isGroup = (n.type as string) === 'group'
           return {
             id: n.id as string,
             type: n.type as string,
             position: { x: (n.positionX as number) ?? 0, y: (n.positionY as number) ?? 0 },
+            ...(_parentNode ? { parentNode: _parentNode as string } : {}),
+            ...(isGroup ? {
+              style: { width: (_groupWidth as number) ?? 400, height: (_groupHeight as number) ?? 280 },
+              zIndex: -1,
+            } : {}),
             data: {
               label: n.label as string,
               // Spread config fields at top level (for display/compat) AND
               // keep nested `config` so the Run save path always finds it
-              ...dbConfig,
-              config: dbConfig,
+              ...restConfig,
+              config: restConfig,
             },
           }
         })

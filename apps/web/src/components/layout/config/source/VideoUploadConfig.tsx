@@ -25,15 +25,25 @@ export function VideoUploadConfig({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [sizeError, setSizeError] = useState<string | null>(null)
 
   const videoFiles = (config.video_files as VideoFile[]) ?? []
 
   const uploadVideo = useCallback(
     async (files: File[]) => {
+      const limitBytes = VIDEO_SIZE_LIMIT * 1024 * 1024
+      const tooBig = files.find((f) => f.size > limitBytes)
+      if (tooBig) {
+        const mb = (tooBig.size / 1024 / 1024).toFixed(1)
+        setSizeError(`${tooBig.name} is ${mb} MB — max is ${VIDEO_SIZE_LIMIT} MB`)
+        setTimeout(() => setSizeError(null), 6000)
+        return
+      }
+      setSizeError(null)
+
       const allowed = files.filter((f) => {
         const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
-        return ['mp4', 'mov', 'avi', 'webm', 'mkv', 'm4v'].includes(ext) &&
-          f.size <= VIDEO_SIZE_LIMIT * 1024 * 1024
+        return ['mp4', 'mov', 'avi', 'webm', 'mkv', 'm4v'].includes(ext)
       })
       if (allowed.length === 0) return
       setUploading(true)
@@ -99,6 +109,13 @@ export function VideoUploadConfig({
           }}
         />
       </div>
+
+      {sizeError && (
+        <div className="mt-1 flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-600">
+          <Icons.AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span className="break-all">{sizeError}</span>
+        </div>
+      )}
 
       {videoFiles.length > 0 && (
         <div className="mt-1.5 space-y-1">

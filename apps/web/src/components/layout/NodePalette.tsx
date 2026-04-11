@@ -42,7 +42,7 @@ const sortedByLabel = (nodes: PaletteNodeDef[]) =>
   [...nodes].sort((a, b) => a.label.localeCompare(b.label))
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
-  source: 'Source', logic: 'Logic', output: 'Output', insight: 'Insight',
+  source: 'Source', logic: 'Logic', output: 'Output', insight: 'Insight', canvas: 'Canvas',
 }
 
 const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
@@ -50,6 +50,7 @@ const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPE
   logic:   NODE_SPEC['ai-model'],
   output:  NODE_SPEC['transform'],
   insight: NODE_SPEC['ai-model'],
+  canvas:  NODE_SPEC['input'],
 }
 
 type IconComponent = React.ComponentType<{ className?: string; style?: React.CSSProperties }>
@@ -259,7 +260,7 @@ function NodesPalette() {
           )}
 
           {/* Categories, alphabetically sorted */}
-          {(['source', 'logic', 'output'] as NodeCategory[]).map((cat) => {
+          {(['source', 'logic', 'output', 'canvas'] as NodeCategory[]).map((cat) => {
             const items = byCategory(cat).filter((n) => !frequentSubtypes.has(n.subtype))
             const allItems = byCategory(cat)
             if (allItems.length === 0) return null
