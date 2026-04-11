@@ -700,7 +700,6 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
   const [toggleError, setToggleError] = useState<string | null>(null)
 
   const toggleRequireOffline = async () => {
-    if (!isAdmin) return
     setTogglingOffline(true)
     setToggleError(null)
     try {
@@ -749,35 +748,33 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
         </div>
       )}
 
-      {/* AI Policy — admin only (hide while role is loading to avoid flash-hide) */}
-      {(isAdmin || roleLoading) && (
-        <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50' : 'border-border bg-card'}`}>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-2.5">
-              <Icons.ShieldAlert className={`mt-0.5 h-4 w-4 shrink-0 ${client.requireOffline ? 'text-amber-600' : 'text-muted-foreground'}`} />
-              <div>
-                <p className="text-sm font-medium">Local AI Only</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {client.requireOffline
-                    ? 'All workflows for this client are restricted to local Ollama models. Cloud AI providers are blocked.'
-                    : 'This client can use any AI provider. Enable this if the client has a policy against cloud AI.'}
-                </p>
-                {toggleError && <p className="text-[11px] text-red-600 mt-1">{toggleError}</p>}
-              </div>
+      {/* AI Policy */}
+      <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50' : 'border-border bg-card'}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-2.5">
+            <Icons.ShieldAlert className={`mt-0.5 h-4 w-4 shrink-0 ${client.requireOffline ? 'text-amber-600' : 'text-muted-foreground'}`} />
+            <div>
+              <p className="text-sm font-medium">Local AI Only</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {client.requireOffline
+                  ? 'All workflows for this client are restricted to local Ollama models. Cloud AI providers are blocked.'
+                  : 'This client can use any AI provider. Enable this if the client has a policy against cloud AI.'}
+              </p>
+              {toggleError && <p className="text-[11px] text-red-600 mt-1">{toggleError}</p>}
             </div>
-            <button
-              onClick={toggleRequireOffline}
-              disabled={togglingOffline}
-              title={client.requireOffline ? 'Disable local-only policy' : 'Enable local-only policy'}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${client.requireOffline ? 'bg-amber-500' : 'bg-border'}`}
-            >
-              {togglingOffline
-                ? <Icons.Loader2 className="h-3 w-3 animate-spin text-white mx-auto" />
-                : <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${client.requireOffline ? 'translate-x-4' : 'translate-x-0'}`} />}
-            </button>
           </div>
+          <button
+            onClick={toggleRequireOffline}
+            disabled={togglingOffline}
+            title={client.requireOffline ? 'Disable local-only policy' : 'Enable local-only policy'}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${client.requireOffline ? 'bg-amber-500' : 'bg-border'}`}
+          >
+            {togglingOffline
+              ? <Icons.Loader2 className="h-3 w-3 animate-spin text-white mx-auto" />
+              : <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${client.requireOffline ? 'translate-x-4' : 'translate-x-0'}`} />}
+          </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }
