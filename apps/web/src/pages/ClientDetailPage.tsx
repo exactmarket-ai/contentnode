@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, assetUrl } from '@/lib/api'
 import { downloadBrandProfileDocx, downloadCompanyProfileDocx } from '@/lib/downloadDocx'
 import { ClientReportsTab } from './ClientReportsTab'
 import { ClientFrameworkTab } from './ClientFrameworkTab'
@@ -535,7 +535,8 @@ function ClientLogoAvatar({ logoUrl, name, size = 'md' }: { logoUrl?: string | n
   const dims = { sm: 'h-7 w-7 text-[10px]', md: 'h-10 w-10 text-xs', lg: 'h-14 w-14 text-sm' }[size]
   const initials = name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
   if (logoUrl) {
-    return <img src={logoUrl} alt={name} className={`${dims} rounded-lg object-contain border border-border bg-white shrink-0`} />
+    const src = logoUrl.startsWith('/') ? assetUrl(logoUrl) : logoUrl
+    return <img src={src} alt={name} className={`${dims} rounded-lg object-contain border border-border bg-white shrink-0`} />
   }
   return (
     <div className={`${dims} rounded-lg flex items-center justify-center font-semibold shrink-0`} style={{ backgroundColor: '#f3e8ff', color: '#a200ee' }}>
