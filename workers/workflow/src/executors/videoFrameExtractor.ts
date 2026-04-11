@@ -74,6 +74,19 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
       }
     }
 
+    // Fix MP4 files where moov atom is at end of file (common with screen recorders).
+    // -c copy -movflags +faststart remuxes without re-encoding and moves moov to front.
+    const fixedPath = join(tmpdir(), `vid_fixed_${randomUUID()}.mp4`)
+    try {
+      execSync(`ffmpeg -y -i "${filePath}" -c copy -movflags +faststart "${fixedPath}"`, { stdio: 'pipe', timeout: 60000 })
+      if (tempFilePath) { try { unlinkSync(tempFilePath) } catch { /* ignore */ } }
+      tempFilePath = fixedPath
+      filePath = fixedPath
+    } catch {
+      // Remux failed — try with the original file anyway, real error will surface below
+      try { unlinkSync(fixedPath) } catch { /* ignore */ }
+    }
+
     // Get video duration via ffprobe
     let durationSecs = 60
     try {

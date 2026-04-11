@@ -13,7 +13,8 @@
  * preference list until one succeeds. The working model is cached per process.
  */
 
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -204,6 +205,18 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     const tmpPath = join(tmpdir(), `contentnode_video_${randomUUID()}.${ext}`)
     writeFileSync(tmpPath, videoBuffer)
 
+    // Fix MP4 files where moov atom is at end of file (common with screen recorders).
+    // This remuxes without re-encoding and moves moov to front so Gemini can process it.
+    let uploadPath = tmpPath
+    const fixedPath = join(tmpdir(), `contentnode_video_fixed_${randomUUID()}.${ext}`)
+    try {
+      execSync(`ffmpeg -y -i "${tmpPath}" -c copy -movflags +faststart "${fixedPath}"`, { stdio: 'pipe', timeout: 120000 })
+      uploadPath = fixedPath
+      console.log(`[video-intelligence] remuxed with faststart`)
+    } catch {
+      // Remux failed — try uploading original and let Gemini surface the real error
+    }
+
     let text: string
     let usedModel: string
     let videoSecs = 0
@@ -214,7 +227,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
       // Retry upload+poll up to 2 times — Gemini occasionally fails large file processing
       let file: Awaited<ReturnType<typeof fileManager.getFile>> | null = null
       for (let attempt = 1; attempt <= 2; attempt++) {
-        const uploadResult = await fileManager.uploadFile(tmpPath, {
+        const uploadResult = await fileManager.uploadFile(uploadPath, {
           mimeType,
           displayName: 'contentnode_video',
         })
@@ -249,6 +262,7 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
 
     } finally {
       try { unlinkSync(tmpPath) } catch { /* ignore */ }
+      try { if (existsSync(fixedPath)) unlinkSync(fixedPath) } catch { /* ignore */ }
     }
 
     const durationMs = Date.now() - startMs
