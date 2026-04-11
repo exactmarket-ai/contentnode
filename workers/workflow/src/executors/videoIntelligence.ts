@@ -107,11 +107,11 @@ async function generateContent(fileUri: string, mimeType: string, prompt: string
       body: JSON.stringify({
         contents: [{
           parts: [
-            { fileData: { mimeType, fileUri } },
+            { file_data: { mime_type: mimeType, file_uri: fileUri } },
             { text: prompt },
           ],
         }],
-        generationConfig: { maxOutputTokens: 2048 },
+        generation_config: { max_output_tokens: 2048 },
       }),
     }
   )
