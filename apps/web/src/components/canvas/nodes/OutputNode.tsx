@@ -436,46 +436,34 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           )
         })()}
 
-        {/* Image preview */}
+        {/* Image preview — grid layout: 1=full, 2=side-by-side, 3-4=2×2 */}
         {(isPassed || isSkipped || status === 'idle') && subtype === 'image-generation' && (() => {
           const output = nodeStatuses[id]?.output as Record<string, unknown> | undefined
           const assets = (output?.assets ?? config.stored_assets) as { localPath: string }[] | undefined
           if (!assets?.length) return null
           const label = data.label as string
+          const count = Math.min(assets.length, 4)
+          const cellH = count === 1 ? 240 : 130
+          const cols = count === 1 ? 1 : 2
           return (
-            <div style={{ marginLeft: -10, marginRight: -10 }}>
-              <div className="relative overflow-hidden group" style={{ height: 240 }}>
-                <img src={assetUrl(assets[0].localPath)} alt="Generated" draggable={false} className="w-full h-full object-cover" />
-                <div className="absolute top-1.5 left-1.5 hidden group-hover:flex">
-                  <button className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors" onClick={handleRerun}>
-                    <Icons.RotateCcw className="h-3 w-3" />Re-run
-                  </button>
+            <div
+              style={{ marginLeft: -10, marginRight: -10, display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 2 }}
+            >
+              {assets.slice(0, count).map((a, i) => (
+                <div key={i} className="relative overflow-hidden group/img" style={{ height: cellH }}>
+                  <img src={assetUrl(a.localPath)} alt={`Generated ${i + 1}`} draggable={false} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 hidden group-hover/img:flex items-end justify-between p-1">
+                    {i === 0 && (
+                      <button className="nodrag flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-medium bg-black/60 hover:bg-black/80 text-white transition-colors" onClick={handleRerun}>
+                        <Icons.RotateCcw className="h-2.5 w-2.5" />Re-run
+                      </button>
+                    )}
+                    <button className="nodrag ml-auto flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors" title="Download" onClick={(e) => { e.stopPropagation(); downloadAsset(a.localPath, makeFilename(label, a.localPath, i)) }}>
+                      <Icons.Download className="h-2.5 w-2.5 text-white" />
+                    </button>
+                  </div>
                 </div>
-                <div className="absolute top-1.5 right-1.5 hidden group-hover:flex">
-                  <button className="nodrag flex items-center justify-center rounded bg-black/60 p-1 hover:bg-black/80 transition-colors" title="Download" onClick={(e) => { e.stopPropagation(); downloadAsset(assets[0].localPath, makeFilename(label, assets[0].localPath)) }}>
-                    <Icons.Download className="h-3 w-3 text-white" />
-                  </button>
-                </div>
-              </div>
-              {assets.length > 1 && (
-                <div className="flex gap-0.5 pt-0.5 px-2.5">
-                  {assets.slice(1, 4).map((a, i) => (
-                    <div key={i} className="relative group/thumb shrink-0">
-                      <img src={assetUrl(a.localPath)} alt={`Generated ${i + 2}`} draggable={false} className="h-8 w-8 rounded-sm object-cover border" style={{ borderColor: spec.accent + '44' }} />
-                      <div className="absolute inset-0 hidden group-hover/thumb:flex items-center justify-center rounded-sm bg-black/50">
-                        <button className="nodrag" title="Download" onClick={(e) => { e.stopPropagation(); downloadAsset(a.localPath, makeFilename(label, a.localPath, i + 1)) }}>
-                          <Icons.Download className="h-2.5 w-2.5 text-white" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {assets.length > 4 && (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border text-[9px] font-medium" style={{ borderColor: spec.accent + '44', color: spec.accent }}>
-                      +{assets.length - 4}
-                    </div>
-                  )}
-                </div>
-              )}
+              ))}
             </div>
           )
         })()}
