@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useClerk, useUser, SignIn } from '@clerk/clerk-react'
+import { useSearchParams } from 'react-router-dom'
+import { useClerk, useUser, SignUp } from '@clerk/clerk-react'
 import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 
@@ -18,7 +18,6 @@ const ROLE_LABEL: Record<string, string> = {
 
 export function AcceptInvitePage() {
   const [params] = useSearchParams()
-  const navigate  = useNavigate()
   const token     = params.get('token') ?? ''
 
   const { isLoaded, isSignedIn, user } = useUser()
@@ -58,7 +57,8 @@ export function AcceptInvitePage() {
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? 'Could not accept invite.'); return }
       setDone(true)
-      setTimeout(() => navigate('/workflows'), 2000)
+      // Use full page reload so the new Clerk JWT (with agency_id + role metadata) is picked up
+      setTimeout(() => { window.location.href = '/clients' }, 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -200,7 +200,7 @@ export function AcceptInvitePage() {
           </div>
 
           {PUBLISHABLE_KEY ? (
-            <SignIn
+            <SignUp
               routing="hash"
               initialValues={{ emailAddress: invite!.email }}
               forceRedirectUrl={`/accept-invite?token=${token}`}

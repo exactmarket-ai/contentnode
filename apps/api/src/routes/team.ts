@@ -257,6 +257,17 @@ export async function teamRoutes(app: FastifyInstance) {
       select: { id: true, email: true, name: true, role: true, agencyId: true },
     })
 
+    // Set Clerk public metadata so future JWTs carry agency_id + role claims
+    if (clerkClient) {
+      try {
+        await clerkClient.users.updateUserMetadata(userId, {
+          publicMetadata: { agency_id: activated.agencyId, role: activated.role },
+        })
+      } catch (err) {
+        req.log.warn({ err }, '[team] failed to set Clerk metadata after invite acceptance')
+      }
+    }
+
     await auditService.log(invite.agencyId, {
       actorType: 'user', actorId: userId,
       action: 'team.invite_accepted',

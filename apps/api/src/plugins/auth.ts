@@ -42,6 +42,24 @@ async function authPluginFn(app: FastifyInstance) {
     if (req.url.startsWith('/files/generated/')) return
     // Invite token validation is public — no Clerk auth needed to peek at invite details
     if (req.method === 'GET' && req.url.startsWith('/api/v1/team/accept-invite/')) return
+    // Accept-invite POST only needs the Clerk user ID — no agency resolution yet
+    // (the user has no DB record with the right clerkUserId until this request completes)
+    if (req.method === 'POST' && req.url.startsWith('/api/v1/team/accept-invite/')) {
+      const authHeader = req.headers.authorization
+      if (!authHeader?.startsWith('Bearer ')) {
+        return reply.code(401).send({ error: 'Missing or malformed Authorization header' })
+      }
+      try {
+        const payload = await verifyToken(authHeader.slice(7), {
+          secretKey: CLERK_SECRET_KEY,
+          authorizedParties: (process.env.CORS_ORIGIN ?? '').split(',').map(o => o.trim()).filter(Boolean),
+        })
+        req.auth = { agencyId: '', userId: payload.sub, role: 'member' }
+      } catch {
+        return reply.code(401).send({ error: 'Invalid or expired token' })
+      }
+      return
+    }
     // Client logos are public assets — no auth needed for <img src> to work
     if (req.method === 'GET' && /^\/api\/v1\/clients\/[^/]+\/logo(\?.*)?$/.test(req.url)) return
 
