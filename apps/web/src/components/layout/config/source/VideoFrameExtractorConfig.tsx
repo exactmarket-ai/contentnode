@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { apiFetch, assetUrl } from '@/lib/api'
 import { FieldGroup, formatBytes } from '../shared'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 interface VideoFile {
   id: string
@@ -41,6 +42,7 @@ export function VideoFrameExtractorConfig({
   const videoFiles = (config.video_files as VideoFile[]) ?? []
   const timestampMode = (config.timestamp_mode as string) ?? 'percent'
   const timestampValue = (config.timestamp_value as number) ?? 50
+  const videoContext = (config.video_context as string) ?? ''
 
   const uploadVideo = useCallback(
     async (files: File[]) => {
@@ -176,6 +178,20 @@ export function VideoFrameExtractorConfig({
         </div>
         <p className="text-[11px] text-muted-foreground">
           50% captures the video mid-point. Use seconds mode to target a specific moment.
+        </p>
+      </div>
+
+      {/* Video context / transcript */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Video Context or Transcript</Label>
+        <Textarea
+          placeholder="Paste the video transcript here, or describe what the video covers — topics, key points, speaker, audience. This drives the title and description generation."
+          className="min-h-[100px] resize-none text-xs"
+          value={videoContext}
+          onChange={(e) => onChange('video_context', e.target.value)}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Optional but recommended — the more context you provide, the better the title and description.
         </p>
       </div>
 

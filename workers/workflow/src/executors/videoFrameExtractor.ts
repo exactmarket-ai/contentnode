@@ -22,6 +22,7 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     const videoFiles = (config.video_files as VideoFile[]) ?? []
     const timestampMode = (config.timestamp_mode as string) ?? 'percent'
     const timestampValue = (config.timestamp_value as number) ?? 50
+    const videoContext = (config.video_context as string) ?? ''
 
     if (videoFiles.length === 0) {
       throw new Error('Video Frame Extractor: no video file configured — upload a video in the node config')
@@ -88,6 +89,11 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     const frameBuffer = Buffer.from(readFileSync(framePath))
     const storageKey = await saveGeneratedFile(frameBuffer, frameFilename, 'image/jpeg')
 
+    // Build the text output that downstream AI nodes will use
+    const contextLines: string[] = []
+    contextLines.push(`Video: ${videoFile.name}`)
+    if (videoContext.trim()) contextLines.push(`\n${videoContext.trim()}`)
+
     return {
       output: {
         storageKey,
@@ -96,6 +102,8 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
         videoName: videoFile.name,
         timestampSecs: Math.round(seekSecs * 10) / 10,
         durationSecs: Math.round(durationSecs),
+        // text field is what downstream nodes receive as their input
+        text: contextLines.join('\n'),
       },
     }
   }

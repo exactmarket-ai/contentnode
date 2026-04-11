@@ -27,7 +27,9 @@ function buildPrompt(template: string | undefined, input: unknown): string {
     typeof input === 'string'
       ? input
       : Array.isArray(input)
-      ? input.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n\n---\n\n')
+      ? input.map((v) => typeof v === 'string' ? v : (v !== null && typeof v === 'object' && 'text' in v ? (v as { text: string }).text : JSON.stringify(v))).join('\n\n---\n\n')
+      : (input !== null && typeof input === 'object' && 'text' in input)
+      ? (input as { text: string }).text
       : JSON.stringify(input)
 
   if (!template) return inputStr
