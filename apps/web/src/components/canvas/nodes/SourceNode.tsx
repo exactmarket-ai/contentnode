@@ -27,9 +27,10 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   const isTextInput = subtype === 'text-input'
   const isDocSource = subtype === 'document-source' || subtype === 'file-upload'
   const isTranscription = subtype === 'transcription'
-  const acceptsFiles = isDocSource || isTranscription
+  const isVideoUpload = subtype === 'video-upload'
+  const acceptsFiles = isDocSource || isTranscription || isVideoUpload
 
-  const fileKey = isTranscription ? 'audio_files' : 'uploaded_files'
+  const fileKey = isTranscription ? 'audio_files' : isVideoUpload ? 'video_files' : 'uploaded_files'
   const existingConfig = (data.config as Record<string, unknown>) ?? {}
   const fileCount = ((existingConfig[fileKey] as unknown[]) ?? []).length
   const libraryRefs = (existingConfig.library_refs as Array<{ name?: string; label?: string }> | undefined) ?? []
@@ -45,6 +46,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
     if (cfg.text || cfg.inlineText || cfg.pasted_text) return true
     if (Array.isArray(cfg.uploaded_files) && (cfg.uploaded_files as unknown[]).length > 0) return true
     if (Array.isArray(cfg.audio_files) && (cfg.audio_files as unknown[]).length > 0) return true
+    if (Array.isArray(cfg.video_files) && (cfg.video_files as unknown[]).length > 0) return true
     if (Array.isArray(cfg.library_refs) && (cfg.library_refs as unknown[]).length > 0) return true
     if (cfg.documentId) return true
     if (cfg.url) return true  // web-scrape / api-fetch
@@ -91,7 +93,9 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
         if (n.id !== id) return n
         const cfg = (n.data.config as Record<string, unknown>) ?? {}
         const existing = (cfg[fileKey] as unknown[]) ?? []
-        const newCfg = { ...cfg, [fileKey]: [...existing, ...results] }
+        // Video upload: replace (only one video at a time); others: append
+        const merged = isVideoUpload ? results.slice(-1) : [...existing, ...results]
+        const newCfg = { ...cfg, [fileKey]: merged }
         return { ...n, data: { ...n.data, ...newCfg, config: newCfg } }
       })
       const wfId = state.workflow.id
@@ -226,7 +230,9 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
       ) : (
         <div className="px-2.5 py-1.5">
           {dropping ? (
-            <p className="text-[10px]" style={{ color: spec.accent }}>Drop to add files</p>
+            <p className="text-[10px]" style={{ color: spec.accent }}>
+              {isVideoUpload ? 'Drop to upload video' : 'Drop to add files'}
+            </p>
           ) : uploading ? (
             <p className="flex items-center gap-1 text-[10px]" style={{ color: spec.accent }}>
               <Icons.Loader2 className="h-3 w-3 animate-spin" />Uploading…
@@ -261,6 +267,11 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
             </>
           )}
         </div>
+      )}
+
+      {/* Input handle — only for transcription: lets it receive audio/video from upstream */}
+      {isTranscription && (
+        <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
       )}
 
       {/* Output handle */}

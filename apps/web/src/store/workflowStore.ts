@@ -256,7 +256,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   // Video Upload (source type — uploads a video file and passes the reference downstream)
   {
     type: 'source', subtype: 'video-upload',
-    label: 'Video Upload', description: 'Upload a video file — connect to Video Transcription and/or Video Frame Extractor',
+    label: 'Video Upload', description: 'Upload a video file — connect to Transcription and/or Video Frame Extractor',
     category: 'source', icon: 'Film',
     defaultConfig: {
       subtype: 'video-upload',
@@ -275,21 +275,10 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       timestamp_value: 50,
     },
   },
-  // Video Transcription (logic type — receives video from upstream, returns transcript text)
-  {
-    type: 'logic', subtype: 'video-transcription',
-    label: 'Video Transcription', description: 'Auto-transcribe a video from an upstream node',
-    category: 'logic', icon: 'Mic',
-    defaultConfig: {
-      subtype: 'video-transcription',
-      provider: 'assemblyai',
-      api_key_ref: 'ASSEMBLYAI_API_KEY',
-    },
-  },
-  // Transcription (source type — produces transcript text from audio)
+  // Transcription (source type — transcribes audio/video; accepts upstream input or direct file upload)
   {
     type: 'source', subtype: 'transcription',
-    label: 'Transcription', description: 'Transcribe audio recordings with speaker diarization',
+    label: 'Transcription', description: 'Transcribe audio/video — connect from upstream or upload directly. Supports speaker diarization.',
     category: 'source', icon: 'Mic',
     defaultConfig: {
       subtype: 'transcription',

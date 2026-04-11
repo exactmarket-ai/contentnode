@@ -102,7 +102,12 @@ export class VideoTranscriptionExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
-    const provider  = (config.provider   as string) ?? 'assemblyai'
+    // If the workflow's AI model provider leaked into config.provider (e.g. 'anthropic'),
+    // fall back to assemblyai — that's always the correct default for transcription.
+    const rawProvider = config.provider as string | undefined
+    const provider = (rawProvider && !['anthropic', 'ollama', 'openai'].includes(rawProvider))
+      ? rawProvider
+      : 'assemblyai'
     const apiKeyRef = (config.api_key_ref as string) ?? 'ASSEMBLYAI_API_KEY'
 
     // Get video reference from upstream input

@@ -1114,15 +1114,17 @@ Lead with the primary emotion from the brief. Every character counts.`,
 
       {
         id: 'vid-transcription',
-        type: 'logic',
+        type: 'source',
         position: { x: 380, y: 140 },
         data: {
-          label: 'Transcribe Video',
-          subtype: 'video-transcription',
+          label: 'Transcription',
+          subtype: 'transcription',
           config: {
-            subtype: 'video-transcription',
+            subtype: 'transcription',
             provider: 'assemblyai',
             api_key_ref: 'ASSEMBLYAI_API_KEY',
+            enable_diarization: false,
+            audio_files: [],
           },
         },
       },

@@ -90,6 +90,15 @@ export function TranscriptionConfig({
 
   return (
     <>
+      {/* Upstream connection note */}
+      <div className="flex items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
+        <Icons.Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          Connect a <strong>Video Upload</strong> or audio source to this node's left handle to transcribe it automatically.
+          Or upload audio files directly below.
+        </span>
+      </div>
+
       {/* Content role */}
       <FieldGroup label="Content Role">
         <Select value={(config.content_role as string) ?? 'source-material'} onValueChange={(v) => onChange('content_role', v)}>

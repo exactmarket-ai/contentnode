@@ -193,7 +193,16 @@ export async function workflowRoutes(app: FastifyInstance) {
             const nodeModelCfg = (config.model_config as Record<string, unknown> | null) ?? null
             const resolvedModelCfg = nodeModelCfg ?? defaultModelCfg
             const resolvedProvider = (resolvedModelCfg.provider as string | undefined) ?? 'anthropic'
-            const modelFields = n.type === 'logic' ? {
+            // Only inject AI model fields on subtypes that actually call an LLM.
+            // Non-AI logic nodes (video-transcription, video-frame-extractor, transform, etc.)
+            // use their own `provider` field to mean something different (e.g. transcription service),
+            // so overwriting it with the workflow's LLM provider would break them.
+            const nodeSubtype = (config.subtype as string | undefined) ?? (data.subtype as string | undefined) ?? ''
+            const AI_LOGIC_SUBTYPES = new Set([
+              'ai-generate', 'humanizer', 'detection', 'image-generation',
+              'video-generation', 'translation', 'human-review', 'conditional-branch', 'insight',
+            ])
+            const modelFields = n.type === 'logic' && AI_LOGIC_SUBTYPES.has(nodeSubtype) ? {
               provider: isOfflineSave ? 'ollama' : resolvedProvider,
               model: isOfflineSave
                 ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')

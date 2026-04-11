@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { NODE_SPEC } from '@/lib/nodeColors'
+import { getNodeSpec } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
 
 interface Client { id: string; name: string }
@@ -11,7 +11,7 @@ export const BrandContextNode = memo(function BrandContextNode({ id, data, selec
   const { updateNodeData, nodeRunStatuses } = useWorkflowStore()
   const workflowClientId = useWorkflowStore((s) => s.workflow.clientId)
 
-  const spec = NODE_SPEC['input']
+  const spec = getNodeSpec('source', 'brand-context')
   const config = (data.config as Record<string, unknown>) ?? {}
   const clientId = (config.clientId as string) || workflowClientId || ''
   const verticalId = (config.verticalId as string) || ''

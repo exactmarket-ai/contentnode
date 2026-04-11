@@ -1,8 +1,10 @@
 import { execSync } from 'node:child_process'
-import { createReadStream, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join, extname } from 'node:path'
+import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { prisma } from '@contentnode/database'
+import { isS3Mode, downloadBuffer } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -305,12 +307,40 @@ function formatSeconds(secs: number): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Video input helpers (when Transcription node is connected to a Video Upload)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface VideoRef { storageKey: string; filename?: string }
+
+function extractVideoRef(input: unknown): VideoRef | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const obj = input as Record<string, unknown>
+  if (typeof obj.storageKey === 'string' && obj.storageKey) {
+    return { storageKey: obj.storageKey, filename: typeof obj.filename === 'string' ? obj.filename : undefined }
+  }
+  return null
+}
+
+/**
+ * Extract audio track from a video file using ffmpeg.
+ * Returns the path to a temp mp3 file (caller must delete after use).
+ */
+function extractAudioFromVideo(videoPath: string): string {
+  const audioPath = join(tmpdir(), `audio_${randomUUID()}.mp3`)
+  execSync(
+    `ffmpeg -y -i "${videoPath}" -vn -acodec libmp3lame -ar 16000 -ac 1 "${audioPath}"`,
+    { stdio: 'ignore', timeout: 180_000 },
+  )
+  return audioPath
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TranscriptionNodeExecutor
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class TranscriptionNodeExecutor extends NodeExecutor {
   async execute(
-    _input: unknown,
+    input: unknown,
     config: Record<string, unknown>,
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
@@ -322,8 +352,67 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
     const stakeholderIdForSession = (config.stakeholder_id as string | null) ?? null
     const audioFiles = (config.audio_files as AudioFile[]) ?? []
 
+    // ── Upstream input mode (video or audio from a connected node) ──────────
+    // When the Transcription node receives input from an upstream node (e.g.
+    // Video Upload, or another audio source), skip the speaker-assignment flow
+    // and just return the transcript text for downstream AI nodes.
+    const upstreamRef = extractVideoRef(input)
+    if (upstreamRef) {
+      const apiKey = apiKeyRef ? (process.env[apiKeyRef] ?? '') : ''
+      const isVideo = /\.(mp4|mov|avi|webm|mkv|m4v)(\?|$)/i.test(upstreamRef.filename ?? upstreamRef.storageKey)
+
+      // Locate or download the source file
+      let sourcePath: string
+      let tempVideoPath: string | null = null
+      if (isS3Mode()) {
+        const buffer = await downloadBuffer(upstreamRef.storageKey)
+        tempVideoPath = join(tmpdir(), `src_${randomUUID()}.${isVideo ? 'mp4' : 'mp3'}`)
+        writeFileSync(tempVideoPath, Buffer.from(buffer))
+        sourcePath = tempVideoPath
+      } else {
+        sourcePath = join(UPLOAD_DIR, upstreamRef.storageKey)
+      }
+
+      // Extract audio from video if needed
+      let audioPath: string
+      let tempAudioPath: string | null = null
+      if (isVideo) {
+        audioPath = extractAudioFromVideo(sourcePath)
+        tempAudioPath = audioPath
+      } else {
+        audioPath = sourcePath
+      }
+
+      try {
+        let text: string
+        if (provider === 'local' || provider === 'mock') {
+          text = `[Mock transcript for: ${upstreamRef.filename ?? upstreamRef.storageKey}]`
+        } else if (provider === 'deepgram') {
+          if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for Deepgram`)
+          const { segments } = await callDeeepgram(audioPath, apiKey, false, null)
+          text = segments.map((s) => s.text).join(' ')
+        } else if (provider === 'assemblyai') {
+          if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for AssemblyAI`)
+          const { segments } = await callAssemblyAI(audioPath, apiKey, false)
+          text = segments.map((s) => s.text).join(' ')
+        } else if (provider === 'openai-whisper') {
+          if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for OpenAI Whisper`)
+          const { segments } = await callWhisper(audioPath, apiKey)
+          text = segments.map((s) => s.text).join(' ')
+        } else {
+          throw new Error(`Unknown transcription provider: "${provider}"`)
+        }
+        return { output: { text } }
+      } finally {
+        // Clean up temp files
+        if (tempAudioPath) try { unlinkSync(tempAudioPath) } catch { /* ignore */ }
+        if (tempVideoPath) try { unlinkSync(tempVideoPath) } catch { /* ignore */ }
+      }
+    }
+
+    // ── Standalone mode (audio files configured in the node) ────────────────
     if (audioFiles.length === 0) {
-      throw new Error('Transcription node: no audio files configured')
+      throw new Error('Transcription node: no audio files configured — upload audio files or connect an upstream node')
     }
 
     // Resolve API key from env

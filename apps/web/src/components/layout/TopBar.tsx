@@ -272,8 +272,10 @@ export function TopBar() {
         setWorkflow({ id: newWf.id, name, clientId, autoCreated: false, graphSaved: true })
         useWorkflowStore.setState({ graphDirty: false })
         setWorkflowName(name)
-        // Update React Router's history so useParams() reflects the new ID
-        navigate(`/workflows/${newWf.id}`, { replace: true })
+        // Update the URL bar without triggering a React Router route change.
+        // Using navigate() would unmount+remount WorkflowEditor (different route
+        // definition), blanking the canvas. replaceState avoids that entirely.
+        window.history.replaceState(null, '', `/workflows/${newWf.id}`)
         setSaveToast({ ok: true, msg: `Saved as new — "${name}"` })
       } else {
         // Save over existing workflow
