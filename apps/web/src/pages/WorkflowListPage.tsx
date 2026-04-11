@@ -321,7 +321,7 @@ export function WorkflowListPage() {
                         <p className="text-sm font-medium truncate">{wf.name}</p>
                       )}
                       <p className="text-[11px] text-muted-foreground">
-                        {wf.client?.name ?? 'No client'} · {wf._count.runs} run{wf._count.runs !== 1 ? 's' : ''} · updated {new Date(wf.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {wf.client?.name ?? 'No client'} · {wf._count.runs} run{wf._count.runs !== 1 ? 's' : ''} · updated {new Date(wf.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </p>
                     </div>
                   </div>
