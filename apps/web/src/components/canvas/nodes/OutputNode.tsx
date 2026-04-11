@@ -316,7 +316,7 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
                   <select
                     className="nodrag nopan w-full h-6 rounded border text-[9px] px-1 outline-none"
                     style={selectStyle}
-                    value={(config.duration_seconds as number) ?? validDurations[0]}
+                    value={(config.duration_seconds as number) ?? 5}
                     onChange={(e) => { e.stopPropagation(); set('duration_seconds', Number(e.target.value)) }}
                     onClick={(e) => e.stopPropagation()}
                   >
