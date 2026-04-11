@@ -2341,9 +2341,9 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     const attachments = await prisma.clientBrandAttachment.findMany({
       where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true, extractedText: true },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true, extractedText: true, summary: true, summaryStatus: true },
     })
-    // Trim extractedText to a preview — no need to send 500KB to the browser
+    // Trim extractedText to a preview — full text is served via /:attachmentId/text
     const data = attachments.map((a) => ({ ...a, extractedText: a.extractedText ? a.extractedText.slice(0, 2000) : null }))
     return reply.send({ data })
   })
@@ -2415,6 +2415,36 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     try { await deleteObject(attachment.storageKey) } catch {}
     await prisma.clientBrandAttachment.delete({ where: { id: attachmentId } })
     return reply.code(204).send()
+  })
+
+  // ── PATCH /:id/brand-profile/attachments/:attachmentId — edit summary ────
+  app.patch<{ Params: { id: string; attachmentId: string } }>('/:id/brand-profile/attachments/:attachmentId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, attachmentId } = req.params
+    const { summary } = (req.body ?? {}) as { summary?: string }
+    if (typeof summary !== 'string') return reply.code(400).send({ error: 'summary is required' })
+    const attachment = await prisma.clientBrandAttachment.findFirst({
+      where: { id: attachmentId, clientId, agencyId },
+    })
+    if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+    const updated = await prisma.clientBrandAttachment.update({
+      where: { id: attachmentId },
+      data: { summary: summary.trim(), summaryStatus: 'ready' },
+      select: { id: true, summary: true, summaryStatus: true },
+    })
+    return reply.send({ data: updated })
+  })
+
+  // ── GET /:id/brand-profile/attachments/:attachmentId/text — raw original ──
+  app.get<{ Params: { id: string; attachmentId: string } }>('/:id/brand-profile/attachments/:attachmentId/text', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, attachmentId } = req.params
+    const attachment = await prisma.clientBrandAttachment.findFirst({
+      where: { id: attachmentId, clientId, agencyId },
+      select: { extractedText: true, filename: true },
+    })
+    if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+    return reply.send({ data: { text: attachment.extractedText ?? '', filename: attachment.filename } })
   })
 
   // ── GET /:id/brand-builder ─────────────────────────────────────────────────

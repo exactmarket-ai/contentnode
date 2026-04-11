@@ -342,6 +342,56 @@ async function runBrandExtraction(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Per-file Claude interpretation — what this file contributes to the brand
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FILE_SUMMARY_SYSTEM_PROMPT = `You are a brand analyst. A document has been uploaded to build a client's brand profile.
+
+Review the extracted content and write a concise 3-5 sentence interpretation:
+1. What type of document this is and its purpose
+2. The key brand attributes, voice characteristics, or guidelines it establishes
+3. How this content will specifically shape the brand profile (tone, vocabulary, messaging, audience, etc.)
+
+Be direct and specific. No preamble. Focus on what Claude will learn from this file.`
+
+async function generateFileSummary(
+  attachmentId: string,
+  extractedText: string,
+): Promise<void> {
+  await prisma.clientBrandAttachment.update({
+    where: { id: attachmentId },
+    data: { summaryStatus: 'processing' },
+  })
+
+  let summary: string | null = null
+  let summaryStatus = 'failed'
+
+  try {
+    const result = await callModel(
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        api_key_ref: 'ANTHROPIC_API_KEY',
+        max_tokens: 512,
+        temperature: 0.2,
+        system_prompt: FILE_SUMMARY_SYSTEM_PROMPT,
+      },
+      extractedText.slice(0, 20_000),
+    )
+    summary = result.text.trim()
+    summaryStatus = 'ready'
+    console.log(`[brand-attachment-process] summary generated for ${attachmentId}`)
+  } catch (err) {
+    console.error(`[brand-attachment-process] summary generation failed for ${attachmentId}:`, err)
+  }
+
+  await prisma.clientBrandAttachment.update({
+    where: { id: attachmentId },
+    data: { summary, summaryStatus },
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main job handler
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -391,12 +441,14 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
         extractionStatus: extractedText !== null ? 'ready' : 'failed',
         extractedText: extractedText?.slice(0, 500_000) ?? null,
         errorMessage,
+        // Mark summary as failed if text extraction failed (nothing to summarise)
+        ...(extractedText === null ? { summaryStatus: 'failed' } : {}),
       },
     })
 
-    // Whether or not this attachment succeeded, re-run the full brand extraction
-    // using whatever ready attachments exist for this client+vertical
     if (extractedText !== null) {
+      // Generate per-file interpretation, then re-run the full brand JSON extraction
+      await generateFileSummary(attachmentId, extractedText)
       await runBrandExtraction(agencyId, clientId, verticalId)
     }
   })

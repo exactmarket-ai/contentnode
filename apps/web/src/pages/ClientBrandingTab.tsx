@@ -18,6 +18,8 @@ interface BrandAttachment {
   extractionStatus: 'pending' | 'processing' | 'ready' | 'failed'
   errorMessage?: string | null
   extractedText?: string | null
+  summary?: string | null
+  summaryStatus?: 'pending' | 'processing' | 'ready' | 'failed'
 }
 
 interface BrandJson {
@@ -251,35 +253,65 @@ function formatBytes(bytes: number): string {
 
 function BrandAttachmentRow({
   attachment: a,
+  clientId,
   deletingId,
   onDelete,
+  onSummaryUpdated,
 }: {
   attachment: BrandAttachment
+  clientId: string
   deletingId: string | null
   onDelete: (a: BrandAttachment) => void
+  onSummaryUpdated: (id: string, summary: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState(a.summary ?? '')
+  const [saving, setSaving] = useState(false)
+  const [showOriginal, setShowOriginal] = useState(false)
+  const [rawText, setRawText] = useState<string | null>(null)
+  const [loadingText, setLoadingText] = useState(false)
+
+  const base = `/api/v1/clients/${clientId}/brand-profile/attachments`
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await apiFetch(`${base}/${a.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ summary: editValue }),
+      })
+      if (res.ok) {
+        onSummaryUpdated(a.id, editValue)
+        setEditing(false)
+      }
+    } catch { /* ignore */ } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleViewOriginal = async () => {
+    if (rawText !== null) { setShowOriginal(true); return }
+    setLoadingText(true)
+    try {
+      const res = await apiFetch(`${base}/${a.id}/text`)
+      if (res.ok) {
+        const { data } = await res.json()
+        setRawText(data.text ?? '')
+      }
+    } catch { /* ignore */ } finally {
+      setLoadingText(false)
+      setShowOriginal(true)
+    }
+  }
 
   function statusBadge() {
-    if (a.extractionStatus === 'pending') {
-      return (
-        <span className="inline-flex items-center rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">
-          Queued
-        </span>
-      )
-    }
-    if (a.extractionStatus === 'processing') {
+    if (a.extractionStatus === 'pending' || a.extractionStatus === 'processing') {
       return (
         <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">
           <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" />
-          Extracting…
-        </span>
-      )
-    }
-    if (a.extractionStatus === 'ready') {
-      return (
-        <span className="inline-flex items-center rounded-full border border-green-500/40 bg-green-500/10 px-1.5 py-0 text-[10px] font-medium text-green-600 dark:text-green-400">
-          ✓ Ready
+          Reading…
         </span>
       )
     }
@@ -290,11 +322,28 @@ function BrandAttachmentRow({
         </span>
       )
     }
-    return null
+    // extraction ready — show summary status
+    if (a.summaryStatus === 'pending' || a.summaryStatus === 'processing') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">
+          <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" />
+          Interpreting…
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex items-center rounded-full border border-green-500/40 bg-green-500/10 px-1.5 py-0 text-[10px] font-medium text-green-600 dark:text-green-400">
+        ✓ Interpreted
+      </span>
+    )
   }
+
+  const isProcessing = a.extractionStatus === 'pending' || a.extractionStatus === 'processing' ||
+    a.summaryStatus === 'pending' || a.summaryStatus === 'processing'
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
+      {/* Row header */}
       <div
         className="flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/20"
         onClick={() => setExpanded((v) => !v)}
@@ -330,23 +379,104 @@ function BrandAttachmentRow({
         </button>
       </div>
 
+      {/* Expanded content */}
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3">
-          {a.extractionStatus === 'ready' && a.extractedText ? (
-            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[11px] text-muted-foreground">
-              {a.extractedText}
-            </pre>
-          ) : a.extractionStatus === 'processing' || a.extractionStatus === 'pending' ? (
-            <p className="text-[11px] text-muted-foreground">
-              File is being read — extracted content will appear here once ready.
-            </p>
-          ) : a.extractionStatus === 'failed' ? (
+          {a.extractionStatus === 'failed' ? (
             <p className="text-[11px] text-destructive">
               {a.errorMessage ?? 'Extraction failed. Try re-uploading the file.'}
             </p>
+          ) : isProcessing ? (
+            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+              <Icons.Loader2 className="h-4 w-4 animate-spin" />
+              Claude is reading and interpreting this file…
+            </div>
+          ) : editing ? (
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Edit Claude's Interpretation
+              </p>
+              <textarea
+                className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                rows={8}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setEditing(false); setEditValue(a.summary ?? '') }}
+                  className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           ) : (
-            <p className="text-[11px] text-muted-foreground">No content extracted.</p>
+            <div>
+              <div className="mb-2 flex items-center justify-end gap-3">
+                <button
+                  onClick={handleViewOriginal}
+                  disabled={loadingText}
+                  className="text-[10px] text-muted-foreground underline hover:text-foreground"
+                >
+                  {loadingText ? 'Loading…' : 'View original text'}
+                </button>
+                <button
+                  onClick={() => { setEditValue(a.summary ?? ''); setEditing(true) }}
+                  className="text-[10px] text-primary underline hover:text-primary/80"
+                >
+                  Edit
+                </button>
+              </div>
+              <div className="rounded-md bg-muted/30 px-3 py-2.5">
+                {a.summary ? (
+                  <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground">{a.summary}</p>
+                ) : (
+                  <p className="text-[11px] italic text-muted-foreground">No interpretation yet — click Edit to add one manually.</p>
+                )}
+              </div>
+            </div>
           )}
+        </div>
+      )}
+
+      {/* Raw original text modal */}
+      {showOriginal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
+          onClick={() => setShowOriginal(false)}
+        >
+          <div
+            className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border shadow-2xl"
+            style={{ maxHeight: '80vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between bg-primary px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-widest text-primary-foreground/70">Original Extracted Text</p>
+                <p className="mt-0.5 truncate text-sm font-semibold text-primary-foreground">{a.filename}</p>
+              </div>
+              <button
+                onClick={() => setShowOriginal(false)}
+                className="ml-4 shrink-0 rounded p-1 text-primary-foreground/70 hover:text-primary-foreground"
+              >✕</button>
+            </div>
+            <div className="overflow-auto bg-card p-6">
+              {rawText ? (
+                <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-foreground">{rawText}</pre>
+              ) : (
+                <p className="text-sm italic text-muted-foreground">No extracted text available for this file.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -407,7 +537,10 @@ function BrandProfileSection({
   // Poll while any attachment is pending/processing or profile is extracting
   useEffect(() => {
     const hasInProgress =
-      attachments.some((a) => a.extractionStatus === 'pending' || a.extractionStatus === 'processing') ||
+      attachments.some((a) =>
+        a.extractionStatus === 'pending' || a.extractionStatus === 'processing' ||
+        a.summaryStatus === 'pending' || a.summaryStatus === 'processing'
+      ) ||
       profile?.extractionStatus === 'extracting'
     if (!hasInProgress) return
     const t = setTimeout(() => { fetchAll() }, 4000)
@@ -659,8 +792,12 @@ function BrandProfileSection({
               <BrandAttachmentRow
                 key={a.id}
                 attachment={a}
+                clientId={clientId}
                 deletingId={deletingId}
                 onDelete={handleDelete}
+                onSummaryUpdated={(id, summary) =>
+                  setAttachments((prev) => prev.map((x) => x.id === id ? { ...x, summary, summaryStatus: 'ready' } : x))
+                }
               />
             ))}
           </div>

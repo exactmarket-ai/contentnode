@@ -1179,6 +1179,10 @@ model ClientBrandAttachment {
   extractionStatus  String   @default("pending") @map("extraction_status")
   extractedText     String?  @map("extracted_text") @db.Text
   errorMessage      String?  @map("error_message")
+  // Claude's interpretation of what this file contributes to the brand profile
+  // pending | processing | ready | failed
+  summaryStatus     String   @default("pending") @map("summary_status")
+  summary           String?  @map("summary") @db.Text
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
