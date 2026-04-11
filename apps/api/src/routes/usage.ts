@@ -190,28 +190,42 @@ export async function usageRoutes(app: FastifyInstance) {
         })
       : []
 
-    // For users whose name is missing in our DB, fetch from Clerk and backfill
-    const missingNameIds = userRows.filter((u) => !u.name).map((u) => u.clerkUserId)
-    let clerkNames: Record<string, string> = {}
+    // For users whose name is missing in our DB, fetch from Clerk
+    const foundIds = new Set(userRows.map((u) => u.clerkUserId))
+    const missingNameIds = [
+      ...userRows.filter((u) => !u.name).map((u) => u.clerkUserId),
+      // also look up any IDs that aren't in our DB at all
+      ...userIdList.filter((id) => !foundIds.has(id)),
+    ]
+    let clerkData: Record<string, { name: string | null; email: string }> = {}
     if (missingNameIds.length > 0) {
-      clerkNames = await getClerkUserNames(missingNameIds)
-      // Backfill DB in background so subsequent calls are instant
-      for (const [clerkId, fullName] of Object.entries(clerkNames)) {
-        if (fullName) {
+      clerkData = await getClerkUserNames(missingNameIds)
+      // Only backfill proper "First Last" names — not email-only values,
+      // so a real name added later in Clerk will still get picked up.
+      for (const [clerkId, { name }] of Object.entries(clerkData)) {
+        if (name) {
           prisma.user.updateMany({
             where: { agencyId, clerkUserId: clerkId, name: null },
-            data: { name: fullName },
+            data: { name },
           }).catch(() => {})
         }
       }
     }
 
-    const userNameMap = Object.fromEntries(
-      userRows.map((u) => [
-        u.clerkUserId,
-        u.name || clerkNames[u.clerkUserId] || u.email || u.clerkUserId,
-      ])
-    )
+    // Build display label: DB name → Clerk name → Clerk email → DB email → user ID
+    const userNameMap: Record<string, string> = {}
+    for (const u of userRows) {
+      const clerk = clerkData[u.clerkUserId]
+      userNameMap[u.clerkUserId] =
+        u.name || clerk?.name || clerk?.email || u.email || u.clerkUserId
+    }
+    // IDs not in DB at all — use whatever Clerk returned
+    for (const id of userIdList) {
+      if (!userNameMap[id]) {
+        const clerk = clerkData[id]
+        userNameMap[id] = clerk?.name || clerk?.email || id
+      }
+    }
 
     type UserBucket = {
       userId: string; userName: string

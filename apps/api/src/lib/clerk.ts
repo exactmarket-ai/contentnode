@@ -26,24 +26,27 @@ export async function getClerkUserEmails(clerkUserId: string): Promise<string[]>
 }
 
 /**
- * Batch-fetch full names for a list of Clerk user IDs.
- * Returns a map of clerkUserId → "First Last" (or email if no name set).
+ * Batch-fetch display labels for a list of Clerk user IDs.
+ * Returns a map of clerkUserId → { name, email } where:
+ *   - name is "First Last" (null if not set in Clerk)
+ *   - email is the primary email address
  * Returns {} if Clerk is not configured (dev mode) or all IDs are pending.
  */
-export async function getClerkUserNames(clerkUserIds: string[]): Promise<Record<string, string>> {
+export async function getClerkUserNames(
+  clerkUserIds: string[],
+): Promise<Record<string, { name: string | null; email: string }>> {
   if (!clerkClient) return {}
   const realIds = clerkUserIds.filter((id) => !id.startsWith('pending-'))
   if (realIds.length === 0) return {}
 
-  const result: Record<string, string> = {}
-  // Fetch individually — getUserList's userId[] filter is unreliable across SDK versions
+  const result: Record<string, { name: string | null; email: string }> = {}
   await Promise.allSettled(
     realIds.map(async (id) => {
       try {
         const u = await clerkClient!.users.getUser(id)
-        const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
+        const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || null
         const primaryEmail = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ?? ''
-        result[id] = fullName || primaryEmail
+        result[id] = { name: fullName, email: primaryEmail }
       } catch {
         // user not found or Clerk error — skip
       }
