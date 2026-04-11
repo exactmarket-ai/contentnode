@@ -206,15 +206,28 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
     writeFileSync(tmpPath, videoBuffer)
 
     // Fix MP4 files where moov atom is at end of file (common with screen recorders).
-    // This remuxes without re-encoding and moves moov to front so Gemini can process it.
+    // Use a large probesize so ffmpeg scans the full file before giving up on the moov.
     let uploadPath = tmpPath
     const fixedPath = join(tmpdir(), `contentnode_video_fixed_${randomUUID()}.${ext}`)
     try {
-      execSync(`ffmpeg -y -i "${tmpPath}" -c copy -movflags +faststart "${fixedPath}"`, { stdio: 'pipe', timeout: 120000 })
+      execSync(
+        `ffmpeg -y -probesize 500M -analyzeduration 500M -i "${tmpPath}" -c copy -movflags +faststart "${fixedPath}"`,
+        { stdio: 'pipe', timeout: 180000 },
+      )
       uploadPath = fixedPath
       console.log(`[video-intelligence] remuxed with faststart`)
-    } catch {
-      // Remux failed — try uploading original and let Gemini surface the real error
+    } catch (remuxErr) {
+      // Validate whether ffprobe can read the file at all
+      try {
+        execSync(`ffprobe -v error -i "${tmpPath}" -show_entries format=duration`, { stdio: 'pipe', timeout: 15000 })
+      } catch {
+        throw new Error(
+          'Video file appears to be incomplete or corrupted (video metadata missing). ' +
+          'This usually means the recording was interrupted before it finished writing. ' +
+          'Please re-export or re-record the video and upload again.',
+        )
+      }
+      console.warn('[video-intelligence] faststart remux failed, uploading original')
     }
 
     let text: string

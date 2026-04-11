@@ -75,16 +75,33 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     }
 
     // Fix MP4 files where moov atom is at end of file (common with screen recorders).
-    // -c copy -movflags +faststart remuxes without re-encoding and moves moov to front.
+    // Use a large probesize so ffmpeg scans the full file before giving up on the moov.
     const fixedPath = join(tmpdir(), `vid_fixed_${randomUUID()}.mp4`)
+    let remuxOk = false
     try {
-      execSync(`ffmpeg -y -i "${filePath}" -c copy -movflags +faststart "${fixedPath}"`, { stdio: 'pipe', timeout: 60000 })
+      execSync(
+        `ffmpeg -y -probesize 500M -analyzeduration 500M -i "${filePath}" -c copy -movflags +faststart "${fixedPath}"`,
+        { stdio: 'pipe', timeout: 120000 },
+      )
+      remuxOk = true
       if (tempFilePath) { try { unlinkSync(tempFilePath) } catch { /* ignore */ } }
       tempFilePath = fixedPath
       filePath = fixedPath
     } catch {
-      // Remux failed — try with the original file anyway, real error will surface below
       try { unlinkSync(fixedPath) } catch { /* ignore */ }
+    }
+
+    if (!remuxOk) {
+      // Validate whether ffprobe can even read the file — if not, it's genuinely corrupt
+      try {
+        execSync(`ffprobe -v error -i "${filePath}" -show_entries format=duration`, { stdio: 'pipe', timeout: 15000 })
+      } catch {
+        throw new Error(
+          'Video file appears to be incomplete or corrupted (video metadata missing). ' +
+          'This usually means the recording was interrupted before it finished writing. ' +
+          'Please re-export or re-record the video and upload again.',
+        )
+      }
     }
 
     // Get video duration via ffprobe
