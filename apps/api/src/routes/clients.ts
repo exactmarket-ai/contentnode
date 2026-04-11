@@ -1453,6 +1453,7 @@ Rules:
 
   // ── POST /:id/company-profiles/:profileId/autofill — autofill company profile ─
   app.post<{ Params: { id: string; profileId: string }; Body: { url: string } }>('/:id/company-profiles/:profileId/autofill', async (req, reply) => {
+    try {
     const { agencyId } = req.auth
     const clientId = req.params.id
     const profileId = req.params.profileId
@@ -1797,6 +1798,10 @@ Use empty string "" or empty array [] for any field not found. Never invent info
     const profile = await prisma.companyProfile.update({ where: { id: profileId }, data: companyData })
 
     return reply.send({ data: profile })
+    } catch (err) {
+      req.log.error({ err, profileId, clientId: req.params.id }, '[autofill] unhandled error')
+      return reply.code(500).send({ error: (err instanceof Error ? err.message : String(err)) })
+    }
   })
 
   // ── GET /:id/framework — return GTM framework data for a client
