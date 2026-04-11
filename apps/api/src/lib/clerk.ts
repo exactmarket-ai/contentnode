@@ -34,18 +34,22 @@ export async function getClerkUserNames(clerkUserIds: string[]): Promise<Record<
   if (!clerkClient) return {}
   const realIds = clerkUserIds.filter((id) => !id.startsWith('pending-'))
   if (realIds.length === 0) return {}
-  try {
-    const { data: users } = await clerkClient.users.getUserList({ userId: realIds, limit: 100 })
-    const result: Record<string, string> = {}
-    for (const u of users) {
-      const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
-      const primary = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ?? ''
-      result[u.id] = fullName || primary
-    }
-    return result
-  } catch {
-    return {}
-  }
+
+  const result: Record<string, string> = {}
+  // Fetch individually — getUserList's userId[] filter is unreliable across SDK versions
+  await Promise.allSettled(
+    realIds.map(async (id) => {
+      try {
+        const u = await clerkClient!.users.getUser(id)
+        const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
+        const primaryEmail = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ?? ''
+        result[id] = fullName || primaryEmail
+      } catch {
+        // user not found or Clerk error — skip
+      }
+    })
+  )
+  return result
 }
 
 /**
