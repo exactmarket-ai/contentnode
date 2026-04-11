@@ -201,6 +201,10 @@ export const permissionService = {
     })
 
     const role = user?.role ?? 'member'
+
+    // Super-admin and owner always get full access — agency/client overrides cannot restrict them
+    if (role === 'super_admin' || role === 'owner') return FULL_ACCESS
+
     const roleDefaults = ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS['member']
 
     // Load agency-level override
