@@ -174,6 +174,8 @@ export function TopBar() {
   const [batchModalOpen, setBatchModalOpen] = useState(false)
   const [batchToast, setBatchToast] = useState<string | null>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
+  const [duplicateToast, setDuplicateToast] = useState<{ name: string; id: string } | null>(null)
 
   // Listen for save dialog trigger from WorkflowEditor's leave-warning modal
   useEffect(() => {
@@ -239,6 +241,29 @@ export function TopBar() {
   const modelList = workflow.default_model_config.provider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS
   const modelLabel = modelList.find((m) => m.value === workflow.default_model_config.model)?.label
     ?? workflow.default_model_config.model
+
+  const handleDuplicate = async (name: string, clientId: string) => {
+    const { workflow: wf, nodes, edges } = useWorkflowStore.getState()
+    const r1 = await apiFetch('/api/v1/workflows', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        clientId,
+        connectivityMode: wf.connectivity_mode ?? 'online',
+        defaultModelConfig: wf.default_model_config,
+      }),
+    })
+    if (!r1.ok) throw new Error(`POST workflow ${r1.status}`)
+    const { data: newWf } = await r1.json()
+    const r2 = await apiFetch(`/api/v1/workflows/${newWf.id}/graph`, {
+      method: 'PUT',
+      body: JSON.stringify({ nodes, edges, name, defaultModelConfig: wf.default_model_config }),
+    })
+    if (!r2.ok) throw new Error(`PUT graph ${r2.status}`)
+    // Stay on the current workflow — just show a toast with a link to the copy
+    setDuplicateToast({ name, id: newWf.id })
+    setTimeout(() => setDuplicateToast(null), 6000)
+  }
 
   const handleRun = async () => {
     if (runStatus === 'running') return
@@ -454,6 +479,20 @@ export function TopBar() {
         New
       </Button>
 
+      {/* Duplicate — only when workflow is saved */}
+      {workflow.id && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setDuplicateOpen(true)}
+          className="h-8 text-xs text-muted-foreground hover:text-foreground"
+          title="Save a copy as a template"
+        >
+          <Icons.Copy className="mr-1.5 h-3.5 w-3.5" />
+          Duplicate
+        </Button>
+      )}
+
       {/* Save */}
       <Button variant="outline" size="sm" onClick={() => setSaveDialogOpen(true)} className="h-8 text-xs">
         <Icons.Save className="mr-1.5 h-3.5 w-3.5" />
@@ -554,6 +593,35 @@ export function TopBar() {
           }}
         />
       )}
+
+      {/* Duplicate dialog */}
+      {duplicateOpen && (
+        <SaveWorkflowDialog
+          isDuplicate
+          onClose={() => setDuplicateOpen(false)}
+          onSave={async (name, clientId) => {
+            await handleDuplicate(name, clientId)
+            setDuplicateOpen(false)
+          }}
+        />
+      )}
+
+      {/* Duplicate toast */}
+      {duplicateToast && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-700 shadow-lg">
+          <Icons.Copy className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+          <span>Duplicated as <span className="font-semibold">"{duplicateToast.name}"</span></span>
+          <button
+            onClick={() => { navigate(`/workflows/${duplicateToast.id}`); setDuplicateToast(null) }}
+            className="ml-1 font-semibold underline underline-offset-2 hover:text-emerald-900"
+          >
+            Open
+          </button>
+          <button onClick={() => setDuplicateToast(null)} className="text-emerald-400 hover:text-emerald-700">
+            <Icons.X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </header>
   )
 }
@@ -565,19 +633,23 @@ interface Client { id: string; name: string }
 function SaveWorkflowDialog({
   onClose,
   onSave,
+  isDuplicate = false,
 }: {
   onClose: () => void
   onSave: (name: string, clientId: string, createNew: boolean) => Promise<void>
+  isDuplicate?: boolean
 }) {
   const { workflow } = useWorkflowStore()
-  // Use the live workflow name — dialog may open after workflow loaded from API
-  const [name, setName] = useState(() => workflow.name || 'Untitled Workflow')
+  const defaultName = isDuplicate
+    ? `Copy of ${workflow.name || 'Untitled Workflow'}`
+    : workflow.name || 'Untitled Workflow'
+  const [name, setName] = useState(defaultName)
   const [clientId, setClientId] = useState(workflow.clientId ?? '')
   const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)
 
-  // createNew only when no workflow record exists yet in DB
-  const createNew = !workflow.id
+  // createNew when no workflow exists yet OR when duplicating
+  const createNew = !workflow.id || isDuplicate
 
   useEffect(() => {
     apiFetch('/api/v1/clients')
@@ -607,8 +679,12 @@ function SaveWorkflowDialog({
         {/* Purple header */}
         <div className="rounded-t-xl px-6 py-5 flex items-center justify-between" style={{ backgroundColor: '#a200ee' }}>
           <div className="flex items-center gap-2">
-            <Icons.Save className="h-5 w-5 text-white/80" />
-            <h2 className="text-base font-semibold text-white">Save Workflow</h2>
+            {isDuplicate
+              ? <Icons.Copy className="h-5 w-5 text-white/80" />
+              : <Icons.Save className="h-5 w-5 text-white/80" />}
+            <h2 className="text-base font-semibold text-white">
+              {isDuplicate ? 'Duplicate Workflow' : 'Save Workflow'}
+            </h2>
           </div>
           <button onClick={onClose} className="rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
             <Icons.X className="h-4 w-4" />
@@ -626,12 +702,17 @@ function SaveWorkflowDialog({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             />
-            {createNew && (
+            {isDuplicate ? (
+              <p className="flex items-center gap-1.5 text-[11px]" style={{ color: '#7a00b4' }}>
+                <Icons.Copy className="h-3 w-3 shrink-0" />
+                A copy will be created. You'll stay on the original.
+              </p>
+            ) : createNew ? (
               <p className="flex items-center gap-1.5 text-[11px]" style={{ color: '#7a00b4' }}>
                 <Icons.Copy className="h-3 w-3 shrink-0" />
                 A new workflow will be created.
               </p>
-            )}
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Client</label>
@@ -664,7 +745,7 @@ function SaveWorkflowDialog({
               : createNew
                 ? <Icons.Copy className="h-3.5 w-3.5" />
                 : <Icons.Check className="h-3.5 w-3.5" />}
-            {saving ? 'Saving…' : createNew ? 'Save as New Workflow' : 'Save Workflow'}
+            {saving ? (isDuplicate ? 'Duplicating…' : 'Saving…') : isDuplicate ? 'Duplicate' : createNew ? 'Save as New Workflow' : 'Save Workflow'}
           </button>
         </div>
       </div>
