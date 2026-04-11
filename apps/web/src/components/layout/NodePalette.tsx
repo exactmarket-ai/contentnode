@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { PALETTE_NODES, type NodeCategory, type PaletteNodeDef, useWorkflowStore } from '@/store/workflowStore'
 import { InsightsSidebar } from '@/components/insights/InsightsSidebar'
-import { NODE_SPEC } from '@/lib/nodeColors'
+import { NODE_SPEC, getNodeSpec } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -35,7 +35,7 @@ const CATEGORY_TOOLBAR_ICONS: Record<string, IconComponent> = {
 // ─── PaletteItem ──────────────────────────────────────────────────────────────
 
 function PaletteItem({ def, onClick }: { def: PaletteNodeDef; onClick?: () => void }) {
-  const spec = CATEGORY_SPEC[def.category]
+  const spec = getNodeSpec(def.type ?? def.category, def.subtype)
   const IconComp = (Icons as unknown as Record<string, IconComponent>)[def.icon] ?? Icons.Box
 
   const onDragStart = (e: React.DragEvent) => {
