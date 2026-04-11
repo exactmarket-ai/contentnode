@@ -69,6 +69,7 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
 await app.register(cors, {
   origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   credentials: true,
+  maxAge: 86400, // cache preflight 24h — eliminates OPTIONS round-trip on every API call
 })
 await app.register(multipart, {
   limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
