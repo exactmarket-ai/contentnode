@@ -2174,11 +2174,50 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
   // ══════════════════════════════════════════════════════════════════════════
 
   // ── GET /:id/brand-verticals ───────────────────────────────────────────────
+  // Auto-syncs from the client's assigned Structure verticals so the branding
+  // sidebar always mirrors what's in the Structure tab.
   app.get<{ Params: { id: string } }>('/:id/brand-verticals', async (req, reply) => {
     const { agencyId } = req.auth
     const clientId = req.params.id
     const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
     if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    // Fetch Structure verticals assigned to this client
+    const structureVerticals = await prisma.clientVertical.findMany({
+      where: { clientId, agencyId },
+      include: { vertical: { select: { id: true, name: true } } },
+    })
+
+    // Fetch existing brand verticals (may have been created manually or via prior sync)
+    const existing = await prisma.clientBrandVertical.findMany({
+      where: { clientId, agencyId },
+    })
+
+    // Create brand vertical records for any Structure verticals not yet synced
+    for (const cv of structureVerticals) {
+      const alreadySynced = existing.some((b) => b.sourceVerticalId === cv.vertical.id)
+      if (!alreadySynced) {
+        await prisma.clientBrandVertical.create({
+          data: {
+            agencyId,
+            clientId,
+            name: cv.vertical.name,
+            sourceVerticalId: cv.vertical.id,
+          },
+        })
+      } else {
+        // Keep name in sync if it changed in Structure
+        const linked = existing.find((b) => b.sourceVerticalId === cv.vertical.id)
+        if (linked && linked.name !== cv.vertical.name) {
+          await prisma.clientBrandVertical.update({
+            where: { id: linked.id },
+            data: { name: cv.vertical.name },
+          })
+        }
+      }
+    }
+
+    // Return fresh list
     const verticals = await prisma.clientBrandVertical.findMany({
       where: { clientId, agencyId },
       orderBy: { createdAt: 'asc' },
@@ -2302,9 +2341,11 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     const attachments = await prisma.clientBrandAttachment.findMany({
       where: { clientId, agencyId, ...(verticalId ? { verticalId } : { verticalId: null }) },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true, extractedText: true },
     })
-    return reply.send({ data: attachments })
+    // Trim extractedText to a preview — no need to send 500KB to the browser
+    const data = attachments.map((a) => ({ ...a, extractedText: a.extractedText ? a.extractedText.slice(0, 2000) : null }))
+    return reply.send({ data })
   })
 
   // ── POST /:id/brand-profile/attachments ───────────────────────────────────

@@ -1094,11 +1094,12 @@ model ClientWorkflowFiles {
 // ClientBrandVertical — client-specific brand verticals (separate from GTM verticals)
 // ─────────────────────────────────────────────
 model ClientBrandVertical {
-  id        String   @id @default(cuid())
-  agencyId  String   @map("agency_id")
-  clientId  String   @map("client_id")
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
+  id               String   @id @default(cuid())
+  agencyId         String   @map("agency_id")
+  clientId         String   @map("client_id")
+  name             String
+  sourceVerticalId String?  @map("source_vertical_id") // links to Vertical.id from Structure tab
+  createdAt        DateTime @default(now()) @map("created_at")
 
   agency      Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client      Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
