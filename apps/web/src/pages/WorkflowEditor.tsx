@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate, useBlocker } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { TopBar, pollRunUntilTerminal } from '@/components/layout/TopBar'
 import { NodePalette } from '@/components/layout/NodePalette'
@@ -265,6 +265,11 @@ export function WorkflowEditor() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isUnsaved])
 
+  // Block in-app navigation when there are unsaved changes
+  // New workflow: block if nodes have been added. Existing: block if graphDirty.
+  const hasUnsavedChanges = workflow.id ? graphDirty : nodes.length > 0
+  const blocker = useBlocker(hasUnsavedChanges)
+
   const handleOpenSaveDialog = useCallback(() => {
     window.dispatchEvent(new CustomEvent('contentnode:open-save-dialog'))
   }, [])
@@ -303,6 +308,46 @@ export function WorkflowEditor() {
           onDismiss={() => navigate(-1)}
           defaultClientId={defaultClientId}
         />
+      )}
+
+      {/* Unsaved-changes navigation blocker */}
+      {blocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-[380px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
+            <div className="px-6 py-5 flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                <Icons.AlertTriangle className="h-4 w-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Unsaved changes</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {workflow.id ? 'Your changes haven\'t been saved yet.' : 'This workflow hasn\'t been saved yet.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-4">
+              <button
+                onClick={() => blocker.reset()}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => blocker.proceed()}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-red-50 transition-colors"
+              >
+                Discard
+              </button>
+              <button
+                onClick={() => { blocker.reset(); handleOpenSaveDialog() }}
+                className="rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90"
+                style={{ backgroundColor: '#a200ee' }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {runStatus === 'waiting_review' && pendingReviewRunId && (
