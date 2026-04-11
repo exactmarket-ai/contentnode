@@ -20,6 +20,9 @@ import { ImageGenerationExecutor } from './executors/imageGeneration.js'
 import { VideoPromptBuilderExecutor } from './executors/videoPromptBuilder.js'
 import { VideoGenerationExecutor } from './executors/videoGeneration.js'
 import { VideoFrameExtractorExecutor } from './executors/videoFrameExtractor.js'
+import { VideoUploadExecutor } from './executors/videoUpload.js'
+import { VideoTranscriptionExecutor } from './executors/videoTranscription.js'
+import { MediaDownloadExecutor } from './executors/mediaDownload.js'
 import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
 import { GtmFrameworkExecutor } from './executors/gtmFramework.js'
 import { BrandContextExecutor } from './executors/brandContext.js'
@@ -71,11 +74,12 @@ export interface RunOutput {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
-  source:                      SourceNodeExecutor,
+  source:                          SourceNodeExecutor,
   'source:transcription':          TranscriptionNodeExecutor,
-  'source:video-frame-extractor':  VideoFrameExtractorExecutor,
+  'source:video-frame-extractor':  VideoFrameExtractorExecutor, // legacy compat
+  'source:video-upload':           VideoUploadExecutor,
   'source:instruction-translator': InstructionTranslatorExecutor,
-  'source:workflow-output':    WorkflowOutputExecutor,
+  'source:workflow-output':        WorkflowOutputExecutor,
   logic:                       LogicNodeExecutor,
   'logic:humanizer':           HumanizerNodeExecutor,
   'logic:humanizer-pro':       HumanizerNodeExecutor,
@@ -93,8 +97,11 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:quality-review':      QualityReviewNodeExecutor,
   'logic:image-prompt-builder': ImagePromptBuilderExecutor,
   'output:image-generation':   ImageGenerationExecutor,
-  'logic:video-prompt-builder': VideoPromptBuilderExecutor,
-  'output:video-generation':   VideoGenerationExecutor,
+  'logic:video-prompt-builder':    VideoPromptBuilderExecutor,
+  'logic:video-frame-extractor':   VideoFrameExtractorExecutor,
+  'logic:video-transcription':     VideoTranscriptionExecutor,
+  'output:video-generation':       VideoGenerationExecutor,
+  'output:media-download':         MediaDownloadExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {

@@ -1093,35 +1093,46 @@ Lead with the primary emotion from the brief. Every character counts.`,
     id: 'video-extractor',
     name: 'Video Extractor: Title, Description, Thumbnail',
     description:
-      'Upload a video and paste a transcript or brief. Extracts a thumbnail frame and generates an SEO-optimised title (max 100 characters) and a 1000–1500 word description — all from one node.',
+      'Upload a video — automatically transcribes it, generates a title (max 100 chars) and full description (1000–1500 words) from the transcript, and extracts a downloadable thumbnail frame.',
     category: 'general',
     icon: 'Film',
     nodes: [
-      // ─── SOURCE: single upload node ─────────────────────────────────────────
+      // ─── SOURCE ─────────────────────────────────────────────────────────────
 
       {
-        id: 'vid-frame',
+        id: 'vid-source',
         type: 'source',
-        position: { x: 80, y: 200 },
+        position: { x: 80, y: 260 },
         data: {
           label: 'Upload Video',
-          subtype: 'video-frame-extractor',
+          subtype: 'video-upload',
+          config: { subtype: 'video-upload', video_files: [] },
+        },
+      },
+
+      // ─── TRANSCRIPTION ───────────────────────────────────────────────────────
+
+      {
+        id: 'vid-transcription',
+        type: 'logic',
+        position: { x: 380, y: 140 },
+        data: {
+          label: 'Transcribe Video',
+          subtype: 'video-transcription',
           config: {
-            subtype: 'video-frame-extractor',
-            video_files: [],
-            timestamp_mode: 'percent',
-            timestamp_value: 50,
-            video_context: '',
+            subtype: 'video-transcription',
+            provider: 'assemblyai',
+            api_key_ref: 'ASSEMBLYAI_API_KEY',
           },
         },
       },
 
-      // ─── TITLE GENERATION ──────────────────────────────────────────────────
+      // ─── TITLE ───────────────────────────────────────────────────────────────
 
       {
         id: 'vid-title-gen',
         type: 'logic',
-        position: { x: 420, y: 80 },
+        position: { x: 680, y: 60 },
         data: {
           label: 'Generate Title',
           subtype: 'ai-generate',
@@ -1129,7 +1140,7 @@ Lead with the primary emotion from the brief. Every character counts.`,
             subtype: 'ai-generate',
             task_type: 'generate-headlines',
             additional_instructions:
-              'Create a video title based on the content above. Requirements:\n- Maximum 100 characters (including spaces)\n- Compelling and specific — describe what the video is actually about\n- Front-load the most important keyword or topic\n- No clickbait, no vague promises\n\nOutput ONLY the title — no quotes, no numbering, no explanation.',
+              'Create a video title based on the transcript above.\n\nRequirements:\n- Maximum 100 characters (including spaces)\n- Compelling and specific — describe what the video is actually about\n- Front-load the most important keyword or topic\n- No clickbait, no vague promises\n\nOutput ONLY the title — no quotes, no numbering, no explanation.',
             model_config: null,
           },
         },
@@ -1137,7 +1148,7 @@ Lead with the primary emotion from the brief. Every character counts.`,
       {
         id: 'vid-title-out',
         type: 'output',
-        position: { x: 760, y: 80 },
+        position: { x: 980, y: 60 },
         data: {
           label: 'Video Title',
           subtype: 'display',
@@ -1145,12 +1156,12 @@ Lead with the primary emotion from the brief. Every character counts.`,
         },
       },
 
-      // ─── DESCRIPTION GENERATION ────────────────────────────────────────────
+      // ─── DESCRIPTION ─────────────────────────────────────────────────────────
 
       {
         id: 'vid-desc-gen',
         type: 'logic',
-        position: { x: 420, y: 320 },
+        position: { x: 680, y: 220 },
         data: {
           label: 'Generate Description',
           subtype: 'ai-generate',
@@ -1158,7 +1169,7 @@ Lead with the primary emotion from the brief. Every character counts.`,
             subtype: 'ai-generate',
             task_type: 'expand',
             additional_instructions:
-              'Write a video description based on the content above. Requirements:\n- Length: 1000–1500 words\n- Structure:\n  1. Opening hook (2–3 sentences that grab attention and state the value)\n  2. What viewers will learn or gain (3–5 bullet points)\n  3. Key topics covered with placeholder timestamps (e.g. 0:00 Intro, 2:30 Topic 1)\n  4. About the presenter or channel (1 paragraph — use placeholders if unknown)\n  5. Call-to-action (subscribe, like, comment with a question)\n  6. 8–12 relevant hashtags on the final line\n- Tone: informative, conversational, SEO-friendly\n- Include the primary keyword naturally in the first 100 characters',
+              'Write a video description based on the transcript above.\n\nRequirements:\n- Length: 1000–1500 words\n- Structure:\n  1. Opening hook (2–3 sentences that grab attention and state the value)\n  2. What viewers will learn or gain (3–5 bullet points)\n  3. Key topics covered with placeholder timestamps (e.g. 0:00 Intro, 2:30 Topic 1)\n  4. About the presenter or channel (1 paragraph — use placeholders if unknown)\n  5. Call-to-action (subscribe, like, comment with a question)\n  6. 8–12 relevant hashtags on the final line\n- Tone: informative, conversational, SEO-friendly\n- Include the primary keyword naturally in the first 100 characters',
             model_config: null,
           },
         },
@@ -1166,19 +1177,49 @@ Lead with the primary emotion from the brief. Every character counts.`,
       {
         id: 'vid-desc-out',
         type: 'output',
-        position: { x: 760, y: 320 },
+        position: { x: 980, y: 220 },
         data: {
           label: 'Video Description',
           subtype: 'display',
           config: { subtype: 'display' },
         },
       },
+
+      // ─── THUMBNAIL ───────────────────────────────────────────────────────────
+
+      {
+        id: 'vid-frame',
+        type: 'logic',
+        position: { x: 380, y: 420 },
+        data: {
+          label: 'Extract Thumbnail',
+          subtype: 'video-frame-extractor',
+          config: {
+            subtype: 'video-frame-extractor',
+            timestamp_mode: 'percent',
+            timestamp_value: 50,
+          },
+        },
+      },
+      {
+        id: 'vid-thumb-dl',
+        type: 'output',
+        position: { x: 680, y: 420 },
+        data: {
+          label: 'Thumbnail',
+          subtype: 'media-download',
+          config: { subtype: 'media-download' },
+        },
+      },
     ],
     edges: [
-      { id: 'e-vid-frame-title',   source: 'vid-frame',     target: 'vid-title-gen' },
-      { id: 'e-vid-frame-desc',    source: 'vid-frame',     target: 'vid-desc-gen' },
-      { id: 'e-vid-title-out',     source: 'vid-title-gen', target: 'vid-title-out' },
-      { id: 'e-vid-desc-out',      source: 'vid-desc-gen',  target: 'vid-desc-out' },
+      { id: 'e-src-transcription', source: 'vid-source',      target: 'vid-transcription' },
+      { id: 'e-src-frame',         source: 'vid-source',      target: 'vid-frame' },
+      { id: 'e-transcription-title', source: 'vid-transcription', target: 'vid-title-gen' },
+      { id: 'e-transcription-desc',  source: 'vid-transcription', target: 'vid-desc-gen' },
+      { id: 'e-title-out',         source: 'vid-title-gen',   target: 'vid-title-out' },
+      { id: 'e-desc-out',          source: 'vid-desc-gen',    target: 'vid-desc-out' },
+      { id: 'e-frame-thumb',       source: 'vid-frame',       target: 'vid-thumb-dl' },
     ],
   },
 ]

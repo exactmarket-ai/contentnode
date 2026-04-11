@@ -17,6 +17,7 @@ import { ApiFetchConfig } from './config/source/ApiFetchConfig'
 import { WebScrapeConfig } from './config/source/WebScrapeConfig'
 import { TranscriptionConfig } from './config/source/TranscriptionConfig'
 import { VideoFrameExtractorConfig } from './config/source/VideoFrameExtractorConfig'
+import { VideoUploadConfig } from './config/source/VideoUploadConfig'
 import { InstructionTranslatorConfig } from './config/source/InstructionTranslatorConfig'
 import { WorkflowOutputConfig } from './config/source/WorkflowOutputConfig'
 import { GtmFrameworkConfig } from './config/source/GtmFrameworkConfig'
@@ -34,6 +35,7 @@ import { TranslateConfig } from './config/logic/TranslateConfig'
 import { QualityReviewConfig } from './config/logic/QualityReviewConfig'
 import { ImagePromptBuilderConfig } from './config/logic/ImagePromptBuilderConfig'
 import { VideoPromptBuilderConfig } from './config/logic/VideoPromptBuilderConfig'
+import { VideoTranscriptionConfig } from './config/logic/VideoTranscriptionConfig'
 
 import { WebhookConfig } from './config/output/WebhookConfig'
 import { EmailConfig } from './config/output/EmailConfig'
@@ -42,6 +44,7 @@ import { ContentOutputConfig, DisplayNodeOutput } from './config/output/ContentO
 import { ClientFeedbackConfig } from './config/output/ClientFeedbackConfig'
 import { ImageGenerationConfig } from './config/output/ImageGenerationConfig'
 import { VideoGenerationConfig } from './config/output/VideoGenerationConfig'
+import { MediaDownloadConfig } from './config/output/MediaDownloadConfig'
 
 import { InsightNodeConfig } from './config/insight/InsightNodeConfig'
 
@@ -77,6 +80,8 @@ function NodeConfigForm({
         return <TranscriptionConfig config={config} onChange={onChange} />
       if (subtype === 'video-frame-extractor')
         return <VideoFrameExtractorConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'video-upload')
+        return <VideoUploadConfig config={config} onChange={onChange} />
       if (subtype === 'text-input')
         return <TextInputConfig config={config} onChange={onChange} />
       if (subtype === 'api-fetch')
@@ -107,12 +112,18 @@ function NodeConfigForm({
         return <ImagePromptBuilderConfig config={config} onChange={onChange} />
       if (subtype === 'video-prompt-builder')
         return <VideoPromptBuilderConfig config={config} onChange={onChange} />
+      if (subtype === 'video-frame-extractor')
+        return <VideoFrameExtractorConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'video-transcription')
+        return <VideoTranscriptionConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'transform')
         return <TransformConfig config={config} onChange={onChange} />
       if (subtype === 'condition')
         return <ConditionConfig config={config} onChange={onChange} />
       return <AiGenerateConfig config={config} onChange={onChange} workflowModel={workflowModel} nodeRunStatus={nodeRunStatus} />
     case 'output':
+      if (subtype === 'media-download')
+        return <MediaDownloadConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'image-generation')
         return <ImageGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} nodeLabel={nodeLabel} />
       if (subtype === 'video-generation')

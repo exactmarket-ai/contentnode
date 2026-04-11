@@ -253,19 +253,38 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       fallback_humanizer_id: '',
     },
   },
-  // Output
-  // Video Frame Extractor (source type — extracts thumbnail JPEG from a video file)
+  // Video Upload (source type — uploads a video file and passes the reference downstream)
   {
-    type: 'source', subtype: 'video-frame-extractor',
-    label: 'Video Frame Extractor', description: 'Extract a thumbnail frame from a video file',
-    category: 'source', icon: 'Camera',
+    type: 'source', subtype: 'video-upload',
+    label: 'Video Upload', description: 'Upload a video file — connect to Video Transcription and/or Video Frame Extractor',
+    category: 'source', icon: 'Film',
+    defaultConfig: {
+      subtype: 'video-upload',
+      video_files: [],
+    },
+    requiresManualInput: true,
+  },
+  // Video Frame Extractor (logic type — receives video from upstream, extracts thumbnail JPEG)
+  {
+    type: 'logic', subtype: 'video-frame-extractor',
+    label: 'Video Frame Extractor', description: 'Extract a thumbnail frame from an upstream video',
+    category: 'logic', icon: 'Camera',
     defaultConfig: {
       subtype: 'video-frame-extractor',
-      video_files: [],
       timestamp_mode: 'percent',
       timestamp_value: 50,
     },
-    requiresManualInput: true,
+  },
+  // Video Transcription (logic type — receives video from upstream, returns transcript text)
+  {
+    type: 'logic', subtype: 'video-transcription',
+    label: 'Video Transcription', description: 'Auto-transcribe a video from an upstream node',
+    category: 'logic', icon: 'Mic',
+    defaultConfig: {
+      subtype: 'video-transcription',
+      provider: 'assemblyai',
+      api_key_ref: 'ASSEMBLYAI_API_KEY',
+    },
   },
   // Transcription (source type — produces transcript text from audio)
   {
@@ -301,6 +320,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     label: 'File Export', description: 'Export result as a downloadable file',
     category: 'output', icon: 'Download',
     defaultConfig: { format: 'txt', filename: 'output' },
+  },
+  {
+    type: 'output', subtype: 'media-download',
+    label: 'Media Download', description: 'Preview and download an image or video from an upstream node',
+    category: 'output', icon: 'ImageDown',
+    defaultConfig: { subtype: 'media-download' },
   },
   {
     type: 'output', subtype: 'display',

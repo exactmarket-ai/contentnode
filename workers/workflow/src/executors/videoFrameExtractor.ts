@@ -12,19 +12,42 @@ interface VideoFile {
   storageKey: string
 }
 
+interface VideoRef {
+  storageKey: string
+  filename?: string
+}
+
+function extractUpstreamVideoRef(input: unknown): VideoRef | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const obj = input as Record<string, unknown>
+  if (typeof obj.storageKey === 'string' && obj.storageKey) {
+    return { storageKey: obj.storageKey, filename: typeof obj.filename === 'string' ? obj.filename : undefined }
+  }
+  return null
+}
+
 export class VideoFrameExtractorExecutor extends NodeExecutor {
   async execute(
-    _input: unknown,
+    input: unknown,
     config: Record<string, unknown>,
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
-    const videoFiles = (config.video_files as VideoFile[]) ?? []
     const timestampMode = (config.timestamp_mode as string) ?? 'percent'
     const timestampValue = (config.timestamp_value as number) ?? 50
     const videoContext = (config.video_context as string) ?? ''
 
-    if (videoFiles.length === 0) {
-      throw new Error('Video Frame Extractor: no video file configured — upload a video in the node config')
+    // Prefer upstream input (when used as a logic node downstream of Video Upload)
+    const upstreamRef = extractUpstreamVideoRef(input)
+    let videoFile: VideoFile
+
+    if (upstreamRef) {
+      videoFile = { id: 'upstream', name: upstreamRef.filename ?? 'video.mp4', storageKey: upstreamRef.storageKey }
+    } else {
+      const videoFiles = (config.video_files as VideoFile[]) ?? []
+      if (videoFiles.length === 0) {
+        throw new Error('Video Frame Extractor: no video file — connect a Video Upload node or upload a file in the config')
+      }
+      videoFile = videoFiles[0]
     }
 
     // Verify ffmpeg is available
@@ -33,8 +56,6 @@ export class VideoFrameExtractorExecutor extends NodeExecutor {
     } catch {
       throw new Error('ffmpeg is not installed on this server — required for video frame extraction')
     }
-
-    const videoFile = videoFiles[0]
 
     // Resolve video file path — in S3/R2 mode download to a temp file for ffmpeg
     let filePath: string
