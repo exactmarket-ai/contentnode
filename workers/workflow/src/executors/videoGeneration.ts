@@ -240,20 +240,21 @@ async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig, re
 async function resolveImageUrl(imageRef: string): Promise<string> {
   if (imageRef.startsWith('http')) return imageRef
 
-  if (imageRef.startsWith('/files/')) {
-    const base = process.env.API_BASE_URL ?? 'http://localhost:3001'
-    return `${base}${imageRef}`
-  }
+  if (imageRef.startsWith('data:')) return imageRef
 
-  if (imageRef.startsWith('data:')) {
-    const [header, base64] = imageRef.split(',')
-    const ext = header.includes('png') ? 'png' : header.includes('webp') ? 'webp' : 'jpg'
-    const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-    const buffer = Buffer.from(base64, 'base64')
-    const filename = `${randomUUID()}.${ext}`
-    const storageKey = await saveGeneratedFile(buffer, filename, mime)
-    const base = process.env.API_BASE_URL ?? 'http://localhost:3001'
-    return `${base}/files/${storageKey}`
+  // Local file path — read from storage and return as base64 data URI
+  // This avoids needing API_BASE_URL to be set and works regardless of storage backend
+  if (imageRef.startsWith('/files/')) {
+    const storageKey = imageRef.replace(/^\/files\//, '')
+    try {
+      const buf = await downloadBuffer(storageKey)
+      const mime = detectMediaType(buf)
+      return `data:${mime};base64,${buf.toString('base64')}`
+    } catch {
+      // Fall back to URL if storage read fails
+      const base = process.env.API_BASE_URL ?? 'http://localhost:3001'
+      return `${base}${imageRef}`
+    }
   }
 
   return imageRef
