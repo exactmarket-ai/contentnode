@@ -27,7 +27,7 @@ const OLLAMA_MODELS = [
 ]
 
 const CATEGORY_LABELS: Record<string, string> = {
-  blog: 'Blog', social: 'Social', email: 'Email', seo: 'SEO', general: 'General',
+  marketing: 'Marketing Campaigns', blog: 'Blog', social: 'Social', email: 'Email', seo: 'SEO', general: 'General',
 }
 
 interface Client { id: string; name: string; requireOffline: boolean }
