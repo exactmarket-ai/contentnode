@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { downloadBrandProfileDocx, downloadCompanyProfileDocx } from '@/lib/downloadDocx'
 import { ClientReportsTab } from './ClientReportsTab'
+import { ClientFrameworkTab } from './ClientFrameworkTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -4204,6 +4205,8 @@ interface DivisionData {
   createdAt: string
 }
 
+interface VerticalItem { id: string; name: string }
+
 function StructureTab({ client }: { client: Client }) {
   const [divisions, setDivisions] = useState<DivisionData[]>([])
   const [loading, setLoading] = useState(true)
@@ -4215,6 +4218,14 @@ function StructureTab({ client }: { client: Client }) {
   const [editingDivisionName, setEditingDivisionName] = useState('')
   const [deletingDivisionId, setDeletingDivisionId] = useState<string | null>(null)
   const [confirmDeleteDivision, setConfirmDeleteDivision] = useState<DivisionData | null>(null)
+
+  // Verticals state
+  const [allVerticals, setAllVerticals] = useState<VerticalItem[]>([])
+  const [clientVerticals, setClientVerticals] = useState<VerticalItem[]>([])
+  const [newVerticalName, setNewVerticalName] = useState('')
+  const [addingVertical, setAddingVertical] = useState(false)
+  const [renamingVerticalId, setRenamingVerticalId] = useState<string | null>(null)
+  const [renamingVerticalName, setRenamingVerticalName] = useState('')
 
   // Per-division job add state
   const [addingJobDivisionId, setAddingJobDivisionId] = useState<string | null>(null)
@@ -4228,14 +4239,83 @@ function StructureTab({ client }: { client: Client }) {
 
   const load = () => {
     setLoading(true)
-    apiFetch(`/api/v1/clients/${client.id}/divisions`)
-      .then((r) => r.json())
-      .then(({ data }) => setDivisions(data ?? []))
+    Promise.all([
+      apiFetch(`/api/v1/clients/${client.id}/divisions`).then((r) => r.json()),
+      apiFetch('/api/v1/verticals').then((r) => r.json()),
+      apiFetch(`/api/v1/clients/${client.id}/verticals`).then((r) => r.json()),
+    ])
+      .then(([div, allV, clientV]) => {
+        setDivisions(div.data ?? [])
+        setAllVerticals(allV.data ?? [])
+        setClientVerticals(clientV.data ?? [])
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [client.id])
+
+  // Vertical handlers
+  const handleCreateVertical = async () => {
+    const name = newVerticalName.trim()
+    if (!name) return
+    const res = await apiFetch('/api/v1/verticals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    if (!res.ok) return
+    const { data } = await res.json()
+    setAllVerticals((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    // Auto-assign to this client
+    await apiFetch(`/api/v1/clients/${client.id}/verticals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verticalId: data.id }),
+    })
+    setClientVerticals((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    setNewVerticalName('')
+    setAddingVertical(false)
+  }
+
+  const handleRenameVertical = async (v: VerticalItem) => {
+    const name = renamingVerticalName.trim()
+    if (!name || name === v.name) { setRenamingVerticalId(null); return }
+    const res = await apiFetch(`/api/v1/verticals/${v.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    if (!res.ok) { setRenamingVerticalId(null); return }
+    const { data } = await res.json()
+    const updateList = (prev: VerticalItem[]) =>
+      prev.map((x) => x.id === v.id ? data : x).sort((a, b) => a.name.localeCompare(b.name))
+    setAllVerticals(updateList)
+    setClientVerticals(updateList)
+    setRenamingVerticalId(null)
+  }
+
+  const handleDeleteVertical = async (v: VerticalItem) => {
+    if (!confirm(`Delete vertical "${v.name}"? All GTM framework data for this vertical across all clients will be lost.`)) return
+    await apiFetch(`/api/v1/verticals/${v.id}`, { method: 'DELETE' })
+    setAllVerticals((prev) => prev.filter((x) => x.id !== v.id))
+    setClientVerticals((prev) => prev.filter((x) => x.id !== v.id))
+  }
+
+  const handleAssignVertical = async (v: VerticalItem) => {
+    const res = await apiFetch(`/api/v1/clients/${client.id}/verticals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verticalId: v.id }),
+    })
+    if (!res.ok) return
+    setClientVerticals((prev) => [...prev, v].sort((a, b) => a.name.localeCompare(b.name)))
+  }
+
+  const handleUnassignVertical = async (v: VerticalItem) => {
+    await apiFetch(`/api/v1/clients/${client.id}/verticals/${v.id}`, { method: 'DELETE' })
+    setClientVerticals((prev) => prev.filter((x) => x.id !== v.id))
+  }
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -4366,24 +4446,27 @@ function StructureTab({ client }: { client: Client }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div>
+    <div className="grid grid-cols-2 gap-4 items-start">
+
+      {/* ── Left card: Divisions & Jobs ── */}
+      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="mb-4 flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">Divisions & Jobs</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Organise runs by division (e.g. department) and job (e.g. campaign). Used to tag and filter workflow runs.
+            Organise runs by division and job. Used to tag and filter workflow runs.
           </p>
         </div>
         <Button size="sm" className="h-7 text-xs" onClick={() => { setAddingDivision(true); setNewDivisionName('') }}>
           <Icons.Plus className="mr-1.5 h-3 w-3" />
-          Add Division
+          Add
         </Button>
       </div>
 
       {/* Add division inline form */}
       {addingDivision && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/40 p-3">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/40 p-3">
           <Input
             autoFocus
             value={newDivisionName}
@@ -4401,10 +4484,10 @@ function StructureTab({ client }: { client: Client }) {
 
       {/* Empty state */}
       {divisions.length === 0 && !addingDivision && (
-        <div className="flex flex-col items-center py-12 text-center">
-          <Icons.FolderOpen className="mb-2 h-8 w-8 text-muted-foreground/30" />
+        <div className="flex flex-col items-center py-10 text-center">
+          <Icons.FolderOpen className="mb-2 h-7 w-7 text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">No divisions yet</p>
-          <p className="mt-1 text-xs text-muted-foreground/70">Add a division to start organising runs into projects</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">Add a division to organise runs</p>
           <Button size="sm" className="mt-3 h-7 text-xs" onClick={() => setAddingDivision(true)}>
             <Icons.Plus className="mr-1.5 h-3 w-3" />
             Add first division
@@ -4597,6 +4680,116 @@ function StructureTab({ client }: { client: Client }) {
           )
         })}
       </div>
+      </div>{/* end divisions card */}
+
+      {/* ── Right card: GTM Verticals ── */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">GTM Verticals</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Markets this client operates in. Each vertical gets its own GTM Framework.</p>
+          </div>
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setAddingVertical(true)}
+          >
+            <Icons.Plus className="mr-1 h-3 w-3" />
+            Add
+          </Button>
+        </div>
+
+        {/* Add new vertical inline */}
+        {addingVertical && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2">
+            <Input
+              autoFocus
+              value={newVerticalName}
+              onChange={(e) => setNewVerticalName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleCreateVertical(); if (e.key === 'Escape') { setAddingVertical(false); setNewVerticalName('') } }}
+              placeholder="Vertical name (e.g. Healthcare, Financial Services)"
+              className="h-7 flex-1 text-xs"
+            />
+            <Button size="sm" className="h-7 text-xs px-3" onClick={() => void handleCreateVertical()}>Add</Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => { setAddingVertical(false); setNewVerticalName('') }}>Cancel</Button>
+          </div>
+        )}
+
+        {/* Assigned verticals */}
+        {clientVerticals.length === 0 && !addingVertical && (
+          <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center">
+            <p className="text-xs text-muted-foreground">No verticals assigned yet.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground/70">Add a vertical to unlock the GTM Framework tab for this client.</p>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          {clientVerticals.map((v) => (
+            <div key={v.id} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+              <Icons.Tag className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {renamingVerticalId === v.id ? (
+                <Input
+                  autoFocus
+                  value={renamingVerticalName}
+                  onChange={(e) => setRenamingVerticalName(e.target.value)}
+                  onBlur={() => void handleRenameVertical(v)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void handleRenameVertical(v); if (e.key === 'Escape') setRenamingVerticalId(null) }}
+                  className="h-6 flex-1 text-xs"
+                />
+              ) : (
+                <span className="flex-1 text-sm font-medium">{v.name}</span>
+              )}
+              {renamingVerticalId !== v.id && (
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => { setRenamingVerticalId(v.id); setRenamingVerticalName(v.name) }}
+                    title="Rename"
+                  >
+                    <Icons.Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-600"
+                    onClick={() => void handleUnassignVertical(v)}
+                    title="Remove from this client"
+                  >
+                    <Icons.X className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-600"
+                    onClick={() => void handleDeleteVertical(v)}
+                    title="Delete vertical entirely"
+                  >
+                    <Icons.Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Other available verticals to assign */}
+        {allVerticals.filter((v) => !clientVerticals.find((cv) => cv.id === v.id)).length > 0 && (
+          <div className="mt-3">
+            <p className="mb-1.5 text-[11px] text-muted-foreground">Other verticals — click to assign:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {allVerticals
+                .filter((v) => !clientVerticals.find((cv) => cv.id === v.id))
+                .map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => void handleAssignVertical(v)}
+                    className="rounded-full border border-border bg-muted/30 px-3 py-1 text-xs text-muted-foreground hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                  >
+                    + {v.name}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+      </div>{/* end verticals card */}
+
+    </div>{/* end grid */}
 
       {/* Delete division confirm dialog */}
       {confirmDeleteDivision && (
@@ -4641,7 +4834,7 @@ function StructureTab({ client }: { client: Client }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'library', 'framework', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4710,12 +4903,13 @@ export function ClientDetailPage() {
 
   const TAB_LABELS: Record<Tab, string> = {
     overview:     'Overview',
-    workflows:    `Workflows (${client.workflows.length})`,
+    workflows:    'Workflows',
     library:      'Library',
-    stakeholders: `Contacts (${client.stakeholders.length})`,
+    framework:    'GTM Framework',
+    stakeholders: 'Contacts',
     access:       'Access',
     reviews:      'Reviews',
-    insights:     `Insights (${client.insights.length})`,
+    insights:     'Insights',
     usage:        'Usage',
     runs:         'Runs',
     reports:      'Reports',
@@ -4794,7 +4988,9 @@ export function ClientDetailPage() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto p-6">
+      {activeTab === 'framework'
+        ? <div className="flex-1 overflow-hidden"><ClientFrameworkTab clientId={client.id} clientName={client.name} /></div>
+        : <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={setActiveTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
         {activeTab === 'library' && <ClientLibraryTab clientId={client.id} />}
@@ -4808,7 +5004,7 @@ export function ClientDetailPage() {
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'company' && <CompanyProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'structure' && <StructureTab client={client} />}
-      </div>
+      </div>}
 
       {showEditClient && (
         <EditClientModal

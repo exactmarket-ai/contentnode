@@ -41,6 +41,11 @@ model Agency {
   companyProfiles    CompanyProfile[]
   divisions          Division[]
   jobs               Job[]
+  clientFrameworks   ClientFramework[]
+  clientVerticals    ClientVertical[]
+  verticals          Vertical[]
+  frameworkAttachments ClientFrameworkAttachment[]
+  frameworkResearch    ClientFrameworkResearch[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -94,10 +99,129 @@ model Client {
   profiles        ClientProfile[]
   companyProfiles CompanyProfile[]
   divisions    Division[]
+  frameworks      ClientFramework[]
+  clientVerticals ClientVertical[]
+  frameworkAttachments ClientFrameworkAttachment[]
+  frameworkResearch    ClientFrameworkResearch[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
   @@map("clients")
+}
+
+// ─────────────────────────────────────────────
+// Vertical — agency-level GTM verticals
+// ─────────────────────────────────────────────
+model Vertical {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agency     Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  frameworks           ClientFramework[]
+  clientVerticals      ClientVertical[]
+  frameworkAttachments ClientFrameworkAttachment[]
+  frameworkResearch    ClientFrameworkResearch[]
+
+  @@index([agencyId])
+  @@map("verticals")
+}
+
+// ─────────────────────────────────────────────
+// ClientVertical — which verticals a client operates in
+// ─────────────────────────────────────────────
+model ClientVertical {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clientId   String   @map("client_id")
+  verticalId String   @map("vertical_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, verticalId])
+  @@index([agencyId])
+  @@map("client_verticals")
+}
+
+// ─────────────────────────────────────────────
+// ClientFramework — per-client-per-vertical GTM content engine
+// ─────────────────────────────────────────────
+model ClientFramework {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clientId   String   @map("client_id")
+  verticalId String   @map("vertical_id")
+  data       Json     @default("{}")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, verticalId])
+  @@index([agencyId])
+  @@map("client_frameworks")
+}
+
+// ─────────────────────────────────────────────
+// ClientFrameworkAttachment — files attached to a client+vertical framework
+// ─────────────────────────────────────────────
+model ClientFrameworkAttachment {
+  id            String   @id @default(cuid())
+  agencyId      String   @map("agency_id")
+  clientId      String   @map("client_id")
+  verticalId    String   @map("vertical_id")
+  filename      String
+  storageKey    String   @map("storage_key")
+  mimeType      String   @map("mime_type")
+  sizeBytes     Int      @map("size_bytes")
+  // pending | processing | ready | failed
+  summaryStatus String   @default("pending") @map("summary_status")
+  extractedText String?  @map("extracted_text") @db.Text
+  summary       String?  @db.Text  // Claude's structured interpretation — user-editable
+  errorMessage  String?  @map("error_message")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, verticalId])
+  @@index([agencyId])
+  @@map("client_framework_attachments")
+}
+
+// ─────────────────────────────────────────────
+// ClientFrameworkResearch — cached research context per client+vertical
+// ─────────────────────────────────────────────
+model ClientFrameworkResearch {
+  id               String    @id @default(cuid())
+  agencyId         String    @map("agency_id")
+  clientId         String    @map("client_id")
+  verticalId       String    @map("vertical_id")
+  // pending | running | ready | failed
+  status           String    @default("pending")
+  sources          Json      @default("[]")  // DocumentSource[]
+  websiteUrl       String?   @map("website_url")
+  errorMessage     String?   @map("error_message") @db.Text
+  researchedAt     DateTime? @map("researched_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, verticalId])
+  @@index([agencyId])
+  @@map("client_framework_research")
 }
 
 // ─────────────────────────────────────────────

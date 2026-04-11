@@ -13,6 +13,7 @@ import { SourceNode } from './nodes/SourceNode'
 import { LogicNode } from './nodes/LogicNode'
 import { OutputNode } from './nodes/OutputNode'
 import { InsightNode } from './nodes/InsightNode'
+import { GtmFrameworkNode } from './nodes/GtmFrameworkNode'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { NodeContextMenu } from './NodeContextMenu'
 
@@ -21,6 +22,7 @@ const nodeTypes = {
   logic: LogicNode,
   output: OutputNode,
   insight: InsightNode,
+  gtm_framework: GtmFrameworkNode,
 }
 
 let nodeIdCounter = 1

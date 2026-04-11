@@ -5,6 +5,14 @@ import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 import { getNodeSpec } from '@/lib/nodeColors'
 import { EditableLabel } from './EditableLabel'
+import { CONTENT_ROLES } from '@/components/layout/config/shared'
+
+const selectStyle: React.CSSProperties = {
+  borderColor: '#e0deda',
+  color: '#1a1a14',
+  backgroundColor: '#fafaf8',
+  cursor: 'pointer',
+}
 
 export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
@@ -16,6 +24,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   const IconComp = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[data.icon as string] ?? Icons.Box
 
   const subtype = (data.subtype as string) ?? (data.config as Record<string, unknown>)?.subtype as string
+  const isTextInput = subtype === 'text-input'
   const isDocSource = subtype === 'document-source' || subtype === 'file-upload'
   const isTranscription = subtype === 'transcription'
   const acceptsFiles = isDocSource || isTranscription
@@ -133,8 +142,8 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <div
-      className="relative w-[200px] rounded-md bg-white transition-all"
-      style={cardStyle}
+      className="relative rounded-md bg-white transition-all"
+      style={{ ...cardStyle, width: isTextInput ? 380 : 200 }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -172,43 +181,87 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
       </div>
 
       {/* Body */}
-      <div className="px-2.5 py-1.5">
-        {dropping ? (
-          <p className="text-[10px]" style={{ color: spec.accent }}>Drop to add files</p>
-        ) : uploading ? (
-          <p className="flex items-center gap-1 text-[10px]" style={{ color: spec.accent }}>
-            <Icons.Loader2 className="h-3 w-3 animate-spin" />Uploading…
-          </p>
-        ) : acceptsFiles && fileCount > 0 ? (
-          <p className="text-[10px]" style={{ color: spec.accent }}>
-            {fileCount} file{fileCount !== 1 ? 's' : ''} attached
-          </p>
-        ) : libraryRefs.length > 0 ? (
-          <p className="text-[10px] truncate" style={{ color: spec.accent }}>
-            <Icons.Library className="inline h-3 w-3 mr-0.5 shrink-0" />
-            {libraryRefs.length === 1
-              ? (libraryRefs[0].label ?? libraryRefs[0].name ?? 'Library file')
-              : `${libraryRefs.length} library files`}
-          </p>
-        ) : needsContent ? (
-          <p className="flex items-center gap-1 text-[10px] text-amber-600">
-            <Icons.AlertTriangle className="h-3 w-3 shrink-0" />
-            No content — click to configure
-          </p>
-        ) : (
-          <>
-            <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
-              {data.description as string}
-            </p>
+      {isTextInput ? (
+        <div>
+          {/* Inline textarea — full bleed */}
+          <textarea
+            className="nodrag nopan w-full resize-none border-0 border-b bg-white px-3 py-2.5 text-xs leading-relaxed outline-none placeholder:text-muted-foreground/50"
+            style={{ borderColor: spec.headerBorder, minHeight: 140, display: 'block' }}
+            placeholder="Enter text or use {{variable}} templates…"
+            value={(existingConfig.text as string) ?? ''}
+            onChange={(e) => {
+              e.stopPropagation()
+              updateNodeData(id, { config: { ...existingConfig, text: e.target.value } })
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          {/* Footer row: content role + template indicator */}
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <select
+              className="nodrag nopan h-6 flex-1 rounded border text-[10px] px-1 outline-none min-w-0"
+              style={selectStyle}
+              value={(existingConfig.content_role as string) ?? 'source-material'}
+              onChange={(e) => { e.stopPropagation(); updateNodeData(id, { config: { ...existingConfig, content_role: e.target.value } }) }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {CONTENT_ROLES.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
             {(existingConfig.prompt_template_name as string | undefined) && (
-              <p className="mt-1 flex items-center gap-1 text-[10px] truncate" style={{ color: '#a200ee' }}>
-                <Icons.ScrollText className="h-3 w-3 shrink-0" />
+              <span className="flex items-center gap-1 text-[9px] truncate shrink-0 max-w-[120px]" style={{ color: '#a200ee' }}>
+                <Icons.ScrollText className="h-2.5 w-2.5 shrink-0" />
                 {existingConfig.prompt_template_name as string}
-              </p>
+              </span>
             )}
-          </>
-        )}
-      </div>
+            {isPassed && (
+              <span className="shrink-0 text-[9px]" style={{ color: '#b4b2a9' }}>
+                {nodeStatuses[id]?.startedAt && new Date(nodeStatuses[id].startedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="px-2.5 py-1.5">
+          {dropping ? (
+            <p className="text-[10px]" style={{ color: spec.accent }}>Drop to add files</p>
+          ) : uploading ? (
+            <p className="flex items-center gap-1 text-[10px]" style={{ color: spec.accent }}>
+              <Icons.Loader2 className="h-3 w-3 animate-spin" />Uploading…
+            </p>
+          ) : acceptsFiles && fileCount > 0 ? (
+            <p className="text-[10px]" style={{ color: spec.accent }}>
+              {fileCount} file{fileCount !== 1 ? 's' : ''} attached
+            </p>
+          ) : libraryRefs.length > 0 ? (
+            <p className="text-[10px] truncate" style={{ color: spec.accent }}>
+              <Icons.Library className="inline h-3 w-3 mr-0.5 shrink-0" />
+              {libraryRefs.length === 1
+                ? (libraryRefs[0].label ?? libraryRefs[0].name ?? 'Library file')
+                : `${libraryRefs.length} library files`}
+            </p>
+          ) : needsContent ? (
+            <p className="flex items-center gap-1 text-[10px] text-amber-600">
+              <Icons.AlertTriangle className="h-3 w-3 shrink-0" />
+              No content — click to configure
+            </p>
+          ) : (
+            <>
+              <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
+                {data.description as string}
+              </p>
+              {(existingConfig.prompt_template_name as string | undefined) && (
+                <p className="mt-1 flex items-center gap-1 text-[10px] truncate" style={{ color: '#a200ee' }}>
+                  <Icons.ScrollText className="h-3 w-3 shrink-0" />
+                  {existingConfig.prompt_template_name as string}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Output handle */}
       <Handle type="source" position={Position.Right} id="output" style={{ top: '50%' }} />

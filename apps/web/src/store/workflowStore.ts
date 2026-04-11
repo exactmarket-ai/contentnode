@@ -101,6 +101,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'GitBranch',
     defaultConfig: { subtype: 'workflow-output', fallbackToLatest: true },
   },
+  {
+    type: 'gtm_framework', subtype: 'gtm-framework',
+    label: 'GTM Framework', description: 'Inject selected GTM framework sections as workflow context',
+    category: 'source', icon: 'Target',
+    defaultConfig: { subtype: 'gtm-framework', verticalId: '', verticalName: '', sections: ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18'] },
+  },
   // Logic
   {
     type: 'logic', subtype: 'ai-generate',

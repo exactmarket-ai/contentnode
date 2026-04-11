@@ -20,6 +20,7 @@ import { ImageGenerationExecutor } from './executors/imageGeneration.js'
 import { VideoPromptBuilderExecutor } from './executors/videoPromptBuilder.js'
 import { VideoGenerationExecutor } from './executors/videoGeneration.js'
 import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
+import { GtmFrameworkExecutor } from './executors/gtmFramework.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -82,6 +83,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'output:email':              EmailNodeExecutor,
   'output:webhook':            WebhookNodeExecutor,
   insight:                     InsightNodeExecutor,
+  gtm_framework:               GtmFrameworkExecutor,
   'logic:human-review':        HumanReviewNodeExecutor,
   'logic:translate':           TranslationNodeExecutor,
   'logic:quality-review':      QualityReviewNodeExecutor,

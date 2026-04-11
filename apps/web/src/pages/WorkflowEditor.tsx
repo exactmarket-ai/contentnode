@@ -34,6 +34,8 @@ export function WorkflowEditor() {
 
   const workflow = useWorkflowStore((s) => s.workflow)
   const nodes = useWorkflowStore((s) => s.nodes)
+  const canvasTool = useWorkflowStore((s) => s.canvasTool)
+  const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
   const insightConfirmations = useWorkflowStore((s) => s.insightConfirmations)
   const addInsightConfirmation = useWorkflowStore((s) => s.addInsightConfirmation)
 
@@ -365,7 +367,26 @@ export function WorkflowEditor() {
               <AlignmentToolbar workflowName={workflow.name ?? undefined} />
             </div>
 
-            {/* Insight confirmation banners (non-blocking, stacked bottom-right) */}
+            {/* Top-left: pointer / hand tool switcher */}
+            <div className="pointer-events-auto absolute top-3 left-3 z-20 flex gap-1 rounded-lg border border-border bg-card p-1 shadow-sm">
+              <button
+                title="Select (V)"
+                onClick={() => setCanvasTool('select')}
+                className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${canvasTool === 'select' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+              >
+                <Icons.MousePointer2 className="h-3.5 w-3.5" />
+              </button>
+              <button
+                title="Hand / Pan (H)"
+                onClick={() => setCanvasTool('hand')}
+                className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${canvasTool === 'hand' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+              >
+                <Icons.Hand className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+
+{/* Insight confirmation banners (non-blocking, stacked bottom-right) */}
             {insightConfirmations.length > 0 && (
               <div className="pointer-events-auto absolute bottom-4 right-4 z-20 flex flex-col gap-2 max-w-sm">
                 {insightConfirmations.map((c) => (

@@ -18,6 +18,7 @@ import { WebScrapeConfig } from './config/source/WebScrapeConfig'
 import { TranscriptionConfig } from './config/source/TranscriptionConfig'
 import { InstructionTranslatorConfig } from './config/source/InstructionTranslatorConfig'
 import { WorkflowOutputConfig } from './config/source/WorkflowOutputConfig'
+import { GtmFrameworkConfig } from './config/source/GtmFrameworkConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -65,6 +66,8 @@ function NodeConfigForm({
   nodeLabel: string
 }) {
   switch (nodeType) {
+    case 'gtm_framework':
+      return <GtmFrameworkConfig config={config} onChange={onChange} />
     case 'source':
       if (subtype === 'transcription')
         return <TranscriptionConfig config={config} onChange={onChange} />
@@ -195,6 +198,7 @@ export function ConfigPanel() {
     logic: 'text-blue-400',
     output: 'text-purple-400',
     insight: 'text-yellow-400',
+    gtm_framework: 'text-blue-500',
   }
   const colorClass = CATEGORY_COLOR[nodeType] ?? 'text-foreground'
 

@@ -89,14 +89,12 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
 export function getNodeSpec(type: string, subtype?: string): NodeSpec {
   let specType: NodeSpecType = 'eval'
 
-  if (type === 'source') {
+  if (type === 'source' || type === 'gtm_framework') {
     specType = 'input'
   } else if (type === 'logic') {
     specType = 'ai-model' // all logic nodes are orange
   } else if (type === 'insight') {
     specType = 'ai-model'
-  } else if (subtype === 'image-generation' || subtype === 'video-generation') {
-    specType = 'generate'
   } else {
     specType = 'transform' // output nodes are green
   }

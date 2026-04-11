@@ -10,6 +10,8 @@ export const QUEUE_TRANSCRIPTION = 'transcription'
 export const QUEUE_ASSET_GENERATION = 'asset-generation'
 export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
 export const QUEUE_SCHEDULE_CHECKER = 'schedule-checker'
+export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
+export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -47,6 +49,20 @@ export interface PatternDetectionJobData {
   feedbackId: string
   clientId: string
   agencyId: string
+}
+
+export interface FrameworkResearchJobData {
+  agencyId: string
+  clientId: string
+  verticalId: string
+  websiteUrl?: string
+}
+
+export interface AttachmentProcessJobData {
+  agencyId: string
+  attachmentId: string
+  clientName: string
+  verticalName: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -208,6 +208,11 @@ export function TopBar() {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
 
+  // Keep nameValue in sync when a different workflow is loaded
+  useEffect(() => {
+    setNameValue(workflow.name)
+  }, [workflow.id])
+
   const commitName = async () => {
     const trimmed = nameValue.trim() || 'Untitled Workflow'
     setWorkflowName(trimmed)
@@ -558,7 +563,8 @@ function SaveWorkflowDialog({
 }) {
   const { workflow } = useWorkflowStore()
   const originalName = workflow.name
-  const [name, setName] = useState(workflow.name)
+  // Use the live workflow name — dialog may open after workflow loaded from API
+  const [name, setName] = useState(() => workflow.name || 'Untitled Workflow')
   const [clientId, setClientId] = useState(workflow.clientId ?? '')
   const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)

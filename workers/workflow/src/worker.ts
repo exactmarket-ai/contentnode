@@ -8,15 +8,20 @@ import {
   QUEUE_ASSET_GENERATION,
   QUEUE_PATTERN_DETECTION,
   QUEUE_SCHEDULE_CHECKER,
+  QUEUE_FRAMEWORK_RESEARCH,
+  QUEUE_ATTACHMENT_PROCESS,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
   type TranscriptionJobData,
   type AssetGenerationJobData,
   type PatternDetectionJobData,
+  type FrameworkResearchJobData,
+  type AttachmentProcessJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns } from './patternDetector.js'
 import { runScheduleChecker } from './scheduleChecker.js'
+import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
 
 // ── workflow-runs ─────────────────────────────────────────────────────────────
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
@@ -112,6 +117,46 @@ const scheduleCheckerWorker = createWorker(
   1
 )
 
+// ── framework-research ────────────────────────────────────────────────────────
+const frameworkResearchWorker = createWorker<FrameworkResearchJobData>(
+  QUEUE_FRAMEWORK_RESEARCH,
+  async (job: Job<FrameworkResearchJobData>) => {
+    console.log(`[framework-research] job started for client=${job.data.clientId}`)
+    try {
+      await runFrameworkResearch(job.data)
+    } catch (err) {
+      console.error('[framework-research] job failed:', err)
+      // Mark as failed in DB so UI can show error state
+      try {
+        const { prisma, withAgency } = await import('@contentnode/database')
+        await withAgency(job.data.agencyId, async () => {
+          await prisma.clientFrameworkResearch.updateMany({
+            where: { clientId: job.data.clientId, verticalId: job.data.verticalId },
+            data: { status: 'failed', errorMessage: err instanceof Error ? err.message : String(err) },
+          })
+        })
+      } catch { /* ignore */ }
+      throw err
+    }
+  },
+  2
+)
+
+// ── attachment-process ────────────────────────────────────────────────────────
+const attachmentProcessWorker = createWorker<AttachmentProcessJobData>(
+  QUEUE_ATTACHMENT_PROCESS,
+  async (job: Job<AttachmentProcessJobData>) => {
+    console.log(`[attachment-process] job started for attachment=${job.data.attachmentId}`)
+    try {
+      await processAttachment(job.data)
+    } catch (err) {
+      console.error('[attachment-process] job failed:', err)
+      throw err
+    }
+  },
+  5
+)
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -122,6 +167,8 @@ async function shutdown() {
     assetGenerationWorker.close(),
     patternDetectionWorker.close(),
     scheduleCheckerWorker.close(),
+    frameworkResearchWorker.close(),
+    attachmentProcessWorker.close(),
   ])
   process.exit(0)
 }

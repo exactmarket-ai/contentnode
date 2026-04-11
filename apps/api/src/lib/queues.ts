@@ -3,6 +3,8 @@ import { getRedis } from './redis.js'
 
 export const QUEUE_WORKFLOW_RUNS = 'workflow-runs'
 export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
+export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
+export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -15,8 +17,24 @@ export interface PatternDetectionJobData {
   agencyId: string
 }
 
+export interface FrameworkResearchJobData {
+  agencyId: string
+  clientId: string
+  verticalId: string
+  websiteUrl?: string
+}
+
+export interface AttachmentProcessJobData {
+  agencyId: string
+  attachmentId: string
+  clientName: string
+  verticalName: string
+}
+
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
 let patternDetectionQueue: Queue<PatternDetectionJobData> | null = null
+let frameworkResearchQueue: Queue<FrameworkResearchJobData> | null = null
+let attachmentProcessQueue: Queue<AttachmentProcessJobData> | null = null
 
 /**
  * Returns the singleton Queue instance for dispatching workflow run jobs.
@@ -41,4 +59,28 @@ export function getPatternDetectionQueue(): Queue<PatternDetectionJobData> {
     })
   }
   return patternDetectionQueue
+}
+
+/**
+ * Returns the singleton Queue instance for dispatching framework research jobs.
+ */
+export function getFrameworkResearchQueue(): Queue<FrameworkResearchJobData> {
+  if (!frameworkResearchQueue) {
+    frameworkResearchQueue = new Queue<FrameworkResearchJobData>(QUEUE_FRAMEWORK_RESEARCH, {
+      connection: getRedis(),
+    })
+  }
+  return frameworkResearchQueue
+}
+
+/**
+ * Returns the singleton Queue instance for dispatching per-attachment processing jobs.
+ */
+export function getAttachmentProcessQueue(): Queue<AttachmentProcessJobData> {
+  if (!attachmentProcessQueue) {
+    attachmentProcessQueue = new Queue<AttachmentProcessJobData>(QUEUE_ATTACHMENT_PROCESS, {
+      connection: getRedis(),
+    })
+  }
+  return attachmentProcessQueue
 }
