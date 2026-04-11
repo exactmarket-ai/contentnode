@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useWorkflowStore } from '@/store/workflowStore'
 
 const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d8f5' }
 
@@ -30,6 +31,19 @@ interface AppNavProps {
 export function AppNav({ onSignOut }: AppNavProps) {
   const [collapsed, setCollapsed] = useState(false)
   const { isAdmin, isOwner } = useCurrentUser()
+  const location = useLocation()
+  const setPendingNavPath = useWorkflowStore((s) => s.setPendingNavPath)
+
+  // Intercept nav clicks when on the workflow editor with unsaved changes
+  function guardClick(e: React.MouseEvent, to: string) {
+    const onEditor = /^\/workflows\/(new|[^/]+)/.test(location.pathname)
+    if (!onEditor) return
+    const { workflow: wf, nodes: n, graphDirty: dirty } = useWorkflowStore.getState()
+    const hasChanges = wf.id ? dirty : n.length > 0
+    if (!hasChanges) return
+    e.preventDefault()
+    setPendingNavPath(to)
+  }
 
   return (
     <aside
@@ -72,6 +86,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
           key={to}
           to={to}
           title={collapsed ? label : undefined}
+          onClick={(e) => guardClick(e, to)}
           className={({ isActive }) =>
             cn(
               'flex items-center rounded-md px-2 py-2 text-sm transition-colors',
@@ -98,6 +113,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
             key={to}
             to={to}
             title={collapsed ? label : undefined}
+            onClick={(e) => guardClick(e, to)}
             className={({ isActive }) =>
               cn(
                 'flex items-center rounded-md px-2 py-2 text-sm transition-colors',

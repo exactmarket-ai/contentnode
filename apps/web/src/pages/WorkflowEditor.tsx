@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useSearchParams, useNavigate, useBlocker } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { TopBar, pollRunUntilTerminal } from '@/components/layout/TopBar'
 import { NodePalette } from '@/components/layout/NodePalette'
@@ -265,14 +265,9 @@ export function WorkflowEditor() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isUnsaved])
 
-  // Block in-app navigation when there are unsaved changes.
-  // Reads live state from the store at navigation time to avoid stale closures.
-  const blocker = useBlocker(
-    useCallback(() => {
-      const { workflow: wf, nodes: n, graphDirty: dirty } = useWorkflowStore.getState()
-      return wf.id ? dirty : n.length > 0
-    }, [])
-  )
+  // Pending navigation — set by AppNav when user clicks away with unsaved changes
+  const pendingNavPath = useWorkflowStore((s) => s.pendingNavPath)
+  const setPendingNavPath = useWorkflowStore((s) => s.setPendingNavPath)
 
   const handleOpenSaveDialog = useCallback(() => {
     window.dispatchEvent(new CustomEvent('contentnode:open-save-dialog'))
@@ -314,8 +309,8 @@ export function WorkflowEditor() {
         />
       )}
 
-      {/* Unsaved-changes navigation blocker */}
-      {blocker.state === 'blocked' && (
+      {/* Unsaved-changes dialog — triggered by AppNav click interception */}
+      {pendingNavPath && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-[380px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
             <div className="px-6 py-5 flex items-center gap-3">
@@ -325,25 +320,25 @@ export function WorkflowEditor() {
               <div>
                 <p className="text-sm font-semibold text-foreground">Unsaved changes</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {workflow.id ? 'Your changes haven\'t been saved yet.' : 'This workflow hasn\'t been saved yet.'}
+                  {workflow.id ? "Your changes haven't been saved yet." : "This workflow hasn't been saved yet."}
                 </p>
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-4">
               <button
-                onClick={() => blocker.reset()}
+                onClick={() => setPendingNavPath(null)}
                 className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={() => blocker.proceed()}
+                onClick={() => { navigate(pendingNavPath); setPendingNavPath(null) }}
                 className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-red-50 transition-colors"
               >
                 Discard
               </button>
               <button
-                onClick={() => { blocker.reset(); handleOpenSaveDialog() }}
+                onClick={() => { setPendingNavPath(null); handleOpenSaveDialog() }}
                 className="rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90"
                 style={{ backgroundColor: '#a200ee' }}
               >

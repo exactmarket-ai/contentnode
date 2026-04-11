@@ -433,6 +433,10 @@ interface WorkflowState {
   setRfInstance: (instance: ReactFlowInstance | null) => void
   setCanvasTool: (tool: 'select' | 'hand') => void
   addNodeBySubtype: (subtype: string, screenPosition?: { x: number; y: number }) => void
+
+  // Pending navigation — set when user clicks away with unsaved changes
+  pendingNavPath: string | null
+  setPendingNavPath: (path: string | null) => void
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -466,6 +470,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   graphDirty: false,
   canvasTool: 'select',
   rfInstance: null,
+  pendingNavPath: null,
 
   // Graph actions — each mutation marks the graph dirty
   onNodesChange: (changes) => {
@@ -553,6 +558,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setRfInstance: (instance) => set({ rfInstance: instance }),
   setCanvasTool: (tool) => set({ canvasTool: tool }),
+  setPendingNavPath: (path) => set({ pendingNavPath: path }),
 
   addNodeBySubtype: (subtype, screenPosition) => {
     const { rfInstance, addNode, setSelectedNodeId } = get()
