@@ -28,7 +28,7 @@ export const GroupNode = memo(({ id, data, selected }: NodeProps) => {
         handleStyle={{ width: 8, height: 8, borderRadius: 2, backgroundColor: '#e9b8ff', borderColor: '#a200ee' }}
       />
 
-      {/* Purple background fill */}
+      {/* Purple background — fills entire frame, draggable */}
       <div
         style={{
           position: 'absolute',
@@ -36,13 +36,13 @@ export const GroupNode = memo(({ id, data, selected }: NodeProps) => {
           background: 'rgba(162,0,238,0.06)',
           border: `1.5px ${selected ? 'solid' : 'dashed'} rgba(162,0,238,${selected ? '0.45' : '0.25'})`,
           borderRadius: 8,
-          pointerEvents: 'none',
+          cursor: 'grab',
         }}
       />
 
-      {/* Label bar */}
+      {/* Label bar — nodrag only while editing so the frame stays draggable normally */}
       <div
-        className="nodrag"
+        className={editing ? 'nodrag' : ''}
         style={{
           position: 'absolute',
           top: 0,
@@ -55,7 +55,7 @@ export const GroupNode = memo(({ id, data, selected }: NodeProps) => {
           display: 'flex',
           alignItems: 'center',
           paddingLeft: 10,
-          cursor: 'text',
+          cursor: editing ? 'text' : 'grab',
         }}
         onDoubleClick={() => { setEditing(true); setTimeout(() => inputRef.current?.select(), 10) }}
       >
