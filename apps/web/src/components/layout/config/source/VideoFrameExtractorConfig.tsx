@@ -209,7 +209,7 @@ export function VideoFrameExtractorConfig({
                 style={{ maxHeight: 180 }}
               />
               <button
-                onClick={(e) => { e.stopPropagation(); downloadAsset(assetUrl(frameOutput.localPath!), frameOutput.filename ?? 'thumbnail.jpg') }}
+                onClick={(e) => { e.stopPropagation(); downloadAsset(frameOutput.localPath!, frameOutput.filename ?? 'thumbnail.jpg') }}
                 className="absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-[10px] text-white hover:bg-black/80"
               >
                 <Icons.Download className="h-3 w-3" />

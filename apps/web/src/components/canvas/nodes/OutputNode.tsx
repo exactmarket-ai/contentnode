@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -65,6 +65,36 @@ const selectStyle: React.CSSProperties = {
   color: '#1a1a14',
   backgroundColor: '#fafaf8',
   cursor: 'pointer',
+}
+
+function DisplayInlineOutput({ id, text, accentColor }: { id: string; text: string; accentColor: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <div className="space-y-1" style={{ marginLeft: -10, marginRight: -10 }}>
+      <div
+        className="px-2.5 py-2 text-[10px] leading-[1.5] line-clamp-3 select-none"
+        style={{ backgroundColor: accentColor + '0d', color: '#1a1a14', borderTop: `1px solid ${accentColor}22` }}
+      >
+        {text}
+      </div>
+      <div className="flex justify-end px-2">
+        <button
+          className="nodrag flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium hover:bg-accent"
+          style={{ color: accentColor }}
+          onClick={handleCopy}
+        >
+          {copied ? <Icons.Check className="h-2.5 w-2.5" /> : <Icons.Copy className="h-2.5 w-2.5" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
@@ -290,12 +320,21 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
           </div>
         )}
 
-        {/* Description (non-generation) */}
-        {!isGeneration && (
-          <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
-            {data.description as string}
-          </p>
-        )}
+        {/* Description / inline output (non-generation) */}
+        {!isGeneration && (() => {
+          if (subtype === 'display' && isPassed) {
+            const rawOut = nodeStatuses[id]?.output
+            const text = typeof rawOut === 'string' ? rawOut
+              : typeof rawOut === 'object' && rawOut !== null ? ((rawOut as Record<string,unknown>).content as string | undefined) ?? JSON.stringify(rawOut)
+              : null
+            return text ? <DisplayInlineOutput id={id} text={text} accentColor={spec.accent} /> : null
+          }
+          return (
+            <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
+              {data.description as string}
+            </p>
+          )
+        })()}
 
         {/* Prompt preview */}
         {isGeneration && promptPreview && (

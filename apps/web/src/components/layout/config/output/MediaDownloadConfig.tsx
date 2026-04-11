@@ -98,7 +98,7 @@ export function MediaDownloadConfig({
         <>
           <Label className="text-xs text-muted-foreground">Download</Label>
           <button
-            onClick={() => downloadAsset(assetUrl(output.localPath!), filename)}
+            onClick={() => downloadAsset(output.localPath!, filename)}
             className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent transition-colors"
           >
             <Icons.Download className="h-3.5 w-3.5" />
