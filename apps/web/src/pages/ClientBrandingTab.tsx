@@ -375,6 +375,9 @@ function BrandProfileSection({
   const [saving, setSaving] = useState(false)
   const [showSource, setShowSource] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [addingNote, setAddingNote] = useState(false)
+  const [showNoteInput, setShowNoteInput] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const qs = verticalId ? `?verticalId=${verticalId}` : ''
@@ -445,6 +448,33 @@ function BrandProfileSection({
       setAttachments((prev) => prev.filter((x) => x.id !== a.id))
     } catch { /* ignore */ } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleAddNote = async () => {
+    const trimmed = noteText.trim()
+    if (!trimmed) return
+    setAddingNote(true)
+    try {
+      const blob = new Blob([trimmed], { type: 'text/plain' })
+      const timestamp = new Date().toISOString().slice(0, 10)
+      const file = new File([blob], `notes-${timestamp}.txt`, { type: 'text/plain' })
+      const form = new FormData()
+      form.append('file', file)
+      const res = await apiFetch(`${baseAttachments}${qs}`, { method: 'POST', body: form })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        const msg = (body as { error?: string }).error ?? 'Failed to add note'
+        setUploadError(msg)
+        setTimeout(() => setUploadError(null), 6000)
+        return
+      }
+      const { data } = await res.json()
+      setAttachments((prev) => [data, ...prev])
+      setNoteText('')
+      setShowNoteInput(false)
+    } catch { /* ignore */ } finally {
+      setAddingNote(false)
     }
   }
 
@@ -542,6 +572,48 @@ function BrandProfileSection({
               </p>
               <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · TXT · MD · CSV · JSON · HTML</p>
             </>
+          )}
+        </div>
+
+        {/* Paste notes option */}
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowNoteInput((v) => !v)}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span className="text-[10px]">{showNoteInput ? '▼' : '▶'}</span>
+            Or type / paste notes directly
+          </button>
+
+          {showNoteInput && (
+            <div className="mt-2 space-y-2">
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Paste brand guidelines, messaging notes, tone rules, or any context you want Claude to learn from…"
+                rows={5}
+                className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddNote}
+                  disabled={addingNote || !noteText.trim()}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {addingNote ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.Plus className="h-3 w-3" />}
+                  Add to brain
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowNoteInput(false); setNoteText('') }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
