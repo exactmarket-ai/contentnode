@@ -100,18 +100,18 @@ async function pollUntilActive(fileName: string, apiKey: string): Promise<Gemini
 
 async function generateContent(fileUri: string, mimeType: string, prompt: string, model: string, apiKey: string): Promise<string> {
   const res = await fetch(
-    `${GEMINI_BASE}/v1/models/${model}:generateContent?key=${apiKey}`,
+    `${GEMINI_BASE}/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
           parts: [
-            { file_data: { mime_type: mimeType, file_uri: fileUri } },
+            { fileData: { mimeType, fileUri } },
             { text: prompt },
           ],
         }],
-        generation_config: { max_output_tokens: 2048 },
+        generationConfig: { maxOutputTokens: 2048 },
       }),
     }
   )
