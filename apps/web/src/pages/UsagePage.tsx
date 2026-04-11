@@ -21,6 +21,8 @@ interface UsageData {
     emailsSent: number
     imagesGenerated: number
     videosGenerated: number
+    videoIntelligenceCalls?: number
+    videoIntelligenceCostUsd?: number
   }
   llm: {
     totalTokens: number
@@ -32,7 +34,7 @@ interface UsageData {
   translation: { totalChars: number; byProvider: { provider: string; chars: number }[] }
   imageGeneration?: { totalImages: number; byService: { service: string; count: number }[] }
   videoGeneration?: { totalVideos: number; totalSecondGenerated: number; byService: { service: string; count: number }[] }
-  byClient: { clientId: string; clientName: string; tokens: number; translationChars: number }[]
+  byClient: { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls?: number }[]
   byWorkflow: { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }[]
   byUser: { userId: string; userName: string; tokens: number; humanizerWords: number; imagesGenerated: number; videosGenerated: number; translationChars: number }[]
   dailyUsage: { date: string; tokens: number }[]
@@ -171,14 +173,17 @@ export function UsagePage() {
           <div className="space-y-5 max-w-4xl">
 
             {/* Top stats */}
-            <div className="grid grid-cols-7 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <StatCard icon={Icons.Zap} label="AI Tokens" value={fmt(data.totals.tokens)} sub="this billing period" color="text-blue-400" />
               <StatCard icon={Icons.Play} label="Workflow Runs" value={String(data.totals.runs)} sub="this billing period" />
               <StatCard icon={Icons.Mic} label="Transcription" value={`${data.totals.transcriptionMinutes}m`} sub="minutes processed" />
               <StatCard icon={Icons.ShieldCheck} label="Detection Calls" value={String(data.totals.detectionCalls)} sub="AI detection checks" color="text-amber-400" />
+            </div>
+            <div className="grid grid-cols-4 gap-3">
               <StatCard icon={Icons.Languages} label="Translation" value={fmt(data.totals.translationChars, ' chars')} sub="characters translated" color="text-cyan-400" />
               <StatCard icon={Icons.Image} label="Images Generated" value={fmt(data.totals.imagesGenerated ?? 0)} sub="this billing period" color="text-pink-400" />
               <StatCard icon={Icons.Video} label="Videos Generated" value={fmt(data.totals.videosGenerated ?? 0)} sub="this billing period" color="text-violet-400" />
+              <StatCard icon={Icons.ScanSearch} label="Video Intelligence" value={fmt(data.totals.videoIntelligenceCalls ?? 0)} sub={`~$${((data.totals.videoIntelligenceCostUsd ?? 0)).toFixed(2)} est.`} color="text-purple-400" />
             </div>
 
             {/* Daily chart */}
@@ -294,15 +299,27 @@ export function UsagePage() {
             {/* By client */}
             {data.byClient.length > 0 && (
               <Section title="Usage by Client" icon={Icons.Users} total={`${data.byClient.length} clients`}>
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">AI Tokens</p>
-                {data.byClient.slice(0, 10).map((c) => (
-                  <Bar key={c.clientId} label={c.clientName} value={c.tokens} max={data.totals.tokens} />
-                ))}
+                {data.totals.tokens > 0 && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">AI Tokens</p>
+                    {data.byClient.filter((c) => c.tokens > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={c.tokens} max={data.totals.tokens} />
+                    ))}
+                  </>
+                )}
                 {data.byClient.some((c) => c.translationChars > 0) && (
                   <>
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Translation Chars</p>
                     {data.byClient.filter((c) => c.translationChars > 0).slice(0, 10).map((c) => (
                       <Bar key={c.clientId} label={c.clientName} value={c.translationChars} max={data.totals.translationChars} color="bg-cyan-600" />
+                    ))}
+                  </>
+                )}
+                {data.byClient.some((c) => (c.videoIntelligenceCalls ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Video Intelligence Runs</p>
+                    {data.byClient.filter((c) => (c.videoIntelligenceCalls ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={c.videoIntelligenceCalls ?? 0} max={Math.max(...data.byClient.map((x) => x.videoIntelligenceCalls ?? 0))} color="bg-purple-600" />
                     ))}
                   </>
                 )}

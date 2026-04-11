@@ -106,7 +106,7 @@ interface BuilderData {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-blue-500">
+    <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">
       {children}
     </div>
   )
@@ -123,7 +123,7 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
     />
   )
 }
@@ -135,7 +135,7 @@ function TextArea({ value, onChange, placeholder, rows = 3 }: { value: string; o
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       rows={rows}
-      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-y"
+      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring resize-y"
     />
   )
 }
@@ -152,17 +152,17 @@ function TagInput({ values, onChange, placeholder }: { values: string[]; onChang
   }
 
   return (
-    <div className="min-h-[38px] rounded-md border border-border bg-background px-2 py-1.5 flex flex-wrap gap-1 items-center focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400">
+    <div className="min-h-[38px] rounded-md border border-border bg-background px-2 py-1.5 flex flex-wrap gap-1 items-center focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
       {values.map((v) => (
         <span
           key={v}
-          className="flex items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+          className="flex items-center gap-0.5 rounded-full bg-accent px-2 py-0.5 text-[11px] text-accent-foreground"
         >
           {v}
           <button
             type="button"
             onClick={() => onChange(values.filter((x) => x !== v))}
-            className="ml-0.5 text-blue-400 hover:text-blue-700"
+            className="ml-0.5 text-muted-foreground hover:text-foreground"
           >×</button>
         </span>
       ))}
@@ -193,7 +193,7 @@ function ColorInput({ color, onChange, onRemove }: { color: string; onChange: (v
         type="text"
         value={color}
         onChange={(e) => onChange(e.target.value)}
-        className="w-24 rounded border border-border bg-background px-2 py-0.5 text-[11px] font-mono text-foreground focus:outline-none focus:border-blue-400"
+        className="w-24 rounded border border-border bg-background px-2 py-0.5 text-[11px] font-mono text-foreground focus:outline-none focus:border-ring"
         placeholder="#000000"
       />
       <button type="button" onClick={onRemove} className="text-muted-foreground hover:text-red-500 text-xs">×</button>
@@ -217,7 +217,7 @@ function ColorArrayInput({ values, onChange }: { values: string[]; onChange: (v:
         <button
           type="button"
           onClick={() => onChange([...values, '#000000'])}
-          className="text-[11px] text-blue-500 hover:text-blue-600"
+          className="text-[11px] text-muted-foreground hover:text-foreground"
         >+ Add color</button>
       )}
     </div>
@@ -263,9 +263,7 @@ function BrandProfileSection({
   const [editedJson, setEditedJson] = useState<BrandJson>({})
   const [saving, setSaving] = useState(false)
   const [showSource, setShowSource] = useState(false)
-  const [websiteUrl, setWebsiteUrl] = useState('')
-  const [scraping, setScraping] = useState(false)
-  const [scrapeError, setScrapeError] = useState<string | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const qs = verticalId ? `?verticalId=${verticalId}` : ''
@@ -283,7 +281,6 @@ function BrandProfileSection({
     if (p) {
       const live = (p.editedJson ?? p.extractedJson ?? {}) as BrandJson
       setEditedJson(live)
-      if (p.websiteUrl) setWebsiteUrl(p.websiteUrl)
     }
   }, [baseAttachments, baseProfile, qs])
 
@@ -350,33 +347,6 @@ function BrandProfileSection({
     }
   }
 
-  const handleScrape = async () => {
-    const url = websiteUrl.trim()
-    if (!url) return
-    setScraping(true)
-    setScrapeError(null)
-    try {
-      // Save the URL first, then trigger the scrape job
-      await apiFetch(`${baseProfile}${qs}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ websiteUrl: url }),
-      })
-      const res = await apiFetch(`${baseProfile}/scrape${qs}`, { method: 'POST' })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setScrapeError((body as { error?: string }).error ?? 'Scrape failed')
-        return
-      }
-      // Polling picks up extractionStatus changes automatically
-      await fetchAll()
-    } catch (err) {
-      setScrapeError(err instanceof Error ? err.message : 'Scrape failed')
-    } finally {
-      setScraping(false)
-    }
-  }
-
   const setField = (path: string[], value: unknown) => {
     setEditedJson((prev) => {
       const next = JSON.parse(JSON.stringify(prev)) as Record<string, unknown>
@@ -428,7 +398,7 @@ function BrandProfileSection({
         <div
           className={cn(
             'relative rounded-xl border-2 border-dashed p-6 text-center transition-colors',
-            dragging ? 'border-blue-400 bg-blue-50/10' : 'border-border hover:border-blue-300'
+            dragging ? 'border-ring bg-accent/20' : 'border-border hover:border-muted-foreground/40'
           )}
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
@@ -448,7 +418,7 @@ function BrandProfileSection({
             <>
               <p className="text-sm text-muted-foreground">
                 Drag files here or{' '}
-                <button type="button" onClick={() => inputRef.current?.click()} className="text-blue-500 underline">
+                <button type="button" onClick={() => inputRef.current?.click()} className="text-foreground underline hover:text-muted-foreground">
                   browse
                 </button>
               </p>
@@ -463,28 +433,54 @@ function BrandProfileSection({
             {attachments.map((a) => (
               <div
                 key={a.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2"
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
               >
                 <span className="text-base shrink-0">{fileIcon(a.mimeType)}</span>
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{a.filename}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {formatBytes(a.sizeBytes)} · {new Date(a.createdAt).toLocaleDateString()}
-                    {' · '}
-                    {a.extractionStatus === 'pending' && <span className="text-amber-500">Queued…</span>}
-                    {a.extractionStatus === 'processing' && <span className="text-blue-500">Extracting…</span>}
-                    {a.extractionStatus === 'ready' && <span className="text-green-500">✓ Ready</span>}
-                    {a.extractionStatus === 'failed' && <span className="text-red-500">Failed</span>}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={deletingId === a.id}
-                  onClick={() => handleDelete(a)}
-                  className="shrink-0 text-[11px] text-muted-foreground hover:text-red-500 disabled:opacity-40"
-                >
-                  {deletingId === a.id ? '…' : 'Remove'}
-                </button>
+                {/* Inline status badge */}
+                <span className={cn(
+                  'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                  a.extractionStatus === 'pending' && 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+                  a.extractionStatus === 'processing' && 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+                  a.extractionStatus === 'ready' && 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
+                  a.extractionStatus === 'failed' && 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+                )}>
+                  {a.extractionStatus === 'pending' && 'Queued'}
+                  {a.extractionStatus === 'processing' && 'Extracting…'}
+                  {a.extractionStatus === 'ready' && '✓ Ready'}
+                  {a.extractionStatus === 'failed' && 'Failed'}
+                </span>
+                {/* Action dropdown */}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenMenuId(openMenuId === a.id ? null : a.id)}
+                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Icons.MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                  {openMenuId === a.id && (
+                    <div
+                      className="absolute right-0 top-7 z-50 min-w-[110px] rounded-lg border border-border bg-popover shadow-lg"
+                      onMouseLeave={() => setOpenMenuId(null)}
+                    >
+                      <button
+                        type="button"
+                        disabled={deletingId === a.id}
+                        onClick={() => { setOpenMenuId(null); handleDelete(a) }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 rounded-lg"
+                      >
+                        <Icons.Trash2 className="h-3.5 w-3.5" />
+                        {deletingId === a.id ? 'Removing…' : 'Remove'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -492,8 +488,8 @@ function BrandProfileSection({
 
         {/* Extraction status banner */}
         {isExtracting && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/20 px-4 py-2.5 text-sm text-blue-600 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-accent/30 px-4 py-2.5 text-sm text-foreground">
+            <div className="h-2 w-2 animate-pulse rounded-full bg-foreground/50" />
             Claude is reading your files and extracting the brand profile…
           </div>
         )}
@@ -501,49 +497,6 @@ function BrandProfileSection({
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50/20 px-4 py-2.5 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20">
             Extraction failed: {profile.errorMessage ?? 'Unknown error'}
           </div>
-        )}
-      </div>
-
-      {/* Extract from website */}
-      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Icons.Globe className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-semibold">Extract from Website</h3>
-          {profile?.websiteUrl && <span className="text-[10px] text-muted-foreground">{profile.websiteUrl}</span>}
-        </div>
-        <p className="text-[11px] text-muted-foreground">Paste the brand's website URL — Claude will crawl the homepage, About, and Brand pages to extract brand guidelines automatically.</p>
-        <div className="flex gap-2">
-          <input
-            type="url"
-            value={websiteUrl}
-            onChange={(e) => setWebsiteUrl(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void handleScrape() }}
-            placeholder="https://example.com"
-            disabled={scraping}
-            className="flex-1 rounded border border-input bg-background px-3 py-1.5 text-xs outline-none focus:border-ring disabled:opacity-50"
-          />
-          <button
-            onClick={handleScrape}
-            disabled={scraping || !websiteUrl.trim()}
-            className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
-          >
-            {scraping
-              ? <><Icons.Loader2 className="h-3 w-3 animate-spin" /> Extracting…</>
-              : profile?.websiteUrl
-              ? <><Icons.RefreshCw className="h-3 w-3" /> Re-run</>
-              : <><Icons.Sparkles className="h-3 w-3" /> Extract</>
-            }
-          </button>
-        </div>
-        {!scraping && profile?.websiteUrl && profile.extractionStatus === 'ready' && (
-          <p className="text-[11px] text-green-600 flex items-center gap-1">
-            <Icons.CheckCircle2 className="h-3.5 w-3.5" /> Website extracted — review the brand profile below.
-          </p>
-        )}
-        {scrapeError && (
-          <p className="text-[11px] text-red-500 flex items-center gap-1">
-            <Icons.AlertCircle className="h-3.5 w-3.5 shrink-0" />{scrapeError}
-          </p>
         )}
       </div>
 
@@ -559,7 +512,7 @@ function BrandProfileSection({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -697,7 +650,7 @@ function BrandProfileSection({
               <button
                 type="button"
                 onClick={() => setShowSource((s) => !s)}
-                className="text-[11px] text-blue-500 hover:text-blue-600"
+                className="text-[11px] text-muted-foreground hover:text-foreground"
               >
                 {showSource ? '▲ Hide source content' : '▼ View source content'}
               </button>
@@ -835,13 +788,13 @@ function BrandBuilderSection({
             <div className="divide-y divide-border">
               {sv(['mission']) && (
                 <div className="px-5 py-4">
-                  <p className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-blue-500">Mission</p>
+                  <p className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">Mission</p>
                   <p className="text-sm text-foreground">{sv(['mission'])}</p>
                 </div>
               )}
               {sv(['vision']) && (
                 <div className="px-5 py-4">
-                  <p className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-purple-500">Vision</p>
+                  <p className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">Vision</p>
                   <p className="text-sm text-foreground">{sv(['vision'])}</p>
                 </div>
               )}
@@ -850,7 +803,7 @@ function BrandBuilderSection({
                   <p className="mb-2 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">Values</p>
                   <div className="flex flex-wrap gap-1.5">
                     {av(['values']).map((v) => (
-                      <span key={v} className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{v}</span>
+                      <span key={v} className="rounded-full bg-accent px-2 py-0.5 text-[11px] text-accent-foreground">{v}</span>
                     ))}
                   </div>
                 </div>
@@ -867,7 +820,7 @@ function BrandBuilderSection({
                   <ul className="space-y-1">
                     {av(['messaging', 'value_propositions']).map((v) => (
                       <li key={v} className="flex items-start gap-1.5 text-sm text-foreground">
-                        <span className="mt-0.5 shrink-0 text-blue-400">›</span>{v}
+                        <span className="mt-0.5 shrink-0 text-muted-foreground">›</span>{v}
                       </li>
                     ))}
                   </ul>
@@ -885,7 +838,7 @@ function BrandBuilderSection({
                   )}
                   <div className="flex flex-wrap gap-1">
                     {av(['voice_and_tone', 'personality_traits']).map((t) => (
-                      <span key={t} className="rounded-full bg-purple-100 px-2 py-0.5 text-[11px] text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">{t}</span>
+                      <span key={t} className="rounded-full bg-accent px-2 py-0.5 text-[11px] text-accent-foreground">{t}</span>
                     ))}
                   </div>
                 </div>
@@ -901,7 +854,7 @@ function BrandBuilderSection({
                   <p className="mb-2 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">Differentiators</p>
                   <div className="flex flex-wrap gap-1">
                     {av(['positioning', 'differentiators']).map((d) => (
-                      <span key={d} className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] text-green-700 dark:bg-green-900/30 dark:text-green-300">{d}</span>
+                      <span key={d} className="rounded-full bg-accent px-2 py-0.5 text-[11px] text-accent-foreground">{d}</span>
                     ))}
                   </div>
                 </div>
@@ -994,7 +947,7 @@ function BrandBuilderSection({
           <select
             value={sv(['voice_and_tone', 'writing_style'])}
             onChange={(e) => set(['voice_and_tone', 'writing_style'], e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-blue-400"
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
           >
             <option value="">— Select style —</option>
             {WRITING_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -1071,7 +1024,7 @@ function BrandBuilderSection({
               </div>
             ))}
             {av(['messaging', 'value_propositions']).length < 5 && (
-              <button type="button" onClick={() => set(['messaging', 'value_propositions'], [...av(['messaging', 'value_propositions']), ''])} className="text-[11px] text-blue-500 hover:text-blue-600">
+              <button type="button" onClick={() => set(['messaging', 'value_propositions'], [...av(['messaging', 'value_propositions']), ''])} className="text-[11px] text-muted-foreground hover:text-foreground">
                 + Add value proposition
               </button>
             )}
@@ -1182,7 +1135,7 @@ export function ClientBrandingTab({
     <div className="flex h-full flex-col overflow-hidden">
       {/* Page header */}
       <div className="shrink-0 border-b border-border px-6 py-4">
-        <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-blue-500">Branding</div>
+        <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">Branding</div>
         <h2 className="text-xl font-bold text-foreground">{clientName}</h2>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           Manage brand profiles per vertical. Use in workflows via the Brand Context node.
@@ -1198,7 +1151,7 @@ export function ClientBrandingTab({
             className={cn(
               'flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
               activeVerticalId === null
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                ? 'border-foreground text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             )}
           >
@@ -1214,7 +1167,7 @@ export function ClientBrandingTab({
                   className={cn(
                     'group flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
                     activeVerticalId === v.id
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      ? 'border-foreground text-foreground'
                       : 'border-transparent text-muted-foreground hover:text-foreground'
                   )}
                 >
@@ -1239,13 +1192,13 @@ export function ClientBrandingTab({
                 onChange={(e) => setNewVerticalName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleCreateVertical(); if (e.key === 'Escape') { setAddingVertical(false); setNewVerticalName('') } }}
                 placeholder="Vertical name"
-                className="w-32 rounded border border-border bg-background px-2 py-0.5 text-sm focus:outline-none focus:border-blue-400"
+                className="w-32 rounded border border-border bg-background px-2 py-0.5 text-sm focus:outline-none focus:border-ring"
               />
               <button
                 type="button"
                 onClick={handleCreateVertical}
                 disabled={savingVertical || !newVerticalName.trim()}
-                className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+                className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
                 {savingVertical ? '…' : 'Add'}
               </button>
@@ -1278,7 +1231,7 @@ export function ClientBrandingTab({
               className={cn(
                 'border-b-2 py-2 text-sm font-medium transition-colors',
                 subTab === t
-                  ? 'border-blue-500 text-foreground'
+                  ? 'border-foreground text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               )}
             >

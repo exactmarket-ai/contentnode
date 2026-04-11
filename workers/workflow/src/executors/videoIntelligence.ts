@@ -21,7 +21,8 @@ import { randomUUID } from 'node:crypto'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { GoogleAIFileManager, FileState } from '@google/generative-ai/server'
 import { isS3Mode, downloadToFile } from '@contentnode/storage'
-import { usageEventService } from '@contentnode/database'
+import { prisma, usageEventService } from '@contentnode/database'
+import { Prisma } from '@prisma/client'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
@@ -299,6 +300,26 @@ export class VideoIntelligenceExecutor extends NodeExecutor {
       durationMs,
       status:           'success',
     })
+
+    // Also write to UsageRecord so video intelligence appears in the usage dashboard byClient breakdown
+    const now = new Date()
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    prisma.usageRecord.create({
+      data: {
+        agencyId: ctx.agencyId,
+        metric: 'video_intelligence_call',
+        quantity: 1,
+        periodStart,
+        periodEnd,
+        metadata: {
+          workflowRunId: ctx.workflowRunId,
+          model: usedModel,
+          ...(ctx.userId ? { userId: ctx.userId } : {}),
+          estimatedCostUsd,
+        } as Prisma.InputJsonValue,
+      },
+    }).catch(() => {})
 
     return { output: text }
   }

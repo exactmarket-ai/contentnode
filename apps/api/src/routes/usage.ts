@@ -113,6 +113,24 @@ export async function usageRoutes(app: FastifyInstance) {
       transcriptSessions.reduce((sum, s) => sum + (s.durationSecs ?? 0), 0) / 60
     )
 
+    // ── Video Intelligence (UsageEvent table, not UsageRecord) ───────────────
+    const videoIntelEvents = await prisma.usageEvent.findMany({
+      where: { agencyId, toolSubtype: 'video_intelligence', timestamp: { gte: periodStart, lte: periodEnd }, status: 'success' },
+      select: { workflowRunId: true, estimatedCostUsd: true },
+    })
+    const totalVideoIntelCalls = videoIntelEvents.length
+    const totalVideoIntelCostUsd = videoIntelEvents.reduce((s, e) => s + (e.estimatedCostUsd ?? 0), 0)
+
+    // Resolve video intel runs → workflow → client for byClient attribution
+    const viRunIds = [...new Set(videoIntelEvents.map((e) => e.workflowRunId).filter(Boolean) as string[])]
+    const viRuns = viRunIds.length
+      ? await prisma.workflowRun.findMany({
+          where: { id: { in: viRunIds }, agencyId },
+          select: { id: true, workflow: { select: { id: true, clientId: true, client: { select: { id: true, name: true } } } } },
+        })
+      : []
+    const viRunMap = Object.fromEntries(viRuns.map((r) => [r.id, r]))
+
     // ── Runs ─────────────────────────────────────────────────────────────────
     const runCount = await prisma.workflowRun.count({
       where: { agencyId, createdAt: { gte: periodStart, lte: periodEnd } },
@@ -146,7 +164,7 @@ export async function usageRoutes(app: FastifyInstance) {
     // Replace runMap with the broader allRunMap
     Object.assign(runMap, allRunMap)
 
-    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number; translationChars: number }> = {}
+    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls: number }> = {}
     const tokensByWorkflow: Record<string, { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }> = {}
     for (const record of tokenRecords) {
       const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
@@ -155,7 +173,7 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0 }
         tokensByClient[cid].tokens += record.quantity
         tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
         tokensByWorkflow[wf.id].tokens += record.quantity
@@ -168,10 +186,21 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0 }
         tokensByClient[cid].translationChars += record.quantity
         tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
         tokensByWorkflow[wf.id].translationChars += record.quantity
+      }
+    }
+    // Include video intelligence usage in byClient (from UsageEvent table)
+    for (const event of videoIntelEvents) {
+      const run = event.workflowRunId ? viRunMap[event.workflowRunId] : undefined
+      const wf = (run as any)?.workflow
+      if (wf?.clientId) {
+        const cid = wf.clientId
+        const cname = wf.client?.name ?? 'Unknown'
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0 }
+        tokensByClient[cid].videoIntelligenceCalls += 1
       }
     }
 
@@ -275,6 +304,8 @@ export async function usageRoutes(app: FastifyInstance) {
           imagesGenerated: totalImagesGenerated,
           videosGenerated: totalVideosGenerated,
           videoSecondGenerated: totalVideoSecs,
+          videoIntelligenceCalls: totalVideoIntelCalls,
+          videoIntelligenceCostUsd: totalVideoIntelCostUsd,
         },
         llm: {
           totalTokens,
