@@ -49,18 +49,17 @@ function NavItem({
 }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const setPendingNavPath = useWorkflowStore((s) => s.setPendingNavPath)
+  const setPendingNavAction = useWorkflowStore((s) => s.setPendingNavAction)
   const isActive = location.pathname === to || location.pathname.startsWith(to + '/')
 
   function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
     e.preventDefault()
-    // Check for unsaved changes when on the workflow editor
     const onEditor = /^\/workflows\/(new|[^/]+)/.test(location.pathname)
     if (onEditor) {
       const { workflow: wf, nodes: n, graphDirty: dirty } = useWorkflowStore.getState()
       const hasChanges = wf.id ? dirty : n.length > 0
       if (hasChanges) {
-        setPendingNavPath(to)
+        setPendingNavAction(() => navigate(to))
         return
       }
     }
@@ -89,6 +88,22 @@ function NavItem({
 export function AppNav({ onSignOut }: AppNavProps) {
   const [collapsed, setCollapsed] = useState(false)
   const { isAdmin, isOwner } = useCurrentUser()
+  const location = useLocation()
+  const setPendingNavAction = useWorkflowStore((s) => s.setPendingNavAction)
+
+  function handleSignOut() {
+    if (!onSignOut) return
+    const onEditor = /^\/workflows\/(new|[^/]+)/.test(location.pathname)
+    if (onEditor) {
+      const { workflow: wf, nodes: n, graphDirty: dirty } = useWorkflowStore.getState()
+      const hasChanges = wf.id ? dirty : n.length > 0
+      if (hasChanges) {
+        setPendingNavAction(onSignOut)
+        return
+      }
+    }
+    onSignOut()
+  }
 
   return (
     <aside
@@ -148,7 +163,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
           />
         )}
         {onSignOut && <button
-          onClick={onSignOut}
+          onClick={handleSignOut}
           title={collapsed ? 'Sign out' : undefined}
           className={cn(
             'flex w-full items-center rounded-md px-2 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground',

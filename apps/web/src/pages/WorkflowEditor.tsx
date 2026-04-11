@@ -265,9 +265,9 @@ export function WorkflowEditor() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isUnsaved])
 
-  // Pending navigation — set by AppNav when user clicks away with unsaved changes
-  const pendingNavPath = useWorkflowStore((s) => s.pendingNavPath)
-  const setPendingNavPath = useWorkflowStore((s) => s.setPendingNavPath)
+  // Pending nav action — set by AppNav when user clicks away with unsaved changes
+  const pendingNavAction = useWorkflowStore((s) => s.pendingNavAction)
+  const setPendingNavAction = useWorkflowStore((s) => s.setPendingNavAction)
 
   const handleOpenSaveDialog = useCallback(() => {
     window.dispatchEvent(new CustomEvent('contentnode:open-save-dialog'))
@@ -310,7 +310,7 @@ export function WorkflowEditor() {
       )}
 
       {/* Unsaved-changes dialog — triggered by AppNav click interception */}
-      {pendingNavPath && (
+      {pendingNavAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-[380px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
             <div className="px-6 py-5 flex items-center gap-3">
@@ -326,19 +326,19 @@ export function WorkflowEditor() {
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-4">
               <button
-                onClick={() => setPendingNavPath(null)}
+                onClick={() => setPendingNavAction(null)}
                 className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={() => { navigate(pendingNavPath); setPendingNavPath(null) }}
+                onClick={() => { pendingNavAction(); setPendingNavAction(null) }}
                 className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-red-50 transition-colors"
               >
                 Discard
               </button>
               <button
-                onClick={() => { setPendingNavPath(null); handleOpenSaveDialog() }}
+                onClick={() => { setPendingNavAction(null); handleOpenSaveDialog() }}
                 className="rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90"
                 style={{ backgroundColor: '#a200ee' }}
               >
