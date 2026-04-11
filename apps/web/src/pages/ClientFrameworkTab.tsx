@@ -1147,6 +1147,8 @@ interface Attachment {
   storageKey: string
   summaryStatus: 'pending' | 'processing' | 'ready' | 'failed'
   summary: string | null
+  brandSummary?: string | null
+  brandSummaryStatus?: string | null
 }
 
 function formatBytes(bytes: number): string {
@@ -1312,33 +1314,12 @@ function AttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpd
             <p className="py-2 text-sm text-red-500">Could not extract readable content from this file.</p>
           )}
           {a.summaryStatus === 'ready' && (
-            <>
-              {editing ? (
-                <div>
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Edit Claude's Interpretation</p>
-                  <textarea
-                    className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    rows={14}
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                  />
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="rounded bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
-                    >
-                      {saving ? 'Saving…' : 'Save'}
-                    </button>
-                    <button
-                      onClick={() => { setEditing(false); setEditValue(a.summary ?? '') }}
-                      className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
-                    >Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="mb-2 flex items-center justify-end">
+            <div className="space-y-3">
+              {/* GTM Framework Read */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">GTM Framework Read</p>
+                  {!editing && (
                     <div className="flex items-center gap-3">
                       <button
                         onClick={handleViewText}
@@ -1352,13 +1333,58 @@ function AttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpd
                         className="text-[10px] text-blue-500 underline hover:text-blue-700"
                       >Edit</button>
                     </div>
+                  )}
+                </div>
+                {editing ? (
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Edit Claude's Interpretation</p>
+                    <textarea
+                      className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      rows={14}
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="rounded bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        {saving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => { setEditing(false); setEditValue(a.summary ?? '') }}
+                        className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                      >Cancel</button>
+                    </div>
                   </div>
+                ) : (
                   <div className="rounded-md bg-muted/30 px-3 py-2">
                     {a.summary ? renderSummaryMarkdown(a.summary) : <p className="text-[11px] text-muted-foreground italic">No interpretation yet</p>}
                   </div>
+                )}
+              </div>
+
+              {/* Brand Read */}
+              {(a.brandSummary || a.brandSummaryStatus === 'pending' || a.brandSummaryStatus === 'processing' || a.brandSummaryStatus === 'ready') && (
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Brand Read</p>
+                  {(a.brandSummaryStatus === 'pending' || a.brandSummaryStatus === 'processing') ? (
+                    <div className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
+                      <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                      Brand analyst is reading this file…
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-muted/30 px-3 py-2.5">
+                      {a.brandSummary
+                        ? <p className="text-[11px] leading-relaxed text-foreground/80">{a.brandSummary}</p>
+                        : <p className="text-[11px] text-muted-foreground italic">No brand interpretation yet</p>
+                      }
+                    </div>
+                  )}
                 </div>
               )}
-            </>
+            </div>
           )}
 
           {/* Raw text modal */}

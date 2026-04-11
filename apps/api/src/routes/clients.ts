@@ -1912,7 +1912,21 @@ Use empty string "" or empty array [] for any field not found. Never invent info
       orderBy: { createdAt: 'desc' },
       select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, storageKey: true, summaryStatus: true, summary: true },
     })
-    return reply.send({ data: attachments })
+    // Attach the Brand read for each file so the GTM room can show both lenses
+    const storageKeys = attachments.map((a) => a.storageKey)
+    const brandMirrors = storageKeys.length
+      ? await prisma.clientBrandAttachment.findMany({
+          where: { clientId, agencyId, storageKey: { in: storageKeys } },
+          select: { storageKey: true, summary: true, summaryStatus: true },
+        })
+      : []
+    const brandMap = new Map(brandMirrors.map((m) => [m.storageKey, m]))
+    const data = attachments.map((a) => ({
+      ...a,
+      brandSummary: brandMap.get(a.storageKey)?.summary ?? null,
+      brandSummaryStatus: brandMap.get(a.storageKey)?.summaryStatus ?? null,
+    }))
+    return reply.send({ data })
   })
 
   // ── POST /:id/framework/:verticalId/attachments — upload framework attachment
@@ -2367,8 +2381,22 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
       orderBy: { createdAt: 'desc' },
       select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true, extractedText: true, summary: true, summaryStatus: true },
     })
+    // Attach the GTM read for each file so the Branding room can show both lenses
+    const storageKeys = attachments.map((a) => a.storageKey)
+    const gtmMirrors = storageKeys.length
+      ? await prisma.clientFrameworkAttachment.findMany({
+          where: { clientId, agencyId, storageKey: { in: storageKeys } },
+          select: { storageKey: true, summary: true, summaryStatus: true },
+        })
+      : []
+    const gtmMap = new Map(gtmMirrors.map((m) => [m.storageKey, m]))
     // Trim extractedText to a preview — full text is served via /:attachmentId/text
-    const data = attachments.map((a) => ({ ...a, extractedText: a.extractedText ? a.extractedText.slice(0, 2000) : null }))
+    const data = attachments.map((a) => ({
+      ...a,
+      extractedText: a.extractedText ? a.extractedText.slice(0, 2000) : null,
+      gtmSummary: gtmMap.get(a.storageKey)?.summary ?? null,
+      gtmSummaryStatus: gtmMap.get(a.storageKey)?.summaryStatus ?? null,
+    }))
     return reply.send({ data })
   })
 

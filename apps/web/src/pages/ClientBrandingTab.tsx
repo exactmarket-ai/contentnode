@@ -20,6 +20,8 @@ interface BrandAttachment {
   extractedText?: string | null
   summary?: string | null
   summaryStatus?: 'pending' | 'processing' | 'ready' | 'failed'
+  gtmSummary?: string | null
+  gtmSummaryStatus?: 'pending' | 'processing' | 'ready' | 'failed' | null
 }
 
 interface BrandJson {
@@ -419,29 +421,45 @@ function BrandAttachmentRow({
               </div>
             </div>
           ) : (
-            <div>
-              <div className="mb-2 flex items-center justify-end gap-3">
-                <button
-                  onClick={handleViewOriginal}
-                  disabled={loadingText}
-                  className="text-[10px] text-muted-foreground underline hover:text-foreground"
-                >
-                  {loadingText ? 'Loading…' : 'View original text'}
-                </button>
-                <button
-                  onClick={() => { setEditValue(a.summary ?? ''); setEditing(true) }}
-                  className="text-[10px] text-primary underline hover:text-primary/80"
-                >
-                  Edit
-                </button>
+            <div className="space-y-3">
+              {/* Brand read */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Brand Read</p>
+                  <div className="flex items-center gap-3">
+                    <button onClick={handleViewOriginal} disabled={loadingText} className="text-[10px] text-muted-foreground underline hover:text-foreground">
+                      {loadingText ? 'Loading…' : 'View original text'}
+                    </button>
+                    <button onClick={() => { setEditValue(a.summary ?? ''); setEditing(true) }} className="text-[10px] text-primary underline hover:text-primary/80">
+                      Edit
+                    </button>
+                  </div>
+                </div>
+                <div className="rounded-md bg-muted/30 px-3 py-2.5">
+                  {a.summary ? (
+                    <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground">{a.summary}</p>
+                  ) : (
+                    <p className="text-[11px] italic text-muted-foreground">No interpretation yet — click Edit to add one manually.</p>
+                  )}
+                </div>
               </div>
-              <div className="rounded-md bg-muted/30 px-3 py-2.5">
-                {a.summary ? (
-                  <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground">{a.summary}</p>
-                ) : (
-                  <p className="text-[11px] italic text-muted-foreground">No interpretation yet — click Edit to add one manually.</p>
-                )}
-              </div>
+
+              {/* GTM Framework read — shown when the file is also in the GTM brain */}
+              {(a.gtmSummary || a.gtmSummaryStatus === 'pending' || a.gtmSummaryStatus === 'processing') && (
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">GTM Framework Read</p>
+                  {a.gtmSummaryStatus === 'pending' || a.gtmSummaryStatus === 'processing' ? (
+                    <div className="flex items-center gap-1.5 rounded-md bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
+                      <Icons.Loader2 className="h-3 w-3 animate-spin" />
+                      GTM analysis in progress…
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-muted/30 px-3 py-2.5">
+                      <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground">{a.gtmSummary}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
