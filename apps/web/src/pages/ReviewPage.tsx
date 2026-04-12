@@ -595,8 +595,7 @@ export function ReviewPage() {
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // Inline editing — TipTap editor
-  const [editMode, setEditMode] = useState(false)
+  // TipTap editor — always active for text outputs
   const [savingEdit, setSavingEdit] = useState(false)
   const [savedEditAt, setSavedEditAt] = useState<number | null>(null)
   const [showSearch, setShowSearch] = useState(false)
@@ -605,12 +604,14 @@ export function ReviewPage() {
   const [matchCount, setMatchCount] = useState(0)
   const [matchIndex, setMatchIndex] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // Floating selection menu — shown when editor has a non-empty selection
+  const [selMenu, setSelMenu] = useState<{ text: string; x: number; y: number } | null>(null)
 
   const editor = useEditor({
     extensions: [
       StarterKit,
       Underline,
-      Placeholder.configure({ placeholder: 'Start editing…' }),
+      Placeholder.configure({ placeholder: 'Click to start editing…' }),
       SearchAndReplaceExtension,
     ],
     content: '',
@@ -648,13 +649,33 @@ export function ReviewPage() {
 
   const outputs = run ? extractOutputs(run) : []
 
-  const handleMouseUp = (e: React.MouseEvent) => {
-    const selection = window.getSelection()
-    if (!selection || selection.isCollapsed) return
-    const text = selection.toString().trim()
-    if (text.length < 3) return
-    setPopover({ x: e.clientX, y: e.clientY, text })
-  }
+  // Show/hide the selection bubble menu
+  useEffect(() => {
+    if (!editor) return
+    const update = () => {
+      const { empty, from, to } = editor.state.selection
+      if (empty) { setSelMenu(null); return }
+      const text = editor.state.doc.textBetween(from, to, ' ').trim()
+      if (text.length < 3) { setSelMenu(null); return }
+      // Position above the selection start
+      const coords = editor.view.coordsAtPos(from)
+      setSelMenu({ text, x: coords.left, y: coords.top })
+    }
+    editor.on('selectionUpdate', update)
+    editor.on('blur', () => setSelMenu(null))
+    return () => {
+      editor.off('selectionUpdate', update)
+      editor.off('blur', () => setSelMenu(null))
+    }
+  }, [editor])
+
+  // Populate editor whenever the active tab or loaded run changes
+  useEffect(() => {
+    if (!editor || !run) return
+    const tab = extractOutputs(run)[activeTab]
+    if (!tab || tab.assets) return // skip media tabs
+    editor.commands.setContent(plainToHtml(tab.content))
+  }, [editor, activeTab, run]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const addCorrection = (suggested: string, comment: string) => {
     if (!popover) return
@@ -666,6 +687,7 @@ export function ReviewPage() {
     }])
     setPopover(null)
     window.getSelection()?.removeAllRanges()
+    setSelMenu(null)
   }
 
   const removeCorrection = (id: string) =>
@@ -803,7 +825,6 @@ export function ReviewPage() {
         return { ...prev, editedContent: { ...existing, [tab.nodeId]: plain } }
       })
       setSavedEditAt(Date.now())
-      setEditMode(false)
       setShowSearch(false)
     } finally {
       setSavingEdit(false)
@@ -954,29 +975,17 @@ export function ReviewPage() {
                 }}
               />
               <div className="ml-auto flex items-center gap-1.5">
-                {/* Edit toggle — only for text outputs */}
-                {!outputs[activeTab]?.assets && (!editMode ? (
-                  <button
-                    onClick={() => {
-                      const tab = outputs[activeTab]
-                      if (!tab || !editor) return
-                      editor.commands.setContent(plainToHtml(tab.content))
-                      setEditMode(true)
-                    }}
-                    className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:border-border/60 hover:text-foreground transition-colors"
-                  >
-                    <Icons.PenLine className="h-3 w-3" />
-                    {outputs[activeTab]?.content !== outputs[activeTab]?.originalContent ? 'Edit (edited)' : 'Edit'}
-                  </button>
-                ) : (
+                {/* Save edits — always visible for text outputs */}
+                {!outputs[activeTab]?.assets && (
                   <>
-                    <button
-                      onClick={() => { setEditMode(false); setShowSearch(false) }}
-                      className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Icons.X className="h-3 w-3" />
-                      Cancel
-                    </button>
+                    {outputs[activeTab]?.content !== outputs[activeTab]?.originalContent && (
+                      <span className="text-[10px] text-blue-600 font-medium flex items-center gap-0.5">
+                        <Icons.PenLine className="h-2.5 w-2.5" />Edited
+                      </span>
+                    )}
+                    {savedEditAt && (
+                      <span className="text-[10px] text-emerald-600 font-medium">Saved</span>
+                    )}
                     <button
                       onClick={handleSaveEdit}
                       disabled={savingEdit}
@@ -989,9 +998,6 @@ export function ReviewPage() {
                       Save edits
                     </button>
                   </>
-                ))}
-                {savedEditAt && !editMode && (
-                  <span className="text-[10px] text-emerald-600 font-medium">Saved</span>
                 )}
                 <button
                   onClick={() => {
@@ -1029,8 +1035,8 @@ export function ReviewPage() {
             </div>
           )}
 
-          {/* Formatting toolbar — only visible in edit mode */}
-          {editMode && editor && (
+          {/* Formatting toolbar — always visible for text outputs */}
+          {!outputs[activeTab]?.assets && editor && (
             <>
               <div className="shrink-0 flex items-center gap-0.5 border-b border-border bg-card px-4 py-1.5 flex-wrap">
                 {/* Headings */}
@@ -1136,20 +1142,8 @@ export function ReviewPage() {
                   )
                 }
 
-                // ── Text output — edit mode (TipTap) ─────────────────────────
-                if (editMode) {
-                  return <EditorContent editor={editor} />
-                }
-
-                // ── Text output — view mode ────────────────────────────────
-                return (
-                  <div
-                    className="select-text cursor-text whitespace-pre-wrap rounded-xl border border-border bg-card p-8 text-sm leading-relaxed text-foreground/90"
-                    onMouseUp={handleMouseUp}
-                  >
-                    {tab.content}
-                  </div>
-                )
+                // ── Text output — TipTap editor (always on) ───────────────
+                return <EditorContent editor={editor} />
               })() : (
                 <div className="flex flex-col items-center gap-3 py-20 text-center">
                   <Icons.FileX className="h-8 w-8 text-muted-foreground/40" />
@@ -1371,6 +1365,38 @@ export function ReviewPage() {
           )}
         </aside>
       </div>
+
+      {/* Selection bubble menu — appears above selected text in editor */}
+      {selMenu && !popover && (
+        <div
+          className="fixed z-50 flex items-center overflow-hidden rounded-lg border border-border bg-white shadow-xl"
+          style={{ left: selMenu.x, top: selMenu.y - 48 }}
+        >
+          <button
+            onMouseDown={(e) => {
+              e.preventDefault()
+              setPopover({ x: selMenu.x, y: selMenu.y, text: selMenu.text })
+              setSelMenu(null)
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground hover:bg-blue-50 hover:text-blue-700 transition-colors"
+          >
+            <Icons.MessageSquarePlus className="h-3.5 w-3.5" />
+            Suggest change
+          </button>
+          <div className="w-px h-6 bg-border shrink-0" />
+          <button
+            onMouseDown={(e) => {
+              e.preventDefault()
+              setSelMenu(null)
+              editor?.commands.focus()
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors"
+          >
+            <Icons.PenLine className="h-3.5 w-3.5" />
+            Edit directly
+          </button>
+        </div>
+      )}
 
       {/* Correction popover */}
       {popover && (
