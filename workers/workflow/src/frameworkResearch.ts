@@ -248,7 +248,7 @@ export async function processAttachment(job: AttachmentProcessJobData): Promise<
                 quantity: durationSecs,
                 periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
                 periodEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0),
-                metadata: { attachmentId, filename: att.filename, clientName } as object,
+                metadata: { attachmentId, filename: att.filename, clientName, clientId: att.clientId } as object,
               },
             })
           }

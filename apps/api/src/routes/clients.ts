@@ -584,49 +584,52 @@ export async function clientRoutes(app: FastifyInstance) {
       select: { id: true, output: true },
     })
     const runIds = runs.map((r) => r.id)
+    const runIdSet = new Set(runIds)
 
-    // AI token records
-    const tokenRecords = runIds.length
+    // Fetch all usage records attributed to this client's workflow runs in one shot
+    const runRecords = runIds.length
       ? await prisma.usageRecord.findMany({
-          where: { agencyId, metric: 'ai_tokens' },
-          select: { quantity: true, metadata: true },
+          where: { agencyId, metric: { in: ['ai_tokens', 'humanizer_words', 'image_generations', 'video_generations', 'translation_chars', 'detection_call'] } },
+          select: { metric: true, quantity: true, metadata: true },
         })
       : []
 
-    // Filter to records belonging to this client's runs
-    const runIdSet = new Set(runIds)
-    const clientTokenRecords = tokenRecords.filter((r) => {
+    const clientRunRecords = runRecords.filter((r) => {
       const runId = (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
       return runId && runIdSet.has(runId)
     })
 
-    // Group by model
+    // AI tokens by model
     const tokensByModel: Record<string, number> = {}
-    for (const r of clientTokenRecords) {
+    for (const r of clientRunRecords.filter((r) => r.metric === 'ai_tokens')) {
       const model = ((r.metadata as Record<string, unknown>)['model'] as string) ?? 'unknown'
       tokensByModel[model] = (tokensByModel[model] ?? 0) + r.quantity
     }
 
-    // Humanizer word records
-    const humRecords = runIds.length
-      ? await prisma.usageRecord.findMany({
-          where: { agencyId, metric: 'humanizer_words' },
-          select: { quantity: true, metadata: true },
-        })
-      : []
-
-    const clientHumRecords = humRecords.filter((r) => {
-      const runId = (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
-      return runId && runIdSet.has(runId)
-    })
-
+    // Humanizer words by service
     const humWordsByService: Record<string, number> = {}
-    for (const r of clientHumRecords) {
+    for (const r of clientRunRecords.filter((r) => r.metric === 'humanizer_words')) {
       const service = ((r.metadata as Record<string, unknown>)['service'] as string) ?? 'unknown'
       humWordsByService[service] = (humWordsByService[service] ?? 0) + r.quantity
     }
 
-    // Transcription minutes
+    // Images / videos generated
+    const totalImagesGenerated = clientRunRecords
+      .filter((r) => r.metric === 'image_generations')
+      .reduce((s, r) => s + r.quantity, 0)
+    const totalVideosGenerated = clientRunRecords
+      .filter((r) => r.metric === 'video_generations')
+      .reduce((s, r) => s + r.quantity, 0)
+
+    // Translation characters
+    const totalTranslationChars = clientRunRecords
+      .filter((r) => r.metric === 'translation_chars')
+      .reduce((s, r) => s + r.quantity, 0)
+
+    // Detection calls
+    const detectionCalls = clientRunRecords.filter((r) => r.metric === 'detection_call').length
+
+    // Transcription — real-time sessions (Transcription tab)
     const transcriptSessions = await prisma.transcriptSession.findMany({
       where: { agencyId, clientId, status: 'ready' },
       select: { durationSecs: true },
@@ -635,33 +638,58 @@ export async function clientRoutes(app: FastifyInstance) {
       transcriptSessions.reduce((sum, s) => sum + (s.durationSecs ?? 0), 0) / 60
     )
 
-    // Detection runs — runs that have detection node outputs
-    let detectionRuns = 0
-    for (const run of runs) {
-      const nodeStatuses = (run.output as Record<string, unknown>)?.['nodeStatuses'] as Record<string, unknown> | undefined
-      if (nodeStatuses && Object.keys(nodeStatuses).some((k) => k.includes('detection') || (nodeStatuses[k] as Record<string, unknown>)?.modelUsed === 'detection')) {
-        detectionRuns++
-      }
-    }
+    // AssemblyAI transcription from Brand / GTM file uploads
+    // Query brand + framework attachments for this client, then match UsageRecords
+    const [brandAttIds, fwAttIds] = await Promise.all([
+      prisma.clientBrandAttachment.findMany({
+        where: { agencyId, clientId },
+        select: { id: true },
+      }).then((rows) => rows.map((r) => r.id)),
+      prisma.clientFrameworkAttachment.findMany({
+        where: { agencyId, clientId },
+        select: { id: true },
+      }).then((rows) => rows.map((r) => r.id)),
+    ])
+    const allAttIds = new Set([...brandAttIds, ...fwAttIds])
 
-    // Total runs
-    const totalRuns = runIds.length
+    const assemblyaiRecords = allAttIds.size
+      ? await prisma.usageRecord.findMany({
+          where: { agencyId, metric: 'assemblyai_seconds' },
+          select: { quantity: true, metadata: true },
+        })
+      : []
+    const clientAssemblyaiSecs = assemblyaiRecords
+      .filter((r) => {
+        const attId = (r.metadata as Record<string, unknown>)['attachmentId'] as string | undefined
+        return attId && allAttIds.has(attId)
+      })
+      .reduce((s, r) => s + r.quantity, 0)
+    const assemblyaiMinutes = Math.round(clientAssemblyaiSecs / 60)
+
+    // Brand / GTM files processed for this client
+    const [brandFilesReady, fwFilesReady] = await Promise.all([
+      prisma.clientBrandAttachment.count({ where: { agencyId, clientId, extractionStatus: 'ready' } }),
+      prisma.clientFrameworkAttachment.count({ where: { agencyId, clientId, summaryStatus: 'ready' } }),
+    ])
+
     const totalTokens = Object.values(tokensByModel).reduce((s, n) => s + n, 0)
     const totalHumWords = Object.values(humWordsByService).reduce((s, n) => s + n, 0)
 
     return reply.send({
       data: {
-        totalRuns,
+        totalRuns: runIds.length,
         totalTokens,
-        tokensByModel: Object.entries(tokensByModel)
-          .map(([model, tokens]) => ({ model, tokens }))
-          .sort((a, b) => b.tokens - a.tokens),
+        tokensByModel: Object.entries(tokensByModel).map(([model, tokens]) => ({ model, tokens })).sort((a, b) => b.tokens - a.tokens),
         totalHumWords,
-        humWordsByService: Object.entries(humWordsByService)
-          .map(([service, words]) => ({ service, words }))
-          .sort((a, b) => b.words - a.words),
+        humWordsByService: Object.entries(humWordsByService).map(([service, words]) => ({ service, words })).sort((a, b) => b.words - a.words),
         transcriptionMinutes,
-        detectionRuns,
+        assemblyaiMinutes,
+        detectionCalls,
+        totalImagesGenerated,
+        totalVideosGenerated,
+        totalTranslationChars,
+        brandFilesReady,
+        fwFilesReady,
       },
     })
   })

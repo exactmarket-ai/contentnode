@@ -1264,7 +1264,13 @@ interface ClientUsage {
   totalHumWords: number
   humWordsByService: { service: string; words: number }[]
   transcriptionMinutes: number
-  detectionRuns: number
+  assemblyaiMinutes: number
+  detectionCalls: number
+  totalImagesGenerated: number
+  totalVideosGenerated: number
+  totalTranslationChars: number
+  brandFilesReady: number
+  fwFilesReady: number
 }
 
 interface ManualEntry {
@@ -1312,7 +1318,7 @@ function UsageSection({ title, icon: Icon, children }: { title: string; icon: Re
   )
 }
 
-function ManualUsageSection({ clientId }: { clientId: string }) {
+function ManualUsageSection({ clientId, onEntriesLoaded }: { clientId: string; onEntriesLoaded?: (entries: ManualEntry[]) => void }) {
   const [entries, setEntries] = useState<ManualEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -1325,9 +1331,14 @@ function ManualUsageSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     apiFetch(`/api/v1/clients/${clientId}/manual-usage`)
       .then((r) => r.json())
-      .then(({ data }) => { setEntries(data ?? []); setLoading(false) })
+      .then(({ data }) => {
+        const list = data ?? []
+        setEntries(list)
+        onEntriesLoaded?.(list)
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
-  }, [clientId])
+  }, [clientId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1346,7 +1357,11 @@ function ManualUsageSection({ clientId }: { clientId: string }) {
         }),
       })
       const { data } = await res.json()
-      setEntries((prev) => [data, ...prev])
+      setEntries((prev) => {
+        const updated = [data, ...prev]
+        onEntriesLoaded?.(updated)
+        return updated
+      })
       setForm({ date: today, service: '', description: '', quantity: '', unit: 'minutes' })
       setShowForm(false)
     } finally {
@@ -1358,7 +1373,11 @@ function ManualUsageSection({ clientId }: { clientId: string }) {
     setDeleting(id)
     try {
       await apiFetch(`/api/v1/clients/${clientId}/manual-usage/${id}`, { method: 'DELETE' })
-      setEntries((prev) => prev.filter((e) => e.id !== id))
+      setEntries((prev) => {
+        const updated = prev.filter((e) => e.id !== id)
+        onEntriesLoaded?.(updated)
+        return updated
+      })
     } finally {
       setDeleting(null)
     }
@@ -1506,14 +1525,109 @@ function ManualUsageSection({ clientId }: { clientId: string }) {
   )
 }
 
-function UsageTab({ clientId }: { clientId: string }) {
+function exportUsagePdf(clientName: string, usage: ClientUsage, manualEntries: ManualEntry[]) {
+  const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : String(n)
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  const statRows = [
+    ['Workflow Runs', String(usage.totalRuns)],
+    ['AI Tokens', fmt(usage.totalTokens)],
+    ['Humanizer Words', fmt(usage.totalHumWords)],
+    ['Live Transcription', `${usage.transcriptionMinutes} min`],
+    ['File Transcription (AssemblyAI)', `${usage.assemblyaiMinutes} min`],
+    ['AI Detection Calls', String(usage.detectionCalls)],
+    ['Images Generated', String(usage.totalImagesGenerated)],
+    ['Videos Generated', String(usage.totalVideosGenerated)],
+    ['Translation', usage.totalTranslationChars >= 1000 ? `${Math.round(usage.totalTranslationChars / 1000)}K chars` : `${usage.totalTranslationChars} chars`],
+    ['Brand Files Processed', String(usage.brandFilesReady)],
+    ['GTM Framework Files', String(usage.fwFilesReady)],
+  ].filter(([, v]) => v !== '0' && v !== '0 min' && v !== '0 chars')
+
+  const tokensRows = usage.tokensByModel.map(({ model, tokens }) =>
+    `<tr><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0">${model}</td><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-variant-numeric:tabular-nums">${fmt(tokens)}</td></tr>`
+  ).join('')
+
+  const humRows = usage.humWordsByService.map(({ service, words }) =>
+    `<tr><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0">${service}</td><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-variant-numeric:tabular-nums">${fmt(words)} words</td></tr>`
+  ).join('')
+
+  const manualRows = manualEntries.map((e) => {
+    const d = new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return `<tr><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0">${d}</td><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0">${e.service}</td><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;color:#555">${e.description ?? ''}</td><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:right">${e.quantity} ${e.unit}</td></tr>`
+  }).join('')
+
+  const sectionStyle = 'margin-bottom:28px'
+  const headingStyle = 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin:0 0 8px 0'
+  const tableStyle = 'width:100%;border-collapse:collapse;font-size:13px'
+  const thStyle = 'padding:6px 12px;background:#f8f8f8;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#888;text-align:left;border-bottom:2px solid #e8e8e8'
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${clientName} — Usage Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; margin: 0; padding: 48px; background: #fff; }
+  @page { margin: 24mm 20mm; size: A4; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:36px;padding-bottom:16px;border-bottom:2px solid #111">
+  <div>
+    <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px">Usage Report</div>
+    <h1 style="margin:0;font-size:26px;font-weight:700">${clientName}</h1>
+  </div>
+  <div style="text-align:right;font-size:12px;color:#666">${date}</div>
+</div>
+
+<div style="${sectionStyle}">
+  <p style="${headingStyle}">Summary</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+    ${statRows.map(([label, value]) => `
+      <div style="border:1px solid #e8e8e8;border-radius:8px;padding:14px">
+        <div style="font-size:11px;color:#888;margin-bottom:4px">${label}</div>
+        <div style="font-size:20px;font-weight:700">${value}</div>
+      </div>`).join('')}
+  </div>
+</div>
+
+${usage.tokensByModel.length > 0 ? `<div style="${sectionStyle}">
+  <p style="${headingStyle}">AI / LLMs — Tokens by Model</p>
+  <table style="${tableStyle}"><thead><tr><th style="${thStyle}">Model</th><th style="${thStyle};text-align:right">Tokens</th></tr></thead>
+  <tbody>${tokensRows}</tbody></table>
+</div>` : ''}
+
+${usage.humWordsByService.length > 0 ? `<div style="${sectionStyle}">
+  <p style="${headingStyle}">Humanizers — Words by Service</p>
+  <table style="${tableStyle}"><thead><tr><th style="${thStyle}">Service</th><th style="${thStyle};text-align:right">Words</th></tr></thead>
+  <tbody>${humRows}</tbody></table>
+</div>` : ''}
+
+${manualEntries.length > 0 ? `<div style="${sectionStyle}">
+  <p style="${headingStyle}">Manually Logged Activity</p>
+  <table style="${tableStyle}"><thead><tr><th style="${thStyle}">Date</th><th style="${thStyle}">Tool / Service</th><th style="${thStyle}">Description</th><th style="${thStyle};text-align:right">Quantity</th></tr></thead>
+  <tbody>${manualRows}</tbody></table>
+</div>` : ''}
+
+<div style="margin-top:48px;padding-top:16px;border-top:1px solid #e8e8e8;font-size:11px;color:#aaa;display:flex;justify-content:space-between">
+  <span>Generated by ContentNode</span><span>${date}</span>
+</div>
+</body></html>`
+
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  setTimeout(() => { win.print() }, 400)
+}
+
+function UsageTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const [usage, setUsage] = useState<ClientUsage | null>(null)
+  const [manualEntries, setManualEntries] = useState<ManualEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    apiFetch(`/api/v1/clients/${clientId}/usage`)
-      .then((r) => r.json())
-      .then(({ data }) => { setUsage(data); setLoading(false) })
+    Promise.all([
+      apiFetch(`/api/v1/clients/${clientId}/usage`).then((r) => r.json()),
+      apiFetch(`/api/v1/clients/${clientId}/manual-usage`).then((r) => r.json()),
+    ])
+      .then(([{ data: u }, { data: m }]) => { setUsage(u); setManualEntries(m ?? []); setLoading(false) })
       .catch(() => setLoading(false))
   }, [clientId])
 
@@ -1527,15 +1641,29 @@ function UsageTab({ clientId }: { clientId: string }) {
     <p className="text-sm text-muted-foreground py-8 text-center">Failed to load usage data</p>
   )
 
+  const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : String(n)
+
   return (
     <div className="space-y-4">
-      {/* Summary row */}
+      {/* Header row with download button */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">All usage attributed to workflows and file processing for this client.</p>
+        <button
+          onClick={() => exportUsagePdf(clientName, usage, manualEntries)}
+          className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+        >
+          <Icons.FileDown className="h-3.5 w-3.5" />
+          Download PDF
+        </button>
+      </div>
+
+      {/* Primary summary row */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { icon: Icons.Play,        value: String(usage.totalRuns),               label: 'Workflow Runs' },
-          { icon: Icons.Zap,         value: usage.totalTokens >= 1000 ? `${(usage.totalTokens/1000).toFixed(1)}K` : String(usage.totalTokens), label: 'AI Tokens' },
-          { icon: Icons.Wand2,       value: usage.totalHumWords >= 1000 ? `${(usage.totalHumWords/1000).toFixed(1)}K` : String(usage.totalHumWords), label: 'Humanizer Words' },
-          { icon: Icons.Mic,         value: `${usage.transcriptionMinutes}m`,       label: 'Transcription' },
+          { icon: Icons.Play,    value: String(usage.totalRuns),         label: 'Workflow Runs',    show: true },
+          { icon: Icons.Zap,     value: fmt(usage.totalTokens),           label: 'AI Tokens',        show: true },
+          { icon: Icons.Wand2,   value: fmt(usage.totalHumWords),         label: 'Humanizer Words',  show: true },
+          { icon: Icons.Mic,     value: `${usage.transcriptionMinutes + usage.assemblyaiMinutes}m`, label: 'Transcription', show: true },
         ].map(({ icon: Icon, value, label }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -1546,6 +1674,25 @@ function UsageTab({ clientId }: { clientId: string }) {
           </div>
         ))}
       </div>
+
+      {/* Secondary stats */}
+      {(usage.totalImagesGenerated > 0 || usage.totalVideosGenerated > 0 || usage.totalTranslationChars > 0 || usage.brandFilesReady > 0 || usage.fwFilesReady > 0 || usage.detectionCalls > 0) && (
+        <div className="grid grid-cols-6 gap-2">
+          {[
+            { label: 'Images', value: String(usage.totalImagesGenerated),       show: usage.totalImagesGenerated > 0 },
+            { label: 'Videos', value: String(usage.totalVideosGenerated),       show: usage.totalVideosGenerated > 0 },
+            { label: 'Translation', value: usage.totalTranslationChars >= 1000 ? `${Math.round(usage.totalTranslationChars/1000)}K ch` : `${usage.totalTranslationChars} ch`, show: usage.totalTranslationChars > 0 },
+            { label: 'Detection', value: `${usage.detectionCalls} calls`,        show: usage.detectionCalls > 0 },
+            { label: 'Brand Files', value: String(usage.brandFilesReady),        show: usage.brandFilesReady > 0 },
+            { label: 'GTM Files',   value: String(usage.fwFilesReady),           show: usage.fwFilesReady > 0 },
+          ].filter((s) => s.show).map(({ label, value }) => (
+            <div key={label} className="rounded-lg border border-border bg-card/50 px-3 py-2.5 text-center">
+              <p className="text-base font-semibold">{value}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         {/* LLM tokens by model */}
@@ -1566,23 +1713,31 @@ function UsageTab({ clientId }: { clientId: string }) {
               ))}
         </UsageSection>
 
-        {/* Detection */}
-        <UsageSection title="AI Detection — Calls by Service" icon={Icons.ShieldCheck}>
-          {usage.detectionRuns === 0
-            ? <p className="text-xs text-muted-foreground">No detection usage yet</p>
-            : <p className="text-sm font-semibold">{usage.detectionRuns} detection call{usage.detectionRuns !== 1 ? 's' : ''}</p>}
+        {/* Transcription breakdown */}
+        <UsageSection title="Transcription" icon={Icons.Mic}>
+          {(usage.transcriptionMinutes === 0 && usage.assemblyaiMinutes === 0)
+            ? <p className="text-xs text-muted-foreground">No transcription usage yet</p>
+            : <div className="space-y-2">
+                {usage.transcriptionMinutes > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground text-xs">Live sessions</span><span className="font-semibold">{usage.transcriptionMinutes} min</span></div>}
+                {usage.assemblyaiMinutes > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground text-xs">File transcription</span><span className="font-semibold">{usage.assemblyaiMinutes} min</span></div>}
+              </div>
+          }
         </UsageSection>
 
-        {/* Transcription */}
-        <UsageSection title="Transcription — Minutes" icon={Icons.Mic}>
-          {usage.transcriptionMinutes === 0
-            ? <p className="text-xs text-muted-foreground">No transcription usage yet</p>
-            : <p className="text-sm font-semibold">{usage.transcriptionMinutes} minutes processed</p>}
+        {/* Files processed */}
+        <UsageSection title="Brain Files Processed" icon={Icons.FileText}>
+          {(usage.brandFilesReady === 0 && usage.fwFilesReady === 0)
+            ? <p className="text-xs text-muted-foreground">No files processed yet</p>
+            : <div className="space-y-2">
+                {usage.brandFilesReady > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground text-xs">Brand brain</span><span className="font-semibold">{usage.brandFilesReady} file{usage.brandFilesReady !== 1 ? 's' : ''}</span></div>}
+                {usage.fwFilesReady > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground text-xs">GTM Framework</span><span className="font-semibold">{usage.fwFilesReady} file{usage.fwFilesReady !== 1 ? 's' : ''}</span></div>}
+              </div>
+          }
         </UsageSection>
       </div>
 
       {/* Manual usage log */}
-      <ManualUsageSection clientId={clientId} />
+      <ManualUsageSection clientId={clientId} onEntriesLoaded={setManualEntries} />
     </div>
   )
 }
@@ -5220,7 +5375,7 @@ export function ClientDetailPage() {
         {activeTab === 'access' && <AccessTab client={client} />}
         {activeTab === 'reviews' && <ReviewsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'insights' && <InsightsTab insights={client.insights} />}
-        {activeTab === 'usage' && <UsageTab clientId={client.id} />}
+        {activeTab === 'usage' && <UsageTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'runs' && <RunsIntelligenceTab clientId={client.id} />}
         {activeTab === 'reports' && <ClientReportsTab clientId={client.id} />}
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}

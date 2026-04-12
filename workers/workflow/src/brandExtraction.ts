@@ -515,7 +515,7 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
                     quantity: durationSecs,
                     periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
                     periodEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0),
-                    metadata: { attachmentId, filename: attachment.filename } as object,
+                    metadata: { attachmentId, filename: attachment.filename, clientId } as object,
                   },
                 })
               }
