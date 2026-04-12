@@ -553,7 +553,8 @@ function BrandProfileSection({
   const [profile, setProfile] = useState<BrandProfile | null>(null)
   const [loadingAttachments, setLoadingAttachments] = useState(true)
   const [loadingProfile, setLoadingProfile] = useState(true)
-  const [uploading, setUploading] = useState(false)
+  const [uploadingCount, setUploadingCount] = useState(0)
+  const uploading = uploadingCount > 0
   const [dragging, setDragging] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editedJson, setEditedJson] = useState<BrandJson>({})
@@ -607,7 +608,7 @@ function BrandProfileSection({
   }, [attachments, profile, fetchAll])
 
   const uploadFile = async (file: File) => {
-    setUploading(true)
+    setUploadingCount((n) => n + 1)
     try {
       const form = new FormData()
       form.append('file', file)
@@ -623,7 +624,7 @@ function BrandProfileSection({
       const { data } = await res.json()
       setAttachments((prev) => [data, ...prev])
     } catch { /* ignore */ } finally {
-      setUploading(false)
+      setUploadingCount((n) => n - 1)
     }
   }
 
@@ -779,7 +780,9 @@ function BrandProfileSection({
             onChange={(e) => handleFiles(e.target.files)}
           />
           {uploading ? (
-            <p className="text-sm text-muted-foreground">Uploading…</p>
+            <p className="text-sm text-muted-foreground">
+              Uploading{uploadingCount > 1 ? ` ${uploadingCount} files` : ''}…
+            </p>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">

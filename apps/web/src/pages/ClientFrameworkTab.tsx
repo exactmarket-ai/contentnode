@@ -1484,7 +1484,8 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
 }) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
+  const [uploadingCount, setUploadingCount] = useState(0)
+  const uploading = uploadingCount > 0
   const [dragging, setDragging] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1518,7 +1519,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
   }, [attachments, onReadyChange])
 
   const uploadFile = async (file: File) => {
-    setUploading(true)
+    setUploadingCount((n) => n + 1)
     try {
       const form = new FormData()
       form.append('file', file)
@@ -1527,7 +1528,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
       const { data } = await res.json()
       setAttachments((prev) => [data, ...prev])
     } catch { /* ignore */ } finally {
-      setUploading(false)
+      setUploadingCount((n) => n - 1)
     }
   }
 
@@ -1646,7 +1647,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
         {uploading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-            Uploading…
+            Uploading{uploadingCount > 1 ? ` ${uploadingCount} files` : ''}…
           </div>
         ) : (
           <>
