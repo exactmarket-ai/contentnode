@@ -30,7 +30,7 @@ const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d
 const NAV_ITEMS = [
   { to: '/workflows', icon: Icons.Workflow,     label: 'Workflows',   ...ACTIVE },
   { to: '/clients',   icon: Icons.Users,        label: 'Clients',     ...ACTIVE },
-  { to: '/runs',      icon: Icons.Play,         label: 'Runs',        ...ACTIVE },
+  { to: '/runs',      icon: Icons.ClipboardEdit, label: 'Reviews',     ...ACTIVE },
   { to: '/calendar',  icon: Icons.CalendarDays, label: 'Calendar',    ...ACTIVE },
   { to: '/reports',   icon: Icons.PieChart,     label: 'Reports',     ...ACTIVE },
   { to: '/quality',   icon: Icons.TrendingUp,   label: 'Quality',     ...ACTIVE },

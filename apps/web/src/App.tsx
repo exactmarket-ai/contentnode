@@ -42,7 +42,7 @@ function SignInPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4" style={{ backgroundColor: '#fafaf8' }}>
       <img src="/logo.png" alt="ContentNode AI" className="h-12 w-auto object-contain" />
-      <SignIn routing="hash" afterSignInUrl="/workflows" afterSignUpUrl="/workflows" />
+      <SignIn routing="hash" afterSignInUrl="/runs" afterSignUpUrl="/runs" />
       <a
         href="/"
         className="text-xs transition-colors"
@@ -82,7 +82,7 @@ function ProtectedLayout() {
 
 // ── App routes (protected content) ───────────────────────────────────────────
 const protectedChildren = [
-  { index: true, element: <Navigate to="/workflows" replace /> },
+  { index: true, element: <Navigate to="/runs" replace /> },
   { path: 'workflows', element: <WorkflowListPage /> },
   { path: 'workflows/new', element: <WorkflowEditor /> },
   { path: 'workflows/:workflowId', element: <WorkflowEditor /> },

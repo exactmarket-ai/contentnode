@@ -700,6 +700,68 @@ function InviteResult({ data, onClose }: { data: { portalUrl: string; expiresAt:
 
 // ── Tab components ────────────────────────────────────────────────────────────
 
+function OverviewReviewsCard({ clientId, onTabChange }: { clientId: string; onTabChange: (tab: Tab) => void }) {
+  const navigate = useNavigate()
+  const [runs, setRuns] = useState<ReviewRun[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiFetch(`/api/v1/runs?clientId=${clientId}&status=completed&limit=5`)
+      .then((r) => r.json())
+      .then(({ data }) => { setRuns(data ?? []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [clientId])
+
+  const pendingCount = runs.filter((r) => r.reviewStatus === 'none' || r.reviewStatus === 'pending').length
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
+        <div className="flex items-center gap-2">
+          <Icons.ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium">Recent Reviews</span>
+          {pendingCount > 0 && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+              {pendingCount} pending
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => onTabChange('reviews')}
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View all →
+        </button>
+      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Icons.Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : runs.length === 0 ? (
+        <p className="py-8 text-center text-xs text-muted-foreground">No completed runs to review yet.</p>
+      ) : (
+        <div className="divide-y divide-border/40">
+          {runs.map((r) => {
+            const rsCfg = REVIEW_STATUS_CONFIG[r.reviewStatus] ?? REVIEW_STATUS_CONFIG.none
+            const title = [r.projectName, r.workflowName, r.itemName].filter(Boolean).join(' — ')
+            return (
+              <button
+                key={r.id}
+                onClick={() => navigate(`/review/${r.id}`)}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/30 transition-colors"
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${rsCfg.dot}`} />
+                <span className="flex-1 min-w-0 text-xs text-foreground/80 truncate">{title}</span>
+                <span className={`shrink-0 text-[11px] font-medium ${rsCfg.color}`}>{rsCfg.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabChange: (tab: Tab) => void; onUpdate: (updated: Partial<Client>) => void }) {
   const { isAdmin, loading: roleLoading } = useCurrentUser()
   const [togglingOffline, setTogglingOffline] = useState(false)
@@ -781,6 +843,8 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
           </button>
         </div>
       </div>
+
+      <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
     </div>
   )
 }
