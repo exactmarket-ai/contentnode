@@ -13,6 +13,7 @@ import { ClientFrameworkTab } from './ClientFrameworkTab'
 import { ClientBrandingTab } from './ClientBrandingTab'
 import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientUsageTab } from './ClientUsageTab'
+import { ClientDeliverablesTab } from './ClientDeliverablesTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -4720,7 +4721,7 @@ function StructureTab({ client }: { client: Client }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'prompts', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'deliverables', 'library', 'prompts', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4788,22 +4789,23 @@ export function ClientDetailPage() {
   }
 
   const TAB_LABELS: Record<Tab, string> = {
-    overview:     'Overview',
-    workflows:    'Workflows',
-    library:      'Library',
-    prompts:      'Prompt Library',
-    framework:    'GTM Framework',
-    branding:     'Branding',
-    stakeholders: 'Contacts',
-    access:       'Access',
-    reviews:      'Reviews',
-    insights:     'Insights',
-    usage:        'Usage',
-    runs:         'Runs',
-    reports:      'Reports',
-    profile:      'Profile',
-    company:      'Company',
-    structure:    'Structure',
+    overview:      'Overview',
+    workflows:     'Workflows',
+    deliverables:  'Deliverables',
+    library:       'Library',
+    prompts:       'Prompt Library',
+    framework:     'GTM Framework',
+    branding:      'Branding',
+    stakeholders:  'Contacts',
+    access:        'Access',
+    reviews:       'Reviews',
+    insights:      'Insights',
+    usage:         'Usage',
+    runs:          'Runs',
+    reports:       'Reports',
+    profile:       'Profile',
+    company:       'Company',
+    structure:     'Structure',
   }
 
   return (
@@ -4883,6 +4885,7 @@ export function ClientDetailPage() {
         : <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={setActiveTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
+        {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'library' && <ClientLibraryTab clientId={client.id} />}
         {activeTab === 'prompts' && <ClientPromptLibraryTab clientId={client.id} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}

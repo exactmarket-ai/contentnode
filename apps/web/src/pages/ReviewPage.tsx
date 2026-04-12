@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
-import { downloadDocx } from '@/lib/downloadDocx'
+import { downloadDocx, downloadTxt, downloadDeliverableDocx } from '@/lib/downloadDocx'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +51,7 @@ interface RunData {
   } | null
   finalOutput: unknown
   nodeStatuses: Record<string, { output?: unknown; status?: string }>
+  editedContent: Record<string, string> | null
   feedbacks: FeedbackRecord[]
 }
 
@@ -66,27 +67,29 @@ function toText(output: unknown): string {
   return ''
 }
 
-interface OutputTab { nodeId: string; label: string; content: string; model?: string }
+interface OutputTab { nodeId: string; label: string; content: string; originalContent: string; model?: string }
 
 function extractOutputs(run: RunData): OutputTab[] {
   const nodeMap = Object.fromEntries(
     (run.workflow?.nodes ?? []).map((n) => [n.id, n])
   )
+  const edited = run.editedContent ?? {}
   const tabs: OutputTab[] = Object.entries(run.nodeStatuses)
     .filter(([, s]) => s.status === 'passed' && s.output != null)
     .map(([nodeId, s]) => {
       const node = nodeMap[nodeId]
       if (!node || node.type !== 'output') return null
-      const content = toText(s.output)
-      if (!content.trim()) return null
-      return { nodeId, label: node.label || 'Output', content }
+      const originalContent = toText(s.output)
+      if (!originalContent.trim()) return null
+      const content = edited[nodeId] ?? originalContent
+      return { nodeId, label: node.label || 'Output', content, originalContent }
     })
     .filter(Boolean) as OutputTab[]
 
   if (tabs.length > 0) return tabs
 
   const fallback = toText(run.finalOutput)
-  if (fallback) return [{ nodeId: 'final', label: 'Output', content: fallback }]
+  if (fallback) return [{ nodeId: 'final', label: 'Output', content: fallback, originalContent: fallback }]
   return []
 }
 
@@ -528,6 +531,12 @@ export function ReviewPage() {
   // Active tab
   const [activeTab, setActiveTab] = useState(0)
 
+  // Inline editing
+  const [editMode, setEditMode] = useState(false)
+  const [editDraft, setEditDraft] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [savedEditAt, setSavedEditAt] = useState<number | null>(null)
+
   // Send to contact dialog
   const [showSendDialog, setShowSendDialog] = useState(false)
   const [reviewStatus, setReviewStatus] = useState('none')
@@ -627,6 +636,30 @@ export function ReviewPage() {
         .catch(() => {})
     }
     void links
+  }
+
+  const handleSaveEdit = async () => {
+    if (!runId) return
+    const tab = outputs[activeTab]
+    if (!tab) return
+    setSavingEdit(true)
+    try {
+      await apiFetch(`/api/v1/runs/${runId}/edited-content`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: tab.nodeId, content: editDraft }),
+      })
+      // Update local state
+      setRun((prev) => {
+        if (!prev) return prev
+        const existing = (prev.editedContent ?? {}) as Record<string, string>
+        return { ...prev, editedContent: { ...existing, [tab.nodeId]: editDraft } }
+      })
+      setSavedEditAt(Date.now())
+      setEditMode(false)
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   // Review title
@@ -760,7 +793,7 @@ export function ReviewPage() {
 
           {/* Per-output decision row */}
           {outputs.length > 0 && (
-            <div className="shrink-0 border-b border-border/40 bg-card/50 px-8 py-2.5 flex items-center gap-3">
+            <div className="shrink-0 border-b border-border/40 bg-card/50 px-8 py-2.5 flex items-center gap-3 flex-wrap">
               <span className="text-[11px] text-muted-foreground font-medium">
                 Decision for <span className="text-foreground">{outputs[activeTab]?.label}</span>:
               </span>
@@ -772,7 +805,46 @@ export function ReviewPage() {
                   setTabDecisions((prev) => ({ ...prev, [nodeId]: v }))
                 }}
               />
-              <div className="ml-auto flex items-center gap-1">
+              <div className="ml-auto flex items-center gap-1.5">
+                {/* Edit toggle */}
+                {!editMode ? (
+                  <button
+                    onClick={() => {
+                      const tab = outputs[activeTab]
+                      if (!tab) return
+                      setEditDraft(tab.content)
+                      setEditMode(true)
+                    }}
+                    className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:border-border/60 hover:text-foreground transition-colors"
+                  >
+                    <Icons.PenLine className="h-3 w-3" />
+                    {outputs[activeTab]?.content !== outputs[activeTab]?.originalContent ? 'Edit (edited)' : 'Edit'}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setEditMode(false)}
+                      className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Icons.X className="h-3 w-3" />
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={savingEdit}
+                      className="flex items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-blue-500 transition-colors disabled:opacity-60"
+                    >
+                      {savingEdit
+                        ? <Icons.Loader2 className="h-3 w-3 animate-spin" />
+                        : <Icons.Check className="h-3 w-3" />
+                      }
+                      Save edits
+                    </button>
+                  </>
+                )}
+                {savedEditAt && !editMode && (
+                  <span className="text-[10px] text-emerald-600 font-medium">Saved</span>
+                )}
                 <button
                   onClick={() => {
                     const tab = outputs[activeTab]
@@ -780,9 +852,31 @@ export function ReviewPage() {
                   }}
                   className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:border-border/60 hover:text-foreground transition-colors"
                 >
-                  <Icons.Download className="h-3 w-3" />
-                  Download .docx
+                  <Icons.FileDown className="h-3 w-3" />
+                  .docx
                 </button>
+                <button
+                  onClick={() => {
+                    const tab = outputs[activeTab]
+                    if (tab?.content) downloadTxt(tab.content, tab.label || 'output')
+                  }}
+                  className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:border-border/60 hover:text-foreground transition-colors"
+                >
+                  <Icons.FileText className="h-3 w-3" />
+                  .txt
+                </button>
+                {outputs.length > 1 && (
+                  <button
+                    onClick={async () => {
+                      const title = run.workflow?.projectName ?? run.workflow?.name ?? 'deliverable'
+                      await downloadDeliverableDocx(outputs, title)
+                    }}
+                    className="flex items-center gap-1.5 rounded-md border border-purple-300 bg-purple-50 px-2.5 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                  >
+                    <Icons.Download className="h-3 w-3" />
+                    All outputs
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -790,12 +884,21 @@ export function ReviewPage() {
           <div className="flex-1 overflow-y-auto px-8 py-8">
             <div className="mx-auto max-w-3xl">
               {outputs.length > 0 ? (
-                <div
-                  className="select-text cursor-text whitespace-pre-wrap rounded-xl border border-border bg-card p-8 text-sm leading-relaxed text-foreground/90"
-                  onMouseUp={handleMouseUp}
-                >
-                  {outputs[activeTab]?.content ?? ''}
-                </div>
+                editMode ? (
+                  <textarea
+                    className="w-full min-h-[60vh] rounded-xl border border-blue-400 bg-card p-8 text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-inherit"
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    autoFocus
+                  />
+                ) : (
+                  <div
+                    className="select-text cursor-text whitespace-pre-wrap rounded-xl border border-border bg-card p-8 text-sm leading-relaxed text-foreground/90"
+                    onMouseUp={handleMouseUp}
+                  >
+                    {outputs[activeTab]?.content ?? ''}
+                  </div>
+                )
               ) : (
                 <div className="flex flex-col items-center gap-3 py-20 text-center">
                   <Icons.FileX className="h-8 w-8 text-muted-foreground/40" />

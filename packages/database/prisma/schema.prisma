@@ -498,6 +498,7 @@ model WorkflowRun {
   jobId               String?   @map("job_id")
   itemName            String?   @map("item_name")
   itemVersion         Int       @default(1) @map("item_version")
+  editedContent       Json?     @map("edited_content") // { [nodeId]: string } — agency-polished text per output node
 
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   user              User?                 @relation(fields: [triggeredBy], references: [id])

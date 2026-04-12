@@ -452,11 +452,36 @@ export async function runRoutes(app: FastifyInstance) {
         pendingSessionId: output.pendingTranscriptionSessionId ?? null,
         pendingReviewNodeId: output.pendingReviewNodeId ?? null,
         pendingReviewContent: output.pendingReviewContent ?? null,
+        editedContent: run.editedContent ?? null,
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
         feedbacks: run.feedbacks,
       },
     })
+  })
+
+  // ── PATCH /:id/edited-content — save polished/edited deliverable text ──────
+  app.patch<{ Params: { id: string } }>('/:id/edited-content', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params
+    const body = z.object({
+      nodeId:  z.string(),
+      content: z.string(),
+    }).safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: 'Invalid body' })
+
+    const run = await prisma.workflowRun.findFirst({ where: { id, agencyId } })
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+
+    const existing = (run.editedContent ?? {}) as Record<string, string>
+    const updated  = { ...existing, [body.data.nodeId]: body.data.content }
+
+    await prisma.workflowRun.update({
+      where: { id },
+      data: { editedContent: updated as unknown as Prisma.InputJsonValue },
+    })
+
+    return reply.send({ data: { nodeId: body.data.nodeId } })
   })
 
   // ── POST /:id/review — submit human review and resume run ─────────────────
@@ -611,6 +636,7 @@ export async function runRoutes(app: FastifyInstance) {
         jobId: true,
         itemName: true,
         itemVersion: true,
+        editedContent: true,
         division: { select: { id: true, name: true } },
         job: { select: { id: true, name: true, budgetCents: true } },
         workflow: {
@@ -667,6 +693,7 @@ export async function runRoutes(app: FastifyInstance) {
         batchIndex: r.batchIndex ?? null,
         reviewStatus: r.reviewStatus,
         reviewerIds: r.reviewerIds,
+        editedContent: r.editedContent ?? null,
       }
     })
 

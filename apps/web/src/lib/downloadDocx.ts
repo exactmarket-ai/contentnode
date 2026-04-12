@@ -277,6 +277,69 @@ export async function downloadCompanyProfileDocx(profile: CompanyProfile, client
   URL.revokeObjectURL(url)
 }
 
+// ── Plain text export (TXT) ───────────────────────────────────────────────────
+
+export function downloadTxt(text: string, filename: string) {
+  const blob = new Blob([text], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename.endsWith('.txt') ? filename : `${filename}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Deliverable DOCX (multi-output, titled) ───────────────────────────────────
+
+interface DeliverableOutput { label: string; content: string }
+
+export async function downloadDeliverableDocx(outputs: DeliverableOutput[], title: string) {
+  const children: Paragraph[] = [
+    heading1(title),
+    new Paragraph({
+      children: [new TextRun({ text: `Exported ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, size: 18, color: '666666' })],
+      spacing: { after: 320 },
+    }),
+  ]
+
+  outputs.forEach(({ label, content }, i) => {
+    if (outputs.length > 1) children.push(heading2(label))
+    const blocks = content.split(/\n{2,}/)
+    blocks.forEach((block) => {
+      const lines = block.split('\n')
+      children.push(
+        new Paragraph({
+          children: lines.flatMap((line, idx) =>
+            idx < lines.length - 1
+              ? [new TextRun(line), new TextRun({ text: '', break: 1 })]
+              : [new TextRun(line)],
+          ),
+          spacing: { after: 160 },
+        })
+      )
+    })
+    if (i < outputs.length - 1) children.push(spacer())
+  })
+
+  const doc = new Document({
+    styles: {
+      paragraphStyles: [
+        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', run: { bold: true, size: 28, color: '1a1a2e' } },
+        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', run: { bold: true, size: 22, color: 'a200ee' } },
+      ],
+    },
+    sections: [{ children }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.docx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ── Plain text fallback ───────────────────────────────────────────────────────
 
 export async function downloadDocx(text: string, filename: string) {
