@@ -583,8 +583,8 @@ function S02({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
           <FwField key={k}>
             <FwLabel>{labels[k]}</FwLabel>
             {multiline
-              ? <FwTextarea value={(s as unknown as Record<string, string>)[k]} onChange={(v) => u(k, v)} rows={2} placeholder={placeholders[k]} />
-              : <FwInput value={(s as unknown as Record<string, string>)[k]} onChange={(v) => u(k, v)} placeholder={placeholders[k]} />
+              ? <FwTextarea value={(s as unknown as Record<string, string>)[k]} onChange={(v) => u(k, v)} rows={2} placeholder={placeholders[k]} fieldId={`s02.${k}`} sectionNum="02" sectionTitle="Customer Definition + Profile" fieldLabel={labels[k]} />
+              : <FwInput value={(s as unknown as Record<string, string>)[k]} onChange={(v) => u(k, v)} placeholder={placeholders[k]} fieldId={`s02.${k}`} sectionNum="02" sectionTitle="Customer Definition + Profile" fieldLabel={labels[k]} />
             }
           </FwField>
         )
@@ -613,7 +613,7 @@ function S02({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
       <FwField>
         <FwLabel>Secondary Targets</FwLabel>
         <FwHelp>Adjacent industries, roles, or use cases that share the same challenges.</FwHelp>
-        <FwTextarea value={s.secondaryTargets} onChange={(v) => u('secondaryTargets', v)} rows={4} placeholder="Describe secondary targets — adjacent industries, roles, or use cases." />
+        <FwTextarea value={s.secondaryTargets} onChange={(v) => u('secondaryTargets', v)} rows={4} placeholder="Describe secondary targets — adjacent industries, roles, or use cases." fieldId="s02.secondaryTargets" sectionNum="02" sectionTitle="Customer Definition + Profile" fieldLabel="Secondary Targets" />
       </FwField>
     </div>
   )
@@ -627,7 +627,7 @@ function S03({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
       <FwField>
         <FwLabel>Market Pressure Narrative</FwLabel>
         <FwHelp>2-3 sentences describing the macro pressures facing this market right now. Becomes the opening of the brochure and eBook introduction.</FwHelp>
-        <FwTextarea value={s.marketPressureNarrative} onChange={(v) => set((d) => { d.s03.marketPressureNarrative = v })} rows={4} placeholder="Describe 3-4 simultaneous pressures this market is experiencing." />
+        <FwTextarea value={s.marketPressureNarrative} onChange={(v) => set((d) => { d.s03.marketPressureNarrative = v })} rows={4} placeholder="Describe 3-4 simultaneous pressures this market is experiencing." fieldId="s03.marketPressureNarrative" sectionNum="03" sectionTitle="Market Pressures + Statistics" fieldLabel="Market Pressure Narrative" />
       </FwField>
 
       <div className="mb-2 flex items-center justify-between">
@@ -655,7 +655,7 @@ function S03({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
       <FwField>
         <FwLabel>Additional Context / Supporting Data</FwLabel>
         <FwHelp>Market sizing, analyst forecasts, contextual data. Include sources.</FwHelp>
-        <FwTextarea value={s.additionalContext} onChange={(v) => set((d) => { d.s03.additionalContext = v })} rows={4} placeholder="e.g. Gartner estimates IT spending will reach $XXX billion by YYYY." />
+        <FwTextarea value={s.additionalContext} onChange={(v) => set((d) => { d.s03.additionalContext = v })} rows={4} placeholder="e.g. Gartner estimates IT spending will reach $XXX billion by YYYY." fieldId="s03.additionalContext" sectionNum="03" sectionTitle="Market Pressures + Statistics" fieldLabel="Additional Context / Supporting Data" />
       </FwField>
     </div>
   )
@@ -668,11 +668,11 @@ function S04({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       {fw.s04.challenges.map((ch, i) => (
         <FwCard key={i} title={ch.name || `Challenge ${i + 1}`} canDelete={fw.s04.challenges.length > 1}
           onDelete={() => set((d) => { d.s04.challenges.splice(i, 1) })}>
-          <FwField><FwLabel>Challenge Name</FwLabel><FwInput value={ch.name} onChange={(v) => set((d) => { d.s04.challenges[i].name = v })} placeholder="Short descriptive title" /></FwField>
-          <FwField><FwLabel>Why It Exists</FwLabel><FwTextarea value={ch.whyExists} onChange={(v) => set((d) => { d.s04.challenges[i].whyExists = v })} rows={3} placeholder="Explain the root cause" /></FwField>
-          <FwField><FwLabel>Business Consequence</FwLabel><FwTextarea value={ch.consequence} onChange={(v) => set((d) => { d.s04.challenges[i].consequence = v })} rows={3} placeholder="What happens if this isn't addressed" /></FwField>
-          <FwField><FwLabel>{clientName} Solution</FwLabel><FwTextarea value={ch.solution} onChange={(v) => set((d) => { d.s04.challenges[i].solution = v })} rows={3} placeholder="Which service(s) address this" /></FwField>
-          <FwField><FwLabel>Service Pillars</FwLabel><FwInput value={ch.pillarsText} onChange={(v) => set((d) => { d.s04.challenges[i].pillarsText = v })} placeholder="e.g. Cloud / Cybersecurity / IT Operations" /></FwField>
+          <FwField><FwLabel>Challenge Name</FwLabel><FwInput value={ch.name} onChange={(v) => set((d) => { d.s04.challenges[i].name = v })} placeholder="Short descriptive title" fieldId={`s04.${i}.name`} sectionNum="04" sectionTitle="Core Challenges" fieldLabel="Challenge Name" /></FwField>
+          <FwField><FwLabel>Why It Exists</FwLabel><FwTextarea value={ch.whyExists} onChange={(v) => set((d) => { d.s04.challenges[i].whyExists = v })} rows={3} placeholder="Explain the root cause" fieldId={`s04.${i}.whyExists`} sectionNum="04" sectionTitle="Core Challenges" fieldLabel="Why It Exists" /></FwField>
+          <FwField><FwLabel>Business Consequence</FwLabel><FwTextarea value={ch.consequence} onChange={(v) => set((d) => { d.s04.challenges[i].consequence = v })} rows={3} placeholder="What happens if this isn't addressed" fieldId={`s04.${i}.consequence`} sectionNum="04" sectionTitle="Core Challenges" fieldLabel="Business Consequence" /></FwField>
+          <FwField><FwLabel>{clientName} Solution</FwLabel><FwTextarea value={ch.solution} onChange={(v) => set((d) => { d.s04.challenges[i].solution = v })} rows={3} placeholder="Which service(s) address this" fieldId={`s04.${i}.solution`} sectionNum="04" sectionTitle="Core Challenges" fieldLabel={`${clientName} Solution`} /></FwField>
+          <FwField><FwLabel>Service Pillars</FwLabel><FwInput value={ch.pillarsText} onChange={(v) => set((d) => { d.s04.challenges[i].pillarsText = v })} placeholder="e.g. Cloud / Cybersecurity / IT Operations" fieldId={`s04.${i}.pillarsText`} sectionNum="04" sectionTitle="Core Challenges" fieldLabel="Service Pillars" /></FwField>
         </FwCard>
       ))}
       <AddButton onClick={() => set((d) => { d.s04.challenges.push({ name: '', whyExists: '', consequence: '', solution: '', pillarsText: '', _open: true }) })} label="Add Challenge" />
@@ -689,15 +689,15 @@ function S05({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       {fw.s05.pillars.map((p, i) => (
         <FwCard key={i} title={p.pillar} canDelete={false} onDelete={() => {}}>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div><FwLabel>Pillar Name</FwLabel><FwInput value={p.pillar} onChange={(v) => set((d) => { d.s05.pillars[i].pillar = v })} placeholder="Pillar name" /></div>
+            <div><FwLabel>Pillar Name</FwLabel><FwInput value={p.pillar} onChange={(v) => set((d) => { d.s05.pillars[i].pillar = v })} placeholder="Pillar name" fieldId={`s05.pillar.${i}.name`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Pillar Name" /></div>
             <div className="lg:col-span-2">
               <FwLabel>Vertical Value Prop</FwLabel>
-              <FwTextarea value={p.valueProp} onChange={(v) => set((d) => { d.s05.pillars[i].valueProp = v })} rows={4} placeholder="What this pillar means for this market specifically…" />
+              <FwTextarea value={p.valueProp} onChange={(v) => set((d) => { d.s05.pillars[i].valueProp = v })} rows={4} placeholder="What this pillar means for this market specifically…" fieldId={`s05.pillar.${i}.valueProp`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Vertical Value Prop" />
             </div>
           </div>
           <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div><FwLabel>Key Services</FwLabel><FwTextarea value={p.keyServices} onChange={(v) => set((d) => { d.s05.pillars[i].keyServices = v })} rows={3} placeholder="Key services" /></div>
-            <div><FwLabel>Relevant To</FwLabel><FwTextarea value={p.relevantTo} onChange={(v) => set((d) => { d.s05.pillars[i].relevantTo = v })} rows={3} placeholder="Which sub-segments" /></div>
+            <div><FwLabel>Key Services</FwLabel><FwTextarea value={p.keyServices} onChange={(v) => set((d) => { d.s05.pillars[i].keyServices = v })} rows={3} placeholder="Key services" fieldId={`s05.pillar.${i}.keyServices`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Key Services" /></div>
+            <div><FwLabel>Relevant To</FwLabel><FwTextarea value={p.relevantTo} onChange={(v) => set((d) => { d.s05.pillars[i].relevantTo = v })} rows={3} placeholder="Which sub-segments" fieldId={`s05.pillar.${i}.relevantTo`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Relevant To" /></div>
           </div>
         </FwCard>
       ))}
@@ -712,10 +712,10 @@ function S05({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
         <FwCard key={i} title={row.service || `Service ${i + 1}`} canDelete={fw.s05.serviceStack.length > 1}
           onDelete={() => set((d) => { d.s05.serviceStack.splice(i, 1) })}>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div><FwLabel>Service Name</FwLabel><FwInput value={row.service} onChange={(v) => set((d) => { d.s05.serviceStack[i].service = v })} placeholder="Service name" /></div>
-            <div className="lg:col-span-2"><FwLabel>What It Delivers (in this vertical)</FwLabel><FwTextarea value={row.whatItDelivers} onChange={(v) => set((d) => { d.s05.serviceStack[i].whatItDelivers = v })} rows={3} placeholder="What this delivers specifically for this market…" /></div>
+            <div><FwLabel>Service Name</FwLabel><FwInput value={row.service} onChange={(v) => set((d) => { d.s05.serviceStack[i].service = v })} placeholder="Service name" fieldId={`s05.service.${i}.name`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Service Name" /></div>
+            <div className="lg:col-span-2"><FwLabel>What It Delivers (in this vertical)</FwLabel><FwTextarea value={row.whatItDelivers} onChange={(v) => set((d) => { d.s05.serviceStack[i].whatItDelivers = v })} rows={3} placeholder="What this delivers specifically for this market…" fieldId={`s05.service.${i}.whatItDelivers`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="What It Delivers (in this vertical)" /></div>
           </div>
-          <div className="mt-3"><FwLabel>Priority / Relevance</FwLabel><FwInput value={row.priority} onChange={(v) => set((d) => { d.s05.serviceStack[i].priority = v })} placeholder="High / Medium / Low" /></div>
+          <div className="mt-3"><FwLabel>Priority / Relevance</FwLabel><FwInput value={row.priority} onChange={(v) => set((d) => { d.s05.serviceStack[i].priority = v })} placeholder="High / Medium / Low" fieldId={`s05.service.${i}.priority`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Priority / Relevance" /></div>
         </FwCard>
       ))}
       <AddButton onClick={() => set((d) => { d.s05.serviceStack.push({ service: '', whatItDelivers: '', priority: '', _open: true }) })} label="Add Service" />
@@ -732,8 +732,8 @@ function S06({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       {fw.s06.differentiators.map((d, i) => (
         <FwCard key={i} title={d.label || `Differentiator ${i + 1}`} canDelete={fw.s06.differentiators.length > 1}
           onDelete={() => set((dd) => { dd.s06.differentiators.splice(i, 1) })}>
-          <FwField><FwLabel>Label</FwLabel><FwInput value={d.label} onChange={(v) => set((dd) => { dd.s06.differentiators[i].label = v })} placeholder="e.g. 'Local expertise + national capabilities'" /></FwField>
-          <FwField><FwLabel>{clientName} Position</FwLabel><FwTextarea value={d.position} onChange={(v) => set((dd) => { dd.s06.differentiators[i].position = v })} rows={4} placeholder="What makes this true and specific to this vertical." /></FwField>
+          <FwField><FwLabel>Label</FwLabel><FwInput value={d.label} onChange={(v) => set((dd) => { dd.s06.differentiators[i].label = v })} placeholder="e.g. 'Local expertise + national capabilities'" fieldId={`s06.${i}.label`} sectionNum="06" sectionTitle={`Why ${clientName}`} fieldLabel="Differentiator Label" /></FwField>
+          <FwField><FwLabel>{clientName} Position</FwLabel><FwTextarea value={d.position} onChange={(v) => set((dd) => { dd.s06.differentiators[i].position = v })} rows={4} placeholder="What makes this true and specific to this vertical." fieldId={`s06.${i}.position`} sectionNum="06" sectionTitle={`Why ${clientName}`} fieldLabel={`${clientName} Position`} /></FwField>
         </FwCard>
       ))}
       <AddButton onClick={() => set((d) => { d.s06.differentiators.push({ label: '', position: '', _open: true }) })} label="Add Differentiator" />
@@ -748,12 +748,12 @@ function S07({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
       {fw.s07.segments.map((sg, i) => (
         <FwCard key={i} title={sg.name || `Segment ${i + 1}`} canDelete={fw.s07.segments.length > 1}
           onDelete={() => set((d) => { d.s07.segments.splice(i, 1) })}>
-          <FwField><FwLabel>Segment Name</FwLabel><FwInput value={sg.name} onChange={(v) => set((d) => { d.s07.segments[i].name = v })} placeholder="Short descriptive name" /></FwField>
-          <FwField><FwLabel>Primary Buyer Title(s)</FwLabel><FwInput value={sg.primaryBuyerTitles} onChange={(v) => set((d) => { d.s07.segments[i].primaryBuyerTitles = v })} placeholder="Role / Title / Function" /></FwField>
-          <FwField><FwLabel>What Is Different</FwLabel><FwTextarea value={sg.whatIsDifferent} onChange={(v) => set((d) => { d.s07.segments[i].whatIsDifferent = v })} rows={3} placeholder="What makes this sub-segment unique vs. the others" /></FwField>
-          <FwField><FwLabel>Key Pressures</FwLabel><FwTextarea value={sg.keyPressures} onChange={(v) => set((d) => { d.s07.segments[i].keyPressures = v })} rows={3} placeholder="2–3 specific pressures for this sub-segment" /></FwField>
-          <FwField><FwLabel>Lead Hook</FwLabel><FwTextarea value={sg.leadHook} onChange={(v) => set((d) => { d.s07.segments[i].leadHook = v })} rows={2} placeholder="The opening question or statement that opens the conversation" /></FwField>
-          <FwField><FwLabel>Compliance / Context Notes</FwLabel><FwTextarea value={sg.complianceNotes} onChange={(v) => set((d) => { d.s07.segments[i].complianceNotes = v })} rows={3} placeholder="Sub-segment-specific regulatory, operational, or technical context" /></FwField>
+          <FwField><FwLabel>Segment Name</FwLabel><FwInput value={sg.name} onChange={(v) => set((d) => { d.s07.segments[i].name = v })} placeholder="Short descriptive name" fieldId={`s07.${i}.name`} sectionNum="07" sectionTitle="Segments + Buyer Profiles" fieldLabel="Segment Name" /></FwField>
+          <FwField><FwLabel>Primary Buyer Title(s)</FwLabel><FwInput value={sg.primaryBuyerTitles} onChange={(v) => set((d) => { d.s07.segments[i].primaryBuyerTitles = v })} placeholder="Role / Title / Function" fieldId={`s07.${i}.primaryBuyerTitles`} sectionNum="07" sectionTitle="Segments + Buyer Profiles" fieldLabel="Primary Buyer Title(s)" /></FwField>
+          <FwField><FwLabel>What Is Different</FwLabel><FwTextarea value={sg.whatIsDifferent} onChange={(v) => set((d) => { d.s07.segments[i].whatIsDifferent = v })} rows={3} placeholder="What makes this sub-segment unique vs. the others" fieldId={`s07.${i}.whatIsDifferent`} sectionNum="07" sectionTitle="Segments + Buyer Profiles" fieldLabel="What Is Different" /></FwField>
+          <FwField><FwLabel>Key Pressures</FwLabel><FwTextarea value={sg.keyPressures} onChange={(v) => set((d) => { d.s07.segments[i].keyPressures = v })} rows={3} placeholder="2–3 specific pressures for this sub-segment" fieldId={`s07.${i}.keyPressures`} sectionNum="07" sectionTitle="Segments + Buyer Profiles" fieldLabel="Key Pressures" /></FwField>
+          <FwField><FwLabel>Lead Hook</FwLabel><FwTextarea value={sg.leadHook} onChange={(v) => set((d) => { d.s07.segments[i].leadHook = v })} rows={2} placeholder="The opening question or statement that opens the conversation" fieldId={`s07.${i}.leadHook`} sectionNum="07" sectionTitle="Segments + Buyer Profiles" fieldLabel="Lead Hook" /></FwField>
+          <FwField><FwLabel>Compliance / Context Notes</FwLabel><FwTextarea value={sg.complianceNotes} onChange={(v) => set((d) => { d.s07.segments[i].complianceNotes = v })} rows={3} placeholder="Sub-segment-specific regulatory, operational, or technical context" fieldId={`s07.${i}.complianceNotes`} sectionNum="07" sectionTitle="Segments + Buyer Profiles" fieldLabel="Compliance / Context Notes" /></FwField>
         </FwCard>
       ))}
       <AddButton onClick={() => set((d) => { d.s07.segments.push({ name: '', primaryBuyerTitles: '', whatIsDifferent: '', keyPressures: '', leadHook: '', complianceNotes: '', _open: true }) })} label="Add Segment" />
@@ -826,13 +826,13 @@ function S09({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       {s.caseStudies.map((cs, i) => (
         <FwCard key={i} title={cs.clientProfile || `Case Study ${i + 1}`} canDelete={s.caseStudies.length > 1}
           onDelete={() => set((d) => { d.s09.caseStudies.splice(i, 1) })}>
-          <FwField><FwLabel>Client Profile</FwLabel><FwInput value={cs.clientProfile} onChange={(v) => set((d) => { d.s09.caseStudies[i].clientProfile = v })} placeholder="Industry, size, geography — or anonymized descriptor" /></FwField>
+          <FwField><FwLabel>Client Profile</FwLabel><FwInput value={cs.clientProfile} onChange={(v) => set((d) => { d.s09.caseStudies[i].clientProfile = v })} placeholder="Industry, size, geography — or anonymized descriptor" fieldId={`s09.${i}.clientProfile`} sectionNum="09" sectionTitle="Proof Points + Case Studies" fieldLabel="Client Profile" /></FwField>
           <FwField><FwLabel>Case Study URL</FwLabel><FwInput value={cs.url} onChange={(v) => set((d) => { d.s09.caseStudies[i].url = v })} placeholder="URL" /></FwField>
-          <FwField><FwLabel>Situation / Challenge</FwLabel><FwTextarea value={cs.situation} onChange={(v) => set((d) => { d.s09.caseStudies[i].situation = v })} rows={3} placeholder={`What was happening before ${clientName}`} /></FwField>
-          <FwField><FwLabel>{clientName} Engagement</FwLabel><FwTextarea value={cs.engagement} onChange={(v) => set((d) => { d.s09.caseStudies[i].engagement = v })} rows={3} placeholder={`What ${clientName} delivered`} /></FwField>
-          <FwField><FwLabel>Outcomes</FwLabel><FwTextarea value={cs.outcomes} onChange={(v) => set((d) => { d.s09.caseStudies[i].outcomes = v })} rows={3} placeholder="Measurable results — time, cost, risk reduction, uptime, etc." /></FwField>
-          <FwField><FwLabel>30-Second Version</FwLabel><FwTextarea value={cs.thirtySecond} onChange={(v) => set((d) => { d.s09.caseStudies[i].thirtySecond = v })} rows={3} placeholder="2–3 bullets for BDR emails and cheat sheet" /></FwField>
-          <FwField><FwLabel>Headline Stat or Badge</FwLabel><FwInput value={cs.headlineStat} onChange={(v) => set((d) => { d.s09.caseStudies[i].headlineStat = v })} placeholder="e.g. '60 days. Complete IT transformation.'" /></FwField>
+          <FwField><FwLabel>Situation / Challenge</FwLabel><FwTextarea value={cs.situation} onChange={(v) => set((d) => { d.s09.caseStudies[i].situation = v })} rows={3} placeholder={`What was happening before ${clientName}`} fieldId={`s09.${i}.situation`} sectionNum="09" sectionTitle="Proof Points + Case Studies" fieldLabel="Situation / Challenge" /></FwField>
+          <FwField><FwLabel>{clientName} Engagement</FwLabel><FwTextarea value={cs.engagement} onChange={(v) => set((d) => { d.s09.caseStudies[i].engagement = v })} rows={3} placeholder={`What ${clientName} delivered`} fieldId={`s09.${i}.engagement`} sectionNum="09" sectionTitle="Proof Points + Case Studies" fieldLabel={`${clientName} Engagement`} /></FwField>
+          <FwField><FwLabel>Outcomes</FwLabel><FwTextarea value={cs.outcomes} onChange={(v) => set((d) => { d.s09.caseStudies[i].outcomes = v })} rows={3} placeholder="Measurable results — time, cost, risk reduction, uptime, etc." fieldId={`s09.${i}.outcomes`} sectionNum="09" sectionTitle="Proof Points + Case Studies" fieldLabel="Outcomes" /></FwField>
+          <FwField><FwLabel>30-Second Version</FwLabel><FwTextarea value={cs.thirtySecond} onChange={(v) => set((d) => { d.s09.caseStudies[i].thirtySecond = v })} rows={3} placeholder="2–3 bullets for BDR emails and cheat sheet" fieldId={`s09.${i}.thirtySecond`} sectionNum="09" sectionTitle="Proof Points + Case Studies" fieldLabel="30-Second Version" /></FwField>
+          <FwField><FwLabel>Headline Stat or Badge</FwLabel><FwInput value={cs.headlineStat} onChange={(v) => set((d) => { d.s09.caseStudies[i].headlineStat = v })} placeholder="e.g. '60 days. Complete IT transformation.'" fieldId={`s09.${i}.headlineStat`} sectionNum="09" sectionTitle="Proof Points + Case Studies" fieldLabel="Headline Stat or Badge" /></FwField>
         </FwCard>
       ))}
       <AddButton onClick={() => set((d) => { d.s09.caseStudies.push({ clientProfile: '', url: '', situation: '', engagement: '', outcomes: '', thirtySecond: '', headlineStat: '', _open: true }) })} label="Add Case Study" />
@@ -878,7 +878,7 @@ function S11({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
       ] as const).map(([k, label, placeholder]) => (
         <FwField key={k}>
           <FwLabel>{label}</FwLabel>
-          <FwTextarea value={(s as unknown as Record<string, string>)[k]} onChange={(v) => set((d) => { (d.s11 as unknown as Record<string, unknown>)[k] = v })} rows={2} placeholder={placeholder} />
+          <FwTextarea value={(s as unknown as Record<string, string>)[k]} onChange={(v) => set((d) => { (d.s11 as unknown as Record<string, unknown>)[k] = v })} rows={2} placeholder={placeholder} fieldId={`s11.${k}`} sectionNum="11" sectionTitle="Brand Voice Examples" fieldLabel={label} />
         </FwField>
       ))}
 
@@ -943,11 +943,11 @@ function S13({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
       {fw.s13.quotes.map((q, i) => (
         <FwCard key={i} title={q.attribution || (q.quoteText?.slice(0, 40) ?? `Quote ${i + 1}`)} canDelete={fw.s13.quotes.length > 1}
           onDelete={() => set((d) => { d.s13.quotes.splice(i, 1) })}>
-          <FwField><FwLabel>Quote Text</FwLabel><FwTextarea value={q.quoteText} onChange={(v) => set((d) => { d.s13.quotes[i].quoteText = v })} rows={4} placeholder="The actual or paraphrased quote — in the customer's words, not ours" /></FwField>
-          <FwField><FwLabel>Attribution</FwLabel><FwInput value={q.attribution} onChange={(v) => set((d) => { d.s13.quotes[i].attribution = v })} placeholder="Role + company type (anonymized if needed)" /></FwField>
-          <FwField><FwLabel>Context</FwLabel><FwTextarea value={q.context} onChange={(v) => set((d) => { d.s13.quotes[i].context = v })} rows={2} placeholder="When / why this was said" /></FwField>
-          <FwField><FwLabel>Best Used In</FwLabel><FwInput value={q.bestUsedIn} onChange={(v) => set((d) => { d.s13.quotes[i].bestUsedIn = v })} placeholder="Which asset this quote is best suited for" /></FwField>
-          <FwField><FwLabel>Approved for Use?</FwLabel><FwInput value={q.approved} onChange={(v) => set((d) => { d.s13.quotes[i].approved = v })} placeholder="Yes (direct quote) / Paraphrased / Internal only" /></FwField>
+          <FwField><FwLabel>Quote Text</FwLabel><FwTextarea value={q.quoteText} onChange={(v) => set((d) => { d.s13.quotes[i].quoteText = v })} rows={4} placeholder="The actual or paraphrased quote — in the customer's words, not ours" fieldId={`s13.${i}.quoteText`} sectionNum="13" sectionTitle="Customer Quotes + Testimonials" fieldLabel="Quote Text" /></FwField>
+          <FwField><FwLabel>Attribution</FwLabel><FwInput value={q.attribution} onChange={(v) => set((d) => { d.s13.quotes[i].attribution = v })} placeholder="Role + company type (anonymized if needed)" fieldId={`s13.${i}.attribution`} sectionNum="13" sectionTitle="Customer Quotes + Testimonials" fieldLabel="Attribution" /></FwField>
+          <FwField><FwLabel>Context</FwLabel><FwTextarea value={q.context} onChange={(v) => set((d) => { d.s13.quotes[i].context = v })} rows={2} placeholder="When / why this was said" fieldId={`s13.${i}.context`} sectionNum="13" sectionTitle="Customer Quotes + Testimonials" fieldLabel="Context" /></FwField>
+          <FwField><FwLabel>Best Used In</FwLabel><FwInput value={q.bestUsedIn} onChange={(v) => set((d) => { d.s13.quotes[i].bestUsedIn = v })} placeholder="Which asset this quote is best suited for" fieldId={`s13.${i}.bestUsedIn`} sectionNum="13" sectionTitle="Customer Quotes + Testimonials" fieldLabel="Best Used In" /></FwField>
+          <FwField><FwLabel>Approved for Use?</FwLabel><FwInput value={q.approved} onChange={(v) => set((d) => { d.s13.quotes[i].approved = v })} placeholder="Yes (direct quote) / Paraphrased / Internal only" fieldId={`s13.${i}.approved`} sectionNum="13" sectionTitle="Customer Quotes + Testimonials" fieldLabel="Approved for Use?" /></FwField>
         </FwCard>
       ))}
       <AddButton onClick={() => set((d) => { d.s13.quotes.push({ quoteText: '', attribution: '', context: '', bestUsedIn: '', approved: '', _open: true }) })} label="Add Quote" />
@@ -1020,7 +1020,7 @@ function S16({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
       <FwField>
         <FwLabel>CTA Sequencing Notes</FwLabel>
         <FwHelp>Describe how the CTAs should chain together — what does each asset lead to next?</FwHelp>
-        <FwTextarea value={fw.s16.ctaSequencing} onChange={(v) => set((d) => { d.s16.ctaSequencing = v })} rows={5} placeholder="e.g. Video → web page → eBook gate → assessment → brochure leave-behind → deck → proposal." />
+        <FwTextarea value={fw.s16.ctaSequencing} onChange={(v) => set((d) => { d.s16.ctaSequencing = v })} rows={5} placeholder="e.g. Video → web page → eBook gate → assessment → brochure leave-behind → deck → proposal." fieldId="s16.ctaSequencing" sectionNum="16" sectionTitle="Content Funnel Mapping" fieldLabel="CTA Sequencing Notes" />
       </FwField>
     </div>
   )
@@ -1054,7 +1054,7 @@ function S17({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       <FwField>
         <FwLabel>Regulatory Sales Note</FwLabel>
         <FwHelp>How should sales use regulatory pressure in the conversation? Lead with it or use it as reinforcement?</FwHelp>
-        <FwTextarea value={fw.s17.regulatorySalesNote} onChange={(v) => set((d) => { d.s17.regulatorySalesNote = v })} rows={4} placeholder="e.g. Use regulatory pressure as the urgency trigger, not the primary value proposition." />
+        <FwTextarea value={fw.s17.regulatorySalesNote} onChange={(v) => set((d) => { d.s17.regulatorySalesNote = v })} rows={4} placeholder="e.g. Use regulatory pressure as the urgency trigger, not the primary value proposition." fieldId="s17.regulatorySalesNote" sectionNum="17" sectionTitle="Regulatory + Compliance Context" fieldLabel="Regulatory Sales Note" />
       </FwField>
     </div>
   )
@@ -1095,8 +1095,8 @@ function S18({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
             <span className="text-[11px] font-bold text-blue-500">Campaign {i + 1}</span>
             {s.campaignThemes.length > 1 && <button onClick={() => set((d) => { d.s18.campaignThemes.splice(i, 1) })} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
           </div>
-          <FwField><FwLabel>Campaign Name</FwLabel><FwInput value={ct.campaignName} onChange={(v) => set((d) => { d.s18.campaignThemes[i].campaignName = v })} placeholder="Campaign name" /></FwField>
-          <FwField><FwLabel>Description</FwLabel><FwTextarea value={ct.description} onChange={(v) => set((d) => { d.s18.campaignThemes[i].description = v })} rows={2} placeholder="One sentence: what this campaign is, who it targets, and what it drives." /></FwField>
+          <FwField><FwLabel>Campaign Name</FwLabel><FwInput value={ct.campaignName} onChange={(v) => set((d) => { d.s18.campaignThemes[i].campaignName = v })} placeholder="Campaign name" fieldId={`s18.campaign.${i}.name`} sectionNum="18" sectionTitle="CTAs + Next Steps" fieldLabel="Campaign Name" /></FwField>
+          <FwField><FwLabel>Description</FwLabel><FwTextarea value={ct.description} onChange={(v) => set((d) => { d.s18.campaignThemes[i].description = v })} rows={2} placeholder="One sentence: what this campaign is, who it targets, and what it drives." fieldId={`s18.campaign.${i}.description`} sectionNum="18" sectionTitle="CTAs + Next Steps" fieldLabel="Campaign Description" /></FwField>
         </div>
       ))}
       <AddButton onClick={() => set((d) => { d.s18.campaignThemes.push({ campaignName: '', description: '' }) })} label="Add Campaign Theme" />
