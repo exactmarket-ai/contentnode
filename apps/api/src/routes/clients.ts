@@ -2487,11 +2487,11 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
 
     const { filename, file, mimetype } = data
 
-    const allowedExts = new Set(['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+    const allowedExts = new Set(['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm'])
     const fileExt = filename.slice(filename.lastIndexOf('.')).toLowerCase()
     if (!allowedExts.has(fileExt)) {
       file.resume()
-      return reply.code(400).send({ error: `Unsupported file type "${fileExt}". Accepted: PDF, DOCX, TXT, MD, CSV, JSON, HTML` })
+      return reply.code(400).send({ error: `Unsupported file type "${fileExt}". Accepted: PDF, DOCX, TXT, MD, CSV, JSON, HTML, MP4, MOV, MP3, M4A, WAV` })
     }
 
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_')

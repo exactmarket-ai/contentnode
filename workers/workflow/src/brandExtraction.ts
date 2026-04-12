@@ -106,8 +106,48 @@ async function extractText(buffer: Buffer, filename: string, mimeType: string): 
   if (['.txt', '.md', '.csv', '.json', '.html', '.htm'].includes(ext)) {
     return buffer.toString('utf8')
   }
-  // Image files — return null; brand images can be uploaded but won't contribute text
-  return null
+  return null // audio/video — handled separately via transcribeAudio
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AssemblyAI transcription (mirrors frameworkResearch.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AssemblyAITranscript {
+  id: string
+  status: 'queued' | 'processing' | 'completed' | 'error'
+  text?: string
+  error?: string
+  audio_duration?: number
+}
+
+async function transcribeAudio(buffer: Buffer, apiKey: string): Promise<{ text: string; durationSecs: number }> {
+  const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
+    method: 'POST',
+    headers: { authorization: apiKey, 'content-type': 'application/octet-stream' },
+    body: buffer,
+  })
+  if (!uploadRes.ok) throw new Error(`AssemblyAI upload failed: ${uploadRes.status}`)
+  const { upload_url } = (await uploadRes.json()) as { upload_url: string }
+
+  const transcriptRes = await fetch('https://api.assemblyai.com/v2/transcript', {
+    method: 'POST',
+    headers: { authorization: apiKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ audio_url: upload_url, speaker_labels: true }),
+  })
+  if (!transcriptRes.ok) throw new Error(`AssemblyAI request failed: ${transcriptRes.status}`)
+  const { id } = (await transcriptRes.json()) as { id: string }
+
+  for (let i = 0; i < 120; i++) {
+    await new Promise((r) => setTimeout(r, 5000))
+    const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
+      headers: { authorization: apiKey },
+    })
+    const data = (await pollRes.json()) as AssemblyAITranscript
+    if (data.status === 'completed') return { text: data.text ?? '', durationSecs: Math.round(data.audio_duration ?? 0) }
+    if (data.status === 'error') throw new Error(`AssemblyAI error: ${data.error}`)
+  }
+  throw new Error('AssemblyAI timed out after 10 minutes')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -446,13 +486,54 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
       // Pre-populated mode (feedback/approved content injected directly)
       extractedText = attachment.extractedText
     } else {
-      // Normal file mode — download from storage and extract text
-      try {
-        const buffer = await downloadBuffer(attachment.storageKey)
-        extractedText = await extractText(buffer, attachment.filename, attachment.mimeType)
-      } catch (err) {
-        errorMessage = err instanceof Error ? err.message : String(err)
-        console.error(`[brand-attachment-process] text extraction failed:`, errorMessage)
+      const isAudioVideo = attachment.mimeType.startsWith('audio/') || attachment.mimeType.startsWith('video/')
+
+      if (isAudioVideo) {
+        // Check if the paired GTM Framework attachment already transcribed this file
+        const gtmMirror = await prisma.clientFrameworkAttachment.findFirst({
+          where: { agencyId, storageKey: attachment.storageKey, extractedText: { not: null } },
+          select: { extractedText: true },
+        })
+        if (gtmMirror?.extractedText) {
+          extractedText = gtmMirror.extractedText
+          console.log(`[brand-attachment-process] reusing GTM transcription for attachment=${attachmentId}`)
+        } else {
+          const apiKey = process.env.ASSEMBLYAI_API_KEY ?? ''
+          if (!apiKey) {
+            errorMessage = 'ASSEMBLYAI_API_KEY not set — cannot transcribe audio/video'
+          } else {
+            try {
+              const buffer = await downloadBuffer(attachment.storageKey)
+              const { text, durationSecs } = await transcribeAudio(buffer, apiKey)
+              extractedText = text
+              if (durationSecs > 0) {
+                const now = new Date()
+                await prisma.usageRecord.create({
+                  data: {
+                    agencyId,
+                    metric: 'assemblyai_seconds',
+                    quantity: durationSecs,
+                    periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
+                    periodEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+                    metadata: { attachmentId, filename: attachment.filename } as object,
+                  },
+                })
+              }
+            } catch (err) {
+              errorMessage = err instanceof Error ? err.message : String(err)
+              console.error(`[brand-attachment-process] transcription failed:`, errorMessage)
+            }
+          }
+        }
+      } else {
+        // Normal file mode — download from storage and extract text
+        try {
+          const buffer = await downloadBuffer(attachment.storageKey)
+          extractedText = await extractText(buffer, attachment.filename, attachment.mimeType)
+        } catch (err) {
+          errorMessage = err instanceof Error ? err.message : String(err)
+          console.error(`[brand-attachment-process] text extraction failed:`, errorMessage)
+        }
       }
     }
 

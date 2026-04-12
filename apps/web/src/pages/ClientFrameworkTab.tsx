@@ -1643,7 +1643,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
           dragging ? 'border-blue-400 bg-blue-50/20' : 'border-border hover:border-blue-300 hover:bg-muted/20',
         )}
       >
-        <input ref={inputRef} type="file" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+        <input ref={inputRef} type="file" multiple className="hidden" accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,.mp4,.mov,.mp3,.m4a,.wav,.webm" onChange={(e) => handleFiles(e.target.files)} />
         {uploading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />

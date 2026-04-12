@@ -776,7 +776,7 @@ function BrandProfileSection({
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm"
+            accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,.mp4,.mov,.mp3,.m4a,.wav,.webm"
             onChange={(e) => handleFiles(e.target.files)}
           />
           {uploading ? (
@@ -791,7 +791,7 @@ function BrandProfileSection({
                   browse
                 </button>
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · TXT · MD · CSV · JSON · HTML</p>
+              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · TXT · MD · MP4 · MP3 · MOV · WAV</p>
             </>
           )}
         </div>
