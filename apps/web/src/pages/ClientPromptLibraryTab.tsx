@@ -269,8 +269,8 @@ function CopyToGlobalModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-lg bg-card border border-border p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-lg bg-white dark:bg-zinc-900 border border-border p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold mb-1">Copy to Global Library</h3>
         <p className="text-xs text-muted-foreground mb-4">This template will be available to all clients.</p>
         <label className="block text-xs font-medium mb-1.5">Global template name</label>
@@ -443,8 +443,8 @@ function NewTemplateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-lg bg-card border border-border p-5 shadow-xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-lg bg-white dark:bg-zinc-900 border border-border p-5 shadow-xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold">New Prompt Template</h3>
         <div className="flex gap-2">
           <div className="flex-1">
