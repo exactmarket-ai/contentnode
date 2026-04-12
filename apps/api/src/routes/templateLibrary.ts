@@ -299,9 +299,9 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
     })
     if (!existing) return reply.code(404).send({ error: 'Template not found' })
 
-    // Team members cannot overwrite AI or global templates
-    if (!isAdmin(role) && (existing.source === 'ai' || existing.source === 'global')) {
-      return reply.code(403).send({ error: 'Use Save as new to create your own version of this template' })
+    // Global templates (source === 'global') are agency-wide — only admins can overwrite them
+    if (!isAdmin(role) && existing.source === 'global') {
+      return reply.code(403).send({ error: 'Only admins can edit global templates' })
     }
 
     const body = req.body as Record<string, unknown>

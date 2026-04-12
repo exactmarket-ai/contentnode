@@ -703,7 +703,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
       {openTemplate && (
         <TemplateDrawer
           template={openTemplate}
-          canEdit={isAdmin || openTemplate.source === 'user'}
+          canEdit={true}
           onClose={() => setOpenTemplate(null)}
           onSaved={handleSaved}
           onUse={handleUse}
