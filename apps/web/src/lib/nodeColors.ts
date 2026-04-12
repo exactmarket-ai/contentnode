@@ -89,7 +89,7 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
 export function getNodeSpec(type: string, subtype?: string): NodeSpec {
   let specType: NodeSpecType = 'eval'
 
-  if (type === 'source' || type === 'gtm_framework' || type === 'brand_context') {
+  if (type === 'source' || type === 'gtm_framework' || type === 'brand_context' || type === 'audio_input') {
     specType = 'input'
   } else if (type === 'logic') {
     specType = 'ai-model' // all logic nodes are orange

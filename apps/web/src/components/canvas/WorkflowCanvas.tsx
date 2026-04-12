@@ -16,6 +16,10 @@ import { InsightNode } from './nodes/InsightNode'
 import { GtmFrameworkNode } from './nodes/GtmFrameworkNode'
 import { BrandContextNode } from './nodes/BrandContextNode'
 import { GroupNode } from './nodes/GroupNode'
+import { VoiceOutputNode } from './nodes/VoiceOutputNode'
+import { MusicGenerationNode } from './nodes/MusicGenerationNode'
+import { AudioMixNode } from './nodes/AudioMixNode'
+import { AudioInputNode } from './nodes/AudioInputNode'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { NodeContextMenu } from './NodeContextMenu'
 
@@ -27,6 +31,10 @@ const nodeTypes = {
   gtm_framework: GtmFrameworkNode,
   brand_context: BrandContextNode,
   group: GroupNode,
+  voice_output: VoiceOutputNode,
+  music_generation: MusicGenerationNode,
+  audio_mix: AudioMixNode,
+  audio_input: AudioInputNode,
 }
 
 let nodeIdCounter = 1

@@ -32,6 +32,13 @@ import { processBrandAttachment } from './brandExtraction.js'
 import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
 import { withAgency } from '@contentnode/database'
 
+// ── Env diagnostics (printed once at startup) ─────────────────────────────────
+console.log('[worker] env check:',
+  'ELEVENLABS_API_KEY:', process.env.ELEVENLABS_API_KEY ? `set (${process.env.ELEVENLABS_API_KEY.slice(0, 8)}...)` : 'NOT SET',
+  '| TTS_BASE_URL:', process.env.TTS_BASE_URL ?? 'NOT SET',
+  '| MUSIC_BASE_URL:', process.env.MUSIC_BASE_URL ?? 'NOT SET',
+)
+
 // ── workflow-runs ─────────────────────────────────────────────────────────────
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
   QUEUE_WORKFLOW_RUNS,

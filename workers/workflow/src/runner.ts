@@ -28,6 +28,10 @@ import { MediaDownloadExecutor } from './executors/mediaDownload.js'
 import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
 import { GtmFrameworkExecutor } from './executors/gtmFramework.js'
 import { BrandContextExecutor } from './executors/brandContext.js'
+import { VoiceOutputNodeExecutor } from './executors/voiceOutput.js'
+import { MusicGenerationNodeExecutor } from './executors/musicGeneration.js'
+import { AudioMixNodeExecutor } from './executors/audioMix.js'
+import { AudioInputNodeExecutor } from './executors/audioInput.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -106,6 +110,10 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:image-resize':            ImageResizeExecutor,
   'output:video-generation':       VideoGenerationExecutor,
   'output:media-download':         MediaDownloadExecutor,
+  'voice_output':                  VoiceOutputNodeExecutor,
+  'music_generation':              MusicGenerationNodeExecutor,
+  'audio_mix':                     AudioMixNodeExecutor,
+  'audio_input':                   AudioInputNodeExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {
@@ -533,21 +541,38 @@ export class WorkflowRunner {
 
           // ── Skip locked generation nodes that have stored assets ────────
           const nodeSubtype = config.subtype as string | undefined
-          const isGenerationNode = nodeSubtype === 'image-generation' || nodeSubtype === 'video-generation'
-          if (isGenerationNode && config.locked === true) {
-            const storedAssets = config.stored_assets as Array<{ localPath: string }> | undefined
-            if (Array.isArray(storedAssets) && storedAssets.length > 0) {
-              console.log(`[runner] skipping locked generation node ${node.id} (${nodeSubtype}) — using ${storedAssets.length} cached asset(s)`)
-              const cachedOutput = { assets: storedAssets }
-              nodeOutputs.set(node.id, cachedOutput)
-              runOutput.nodeStatuses[node.id] = {
-                status: 'skipped',
-                output: cachedOutput,
-                completedAt: new Date().toISOString(),
+          const isMediaNode = nodeSubtype === 'image-generation' || nodeSubtype === 'video-generation'
+          const isAudioNode = nodeSubtype === 'voice-output' || nodeSubtype === 'music-generation'
+          if ((isMediaNode || isAudioNode) && config.locked === true) {
+            if (isAudioNode) {
+              const storedOutput = config.stored_output as Record<string, unknown> | undefined
+              if (storedOutput?.localPath) {
+                console.log(`[runner] skipping locked audio node ${node.id} (${nodeSubtype}) — using cached output`)
+                nodeOutputs.set(node.id, storedOutput)
+                runOutput.nodeStatuses[node.id] = {
+                  status: 'skipped',
+                  output: storedOutput,
+                  completedAt: new Date().toISOString(),
+                }
+                await this.persistOutput(runOutput)
+                lastOutputNodeResult = storedOutput
+                return
               }
-              await this.persistOutput(runOutput)
-              if (node.type === 'output') lastOutputNodeResult = cachedOutput
-              return
+            } else {
+              const storedAssets = config.stored_assets as Array<{ localPath: string }> | undefined
+              if (Array.isArray(storedAssets) && storedAssets.length > 0) {
+                console.log(`[runner] skipping locked generation node ${node.id} (${nodeSubtype}) — using ${storedAssets.length} cached asset(s)`)
+                const cachedOutput = { assets: storedAssets }
+                nodeOutputs.set(node.id, cachedOutput)
+                runOutput.nodeStatuses[node.id] = {
+                  status: 'skipped',
+                  output: cachedOutput,
+                  completedAt: new Date().toISOString(),
+                }
+                await this.persistOutput(runOutput)
+                if (node.type === 'output') lastOutputNodeResult = cachedOutput
+                return
+              }
             }
           }
           const ctx: NodeExecutionContext = {
@@ -588,7 +613,7 @@ export class WorkflowRunner {
           })
 
           // Media generation nodes receive a structured inputs collection instead of flat strings
-          const MULTI_INPUT_SUBTYPES = new Set(['image-prompt-builder', 'video-prompt-builder', 'image-generation', 'video-generation'])
+          const MULTI_INPUT_SUBTYPES = new Set(['image-prompt-builder', 'video-prompt-builder', 'image-generation', 'video-generation', 'audio-mix'])
 
           let input: unknown
           if (activeUpstreamEdges.length === 0) {

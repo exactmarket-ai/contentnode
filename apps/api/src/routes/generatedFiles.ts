@@ -64,4 +64,47 @@ export async function generatedFileRoutes(app: FastifyInstance) {
       }
     },
   )
+
+  /**
+   * Serve user-uploaded documents (audio, video, etc.) by their storage key.
+   * Route: GET /files/doc/:key
+   * Storage keys are flat (no slashes) — format: {uuid}-{sanitized_filename}
+   */
+  app.get<{ Params: { key: string } }>(
+    '/doc/:key',
+    { config: { skipAuth: true } },
+    async (req, reply) => {
+      const { key } = req.params
+
+      // Prevent path traversal — uploaded keys are flat, no slashes or dots-dots
+      if (key.includes('/') || key.includes('..') || key.startsWith('.')) {
+        return reply.code(400).send({ error: 'Invalid key' })
+      }
+
+      const ext = extname(key).toLowerCase()
+      const contentType = MIME[ext] ?? 'application/octet-stream'
+
+      reply.header('Content-Type', contentType)
+      reply.header('Cache-Control', 'public, max-age=31536000, immutable')
+      reply.header('Cross-Origin-Resource-Policy', 'cross-origin')
+
+      if (!isS3Mode()) {
+        const filePath = resolve(join(UPLOAD_DIR, key))
+        if (!filePath.startsWith(resolve(UPLOAD_DIR))) {
+          return reply.code(400).send({ error: 'Invalid path' })
+        }
+        if (!existsSync(filePath)) {
+          return reply.code(404).send({ error: 'File not found' })
+        }
+        return reply.send(createReadStream(filePath))
+      }
+
+      try {
+        const buffer = await downloadBuffer(key)
+        return reply.send(buffer)
+      } catch {
+        return reply.code(404).send({ error: 'File not found' })
+      }
+    },
+  )
 }

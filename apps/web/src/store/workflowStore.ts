@@ -117,6 +117,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'Fingerprint',
     defaultConfig: { subtype: 'brand-context', clientId: '', clientName: '', verticalId: '', verticalName: '', dataSource: 'both' },
   },
+  {
+    type: 'audio_input', subtype: 'audio-input',
+    label: 'Audio Input', description: 'Upload an existing audio file to use as a source in your workflow',
+    category: 'source', icon: 'FileAudio',
+    defaultConfig: { subtype: 'audio-input' },
+  },
   // Logic
   {
     type: 'logic', subtype: 'ai-generate',
@@ -397,6 +403,57 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
         content_tags: [],
         comment: '',
       },
+    },
+  },
+  // Voice Output
+  {
+    type: 'voice_output', subtype: 'voice-output',
+    label: 'Voice Output', description: 'Convert text to speech — OpenAI TTS, ElevenLabs, or local kokoro',
+    category: 'output', icon: 'AudioWaveform',
+    defaultConfig: {
+      subtype:           'voice-output',
+      provider:          'openai',
+      voice:             'nova',
+      model:             'tts-1',
+      speed:             1.0,
+      format:            'mp3',
+      direction:         '',
+      merge_mode:        'concatenate',
+      enable_ssml:       false,
+      elevenlabs_model:  'eleven_turbo_v2_5',
+      stability:         0.5,
+      similarity_boost:  0.75,
+      style_exaggeration: 0.0,
+    },
+  },
+  // Music Generation
+  {
+    type: 'music_generation', subtype: 'music-generation',
+    label: 'Music Generation', description: 'Generate ambient music or sound effects via ElevenLabs',
+    category: 'output', icon: 'Music',
+    defaultConfig: {
+      subtype:            'music-generation',
+      service:            'music',
+      prompt:             '',
+      duration_seconds:   30,
+      force_instrumental: true,
+      prompt_influence:   0.3,
+    },
+  },
+  // Audio Mix
+  {
+    type: 'audio_mix', subtype: 'audio-mix',
+    label: 'Audio Mix', description: 'Mix voice and music tracks — sidechain ducking, fade in/out',
+    category: 'output', icon: 'Layers',
+    defaultConfig: {
+      subtype:          'audio-mix',
+      voice_volume:        1.0,
+      music_volume:        0.25,
+      duck_enabled:        true,
+      fade_in_seconds:     1.0,
+      fade_out_seconds:    2.0,
+      voice_delay_seconds: 0,
+      music_delay_seconds: 0,
     },
   },
   // Canvas utilities

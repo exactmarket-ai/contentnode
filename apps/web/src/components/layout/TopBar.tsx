@@ -68,32 +68,35 @@ export async function pollRunUntilTerminal(runId: string) {
 
       // Persist generated assets into node.data so they survive page reloads
       const ASSET_SUBTYPES = new Set(['image-generation', 'video-generation'])
+      const AUDIO_SUBTYPES = new Set(['voice-output', 'music-generation', 'audio-mix'])
       for (const [nodeId, raw] of Object.entries(nodeStatuses)) {
         const ns = raw as { status: string; output?: Record<string, unknown> }
-        if (!ns.output?.assets) continue
         if (ns.status !== 'passed' && ns.status !== 'skipped') continue
         const { nodes, updateNodeData } = useWorkflowStore.getState()
         const node = nodes.find((n) => n.id === nodeId)
         if (!node) continue
         const cfg = (node.data?.config as Record<string, unknown>) ?? {}
         const subtype = (node.data?.subtype as string) ?? (cfg.subtype as string)
-        if (!ASSET_SUBTYPES.has(subtype)) continue
 
-        if (ns.status === 'passed') {
-          // New generation — move previous primary asset into run_history (keep last 3)
-          const history = (cfg.run_history as Array<{ localPath: string; type: string; timestamp: string }>) ?? []
-          const prevPrimary = (cfg.stored_assets as Array<{ localPath: string }> | undefined)?.[0]
-          const updatedHistory = prevPrimary
-            ? [...history, {
-                localPath: prevPrimary.localPath,
-                type: subtype === 'video-generation' ? 'video' : 'image',
-                timestamp: new Date().toISOString(),
-              }].slice(-3)
-            : history
-          updateNodeData(nodeId, { config: { ...cfg, stored_assets: ns.output.assets, run_history: updatedHistory } })
-        } else {
-          // Skipped (cached) — ensure stored_assets is set, no history change
-          updateNodeData(nodeId, { config: { ...cfg, stored_assets: ns.output.assets } })
+        if (ASSET_SUBTYPES.has(subtype) && ns.output?.assets) {
+          if (ns.status === 'passed') {
+            // New generation — move previous primary asset into run_history (keep last 3)
+            const history = (cfg.run_history as Array<{ localPath: string; type: string; timestamp: string }>) ?? []
+            const prevPrimary = (cfg.stored_assets as Array<{ localPath: string }> | undefined)?.[0]
+            const updatedHistory = prevPrimary
+              ? [...history, {
+                  localPath: prevPrimary.localPath,
+                  type: subtype === 'video-generation' ? 'video' : 'image',
+                  timestamp: new Date().toISOString(),
+                }].slice(-3)
+              : history
+            updateNodeData(nodeId, { config: { ...cfg, stored_assets: ns.output.assets, run_history: updatedHistory } })
+          } else {
+            updateNodeData(nodeId, { config: { ...cfg, stored_assets: ns.output.assets } })
+          }
+        } else if (AUDIO_SUBTYPES.has(subtype) && ns.output?.localPath) {
+          // Persist audio output so the lock/skip feature can replay it
+          updateNodeData(nodeId, { config: { ...cfg, stored_output: ns.output } })
         }
       }
     }

@@ -49,6 +49,10 @@ import { VideoGenerationConfig } from './config/output/VideoGenerationConfig'
 import { MediaDownloadConfig } from './config/output/MediaDownloadConfig'
 
 import { InsightNodeConfig } from './config/insight/InsightNodeConfig'
+import { VoiceOutputConfig } from './config/output/VoiceOutputConfig'
+import { MusicGenerationConfig } from './config/output/MusicGenerationConfig'
+import { AudioMixConfig } from './config/output/AudioMixConfig'
+import { AudioInputConfig } from './config/source/AudioInputConfig'
 
 
 // ─── Config dispatcher ────────────────────────────────────────────────────────
@@ -159,6 +163,14 @@ function NodeConfigForm({
       return <ContentOutputConfig config={config} onChange={onChange} />
     case 'insight':
       return <InsightNodeConfig config={config} />
+    case 'voice_output':
+      return <VoiceOutputConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+    case 'music_generation':
+      return <MusicGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+    case 'audio_mix':
+      return <AudioMixConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+    case 'audio_input':
+      return <AudioInputConfig config={config} onChange={onChange} />
     default:
       return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
   }
