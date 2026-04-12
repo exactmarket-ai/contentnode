@@ -232,5 +232,35 @@ Full spec is in docs/contentnode-spec-v4.md
   - Usage panel: per-service word tracking for Undetectable.ai and BypassGPT (with
     limit bar); Claude shows word count only; StealthGPT row removed.
 
+## What has been built (continued — recent sessions)
+- Prompt Library tab on ClientDetailPage: per-client template management
+  - Generate from Brain: BullMQ QUEUE_PROMPT_SUGGEST job → generatePromptSuggestions()
+    uses client's brandProfiles/brandBuilders/brandAttachments/frameworks via Prisma,
+    calls Claude Haiku, creates PromptTemplate records (source: 'ai'). Old AI prompts
+    marked isStale before new ones created.
+  - CRITICAL: generatePromptSuggestions() MUST be called inside withAgency() —
+    clients table uses FORCE RLS, without agency context all rows return null silently.
+  - Edit prompt = fork-as-new: clicking "Edit as new" opens NewTemplateModal pre-filled
+    with the original's content. Saves as a new user-source template; original unchanged.
+  - PromptPickerModal: in AI Generate node config, "Load from Library" opens picker.
+    Fetches /api/v1/prompts (global) + /api/v1/prompts?clientId= (client-specific).
+  - API: /api/v1/template-library for CRUD; /api/v1/prompts for picker (read-only alias)
+- Detection node fix: env var name fallback bug
+  - process.env[apiKeyRef] ?? apiKeyRef — when var unset, fell back to var NAME as key
+  - Fix: /^[A-Z][A-Z0-9_]+$/.test(apiKeyRef) ? null : apiKeyRef — treats all-caps names
+    as missing and falls back to local detection rather than sending invalid key to API
+- Reviews flow: AssigneePicker in TopBar sets defaultAssigneeId on workflow.
+  Run creation inherits assigneeId from workflow. Runner sets reviewStatus: 'pending'
+  on completion. ReviewsTab in ClientDetailPage now shows Assignee column.
+- Default AI model: claude-sonnet-4-5 (CLAUDE.md) / claude-haiku-4-5-20251001 (promptSuggester)
+
+## Architecture notes
+- RLS enforcement: every worker job touching tenant data needs withAgency(agencyId, fn)
+- Rate limiting: @fastify/rate-limit registered globally but opt-in (global: false).
+  Add config: { rateLimit: { max: N, timeWindow: 'Xm' } } to each route that needs it.
+- Dockerfiles (Dockerfile.api/worker/web): currently run as root — no USER directive.
+  See TODO for fix.
+
 ## Current session
-- All sessions complete. MVP built and running.
+- MVP running in production on Railway (API + worker) + Vercel (web).
+- Security audit completed 2026-04-12. Two findings: Docker root user, axios CVE in sendgrid.
