@@ -516,10 +516,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
 
   const handleGenerate = async () => {
     const aiCount = templates.filter((t) => t.source === 'ai').length
-    const msg = aiCount > 0
-      ? `This will replace the ${aiCount} existing AI-generated template${aiCount !== 1 ? 's' : ''} with fresh ones from the current Brain data. Continue?`
-      : 'Generate AI prompt templates from this client\'s Brain data?'
-    if (!confirm(msg)) return
+    if (aiCount > 0 && !confirm(`This will replace the ${aiCount} existing AI-generated prompt${aiCount !== 1 ? 's' : ''} with fresh ones. Continue?`)) return
 
     setGenerating(true)
     try {
