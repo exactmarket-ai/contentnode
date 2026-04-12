@@ -1504,7 +1504,8 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
   // Poll while any attachment is still processing
   useEffect(() => {
     const hasInProgress = attachments.some(
-      (a) => a.summaryStatus === 'pending' || a.summaryStatus === 'processing'
+      (a) => a.summaryStatus === 'pending' || a.summaryStatus === 'processing' ||
+             a.brandSummaryStatus === 'pending' || a.brandSummaryStatus === 'processing'
     )
     if (!hasInProgress) return
     const t = setTimeout(() => { fetchAttachments() }, 4000)

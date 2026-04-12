@@ -219,30 +219,42 @@ export async function processAttachment(job: AttachmentProcessJobData): Promise<
     let rawText: string | null = null
 
     try {
-      const buffer = await downloadBuffer(att.storageKey)
-      const isAudio = att.mimeType.startsWith('audio/') || att.mimeType.startsWith('video/')
+      // Reuse brand mirror's extracted text if available — avoids redundant download + extraction
+      const brandMirror = await prisma.clientBrandAttachment.findFirst({
+        where: { agencyId, storageKey: att.storageKey, extractedText: { not: null } },
+        select: { extractedText: true },
+      })
+      if (brandMirror?.extractedText) {
+        rawText = brandMirror.extractedText
+        console.log(`[attachment-process] reusing brand mirror text for attachment=${attachmentId}`)
+      }
 
-      if (isAudio) {
-        if (!apiKey) throw new Error('ASSEMBLYAI_API_KEY not set')
-        const { text, durationSecs } = await transcribeAudio(buffer, apiKey)
-        rawText = text
+      if (rawText === null) {
+        const buffer = await downloadBuffer(att.storageKey)
+        const isAudio = att.mimeType.startsWith('audio/') || att.mimeType.startsWith('video/')
 
-        // Record AssemblyAI usage
-        if (durationSecs > 0) {
-          const now = new Date()
-          await prisma.usageRecord.create({
-            data: {
-              agencyId,
-              metric: 'assemblyai_seconds',
-              quantity: durationSecs,
-              periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
-              periodEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0),
-              metadata: { attachmentId, filename: att.filename, clientName } as object,
-            },
-          })
+        if (isAudio) {
+          if (!apiKey) throw new Error('ASSEMBLYAI_API_KEY not set')
+          const { text, durationSecs } = await transcribeAudio(buffer, apiKey)
+          rawText = text
+
+          // Record AssemblyAI usage
+          if (durationSecs > 0) {
+            const now = new Date()
+            await prisma.usageRecord.create({
+              data: {
+                agencyId,
+                metric: 'assemblyai_seconds',
+                quantity: durationSecs,
+                periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
+                periodEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+                metadata: { attachmentId, filename: att.filename, clientName } as object,
+              },
+            })
+          }
+        } else {
+          rawText = await extractText(buffer, att.filename, att.mimeType)
         }
-      } else {
-        rawText = await extractText(buffer, att.filename, att.mimeType)
       }
 
       if (!rawText || rawText.trim().length < 20) {

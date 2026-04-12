@@ -597,7 +597,8 @@ function BrandProfileSection({
     const hasInProgress =
       attachments.some((a) =>
         a.extractionStatus === 'pending' || a.extractionStatus === 'processing' ||
-        a.summaryStatus === 'pending' || a.summaryStatus === 'processing'
+        a.summaryStatus === 'pending' || a.summaryStatus === 'processing' ||
+        a.gtmSummaryStatus === 'pending' || a.gtmSummaryStatus === 'processing'
       ) ||
       profile?.extractionStatus === 'extracting'
     if (!hasInProgress) return
