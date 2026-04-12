@@ -22,6 +22,8 @@ interface BrandAttachment {
   summaryStatus?: 'pending' | 'processing' | 'ready' | 'failed'
   gtmSummary?: string | null
   gtmSummaryStatus?: 'pending' | 'processing' | 'ready' | 'failed' | null
+  gtmAttachmentId?: string | null
+  gtmVerticalId?: string | null
 }
 
 interface BrandJson {
@@ -267,29 +269,46 @@ function BrandAttachmentRow({
   onSummaryUpdated: (id: string, summary: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [editValue, setEditValue] = useState(a.summary ?? '')
-  const [saving, setSaving] = useState(false)
+  const [editingBrand, setEditingBrand] = useState(false)
+  const [brandEditValue, setBrandEditValue] = useState(a.summary ?? '')
+  const [savingBrand, setSavingBrand] = useState(false)
+  const [editingGtm, setEditingGtm] = useState(false)
+  const [gtmEditValue, setGtmEditValue] = useState(a.gtmSummary ?? '')
+  const [savingGtm, setSavingGtm] = useState(false)
   const [showOriginal, setShowOriginal] = useState(false)
   const [rawText, setRawText] = useState<string | null>(null)
   const [loadingText, setLoadingText] = useState(false)
 
-  const base = `/api/v1/clients/${clientId}/brand-profile/attachments`
+  const brandBase = `/api/v1/clients/${clientId}/brand-profile/attachments`
 
-  const handleSave = async () => {
-    setSaving(true)
+  const handleSaveBrand = async () => {
+    setSavingBrand(true)
     try {
-      const res = await apiFetch(`${base}/${a.id}`, {
+      const res = await apiFetch(`${brandBase}/${a.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ summary: editValue }),
+        body: JSON.stringify({ summary: brandEditValue }),
       })
       if (res.ok) {
-        onSummaryUpdated(a.id, editValue)
-        setEditing(false)
+        onSummaryUpdated(a.id, brandEditValue)
+        setEditingBrand(false)
       }
     } catch { /* ignore */ } finally {
-      setSaving(false)
+      setSavingBrand(false)
+    }
+  }
+
+  const handleSaveGtm = async () => {
+    if (!a.gtmAttachmentId || !a.gtmVerticalId) return
+    setSavingGtm(true)
+    try {
+      const res = await apiFetch(
+        `/api/v1/clients/${clientId}/framework/${a.gtmVerticalId}/attachments/${a.gtmAttachmentId}`,
+        { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ summary: gtmEditValue }) }
+      )
+      if (res.ok) setEditingGtm(false)
+    } catch { /* ignore */ } finally {
+      setSavingGtm(false)
     }
   }
 
@@ -297,7 +316,7 @@ function BrandAttachmentRow({
     if (rawText !== null) { setShowOriginal(true); return }
     setLoadingText(true)
     try {
-      const res = await apiFetch(`${base}/${a.id}/text`)
+      const res = await apiFetch(`${brandBase}/${a.id}/text`)
       if (res.ok) {
         const { data } = await res.json()
         setRawText(data.text ?? '')
@@ -393,65 +412,83 @@ function BrandAttachmentRow({
               <Icons.Loader2 className="h-4 w-4 animate-spin" />
               Claude is reading and interpreting this file…
             </div>
-          ) : editing ? (
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Edit Claude's Interpretation
-              </p>
-              <textarea
-                className="w-full resize-y rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                rows={8}
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-                <button
-                  onClick={() => { setEditing(false); setEditValue(a.summary ?? '') }}
-                  className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
           ) : (
             <div className="space-y-3">
-              {/* Brand read */}
+              {/* Brand Read */}
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Brand Read</p>
-                  <div className="flex items-center gap-3">
-                    <button onClick={handleViewOriginal} disabled={loadingText} className="text-[10px] text-muted-foreground underline hover:text-foreground">
-                      {loadingText ? 'Loading…' : 'View original text'}
-                    </button>
-                    <button onClick={() => { setEditValue(a.summary ?? ''); setEditing(true) }} className="text-[10px] text-primary underline hover:text-primary/80">
-                      Edit
-                    </button>
-                  </div>
-                </div>
-                <div className="rounded-md bg-muted/30 px-3 py-2.5">
-                  {a.summary ? (
-                    <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground">{a.summary}</p>
-                  ) : (
-                    <p className="text-[11px] italic text-muted-foreground">No interpretation yet — click Edit to add one manually.</p>
+                  {!editingBrand && (
+                    <div className="flex items-center gap-3">
+                      <button onClick={handleViewOriginal} disabled={loadingText} className="text-[10px] text-muted-foreground underline hover:text-foreground">
+                        {loadingText ? 'Loading…' : 'View original text'}
+                      </button>
+                      <button onClick={() => { setBrandEditValue(a.summary ?? ''); setEditingBrand(true) }} className="text-[10px] text-primary underline hover:text-primary/80">
+                        Edit
+                      </button>
+                    </div>
                   )}
                 </div>
+                {editingBrand ? (
+                  <div>
+                    <textarea
+                      className="w-full resize-y rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                      rows={8}
+                      value={brandEditValue}
+                      onChange={(e) => setBrandEditValue(e.target.value)}
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button onClick={handleSaveBrand} disabled={savingBrand} className="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                        {savingBrand ? 'Saving…' : 'Save'}
+                      </button>
+                      <button onClick={() => { setEditingBrand(false); setBrandEditValue(a.summary ?? '') }} className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-muted/30 px-3 py-2.5">
+                    {a.summary ? (
+                      <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground">{a.summary}</p>
+                    ) : (
+                      <p className="text-[11px] italic text-muted-foreground">No interpretation yet — click Edit to add one manually.</p>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* GTM Framework read — shown when the file is also in the GTM brain */}
-              {(a.gtmSummary || a.gtmSummaryStatus === 'pending' || a.gtmSummaryStatus === 'processing') && (
+              {/* GTM Framework Read */}
+              {(a.gtmSummary || a.gtmSummaryStatus === 'pending' || a.gtmSummaryStatus === 'processing' || a.gtmSummaryStatus === 'ready') && (
                 <div>
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">GTM Framework Read</p>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">GTM Framework Read</p>
+                    {!editingGtm && a.gtmSummaryStatus === 'ready' && a.gtmAttachmentId && (
+                      <button onClick={() => { setGtmEditValue(a.gtmSummary ?? ''); setEditingGtm(true) }} className="text-[10px] text-primary underline hover:text-primary/80">
+                        Edit
+                      </button>
+                    )}
+                  </div>
                   {a.gtmSummaryStatus === 'pending' || a.gtmSummaryStatus === 'processing' ? (
                     <div className="flex items-center gap-1.5 rounded-md bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
                       <Icons.Loader2 className="h-3 w-3 animate-spin" />
                       GTM analysis in progress…
+                    </div>
+                  ) : editingGtm ? (
+                    <div>
+                      <textarea
+                        className="w-full resize-y rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                        rows={8}
+                        value={gtmEditValue}
+                        onChange={(e) => setGtmEditValue(e.target.value)}
+                      />
+                      <div className="mt-2 flex items-center gap-2">
+                        <button onClick={handleSaveGtm} disabled={savingGtm} className="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                          {savingGtm ? 'Saving…' : 'Save'}
+                        </button>
+                        <button onClick={() => { setEditingGtm(false); setGtmEditValue(a.gtmSummary ?? '') }} className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground">
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="rounded-md bg-muted/30 px-3 py-2.5">

@@ -1149,6 +1149,7 @@ interface Attachment {
   summary: string | null
   brandSummary?: string | null
   brandSummaryStatus?: string | null
+  brandAttachmentId?: string | null
 }
 
 function formatBytes(bytes: number): string {
@@ -1205,9 +1206,10 @@ function renderSummaryMarkdown(text: string): React.ReactNode {
   return <div>{nodes}</div>
 }
 
-function AttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpdated }: {
+function AttachmentRow({ attachment: a, base, brandBase, deletingId, onDelete, onSummaryUpdated }: {
   attachment: Attachment
   base: string
+  brandBase: string
   deletingId: string | null
   onDelete: (a: Attachment) => void
   onSummaryUpdated: (id: string, summary: string) => void
@@ -1216,6 +1218,9 @@ function AttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpd
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(a.summary ?? '')
   const [saving, setSaving] = useState(false)
+  const [editingBrand, setEditingBrand] = useState(false)
+  const [brandEditValue, setBrandEditValue] = useState(a.brandSummary ?? '')
+  const [savingBrand, setSavingBrand] = useState(false)
   const [showText, setShowText] = useState(false)
   const [rawText, setRawText] = useState<string | null>(null)
   const [loadingText, setLoadingText] = useState(false)
@@ -1234,6 +1239,21 @@ function AttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpd
       }
     } catch { /* ignore */ } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSaveBrand = async () => {
+    if (!a.brandAttachmentId) return
+    setSavingBrand(true)
+    try {
+      const res = await apiFetch(`${brandBase}/${a.brandAttachmentId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ summary: brandEditValue }),
+      })
+      if (res.ok) setEditingBrand(false)
+    } catch { /* ignore */ } finally {
+      setSavingBrand(false)
     }
   }
 
@@ -1368,11 +1388,36 @@ function AttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpd
               {/* Brand Read */}
               {(a.brandSummary || a.brandSummaryStatus === 'pending' || a.brandSummaryStatus === 'processing' || a.brandSummaryStatus === 'ready') && (
                 <div>
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Brand Read</p>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Brand Read</p>
+                    {!editingBrand && a.brandSummaryStatus === 'ready' && a.brandAttachmentId && (
+                      <button
+                        onClick={() => { setBrandEditValue(a.brandSummary ?? ''); setEditingBrand(true) }}
+                        className="text-[10px] text-blue-500 underline hover:text-blue-700"
+                      >Edit</button>
+                    )}
+                  </div>
                   {(a.brandSummaryStatus === 'pending' || a.brandSummaryStatus === 'processing') ? (
                     <div className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
                       <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
                       Brand analyst is reading this file…
+                    </div>
+                  ) : editingBrand ? (
+                    <div>
+                      <textarea
+                        className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        rows={8}
+                        value={brandEditValue}
+                        onChange={(e) => setBrandEditValue(e.target.value)}
+                      />
+                      <div className="mt-2 flex items-center gap-2">
+                        <button onClick={handleSaveBrand} disabled={savingBrand} className="rounded bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50">
+                          {savingBrand ? 'Saving…' : 'Save'}
+                        </button>
+                        <button onClick={() => { setEditingBrand(false); setBrandEditValue(a.brandSummary ?? '') }} className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground">
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="rounded-md bg-muted/30 px-3 py-2.5">
@@ -1445,6 +1490,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
   const inputRef = useRef<HTMLInputElement>(null)
 
   const base = `/api/v1/clients/${clientId}/framework/${verticalId}/attachments`
+  const brandBase = `/api/v1/clients/${clientId}/brand-profile/attachments`
 
   const fetchAttachments = useCallback(() => {
     return apiFetch(base).then((r) => r.json()).then(({ data }) => setAttachments(data ?? [])).catch(() => {})
@@ -1627,6 +1673,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
               key={a.id}
               attachment={a}
               base={base}
+              brandBase={brandBase}
               deletingId={deletingId}
               onDelete={handleDelete}
               onSummaryUpdated={(id, summary) =>
