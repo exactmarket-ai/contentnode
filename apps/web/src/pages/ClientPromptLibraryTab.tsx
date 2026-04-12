@@ -95,7 +95,7 @@ function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerPr
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative flex w-full max-w-xl flex-col bg-card border-l border-border shadow-2xl overflow-hidden"
+        className="relative flex w-full max-w-xl flex-col bg-white border-l border-border shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -270,7 +270,7 @@ function CopyToGlobalModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold mb-1">Copy to Global Library</h3>
         <p className="text-xs text-muted-foreground mb-4">This template will be available to all clients.</p>
         <label className="block text-xs font-medium mb-1.5">Global template name</label>
@@ -321,7 +321,7 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
 
   return (
     <div
-      className="group relative flex flex-col gap-2 rounded-lg border border-border bg-card p-4 hover:border-blue-400/50 transition-colors cursor-pointer"
+      className="group relative flex flex-col gap-2 rounded-lg border border-border bg-white p-4 hover:border-blue-400/50 transition-colors cursor-pointer"
       onClick={() => onOpen(template)}
     >
       {/* Badges */}
@@ -370,7 +370,7 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
               <Icons.MoreHorizontal className="h-3.5 w-3.5" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 bottom-7 z-20 w-44 rounded-md border border-border bg-card shadow-lg py-1">
+              <div className="absolute right-0 bottom-7 z-20 w-44 rounded-md border border-border bg-white shadow-lg py-1">
                 <button
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
                   onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onOpen(template) }}
@@ -444,7 +444,7 @@ function NewTemplateModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-2xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg rounded-xl border border-border bg-white p-5 shadow-2xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold">New Prompt Template</h3>
         <div className="flex gap-2">
           <div className="flex-1">
