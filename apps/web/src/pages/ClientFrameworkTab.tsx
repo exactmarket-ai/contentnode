@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { checkFilenames, type FilenameIssue } from '@/lib/filename'
+import { FilenameWarning } from '@/components/ui/FilenameWarning'
 
 // ── Draft context — provides per-field AI drafting to all section components ──
 
@@ -1487,6 +1489,8 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
   const [uploadingCount, setUploadingCount] = useState(0)
   const uploading = uploadingCount > 0
   const [dragging, setDragging] = useState(false)
+  const [filenameIssues, setFilenameIssues] = useState<FilenameIssue[]>([])
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -1524,17 +1528,31 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
       const form = new FormData()
       form.append('file', file)
       const res = await apiFetch(base, { method: 'POST', body: form })
-      if (!res.ok) return
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        const msg = (body as { error?: string }).error ?? 'Upload failed'
+        setUploadError(msg)
+        setTimeout(() => setUploadError(null), 8000)
+        return
+      }
+      setUploadError(null)
       const { data } = await res.json()
       setAttachments((prev) => [data, ...prev])
-    } catch { /* ignore */ } finally {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error — upload failed'
+      setUploadError(msg)
+      setTimeout(() => setUploadError(null), 8000)
+    } finally {
       setUploadingCount((n) => n - 1)
     }
   }
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return
-    Array.from(files).forEach(uploadFile)
+    const fileArr = Array.from(files)
+    const issues = checkFilenames(fileArr)
+    setFilenameIssues(issues)
+    fileArr.forEach(uploadFile)
   }
 
   const handleDelete = async (a: Attachment) => {
@@ -1657,6 +1675,16 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
           </>
         )}
       </div>
+
+      {filenameIssues.length > 0 && (
+        <FilenameWarning issues={filenameIssues} />
+      )}
+
+      {uploadError && (
+        <div className="flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+          <span>⚠</span> {uploadError}
+        </div>
+      )}
 
       {/* File list */}
       {loading ? (

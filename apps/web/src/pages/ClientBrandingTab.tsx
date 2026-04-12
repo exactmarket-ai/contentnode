@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { checkFilenames, type FilenameIssue } from '@/lib/filename'
+import { FilenameWarning } from '@/components/ui/FilenameWarning'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -556,6 +558,7 @@ function BrandProfileSection({
   const [uploadingCount, setUploadingCount] = useState(0)
   const uploading = uploadingCount > 0
   const [dragging, setDragging] = useState(false)
+  const [filenameIssues, setFilenameIssues] = useState<FilenameIssue[]>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editedJson, setEditedJson] = useState<BrandJson>({})
   const [saving, setSaving] = useState(false)
@@ -623,14 +626,21 @@ function BrandProfileSection({
       setUploadError(null)
       const { data } = await res.json()
       setAttachments((prev) => [data, ...prev])
-    } catch { /* ignore */ } finally {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error — upload failed'
+      setUploadError(msg)
+      setTimeout(() => setUploadError(null), 8000)
+    } finally {
       setUploadingCount((n) => n - 1)
     }
   }
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return
-    Array.from(files).forEach(uploadFile)
+    const fileArr = Array.from(files)
+    const issues = checkFilenames(fileArr)
+    setFilenameIssues(issues)
+    fileArr.forEach(uploadFile)
   }
 
   const handleDelete = async (a: BrandAttachment) => {
@@ -869,6 +879,12 @@ function BrandProfileSection({
                 Cancel
               </button>
             </div>
+          </div>
+        )}
+
+        {filenameIssues.length > 0 && (
+          <div className="mt-2">
+            <FilenameWarning issues={filenameIssues} />
           </div>
         )}
 
