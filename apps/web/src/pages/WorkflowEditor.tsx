@@ -111,12 +111,15 @@ export function WorkflowEditor() {
           animated: false,
         }))
         store.onNodesChange(rfNodes.map((n: { id: string }) => ({ type: 'reset' as const, item: n })))
+        const defaultAssignee = data.defaultAssignee as { id: string; name: string | null } | null
         store.setWorkflow({
           id: data.id as string,
           name: data.name as string,
           clientId: (data.clientId as string | null) ?? null,
           clientName: ((data.client as { name?: string } | null)?.name) ?? null,
           connectivity_mode: (data.connectivityMode as 'online' | 'offline') ?? 'online',
+          defaultAssigneeId: (data.defaultAssigneeId as string | null) ?? null,
+          defaultAssigneeName: defaultAssignee?.name ?? null,
           graphSaved: true,
         })
         useWorkflowStore.setState({ graphDirty: false })

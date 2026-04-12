@@ -60,6 +60,7 @@ export async function workflowRoutes(app: FastifyInstance) {
         client: { select: { id: true, name: true, slug: true } },
         nodes: { orderBy: { createdAt: 'asc' } },
         edges: { orderBy: { createdAt: 'asc' } },
+        defaultAssignee: { select: { id: true, name: true, avatarStorageKey: true } },
         _count: { select: { runs: true } },
       },
     })

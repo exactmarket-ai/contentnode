@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -123,6 +123,141 @@ export async function pollRunUntilTerminal(runId: string) {
   console.warn('[run] timed out after max polls')
   useWorkflowStore.getState().setRunError('Run timed out — the workflow took too long to complete.')
   useWorkflowStore.getState().setRunStatus('failed')
+}
+
+// ─── Assignee Picker ──────────────────────────────────────────────────────────
+
+interface TeamMember { id: string; name: string | null; email: string }
+
+function AssigneePicker() {
+  const workflow = useWorkflowStore((s) => s.workflow)
+  const setWorkflow = useWorkflowStore((s) => s.setWorkflow)
+  const [open, setOpen] = useState(false)
+  const [members, setMembers] = useState<TeamMember[]>([])
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const loadMembers = useCallback(() => {
+    apiFetch('/api/v1/team')
+      .then((r) => r.json())
+      .then(({ data }) => setMembers(data ?? []))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    loadMembers()
+  }, [open, loadMembers])
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const assign = async (member: TeamMember | null) => {
+    setSaving(true)
+    setOpen(false)
+    const newId = member?.id ?? null
+    const newName = member?.name ?? null
+    setWorkflow({ defaultAssigneeId: newId, defaultAssigneeName: newName })
+    if (workflow.id) {
+      try {
+        await apiFetch(`/api/v1/workflows/${workflow.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ defaultAssigneeId: newId }),
+        })
+      } catch {
+        // non-critical — store already updated optimistically
+      }
+    }
+    setSaving(false)
+  }
+
+  const assigneeName = workflow.defaultAssigneeName
+  const initials = assigneeName
+    ? assigneeName.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+    : null
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title={assigneeName ? `Assigned to ${assigneeName}` : 'Set default assignee'}
+        className={cn(
+          'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+          assigneeName
+            ? 'border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
+            : 'border-border bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+        )}
+      >
+        {saving ? (
+          <Icons.Loader2 className="h-3 w-3 animate-spin" />
+        ) : initials ? (
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 text-[8px] font-bold text-white">
+            {initials}
+          </span>
+        ) : (
+          <Icons.UserCircle className="h-3.5 w-3.5" />
+        )}
+        {assigneeName ?? 'Assign'}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-white shadow-lg overflow-hidden">
+          <div className="px-3 py-2 border-b border-border">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Default Assignee</p>
+          </div>
+          <div className="max-h-48 overflow-y-auto py-1">
+            {/* Unassign option */}
+            {assigneeName && (
+              <button
+                onClick={() => assign(null)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
+              >
+                <Icons.UserX className="h-3.5 w-3.5 shrink-0" />
+                Unassign
+              </button>
+            )}
+            {members.length === 0 && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
+            )}
+            {members.map((m) => {
+              const mi = m.name
+                ? m.name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+                : m.email[0].toUpperCase()
+              const isSelected = m.id === workflow.defaultAssigneeId
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => assign(m)}
+                  className={cn(
+                    'flex w-full items-center gap-2 px-3 py-1.5 text-xs transition-colors',
+                    isSelected ? 'bg-violet-50 text-violet-700' : 'text-foreground hover:bg-accent',
+                  )}
+                >
+                  <span className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold',
+                    isSelected ? 'bg-violet-600 text-white' : 'bg-muted text-muted-foreground',
+                  )}>
+                    {mi}
+                  </span>
+                  <div className="min-w-0 text-left">
+                    <p className="truncate font-medium">{m.name ?? m.email}</p>
+                  </div>
+                  {isSelected && <Icons.Check className="ml-auto h-3 w-3 text-violet-600 shrink-0" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 const RUN_STATUS_CONFIG = {
@@ -409,6 +544,9 @@ export function TopBar() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Default assignee picker — only shown for saved workflows */}
+      {workflow.id && <AssigneePicker />}
 
       {/* Spacer */}
       <div className="flex-1" />

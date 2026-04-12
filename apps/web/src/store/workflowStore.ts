@@ -22,6 +22,9 @@ export interface WorkflowMeta {
   /** Locked after first run — never change after that */
   connectivity_mode: ConnectivityMode
   default_model_config: ModelConfig
+  /** Default assignee for runs created from this workflow */
+  defaultAssigneeId?: string | null
+  defaultAssigneeName?: string | null
   /** True when the workflow was auto-created by the run engine, not explicitly saved by the user */
   autoCreated?: boolean
   /** True once the graph has been explicitly saved (PUT /graph). False for brand-new unsaved workflows. */
