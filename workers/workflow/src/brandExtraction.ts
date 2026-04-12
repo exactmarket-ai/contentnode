@@ -557,6 +557,7 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
       try {
         await generateFileSummary(attachmentId, extractedText)
         await runBrandExtraction(agencyId, clientId, verticalId)
+        extractionSucceeded = true
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error(`[brand-attachment-process] post-extraction step failed for ${attachmentId}:`, msg)
@@ -567,8 +568,6 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
         throw err
       }
     }
-
-    extractionSucceeded = extractedText !== null
   })
 
   // Regenerate prompt suggestions in background — non-fatal if it fails
