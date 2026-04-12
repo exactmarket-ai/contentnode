@@ -12,6 +12,7 @@ import {
   QUEUE_FRAMEWORK_RESEARCH,
   QUEUE_ATTACHMENT_PROCESS,
   QUEUE_BRAND_ATTACHMENT_PROCESS,
+  QUEUE_PROMPT_SUGGEST,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
   type TranscriptionJobData,
@@ -28,6 +29,7 @@ import { runScheduleChecker } from './scheduleChecker.js'
 import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
 import { processBrandAttachment } from './brandExtraction.js'
+import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
 
 // ── workflow-runs ─────────────────────────────────────────────────────────────
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
@@ -188,6 +190,21 @@ const brandAttachmentProcessWorker = createWorker<BrandAttachmentProcessJobData>
     }
   },
   5
+)
+
+// ── prompt-suggestion ─────────────────────────────────────────────────────────
+const promptSuggestWorker = createWorker<PromptSuggestJobData>(
+  QUEUE_PROMPT_SUGGEST,
+  async (job: Job<PromptSuggestJobData>) => {
+    console.log(`[prompt-suggestion] generating for client=${job.data.clientId}`)
+    try {
+      await generatePromptSuggestions(job.data.clientId, job.data.agencyId)
+    } catch (err) {
+      console.error('[prompt-suggestion] job failed:', err)
+      throw err
+    }
+  },
+  3
 )
 
 // ── file-cleanup — runs once per day ─────────────────────────────────────────

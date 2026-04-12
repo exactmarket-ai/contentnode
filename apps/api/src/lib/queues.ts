@@ -7,6 +7,7 @@ export const QUEUE_EDIT_ANALYSIS = 'edit-analysis'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
+export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -44,6 +45,11 @@ export interface BrandAttachmentProcessJobData {
   attachmentId: string
   clientId: string
   verticalId: string | null
+}
+
+export interface PromptSuggestJobData {
+  agencyId: string
+  clientId: string
 }
 
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
@@ -118,4 +124,12 @@ export function getBrandAttachmentProcessQueue(): Queue<BrandAttachmentProcessJo
     })
   }
   return brandAttachmentProcessQueue
+}
+
+let promptSuggestQueue: Queue<PromptSuggestJobData> | null = null
+export function getPromptSuggestQueue(): Queue<PromptSuggestJobData> {
+  if (!promptSuggestQueue) {
+    promptSuggestQueue = new Queue<PromptSuggestJobData>(QUEUE_PROMPT_SUGGEST, { connection: getRedis() })
+  }
+  return promptSuggestQueue
 }

@@ -14,6 +14,7 @@ export const QUEUE_SCHEDULE_CHECKER = 'schedule-checker'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
+export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types

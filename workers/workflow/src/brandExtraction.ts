@@ -8,6 +8,7 @@ import { prisma, withAgency } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import type { BrandAttachmentProcessJobData } from './queues.js'
+import { generatePromptSuggestions } from './promptSuggester.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // JSON repair — recovers a partial brand JSON object when Claude's response
@@ -449,6 +450,7 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
 
   console.log(`[brand-attachment-process] processing attachment=${attachmentId}${url ? ` (url: ${url})` : ''}`)
 
+  let extractionSucceeded = false
   await withAgency(agencyId, async () => {
     const attachment = await prisma.clientBrandAttachment.findFirst({
       where: { id: attachmentId, agencyId },
@@ -565,7 +567,16 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
         throw err
       }
     }
+
+    extractionSucceeded = extractedText !== null
   })
+
+  // Regenerate prompt suggestions in background — non-fatal if it fails
+  if (extractionSucceeded) {
+    generatePromptSuggestions(clientId, agencyId).catch((err) =>
+      console.error('[brand-attachment-process] prompt suggestion failed (non-fatal):', err)
+    )
+  }
 
   console.log(`[brand-attachment-process] done — attachment=${attachmentId}`)
 }

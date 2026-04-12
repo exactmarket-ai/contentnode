@@ -4785,7 +4785,7 @@ function StructureTab({ client }: { client: Client }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'deliverables', 'library', 'prompts', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'deliverables', 'library', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4863,7 +4863,6 @@ export function ClientDetailPage() {
     workflows:     'Workflows',
     deliverables:  'Deliverables',
     library:       'Library',
-    prompts:       'Prompt Library',
     framework:     'GTM Framework',
     branding:      'Branding',
     stakeholders:  'Contacts',
@@ -4956,8 +4955,19 @@ export function ClientDetailPage() {
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={switchTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
-        {activeTab === 'library' && <ClientLibraryTab clientId={client.id} />}
-        {activeTab === 'prompts' && <ClientPromptLibraryTab clientId={client.id} />}
+        {activeTab === 'library' && (
+          <div className="space-y-10">
+            <ClientLibraryTab clientId={client.id} />
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Icons.Sparkles className="h-4 w-4 text-violet-500" />
+                <h2 className="text-[15px] font-semibold">Prompt Library</h2>
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-600">Brain-powered</span>
+              </div>
+              <ClientPromptLibraryTab clientId={client.id} />
+            </div>
+          </div>
+        )}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}
         {activeTab === 'access' && <AccessTab client={client} />}
         {activeTab === 'reviews' && <ReviewsTab clientId={client.id} clientName={client.name} />}

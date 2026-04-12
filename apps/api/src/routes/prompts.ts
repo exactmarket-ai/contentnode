@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '@contentnode/database'
+import { getPromptSuggestQueue } from '../lib/queues.js'
 
 const CATEGORIES = ['general', 'content', 'seo', 'social', 'email', 'other'] as const
 
@@ -22,10 +23,28 @@ export async function promptRoutes(app: FastifyInstance) {
     const { clientId } = req.query
     const templates = await prisma.promptTemplate.findMany({
       where: { agencyId, clientId: clientId ?? null },
-      orderBy: [{ category: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, category: true, description: true, parentId: true, clientId: true, useCount: true, createdAt: true, updatedAt: true, body: true },
+      orderBy: [{ source: 'asc' }, { isStale: 'asc' }, { createdAt: 'desc' }],
+      select: { id: true, name: true, category: true, description: true, parentId: true, clientId: true, useCount: true, source: true, isStale: true, createdAt: true, updatedAt: true, body: true },
     })
     return reply.send({ data: templates })
+  })
+
+  // ── POST /suggest — enqueue brain-powered prompt generation for a client ──
+  app.post<{ Querystring: { clientId?: string } }>('/suggest', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.query
+    if (!clientId) return reply.code(400).send({ error: 'clientId is required' })
+
+    // Verify the client belongs to this agency
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    await getPromptSuggestQueue().add('suggest', { agencyId, clientId }, {
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 10 },
+    })
+
+    return reply.send({ data: { queued: true } })
   })
 
   // ── POST / — create a new prompt template ────────────────────────────────
