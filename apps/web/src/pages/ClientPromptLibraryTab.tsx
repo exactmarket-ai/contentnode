@@ -93,7 +93,7 @@ function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerPr
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-transparent" onClick={onClose}>
       <div
         className="relative flex w-full max-w-xl flex-col bg-white border-l border-border shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -269,7 +269,7 @@ function CopyToGlobalModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-transparent" onClick={onClose}>
       <div className="w-full max-w-sm rounded-xl border border-border bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold mb-1">Copy to Global Library</h3>
         <p className="text-xs text-muted-foreground mb-4">This template will be available to all clients.</p>
@@ -443,7 +443,7 @@ function NewTemplateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-transparent" onClick={onClose}>
       <div className="w-full max-w-lg rounded-xl border border-border bg-white p-5 shadow-2xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold">New Prompt Template</h3>
         <div className="flex gap-2">
