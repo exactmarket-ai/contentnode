@@ -407,33 +407,38 @@ export function ClientUsageTab({ clientId, clientName }: { clientId: string; cli
   const [usage, setUsage] = useState<ClientUsage | null>(null)
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([])
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true)
     const qs = `?clientId=${clientId}&days=${days}`
-    Promise.all([
-      apiFetch(`/api/v1/reports/overview${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/reports/runs-over-time${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/reports/feedback-sentiment${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/reports/tokens-by-model${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/reports/output-types${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/reports/detection-pass-rate${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/reports/top-workflows${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/reports/humanizer-usage${qs}`).then((r) => r.json()),
-      apiFetch(`/api/v1/clients/${clientId}/usage`).then((r) => r.json()),
+    const safe = async <T,>(promise: Promise<T>, fallback: T): Promise<T> => {
+      try { return await promise } catch (e) { console.error(e); return fallback }
+    }
+    const j = (p: Promise<Response>) => p.then((r) => r.json())
+    const EMPTY_OVERVIEW: Overview = { totalRuns: 0, completedRuns: 0, failedRuns: 0, successRate: 0, waitingFeedback: 0, waitingApproval: 0, feedbackCount: 0, avgCompletionMins: 0 }
+    const EMPTY_USAGE: ClientUsage = { totalTokens: 0, tokensByModel: [], totalHumWords: 0, humWordsByService: [], transcriptionMinutes: 0, assemblyaiMinutes: 0, detectionCalls: 0, totalImagesGenerated: 0, totalVideosGenerated: 0, totalTranslationChars: 0, brandFilesReady: 0, fwFilesReady: 0 }
+
+    const [ov, rot, sent, tbm, ot, dr, tw, hu, cu] = await Promise.all([
+      safe(j(apiFetch(`/api/v1/reports/overview${qs}`)),              { data: EMPTY_OVERVIEW }),
+      safe(j(apiFetch(`/api/v1/reports/runs-over-time${qs}`)),        { data: [] }),
+      safe(j(apiFetch(`/api/v1/reports/feedback-sentiment${qs}`)),    { data: [] }),
+      safe(j(apiFetch(`/api/v1/reports/tokens-by-model${qs}`)),       { data: [] }),
+      safe(j(apiFetch(`/api/v1/reports/output-types${qs}`)),          { data: [] }),
+      safe(j(apiFetch(`/api/v1/reports/detection-pass-rate${qs}`)),   { data: [] }),
+      safe(j(apiFetch(`/api/v1/reports/top-workflows${qs}`)),         { data: [] }),
+      safe(j(apiFetch(`/api/v1/reports/humanizer-usage${qs}`)),       { data: [] }),
+      safe(j(apiFetch(`/api/v1/clients/${clientId}/usage`)),          { data: EMPTY_USAGE }),
     ])
-      .then(([ov, rot, sent, tbm, ot, dr, tw, hu, cu]) => {
-        setOverview(ov.data)
-        setRunsOverTime(rot.data ?? [])
-        setSentiment(sent.data ?? [])
-        setTokensByModel(tbm.data ?? [])
-        setOutputTypes(ot.data ?? [])
-        setDetectionRate(dr.data ?? [])
-        setTopWorkflows(tw.data ?? [])
-        setHumUsage(hu.data ?? [])
-        setUsage(cu.data)
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false))
+
+    setOverview(ov.data ?? EMPTY_OVERVIEW)
+    setRunsOverTime(rot.data ?? [])
+    setSentiment(sent.data ?? [])
+    setTokensByModel(tbm.data ?? [])
+    setOutputTypes(ot.data ?? [])
+    setDetectionRate(dr.data ?? [])
+    setTopWorkflows(tw.data ?? [])
+    setHumUsage(hu.data ?? [])
+    setUsage(cu.data ?? EMPTY_USAGE)
+    setLoading(false)
   }, [clientId, days])
 
   useEffect(() => { load() }, [load])
