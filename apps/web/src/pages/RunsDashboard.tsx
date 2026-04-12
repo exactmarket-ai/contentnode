@@ -485,8 +485,8 @@ export function RunsDashboard() {
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-6">
         <div className="flex items-center gap-3">
-          <Icons.Play className="h-4 w-4 text-muted-foreground" />
-          <h1 className="text-sm font-semibold">Runs</h1>
+          <Icons.ClipboardEdit className="h-4 w-4 text-muted-foreground" />
+          <h1 className="text-sm font-semibold">Reviews</h1>
           <Badge variant="outline" className="text-xs">{meta.total}</Badge>
           {activeCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-blue-400">
@@ -561,7 +561,7 @@ export function RunsDashboard() {
             ))}
           </select>
 
-          <span className="ml-auto text-xs text-muted-foreground">{filteredRuns.length} run{filteredRuns.length !== 1 ? 's' : ''}</span>
+          <span className="ml-auto text-xs text-muted-foreground">{filteredRuns.length} review{filteredRuns.length !== 1 ? 's' : ''}</span>
         </div>
 
         {/* Run list */}
