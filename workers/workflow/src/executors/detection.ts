@@ -126,7 +126,8 @@ export class DetectionNodeExecutor extends NodeExecutor {
         break
 
       case 'gptzero': {
-        const apiKey = process.env[apiKeyRef] ?? apiKeyRef
+        // Resolve from env var first; if the ref looks like an env var name but isn't set, treat as missing
+        const apiKey = process.env[apiKeyRef] ?? (/^[A-Z][A-Z0-9_]+$/.test(apiKeyRef) ? null : apiKeyRef)
         if (!apiKey) {
           console.warn(`[detection] GPTZero API key not configured — falling back to local detection`)
           result = localDetect(content)
@@ -153,7 +154,7 @@ export class DetectionNodeExecutor extends NodeExecutor {
       }
 
       case 'originality': {
-        const apiKey = process.env[apiKeyRef] ?? apiKeyRef
+        const apiKey = process.env[apiKeyRef] ?? (/^[A-Z][A-Z0-9_]+$/.test(apiKeyRef) ? null : apiKeyRef)
         if (!apiKey) {
           console.warn(`[detection] Originality.ai API key not configured — falling back to local detection`)
           result = localDetect(content)
@@ -179,7 +180,7 @@ export class DetectionNodeExecutor extends NodeExecutor {
       }
 
       case 'sapling': {
-        const apiKey = process.env[apiKeyRef] ?? apiKeyRef
+        const apiKey = process.env[apiKeyRef] ?? (/^[A-Z][A-Z0-9_]+$/.test(apiKeyRef) ? null : apiKeyRef)
         if (!apiKey) {
           console.warn(`[detection] Sapling API key not configured — falling back to local detection`)
           result = localDetect(content)
