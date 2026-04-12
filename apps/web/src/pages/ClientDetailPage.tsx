@@ -1334,6 +1334,7 @@ interface ReviewRun {
   reviewerIds: string[]
   completedAt: string | null
   createdAt: string
+  assignee: { id: string; name: string | null } | null
 }
 
 const REVIEW_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -1404,6 +1405,7 @@ function ReviewsTab({ clientId, clientName }: { clientId: string; clientName: st
               <tr className="border-b border-border bg-muted/20">
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Review</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground w-36">Status</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground w-32">Assignee</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground w-32">Completed</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground w-24">Actions</th>
               </tr>
@@ -1422,6 +1424,9 @@ function ReviewsTab({ clientId, clientName }: { clientId: string; clientName: st
                         <span className={cn('h-1.5 w-1.5 rounded-full', rsCfg.dot)} />
                         {rsCfg.label}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {r.assignee?.name ?? <span className="text-muted-foreground/40">—</span>}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {r.completedAt

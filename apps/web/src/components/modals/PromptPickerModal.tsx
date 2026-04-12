@@ -180,7 +180,7 @@ export function PromptPickerModal({
               <div className="flex flex-col items-center gap-2 py-8 text-center">
                 <Icons.ScrollText className="h-7 w-7 text-muted-foreground/30" />
                 <p className="text-xs text-muted-foreground">No prompt templates yet</p>
-                <p className="text-[10px] text-muted-foreground">Add them in Settings → Prompts</p>
+                <p className="text-[10px] text-muted-foreground">Go to the client's Library tab to generate or create templates</p>
               </div>
             ) : filteredAgency.length === 0 && filteredClient.length === 0 ? (
               <p className="py-8 text-center text-xs text-muted-foreground">No matches</p>
