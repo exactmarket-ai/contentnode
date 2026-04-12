@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Reminder: run \\u0060git pull\\u0060 to sync any changes from your other machine before starting work.\"}'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Reminder: commit and push your work so it\\u0027s available on your other machine — \\u0060git add -A && git commit -m \\\"wip\\\" && git push\\u0060\"}'"
+          }
+        ]
+      }
+    ]
+  }
+}
