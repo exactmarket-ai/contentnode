@@ -34,7 +34,7 @@ interface UsageData {
   translation: { totalChars: number; byProvider: { provider: string; chars: number }[] }
   imageGeneration?: { totalImages: number; byService: { service: string; count: number }[] }
   videoGeneration?: { totalVideos: number; totalSecondGenerated: number; byService: { service: string; count: number }[] }
-  byClient: { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls?: number }[]
+  byClient: { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls?: number; videosGenerated?: number; imagesGenerated?: number }[]
   byWorkflow: { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }[]
   byUser: { userId: string; userName: string; tokens: number; humanizerWords: number; imagesGenerated: number; videosGenerated: number; translationChars: number }[]
   dailyUsage: { date: string; tokens: number }[]
@@ -312,6 +312,22 @@ export function UsagePage() {
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Translation Chars</p>
                     {data.byClient.filter((c) => c.translationChars > 0).slice(0, 10).map((c) => (
                       <Bar key={c.clientId} label={c.clientName} value={c.translationChars} max={data.totals.translationChars} color="bg-cyan-600" />
+                    ))}
+                  </>
+                )}
+                {data.byClient.some((c) => (c.videosGenerated ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Videos Generated</p>
+                    {data.byClient.filter((c) => (c.videosGenerated ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={c.videosGenerated ?? 0} max={Math.max(...data.byClient.map((x) => x.videosGenerated ?? 0))} color="bg-orange-500" />
+                    ))}
+                  </>
+                )}
+                {data.byClient.some((c) => (c.imagesGenerated ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Images Generated</p>
+                    {data.byClient.filter((c) => (c.imagesGenerated ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={c.imagesGenerated ?? 0} max={Math.max(...data.byClient.map((x) => x.imagesGenerated ?? 0))} color="bg-pink-500" />
                     ))}
                   </>
                 )}

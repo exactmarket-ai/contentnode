@@ -144,10 +144,16 @@ export async function usageRoutes(app: FastifyInstance) {
     )]
     const runMap: Record<string, unknown> = {}
 
-    // Also gather run IDs from translation records for client/workflow attribution
+    // Also gather run IDs from translation + video generation records for client/workflow attribution
     const allRunIds = [...new Set([
       ...runIds,
       ...translationRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[],
+      ...videoRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[],
+      ...imageRecords
         .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
         .filter(Boolean) as string[],
     ])]
@@ -164,7 +170,7 @@ export async function usageRoutes(app: FastifyInstance) {
     // Replace runMap with the broader allRunMap
     Object.assign(runMap, allRunMap)
 
-    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls: number }> = {}
+    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls: number; videosGenerated: number; imagesGenerated: number }> = {}
     const tokensByWorkflow: Record<string, { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }> = {}
     for (const record of tokenRecords) {
       const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
@@ -173,7 +179,7 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
         tokensByClient[cid].tokens += record.quantity
         tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
         tokensByWorkflow[wf.id].tokens += record.quantity
@@ -186,7 +192,7 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
         tokensByClient[cid].translationChars += record.quantity
         tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
         tokensByWorkflow[wf.id].translationChars += record.quantity
@@ -199,8 +205,32 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf?.clientId) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
         tokensByClient[cid].videoIntelligenceCalls += 1
+      }
+    }
+    // Include video generations in byClient
+    for (const record of videoRecords) {
+      const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
+      const run = runId ? runMap[runId] : undefined
+      const wf = (run as any)?.workflow
+      if (wf?.clientId) {
+        const cid = wf.clientId
+        const cname = wf.client?.name ?? 'Unknown'
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
+        tokensByClient[cid].videosGenerated += record.quantity
+      }
+    }
+    // Include image generations in byClient
+    for (const record of imageRecords) {
+      const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
+      const run = runId ? runMap[runId] : undefined
+      const wf = (run as any)?.workflow
+      if (wf?.clientId) {
+        const cid = wf.clientId
+        const cname = wf.client?.name ?? 'Unknown'
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
+        tokensByClient[cid].imagesGenerated += record.quantity
       }
     }
 
