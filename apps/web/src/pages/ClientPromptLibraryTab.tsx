@@ -93,9 +93,9 @@ function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerPr
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/30" onClick={onClose}>
       <div
-        className="relative flex w-full max-w-xl flex-col bg-card border-l border-border shadow-2xl overflow-hidden"
+        className="relative flex w-full max-w-xl flex-col bg-white dark:bg-zinc-900 border-l border-border shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
