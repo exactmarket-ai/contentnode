@@ -93,9 +93,9 @@ function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerPr
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative flex w-full max-w-xl flex-col bg-white dark:bg-zinc-900 border-l border-border shadow-2xl overflow-hidden"
+        className="relative flex w-full max-w-xl flex-col bg-card border-l border-border shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -269,8 +269,8 @@ function CopyToGlobalModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-lg bg-white dark:bg-zinc-900 border border-border p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold mb-1">Copy to Global Library</h3>
         <p className="text-xs text-muted-foreground mb-4">This template will be available to all clients.</p>
         <label className="block text-xs font-medium mb-1.5">Global template name</label>
@@ -443,8 +443,8 @@ function NewTemplateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-lg bg-white dark:bg-zinc-900 border border-border p-5 shadow-xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-2xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold">New Prompt Template</h3>
         <div className="flex gap-2">
           <div className="flex-1">
