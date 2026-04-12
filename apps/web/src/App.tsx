@@ -16,6 +16,7 @@ import { TeamPage } from '@/pages/TeamPage'
 import { InvitePage } from '@/pages/InvitePage'
 import { AccessPage } from '@/pages/AccessPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { UserProfilePage } from '@/pages/UserProfilePage'
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { LandingPage } from '@/pages/LandingPage'
 import { PortalPage } from '@/pages/portal/PortalPage'
@@ -97,6 +98,7 @@ const protectedChildren = [
   { path: 'team/invite', element: <InvitePage /> },
   { path: 'access', element: <AccessPage /> },
   { path: 'settings', element: <SettingsPage /> },
+  { path: 'profile', element: <UserProfilePage /> },
 ]
 
 // ── Router ────────────────────────────────────────────────────────────────────

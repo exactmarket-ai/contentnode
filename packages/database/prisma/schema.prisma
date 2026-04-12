@@ -275,8 +275,9 @@ model User {
   clerkUserId String  @unique @map("clerk_user_id")
   email      String
   name       String?
-  title      String?
-  department String?
+  title             String?
+  department        String?
+  avatarStorageKey  String?  @map("avatar_storage_key")
   // Roles: owner | admin | lead | member (existing) + super_admin | org_admin | client_manager | editor | reviewer | viewer | api_user (new)
   role       String   @default("member")
   // Per-user permission override. Highest priority in the resolution chain.

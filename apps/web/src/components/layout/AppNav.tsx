@@ -1,9 +1,29 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useWorkflowStore } from '@/store/workflowStore'
+
+function UserAvatar({ avatarUrl, name, email, size = 'sm' }: { avatarUrl: string | null; name: string | null; email: string; size?: 'sm' | 'md' }) {
+  const dims = size === 'md' ? 'h-9 w-9 text-sm' : 'h-7 w-7 text-xs'
+  const initials = (() => {
+    if (name) {
+      const parts = name.trim().split(/\s+/).filter(Boolean)
+      if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      if (parts[0]?.length) return parts[0].slice(0, 2).toUpperCase()
+    }
+    return email.slice(0, 2).toUpperCase()
+  })()
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt={name ?? email} className={cn(dims, 'rounded-full object-cover border border-border shrink-0')} />
+  }
+  return (
+    <div className={cn(dims, 'rounded-full flex items-center justify-center font-semibold shrink-0 bg-primary/10 text-primary border border-primary/20')}>
+      {initials}
+    </div>
+  )
+}
 
 const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d8f5' }
 
@@ -87,7 +107,7 @@ function NavItem({
 
 export function AppNav({ onSignOut }: AppNavProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const { isAdmin, isOwner } = useCurrentUser()
+  const { user, isAdmin, isOwner } = useCurrentUser()
   const location = useLocation()
   const setPendingNavAction = useWorkflowStore((s) => s.setPendingNavAction)
 
@@ -173,6 +193,29 @@ export function AppNav({ onSignOut }: AppNavProps) {
           <Icons.LogOut className="h-4 w-4 shrink-0" />
           {!collapsed && <span>Sign out</span>}
         </button>}
+
+        {/* User identity — links to /profile */}
+        {user && (
+          <div className="mt-1 pt-2 border-t border-border">
+            <Link
+              to="/profile"
+              title={collapsed ? (user.name ?? user.email) : undefined}
+              className={cn(
+                'flex items-center rounded-md px-2 py-1.5 transition-colors hover:bg-accent',
+                collapsed ? 'justify-center' : 'gap-2.5',
+              )}
+            >
+              <UserAvatar avatarUrl={user.avatarUrl} name={user.name} email={user.email} />
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{user.name ?? user.email}</p>
+                  {user.title && <p className="text-[10px] text-muted-foreground truncate">{user.title}</p>}
+                  {!user.title && <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>}
+                </div>
+              )}
+            </Link>
+          </div>
+        )}
       </div>
     </aside>
   )

@@ -5,6 +5,9 @@ export interface CurrentUser {
   id: string
   email: string
   name: string | null
+  title: string | null
+  department: string | null
+  avatarUrl: string | null
   role: string
   createdAt: string
 }
@@ -13,6 +16,11 @@ const ADMIN_ROLES  = new Set(['owner', 'super_admin', 'admin', 'org_admin'])
 const OWNER_ROLES  = new Set(['owner', 'super_admin'])
 
 let cached: CurrentUser | null = null
+
+/** Call this after updating the profile so the next consumer re-fetches */
+export function invalidateCurrentUser() {
+  cached = null
+}
 
 export function useCurrentUser() {
   const [user, setUser]       = useState<CurrentUser | null>(cached)
@@ -39,5 +47,5 @@ export function useCurrentUser() {
   const isLead    = role === 'lead' || isManager
   const isMember  = !!user
 
-  return { user, loading, isOwner, isAdmin, isManager, isLead, isMember }
+  return { user, loading, isOwner, isAdmin, isManager, isLead, isMember, setUser }
 }

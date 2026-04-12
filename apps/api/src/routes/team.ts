@@ -546,7 +546,7 @@ export async function teamRoutes(app: FastifyInstance) {
 
     let me = await prisma.user.findFirst({
       where: { agencyId, clerkUserId: userId },
-      select: { id: true, email: true, name: true, title: true, department: true, role: true, createdAt: true },
+      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, createdAt: true },
     })
 
     // Fallback: clerkUserId in DB doesn't match current Clerk session (e.g. seeded with placeholder).
@@ -558,7 +558,7 @@ export async function teamRoutes(app: FastifyInstance) {
         if (email) {
           const byEmail = await prisma.user.findFirst({
             where: { agencyId, email },
-            select: { id: true, email: true, name: true, title: true, department: true, role: true, createdAt: true },
+            select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, createdAt: true },
           })
           if (byEmail) {
             await prisma.user.update({ where: { id: byEmail.id }, data: { clerkUserId: userId } })
@@ -575,6 +575,82 @@ export async function teamRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: 'User not found in this organization.' })
     }
 
-    return reply.send({ data: me })
+    const { avatarStorageKey, ...rest } = me
+    return reply.send({
+      data: {
+        ...rest,
+        avatarUrl: avatarStorageKey ?? null,
+      },
+    })
+  })
+
+  // ── PATCH /me — update own profile (name, title, department) ───────────────
+  app.patch('/me', async (req, reply) => {
+    const { agencyId, userId } = req.auth
+    const body = req.body as Record<string, unknown>
+    const name       = typeof body.name       === 'string' ? body.name.trim()       : undefined
+    const title      = typeof body.title      === 'string' ? body.title.trim()      : undefined
+    const department = typeof body.department === 'string' ? body.department.trim() : undefined
+
+    const user = await prisma.user.findFirst({ where: { agencyId, clerkUserId: userId } })
+    if (!user) return reply.code(404).send({ error: 'User not found' })
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        ...(name !== undefined       ? { name: name || null }       : {}),
+        ...(title !== undefined      ? { title: title || null }      : {}),
+        ...(department !== undefined ? { department: department || null } : {}),
+      },
+      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, createdAt: true },
+    })
+
+    const { avatarStorageKey, ...rest } = updated
+    return reply.send({ data: { ...rest, avatarUrl: avatarStorageKey ?? null } })
+  })
+
+  // ── POST /me/avatar — upload profile photo ────────────────────────────────
+  app.post('/me/avatar', async (req, reply) => {
+    const { agencyId, userId } = req.auth
+
+    const user = await prisma.user.findFirst({ where: { agencyId, clerkUserId: userId } })
+    if (!user) return reply.code(404).send({ error: 'User not found' })
+
+    const data = await req.file({ limits: { fileSize: 5 * 1024 * 1024 } })
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const { extname } = await import('node:path')
+    const ext = extname(data.filename).toLowerCase()
+    const AVATAR_MIME: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp',
+    }
+    if (!AVATAR_MIME[ext]) {
+      data.file.resume()
+      return reply.code(400).send({ error: 'Unsupported format. Use: jpg, png, gif, webp' })
+    }
+
+    const chunks: Buffer[] = []
+    for await (const chunk of data.file) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const contentType = AVATAR_MIME[ext]
+    const dataUrl = `data:${contentType};base64,${Buffer.concat(chunks).toString('base64')}`
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { avatarStorageKey: dataUrl },
+    })
+
+    return reply.send({ data: { avatarUrl: dataUrl } })
+  })
+
+  // ── DELETE /me/avatar — remove profile photo ──────────────────────────────
+  app.delete('/me/avatar', async (req, reply) => {
+    const { agencyId, userId } = req.auth
+    const user = await prisma.user.findFirst({ where: { agencyId, clerkUserId: userId } })
+    if (!user) return reply.code(404).send({ error: 'User not found' })
+    await prisma.user.update({ where: { id: user.id }, data: { avatarStorageKey: null } })
+    return reply.send({ data: { avatarUrl: null } })
   })
 }
