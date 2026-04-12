@@ -4791,11 +4791,17 @@ type Tab = (typeof TABS)[number]
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
   const initialTab = (searchParams.get('tab') as Tab | null)
   const [activeTab, setActiveTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? initialTab as Tab : 'overview')
+
+  // Keep URL in sync so navigate(-1) restores the correct tab
+  const switchTab = useCallback((tab: Tab) => {
+    setActiveTab(tab)
+    setSearchParams({ tab }, { replace: true })
+  }, [setSearchParams])
   const [showEditClient, setShowEditClient] = useState(false)
   const [archivingClient, setArchivingClient] = useState(false)
 
@@ -4928,7 +4934,7 @@ export function ClientDetailPage() {
         {TABS.map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => switchTab(tab)}
             className={cn(
               'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
               activeTab === tab
@@ -4947,7 +4953,7 @@ export function ClientDetailPage() {
         : activeTab === 'branding'
         ? <div className="flex-1 overflow-hidden"><ClientBrandingTab clientId={client.id} clientName={client.name} /></div>
         : <div className="flex-1 overflow-auto p-6">
-        {activeTab === 'overview' && <OverviewTab client={client} onTabChange={setActiveTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
+        {activeTab === 'overview' && <OverviewTab client={client} onTabChange={switchTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'library' && <ClientLibraryTab clientId={client.id} />}
