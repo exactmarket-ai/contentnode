@@ -36,6 +36,7 @@ interface ClientUsage {
   transcriptionMinutes: number
   assemblyaiMinutes: number
   detectionCalls: number
+  videoIntelligenceCalls: number
   totalImagesGenerated: number
   totalVideosGenerated: number
   totalTranslationChars: number
@@ -326,6 +327,7 @@ function exportPdf(clientName: string, days: number, overview: Overview, usage: 
     ['Live Transcription', `${usage.transcriptionMinutes} min`],
     ['File Transcription', `${usage.assemblyaiMinutes} min`],
     ['Detection Calls', String(usage.detectionCalls)],
+    ['Video Intelligence', String(usage.videoIntelligenceCalls)],
     ['Images Generated', String(usage.totalImagesGenerated)],
     ['Videos Generated', String(usage.totalVideosGenerated)],
     ['Brand Files', String(usage.brandFilesReady)],
@@ -415,7 +417,7 @@ export function ClientUsageTab({ clientId, clientName }: { clientId: string; cli
     }
     const j = (p: Promise<Response>) => p.then((r) => r.json())
     const EMPTY_OVERVIEW: Overview = { totalRuns: 0, completedRuns: 0, failedRuns: 0, successRate: 0, waitingFeedback: 0, waitingApproval: 0, feedbackCount: 0, avgCompletionMins: 0 }
-    const EMPTY_USAGE: ClientUsage = { totalTokens: 0, tokensByModel: [], totalHumWords: 0, humWordsByService: [], transcriptionMinutes: 0, assemblyaiMinutes: 0, detectionCalls: 0, totalImagesGenerated: 0, totalVideosGenerated: 0, totalTranslationChars: 0, brandFilesReady: 0, fwFilesReady: 0 }
+    const EMPTY_USAGE: ClientUsage = { totalTokens: 0, tokensByModel: [], totalHumWords: 0, humWordsByService: [], transcriptionMinutes: 0, assemblyaiMinutes: 0, detectionCalls: 0, videoIntelligenceCalls: 0, totalImagesGenerated: 0, totalVideosGenerated: 0, totalTranslationChars: 0, brandFilesReady: 0, fwFilesReady: 0 }
 
     const [ov, rot, sent, tbm, ot, dr, tw, hu, cu] = await Promise.all([
       safe(j(apiFetch(`/api/v1/reports/overview${qs}`)),              { data: EMPTY_OVERVIEW }),
@@ -468,6 +470,7 @@ export function ClientUsageTab({ clientId, clientName }: { clientId: string; cli
   const extraStats = [
     { label: 'Images', value: usage.totalImagesGenerated },
     { label: 'Videos', value: usage.totalVideosGenerated },
+    { label: 'Video Intelligence', value: usage.videoIntelligenceCalls, fmt: (v: number) => `${v} analysis` },
     { label: 'Translation', value: usage.totalTranslationChars, fmt: (v: number) => v >= 1000 ? `${Math.round(v / 1000)}K ch` : `${v} ch` },
     { label: 'Detection', value: usage.detectionCalls, fmt: (v: number) => `${v} calls` },
     { label: 'Brand Files', value: usage.brandFilesReady },

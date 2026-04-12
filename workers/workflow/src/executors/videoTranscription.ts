@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { downloadBuffer, isS3Mode, UPLOAD_DIR } from '@contentnode/storage'
+import { prisma } from '@contentnode/database'
+import { Prisma } from '@prisma/client'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, asyncPoll } from './base.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,7 +30,7 @@ function extractVideoRef(input: unknown): VideoRef | null {
   return null
 }
 
-async function transcribeWithAssemblyAI(audioPath: string, apiKeyRef: string): Promise<string> {
+async function transcribeWithAssemblyAI(audioPath: string, apiKeyRef: string): Promise<{ text: string; durationSecs: number }> {
   const apiKey = process.env[apiKeyRef]
   if (!apiKey) throw new Error(`AssemblyAI API key env var "${apiKeyRef}" is not set`)
 
@@ -59,8 +61,8 @@ async function transcribeWithAssemblyAI(audioPath: string, apiKeyRef: string): P
         headers: { authorization: apiKey },
       })
       if (!res.ok) return null
-      const data = await res.json() as { status: string; text?: string; error?: string }
-      if (data.status === 'completed') return data.text ?? ''
+      const data = await res.json() as { status: string; text?: string; error?: string; audio_duration?: number }
+      if (data.status === 'completed') return { text: data.text ?? '', durationSecs: Math.round(data.audio_duration ?? 0) }
       if (data.status === 'error') throw new Error(`AssemblyAI error: ${data.error ?? 'Unknown error'}`)
       return null
     },
@@ -171,9 +173,12 @@ export class VideoTranscriptionExecutor extends NodeExecutor {
 
       // Transcribe
       let transcript: string
+      let durationSecs = 0
       try {
         if (provider === 'assemblyai') {
-          transcript = await transcribeWithAssemblyAI(audioPath, apiKeyRef)
+          const result = await transcribeWithAssemblyAI(audioPath, apiKeyRef)
+          transcript = result.text
+          durationSecs = result.durationSecs
         } else if (provider === 'openai-whisper') {
           transcript = await transcribeWithWhisper(audioPath, apiKeyRef)
         } else {
@@ -181,6 +186,25 @@ export class VideoTranscriptionExecutor extends NodeExecutor {
         }
       } finally {
         try { unlinkSync(audioPath) } catch { /* ignore */ }
+      }
+
+      // Record AssemblyAI usage so it shows in the client usage tab
+      if (provider === 'assemblyai' && durationSecs > 0) {
+        const now = new Date()
+        prisma.usageRecord.create({
+          data: {
+            agencyId: ctx.agencyId,
+            metric: 'assemblyai_seconds',
+            quantity: durationSecs,
+            periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
+            periodEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+            metadata: {
+              workflowRunId: ctx.workflowRunId,
+              nodeId: ctx.nodeId,
+              ...(ctx.userId ? { userId: ctx.userId } : {}),
+            } as Prisma.InputJsonValue,
+          },
+        }).catch(() => {})
       }
 
       return { output: { text: transcript } }

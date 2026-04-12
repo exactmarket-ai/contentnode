@@ -589,7 +589,7 @@ export async function clientRoutes(app: FastifyInstance) {
     // Fetch all usage records attributed to this client's workflow runs in one shot
     const runRecords = runIds.length
       ? await prisma.usageRecord.findMany({
-          where: { agencyId, metric: { in: ['ai_tokens', 'humanizer_words', 'image_generations', 'video_generations', 'translation_chars', 'detection_call'] } },
+          where: { agencyId, metric: { in: ['ai_tokens', 'humanizer_words', 'image_generations', 'video_generations', 'translation_chars', 'detection_call', 'video_intelligence_call', 'assemblyai_seconds'] } },
           select: { metric: true, quantity: true, metadata: true },
         })
       : []
@@ -629,6 +629,14 @@ export async function clientRoutes(app: FastifyInstance) {
     // Detection calls
     const detectionCalls = clientRunRecords.filter((r) => r.metric === 'detection_call').length
 
+    // Video intelligence calls (Google Gemini)
+    const videoIntelligenceCalls = clientRunRecords.filter((r) => r.metric === 'video_intelligence_call').length
+
+    // AssemblyAI from workflow runs (video transcription node)
+    const workflowAssemblyaiSecs = clientRunRecords
+      .filter((r) => r.metric === 'assemblyai_seconds')
+      .reduce((s, r) => s + r.quantity, 0)
+
     // Transcription — real-time sessions (Transcription tab)
     const transcriptSessions = await prisma.transcriptSession.findMany({
       where: { agencyId, clientId, status: 'ready' },
@@ -652,19 +660,19 @@ export async function clientRoutes(app: FastifyInstance) {
     ])
     const allAttIds = new Set([...brandAttIds, ...fwAttIds])
 
-    const assemblyaiRecords = allAttIds.size
+    const fileAssemblyaiRecords = allAttIds.size
       ? await prisma.usageRecord.findMany({
           where: { agencyId, metric: 'assemblyai_seconds' },
           select: { quantity: true, metadata: true },
         })
       : []
-    const clientAssemblyaiSecs = assemblyaiRecords
+    const fileAssemblyaiSecs = fileAssemblyaiRecords
       .filter((r) => {
         const attId = (r.metadata as Record<string, unknown>)['attachmentId'] as string | undefined
         return attId && allAttIds.has(attId)
       })
       .reduce((s, r) => s + r.quantity, 0)
-    const assemblyaiMinutes = Math.round(clientAssemblyaiSecs / 60)
+    const assemblyaiMinutes = Math.round((workflowAssemblyaiSecs + fileAssemblyaiSecs) / 60)
 
     // Brand / GTM files processed for this client
     const [brandFilesReady, fwFilesReady] = await Promise.all([
@@ -685,6 +693,7 @@ export async function clientRoutes(app: FastifyInstance) {
         transcriptionMinutes,
         assemblyaiMinutes,
         detectionCalls,
+        videoIntelligenceCalls,
         totalImagesGenerated,
         totalVideosGenerated,
         totalTranslationChars,
