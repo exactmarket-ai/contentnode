@@ -50,41 +50,14 @@ const SOURCE_COLORS: Record<string, string> = {
 
 interface DrawerProps {
   template: PromptTemplate
-  canEdit: boolean
   onClose: () => void
   onSaved: (updated: PromptTemplate) => void
   onUse: (id: string) => void
+  onFork: (template: PromptTemplate) => void
 }
 
-function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerProps) {
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(template.name)
-  const [body, setBody] = useState(template.body)
-  const [description, setDescription] = useState(template.description ?? '')
-  const [category, setCategory] = useState(template.category)
-  const [saving, setSaving] = useState(false)
+function TemplateDrawer({ template, onClose, onSaved: _onSaved, onUse, onFork }: DrawerProps) {
   const [copied, setCopied] = useState(false)
-
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      const res = await apiFetch(`/api/v1/template-library/${template.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, body, description: description || null, category }),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        alert(j.error ?? 'Failed to save')
-        return
-      }
-      const { data } = await res.json()
-      onSaved(data)
-      setEditing(false)
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const handleCopy = () => {
     navigator.clipboard.writeText(template.body).catch(() => {})
@@ -101,15 +74,7 @@ function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerPr
         {/* Header */}
         <div className="flex items-center gap-2 border-b border-border px-5 py-3.5">
           <div className="flex-1 min-w-0">
-            {editing ? (
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="h-7 text-sm font-semibold"
-              />
-            ) : (
-              <h2 className="truncate text-sm font-semibold">{template.name}</h2>
-            )}
+            <h2 className="truncate text-sm font-semibold">{template.name}</h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
@@ -130,21 +95,9 @@ function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerPr
 
         {/* Meta row */}
         <div className="flex items-center gap-2 border-b border-border px-5 py-2.5">
-          {editing ? (
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="h-6 rounded border border-border bg-background text-xs px-2"
-            >
-              {CATEGORIES.filter((c) => c !== 'All').map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          ) : (
-            <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', CATEGORY_COLORS[template.category] ?? 'bg-muted text-muted-foreground')}>
-              {template.category}
-            </span>
-          )}
+          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', CATEGORY_COLORS[template.category] ?? 'bg-muted text-muted-foreground')}>
+            {template.category}
+          </span>
           <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', SOURCE_COLORS[template.source])}>
             {SOURCE_LABELS[template.source]}
           </span>
@@ -158,57 +111,26 @@ function TemplateDrawer({ template, canEdit, onClose, onSaved, onUse }: DrawerPr
         </div>
 
         {/* Description */}
-        {(template.description || editing) && (
+        {template.description && (
           <div className="border-b border-border px-5 py-3">
-            {editing ? (
-              <Input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Short description (optional)"
-                className="h-7 text-xs"
-              />
-            ) : (
-              <p className="text-xs text-muted-foreground">{template.description}</p>
-            )}
+            <p className="text-xs text-muted-foreground">{template.description}</p>
           </div>
         )}
 
         {/* Body */}
         <div className="flex-1 overflow-auto px-5 py-4">
-          {editing ? (
-            <Textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              className="min-h-[300px] resize-none font-mono text-xs leading-relaxed"
-            />
-          ) : (
-            <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-sans">{template.body}</pre>
-          )}
+          <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-sans">{template.body}</pre>
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-border px-5 py-3">
-          {editing ? (
-            <>
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditing(false)}>Cancel</Button>
-              <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={saving}>
-                {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-                Save
-              </Button>
-            </>
-          ) : (
-            <>
-              {canEdit && (
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditing(true)}>
-                  <Icons.Pencil className="h-3 w-3 mr-1" />
-                  Edit
-                </Button>
-              )}
-              <Button size="sm" className="h-7 text-xs ml-auto" onClick={() => { onUse(template.id); onClose() }}>
-                Use template
-              </Button>
-            </>
-          )}
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { onFork(template); onClose() }}>
+            <Icons.GitFork className="h-3 w-3 mr-1" />
+            Edit as new
+          </Button>
+          <Button size="sm" className="h-7 text-xs" onClick={() => { onUse(template.id); onClose() }}>
+            Use template
+          </Button>
         </div>
       </div>
     </div>
@@ -410,15 +332,17 @@ function NewTemplateModal({
   clientId,
   onClose,
   onCreated,
+  initialValues,
 }: {
   clientId: string
   onClose: () => void
   onCreated: (t: PromptTemplate) => void
+  initialValues?: { name: string; body: string; description: string; category: string }
 }) {
-  const [name, setName] = useState('')
-  const [body, setBody] = useState('')
-  const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('Business')
+  const [name, setName] = useState(initialValues?.name ?? '')
+  const [body, setBody] = useState(initialValues?.body ?? '')
+  const [description, setDescription] = useState(initialValues?.description ?? '')
+  const [category, setCategory] = useState(initialValues?.category ?? 'Business')
   const [saving, setSaving] = useState(false)
 
   const handleSubmit = async () => {
@@ -445,7 +369,7 @@ function NewTemplateModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-transparent" onClick={onClose}>
       <div className="w-full max-w-lg rounded-xl border border-border bg-white p-5 shadow-2xl flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold">New Prompt Template</h3>
+        <h3 className="text-sm font-semibold">{initialValues ? 'Save as New Template' : 'New Prompt Template'}</h3>
         <div className="flex gap-2">
           <div className="flex-1">
             <label className="block text-xs font-medium mb-1">Name *</label>
@@ -502,6 +426,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
   const [openTemplate, setOpenTemplate] = useState<PromptTemplate | null>(null)
   const [copyToGlobalTemplate, setCopyToGlobalTemplate] = useState<PromptTemplate | null>(null)
   const [showNewModal, setShowNewModal] = useState(false)
+  const [forkTemplate, setForkTemplate] = useState<PromptTemplate | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -703,10 +628,10 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
       {openTemplate && (
         <TemplateDrawer
           template={openTemplate}
-          canEdit={true}
           onClose={() => setOpenTemplate(null)}
           onSaved={handleSaved}
           onUse={handleUse}
+          onFork={(t) => { setOpenTemplate(null); setForkTemplate(t) }}
         />
       )}
 
@@ -719,12 +644,18 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
         />
       )}
 
-      {/* New template modal */}
-      {showNewModal && (
+      {/* New template modal (blank or forked) */}
+      {(showNewModal || forkTemplate) && (
         <NewTemplateModal
           clientId={clientId}
-          onClose={() => setShowNewModal(false)}
-          onCreated={(t) => { setTemplates((prev) => [t, ...prev]); setShowNewModal(false) }}
+          onClose={() => { setShowNewModal(false); setForkTemplate(null) }}
+          onCreated={(t) => { setTemplates((prev) => [t, ...prev]); setShowNewModal(false); setForkTemplate(null) }}
+          initialValues={forkTemplate ? {
+            name: forkTemplate.name,
+            body: forkTemplate.body,
+            description: forkTemplate.description ?? '',
+            category: forkTemplate.category,
+          } : undefined}
         />
       )}
     </div>
