@@ -1267,6 +1267,23 @@ interface ClientUsage {
   detectionRuns: number
 }
 
+interface ManualEntry {
+  id: string
+  date: string
+  service: string
+  description: string | null
+  quantity: number
+  unit: string
+  createdAt: string
+}
+
+const UNIT_OPTIONS = ['minutes', 'hours', 'sessions', 'videos', 'words', 'pages', 'other']
+
+const SUGGESTED_SERVICES = [
+  'Google Meet', 'Zoom', 'Video Editing', 'Copywriting', 'Design',
+  'Research', 'Strategy Session', 'Client Call', 'Content Review', 'Other',
+]
+
 function UsageBar({ label, value, max, color = 'bg-blue-500', unit = '' }: { label: string; value: number; max: number; color?: string; unit?: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0
   const fmt = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n/1_000).toFixed(1)}K` : String(n)
@@ -1291,6 +1308,200 @@ function UsageSection({ title, icon: Icon, children }: { title: string; icon: Re
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
       </div>
       {children}
+    </div>
+  )
+}
+
+function ManualUsageSection({ clientId }: { clientId: string }) {
+  const [entries, setEntries] = useState<ManualEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({ date: today, service: '', description: '', quantity: '', unit: 'minutes' })
+
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${clientId}/manual-usage`)
+      .then((r) => r.json())
+      .then(({ data }) => { setEntries(data ?? []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [clientId])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.service.trim() || !form.quantity || !form.date) return
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/manual-usage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: form.date,
+          service: form.service.trim(),
+          description: form.description.trim() || undefined,
+          quantity: parseFloat(form.quantity),
+          unit: form.unit,
+        }),
+      })
+      const { data } = await res.json()
+      setEntries((prev) => [data, ...prev])
+      setForm({ date: today, service: '', description: '', quantity: '', unit: 'minutes' })
+      setShowForm(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    try {
+      await apiFetch(`/api/v1/clients/${clientId}/manual-usage/${id}`, { method: 'DELETE' })
+      setEntries((prev) => prev.filter((e) => e.id !== id))
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icons.ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Manual Usage Log</p>
+        </div>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+        >
+          <Icons.Plus className="h-3 w-3" />
+          Log activity
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Date</label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Service / Tool</label>
+              <input
+                type="text"
+                value={form.service}
+                onChange={(e) => setForm((f) => ({ ...f, service: e.target.value }))}
+                placeholder="e.g. Google Meet"
+                list="service-suggestions"
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                required
+              />
+              <datalist id="service-suggestions">
+                {SUGGESTED_SERVICES.map((s) => <option key={s} value={s} />)}
+              </datalist>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Description (optional)</label>
+            <input
+              type="text"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              placeholder="e.g. Strategy call with marketing team"
+              className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Quantity</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={form.quantity}
+                onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+                placeholder="60"
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Unit</label>
+              <select
+                value={form.unit}
+                onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {saving && <Icons.Loader2 className="h-3 w-3 animate-spin" />}
+              Save entry
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-4">
+          <Icons.Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : entries.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No manual activity logged yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {entries.map((entry) => (
+            <div key={entry.id} className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-background/50 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium">{entry.service}</span>
+                  <span className="text-xs font-semibold text-foreground">{entry.quantity} {entry.unit}</span>
+                  <span className="text-xs text-muted-foreground">{fmtDate(entry.date)}</span>
+                </div>
+                {entry.description && (
+                  <p className="mt-0.5 text-xs text-muted-foreground truncate">{entry.description}</p>
+                )}
+              </div>
+              <button
+                onClick={() => handleDelete(entry.id)}
+                disabled={deleting === entry.id}
+                className="shrink-0 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              >
+                {deleting === entry.id
+                  ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Icons.Trash2 className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1369,6 +1580,9 @@ function UsageTab({ clientId }: { clientId: string }) {
             : <p className="text-sm font-semibold">{usage.transcriptionMinutes} minutes processed</p>}
         </UsageSection>
       </div>
+
+      {/* Manual usage log */}
+      <ManualUsageSection clientId={clientId} />
     </div>
   )
 }

@@ -666,6 +666,62 @@ export async function clientRoutes(app: FastifyInstance) {
     })
   })
 
+  // ── Manual Usage Entries ──────────────────────────────────────────────────
+
+  app.get<{ Params: { id: string } }>('/:id/manual-usage', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const entries = await prisma.manualUsageEntry.findMany({
+      where: { agencyId, clientId },
+      orderBy: { date: 'desc' },
+    })
+    return reply.send({ data: entries })
+  })
+
+  app.post<{ Params: { id: string }; Body: { date: string; service: string; description?: string; quantity: number; unit: string } }>(
+    '/:id/manual-usage',
+    async (req, reply) => {
+      const { agencyId, userId } = req.auth
+      const clientId = req.params.id
+      const { date, service, description, quantity, unit } = req.body
+
+      if (!date || !service || quantity == null || !unit) {
+        return reply.code(400).send({ error: 'date, service, quantity, and unit are required' })
+      }
+
+      const client = await prisma.client.findFirst({ where: { id: clientId, agencyId } })
+      if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+      const entry = await prisma.manualUsageEntry.create({
+        data: {
+          agencyId,
+          clientId,
+          date: new Date(date),
+          service: service.trim(),
+          description: description?.trim() || null,
+          quantity: Number(quantity),
+          unit,
+          createdBy: userId ?? null,
+        },
+      })
+      return reply.code(201).send({ data: entry })
+    }
+  )
+
+  app.delete<{ Params: { id: string; entryId: string } }>('/:id/manual-usage/:entryId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, entryId } = req.params
+
+    const entry = await prisma.manualUsageEntry.findFirst({ where: { id: entryId, agencyId, clientId } })
+    if (!entry) return reply.code(404).send({ error: 'Entry not found' })
+
+    await prisma.manualUsageEntry.delete({ where: { id: entryId } })
+    return reply.code(204).send()
+  })
+
   // ── GET /:id/stakeholder-stats ────────────────────────────────────────────
   app.get<{ Params: { id: string } }>('/:id/stakeholder-stats', async (req, reply) => {
     const { agencyId } = req.auth

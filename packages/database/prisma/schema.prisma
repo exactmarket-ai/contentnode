@@ -50,6 +50,7 @@ model Agency {
   brandProfiles      ClientBrandProfile[]
   brandBuilders      ClientBrandBuilder[]
   brandAttachments   ClientBrandAttachment[]
+  manualUsageEntries ManualUsageEntry[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -110,7 +111,8 @@ model Client {
   brandVerticals   ClientBrandVertical[]
   brandProfiles    ClientBrandProfile[]
   brandBuilders    ClientBrandBuilder[]
-  brandAttachments ClientBrandAttachment[]
+  brandAttachments   ClientBrandAttachment[]
+  manualUsageEntries ManualUsageEntry[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -1193,4 +1195,27 @@ model ClientBrandAttachment {
   @@index([clientId])
   @@index([agencyId])
   @@map("client_brand_attachments")
+}
+
+// ─────────────────────────────────────────────
+// ManualUsageEntry — manually logged external tool activity
+// ─────────────────────────────────────────────
+model ManualUsageEntry {
+  id          String   @id @default(cuid())
+  agencyId    String   @map("agency_id")
+  clientId    String   @map("client_id")
+  date        DateTime
+  service     String   // e.g. "Google Meet", "Video Editing", "Copywriting"
+  description String?
+  quantity    Float
+  unit        String   @default("minutes") // minutes | hours | sessions | videos | words | other
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   String?  @map("created_by") // Clerk user ID
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("manual_usage_entries")
 }
