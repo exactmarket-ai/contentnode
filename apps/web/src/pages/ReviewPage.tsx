@@ -1372,7 +1372,7 @@ export function ReviewPage() {
       {/* Selection bubble menu — appears near the end of the text selection */}
       {selMenu && !popover && (
         <div
-          className="fixed z-50 flex items-center overflow-hidden rounded-lg border border-border bg-white shadow-xl -translate-x-1/2"
+          className="fixed z-50 flex items-center overflow-hidden rounded-full border border-violet-400 bg-violet-600 shadow-lg shadow-violet-900/30 -translate-x-1/2"
           style={{
             left: Math.min(Math.max(140, selMenu.x), window.innerWidth - 140),
             top: selMenu.y + 8,
@@ -1385,19 +1385,19 @@ export function ReviewPage() {
               setSelMenu(null)
               setTimeout(() => setPopover({ x, y, text }), 0)
             }}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground hover:bg-blue-50 hover:text-blue-700 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-colors"
           >
             <Icons.MessageSquarePlus className="h-3.5 w-3.5" />
             Suggest change
           </button>
-          <div className="w-px h-6 bg-border shrink-0" />
+          <div className="w-px h-4 bg-violet-400/60 shrink-0" />
           <button
             onMouseDown={(e) => {
               e.preventDefault()
               setSelMenu(null)
               editor?.commands.focus()
             }}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-colors"
           >
             <Icons.PenLine className="h-3.5 w-3.5" />
             Edit directly
