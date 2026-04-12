@@ -12,6 +12,7 @@ import { HumanizerDashboard } from '@/pages/HumanizerDashboard'
 import { RunsDashboard } from '@/pages/RunsDashboard'
 import { CalendarPage } from '@/pages/CalendarPage'
 import { ReviewPage } from '@/pages/ReviewPage'
+import { ReviewsDashboard } from '@/pages/ReviewsDashboard'
 import { TeamPage } from '@/pages/TeamPage'
 import { InvitePage } from '@/pages/InvitePage'
 import { AccessPage } from '@/pages/AccessPage'
@@ -42,7 +43,7 @@ function SignInPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4" style={{ backgroundColor: '#fafaf8' }}>
       <img src="/logo.png" alt="ContentNode AI" className="h-12 w-auto object-contain" />
-      <SignIn routing="hash" afterSignInUrl="/runs" afterSignUpUrl="/runs" />
+      <SignIn routing="hash" afterSignInUrl="/reviews" afterSignUpUrl="/reviews" />
       <a
         href="/"
         className="text-xs transition-colors"
@@ -82,8 +83,9 @@ function ProtectedLayout() {
 
 // ── App routes (protected content) ───────────────────────────────────────────
 const protectedChildren = [
-  { index: true, element: <Navigate to="/runs" replace /> },
+  { index: true, element: <Navigate to="/reviews" replace /> },
   { path: 'workflows', element: <WorkflowListPage /> },
+  { path: 'reviews', element: <ReviewsDashboard /> },
   { path: 'workflows/new', element: <WorkflowEditor /> },
   { path: 'workflows/:workflowId', element: <WorkflowEditor /> },
   { path: 'clients', element: <ClientListPage /> },

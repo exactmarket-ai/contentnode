@@ -867,7 +867,7 @@ export function ReviewPage() {
             </Button>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => navigate('/runs')}>
+        <Button variant="outline" size="sm" onClick={() => navigate('/reviews')}>
           <Icons.ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
           Back
         </Button>
@@ -889,7 +889,7 @@ export function ReviewPage() {
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-6">
-        <button onClick={() => navigate('/runs')} className="text-muted-foreground hover:text-foreground">
+        <button onClick={() => navigate('/reviews')} className="text-muted-foreground hover:text-foreground">
           <Icons.ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex items-center gap-2 min-w-0">
