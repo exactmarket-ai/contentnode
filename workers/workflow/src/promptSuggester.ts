@@ -20,6 +20,7 @@ export interface PromptSuggestJobData {
 }
 
 export async function generatePromptSuggestions(clientId: string, agencyId: string): Promise<void> {
+  console.log(`[promptSuggester] starting for client=${clientId}`)
   // Load all available brain data
   const client = await prisma.client.findFirst({
     where: { id: clientId, agencyId },
@@ -42,7 +43,11 @@ export async function generatePromptSuggestions(clientId: string, agencyId: stri
     },
   })
 
-  if (!client) return
+  if (!client) {
+    console.warn(`[promptSuggester] client=${clientId} not found — skipping`)
+    return
+  }
+  console.log(`[promptSuggester] loaded client="${client.name}", brandProfiles=${client.brandProfiles.length}, brandBuilders=${client.brandBuilders.length}, attachments=${client.brandAttachments.length}, frameworks=${client.frameworks.length}`)
 
   const brandProfile = client.brandProfiles[0]
   const brandBuilder = client.brandBuilders[0]
@@ -90,6 +95,7 @@ export async function generatePromptSuggestions(clientId: string, agencyId: stri
     }
   }
 
+  console.log(`[promptSuggester] calling Claude with ${lines.length} context lines`)
   let response: ModelResult
   try {
     response = await callModel(
@@ -100,6 +106,7 @@ export async function generatePromptSuggestions(clientId: string, agencyId: stri
     console.error('[promptSuggester] callModel failed:', err)
     return
   }
+  console.log(`[promptSuggester] got response, length=${response.text.length}`)
 
   // Strip any accidental markdown fences and parse
   let suggestions: Array<{ name: string; category: string; description: string; body: string }>
