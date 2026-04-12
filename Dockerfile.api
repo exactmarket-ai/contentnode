@@ -27,5 +27,9 @@ RUN chmod +x scripts/start-api.sh
 # Generate Prisma client
 RUN pnpm --filter @contentnode/database generate
 
+# Run as non-root user
+RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
+USER app
+
 # Runs migrations then starts the server
 CMD ["sh", "scripts/start-api.sh"]

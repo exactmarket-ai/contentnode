@@ -21,5 +21,10 @@
   "devDependencies": {
     "typescript": "^5.4.5",
     "tsx": "^4.11.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "axios": ">=1.15.0"
+    }
   }
 }

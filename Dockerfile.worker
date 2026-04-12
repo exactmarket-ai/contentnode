@@ -21,4 +21,8 @@ COPY workers/workflow/ workers/workflow/
 
 RUN pnpm --filter @contentnode/database generate
 
+# Run as non-root user
+RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
+USER app
+
 CMD ["node", "--import", "tsx/esm", "workers/workflow/src/worker.ts"]
