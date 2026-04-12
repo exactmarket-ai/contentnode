@@ -185,19 +185,22 @@ function AssigneePicker() {
 
   return (
     <div ref={ref} className="relative">
+      {/* Ping glow — only when unassigned */}
+      {!assigneeName && !saving && (
+        <span className="pointer-events-none absolute -inset-[3px] rounded-lg">
+          <span className="absolute inset-0 rounded-lg animate-ping bg-orange-400/40" />
+        </span>
+      )}
       <button
         onClick={() => setOpen((v) => !v)}
         title={assigneeName ? `Assigned to ${assigneeName}` : 'Set default assignee'}
         className={cn(
-          'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
+          'relative flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
           assigneeName
             ? 'border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
-            : 'border-orange-400 bg-orange-50 text-orange-700 hover:bg-orange-100',
+            : 'border-orange-400 bg-orange-50 text-orange-600 hover:bg-orange-100',
         )}
-        style={!assigneeName ? {
-          boxShadow: '0 0 0 2px rgba(249,115,22,0.25), 0 0 8px 3px rgba(249,115,22,0.35)',
-          animation: 'assignee-pulse 2s ease-in-out infinite',
-        } : undefined}
+        style={!assigneeName ? { boxShadow: '0 0 0 2px rgba(249,115,22,0.3), 0 0 10px 3px rgba(249,115,22,0.25)' } : undefined}
       >
         {saving ? (
           <Icons.Loader2 className="h-3 w-3 animate-spin" />
@@ -210,12 +213,6 @@ function AssigneePicker() {
         )}
         {assigneeName ?? 'Assign'}
       </button>
-      <style>{`
-        @keyframes assignee-pulse {
-          0%, 100% { box-shadow: 0 0 0 2px rgba(249,115,22,0.25), 0 0 8px 3px rgba(249,115,22,0.35); }
-          50%       { box-shadow: 0 0 0 3px rgba(249,115,22,0.35), 0 0 14px 5px rgba(249,115,22,0.45); }
-        }
-      `}</style>
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-white shadow-lg overflow-hidden">
@@ -592,20 +589,22 @@ export function TopBar() {
         </Button>
       )}
 
-      {/* Assignee picker — left of Review, glows orange when unassigned */}
-      {workflow.id && <AssigneePicker />}
-
-      {/* Review — shown whenever there's a known run (persists across navigations) */}
-      {activeRunId && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(`/review/${activeRunId}`)}
-          className="h-8 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
-        >
-          <Icons.ClipboardEdit className="mr-1.5 h-3.5 w-3.5" />
-          {runStatus === 'completed' ? 'Review' : 'Last Run'}
-        </Button>
+      {/* Assign + Review — always paired together */}
+      {workflow.id && (
+        <div className="flex items-center gap-1.5">
+          <AssigneePicker />
+          {activeRunId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/review/${activeRunId}`)}
+              className="h-8 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+            >
+              <Icons.ClipboardEdit className="mr-1.5 h-3.5 w-3.5" />
+              {runStatus === 'completed' ? 'Review' : 'Last Run'}
+            </Button>
+          )}
+        </div>
       )}
 
       {/* History — only when workflow is saved */}
