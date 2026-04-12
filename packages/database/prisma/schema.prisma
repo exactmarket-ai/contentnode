@@ -290,7 +290,9 @@ model User {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  workflowRuns WorkflowRun[]
+  workflowRuns         WorkflowRun[] @relation("RunTriggeredBy")
+  assignedRuns         WorkflowRun[] @relation("RunAssignee")
+  defaultAssigneeOf    Workflow[]    @relation("WorkflowDefaultAssignee")
 
   @@index([agencyId])
   @@map("users")
@@ -314,11 +316,13 @@ model Workflow {
   isTemplate       Boolean   @default(false) @map("is_template")
   templateCategory String?   @map("template_category")
   templateDescription String? @map("template_description")
+  defaultAssigneeId String?   @map("default_assignee_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  agency          Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  defaultAssignee User?    @relation("WorkflowDefaultAssignee", fields: [defaultAssigneeId], references: [id])
   nodes     Node[]
   edges     Edge[]
   runs      WorkflowRun[]
@@ -500,8 +504,12 @@ model WorkflowRun {
   itemVersion         Int       @default(1) @map("item_version")
   editedContent       Json?     @map("edited_content") // { [nodeId]: string } — agency-polished text per output node
 
+  assigneeId          String?   @map("assignee_id")
+  internalNotes       String?   @map("internal_notes")
+
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  user              User?                 @relation(fields: [triggeredBy], references: [id])
+  user              User?                 @relation("RunTriggeredBy", fields: [triggeredBy], references: [id])
+  assignee          User?                 @relation("RunAssignee", fields: [assigneeId], references: [id])
   documents         Document[]
   feedbacks         Feedback[]
   qualityRecord     ContentQualityRecord?

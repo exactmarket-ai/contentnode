@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma, type Prisma, permissionService } from '@contentnode/database'
 import { auditService } from '../services/audit.js'
-import { getWorkflowRunsQueue } from '../lib/queues.js'
+import { getWorkflowRunsQueue, getEditAnalysisQueue } from '../lib/queues.js'
 import { sendReviewEmail } from '../lib/email.js'
 
 // Providers that are local/offline for permission classification
@@ -196,7 +196,13 @@ export async function runRoutes(app: FastifyInstance) {
 
     const workflow = await prisma.workflow.findFirst({
       where: { id: workflowId, agencyId },
-      include: { client: { select: { requireOffline: true } } },
+      include: { client: { select: { requireOffline: true } }, },
+      // also fetch defaultAssigneeId for run inheritance
+    })
+    // Re-fetch with defaultAssigneeId (inline include above keeps the type narrow)
+    const workflowWithAssignee = await prisma.workflow.findFirst({
+      where: { id: workflowId, agencyId },
+      select: { defaultAssigneeId: true },
     })
 
     if (!workflow) {
@@ -292,6 +298,8 @@ export async function runRoutes(app: FastifyInstance) {
         ...(body.divisionId ? { divisionId: body.divisionId } : {}),
         ...(body.jobId ? { jobId: body.jobId } : {}),
         ...(body.itemName ? { itemName: body.itemName } : {}),
+        // Inherit default assignee from workflow
+        ...(workflowWithAssignee?.defaultAssigneeId ? { assigneeId: workflowWithAssignee.defaultAssigneeId } : {}),
       },
     })
 
@@ -453,6 +461,8 @@ export async function runRoutes(app: FastifyInstance) {
         pendingReviewNodeId: output.pendingReviewNodeId ?? null,
         pendingReviewContent: output.pendingReviewContent ?? null,
         editedContent: run.editedContent ?? null,
+        assigneeId: run.assigneeId ?? null,
+        internalNotes: run.internalNotes ?? null,
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
         feedbacks: run.feedbacks,
@@ -476,10 +486,19 @@ export async function runRoutes(app: FastifyInstance) {
     const existing = (run.editedContent ?? {}) as Record<string, string>
     const updated  = { ...existing, [body.data.nodeId]: body.data.content }
 
-    await prisma.workflowRun.update({
+    const updatedRun = await prisma.workflowRun.update({
       where: { id },
       data: { editedContent: updated as unknown as Prisma.InputJsonValue },
+      include: { workflow: { select: { clientId: true } } },
     })
+
+    // Enqueue edit diff analysis — feeds pattern detector + prompt library
+    const clientId = updatedRun.workflow?.clientId
+    if (clientId) {
+      getEditAnalysisQueue()
+        .add('analyze-edit', { runId: id, clientId, agencyId }, { jobId: `edit-${id}-${Date.now()}` })
+        .catch(() => {}) // non-blocking
+    }
 
     return reply.send({ data: { nodeId: body.data.nodeId } })
   })
@@ -637,6 +656,9 @@ export async function runRoutes(app: FastifyInstance) {
         itemName: true,
         itemVersion: true,
         editedContent: true,
+        assigneeId: true,
+        internalNotes: true,
+        assignee: { select: { id: true, name: true, avatarStorageKey: true } },
         division: { select: { id: true, name: true } },
         job: { select: { id: true, name: true, budgetCents: true } },
         workflow: {
@@ -694,6 +716,9 @@ export async function runRoutes(app: FastifyInstance) {
         reviewStatus: r.reviewStatus,
         reviewerIds: r.reviewerIds,
         editedContent: r.editedContent ?? null,
+        assigneeId: r.assigneeId ?? null,
+        assignee: r.assignee ?? null,
+        internalNotes: r.internalNotes ?? null,
       }
     })
 
@@ -709,8 +734,10 @@ export async function runRoutes(app: FastifyInstance) {
       jobId:       z.string().nullable().optional(),
       itemName:    z.string().nullable().optional(),
       itemVersion: z.number().int().positive().optional(),
-      reviewStatus: z.enum(['none', 'pending', 'sent_to_client', 'client_responded', 'closed']).optional(),
-      reviewerIds:  z.array(z.string()).optional(),
+      reviewStatus:  z.enum(['none', 'pending', 'sent_to_client', 'client_responded', 'closed']).optional(),
+      reviewerIds:   z.array(z.string()).optional(),
+      assigneeId:    z.string().nullable().optional(),
+      internalNotes: z.string().nullable().optional(),
     }).safeParse(req.body)
 
     if (!body.success) return reply.code(400).send({ error: 'Invalid body', details: body.error.issues })
@@ -721,12 +748,14 @@ export async function runRoutes(app: FastifyInstance) {
     const updated = await prisma.workflowRun.update({
       where: { id },
       data: {
-        ...(body.data.divisionId  !== undefined ? { divisionId: body.data.divisionId }   : {}),
-        ...(body.data.jobId       !== undefined ? { jobId: body.data.jobId }             : {}),
-        ...(body.data.itemName    !== undefined ? { itemName: body.data.itemName }       : {}),
-        ...(body.data.itemVersion !== undefined ? { itemVersion: body.data.itemVersion } : {}),
-        ...(body.data.reviewStatus !== undefined ? { reviewStatus: body.data.reviewStatus } : {}),
-        ...(body.data.reviewerIds  !== undefined ? { reviewerIds: body.data.reviewerIds as Prisma.InputJsonValue } : {}),
+        ...(body.data.divisionId    !== undefined ? { divisionId: body.data.divisionId }       : {}),
+        ...(body.data.jobId         !== undefined ? { jobId: body.data.jobId }                 : {}),
+        ...(body.data.itemName      !== undefined ? { itemName: body.data.itemName }           : {}),
+        ...(body.data.itemVersion   !== undefined ? { itemVersion: body.data.itemVersion }     : {}),
+        ...(body.data.reviewStatus  !== undefined ? { reviewStatus: body.data.reviewStatus }   : {}),
+        ...(body.data.reviewerIds   !== undefined ? { reviewerIds: body.data.reviewerIds as Prisma.InputJsonValue } : {}),
+        ...(body.data.assigneeId    !== undefined ? { assigneeId: body.data.assigneeId }       : {}),
+        ...(body.data.internalNotes !== undefined ? { internalNotes: body.data.internalNotes } : {}),
       },
       include: {
         division: { select: { id: true, name: true } },

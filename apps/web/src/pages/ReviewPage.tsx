@@ -41,6 +41,8 @@ interface RunData {
   status: string
   reviewStatus: string
   reviewerIds: string[]
+  assigneeId: string | null
+  internalNotes: string | null
   workflow: {
     id: string
     name: string
@@ -531,6 +533,10 @@ export function ReviewPage() {
   // Active tab
   const [activeTab, setActiveTab] = useState(0)
 
+  // Internal notes
+  const [notes, setNotes] = useState('')
+  const [savingNotes, setSavingNotes] = useState(false)
+
   // Inline editing
   const [editMode, setEditMode] = useState(false)
   const [editDraft, setEditDraft] = useState('')
@@ -549,6 +555,7 @@ export function ReviewPage() {
       .then(({ data }) => {
         setRun(data)
         setReviewStatus(data.reviewStatus ?? 'none')
+        setNotes(data.internalNotes ?? '')
         setLoading(false)
         // Load stakeholder names if client is known
         if (data.workflow?.client?.id) {
@@ -636,6 +643,21 @@ export function ReviewPage() {
         .catch(() => {})
     }
     void links
+  }
+
+  const handleSaveNotes = async () => {
+    if (!runId) return
+    setSavingNotes(true)
+    try {
+      await apiFetch(`/api/v1/runs/${runId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ internalNotes: notes }),
+      })
+      setRun((prev) => prev ? { ...prev, internalNotes: notes } : prev)
+    } finally {
+      setSavingNotes(false)
+    }
   }
 
   const handleSaveEdit = async () => {
@@ -934,6 +956,25 @@ export function ReviewPage() {
               )}
             </div>
           )}
+
+          {/* Internal notes — feeds brain/pattern detector */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Icons.StickyNote className="h-3 w-3" />
+                Internal notes
+              </p>
+              {savingNotes && <Icons.Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </div>
+            <Textarea
+              placeholder="Notes for the team — what changed and why…"
+              className="min-h-[64px] resize-none text-xs border-amber-200 focus:border-amber-400"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={handleSaveNotes}
+            />
+            <p className="text-[10px] text-muted-foreground/60">Saved automatically. Feeds content improvement.</p>
+          </div>
 
           {/* Star rating */}
           <div className="space-y-2">

@@ -10,6 +10,8 @@ import { downloadTxt, downloadDeliverableDocx } from '@/lib/downloadDocx'
 
 interface NodeStatus { output?: unknown; status?: string }
 
+interface Assignee { id: string; name: string | null; avatarStorageKey: string | null }
+
 interface Run {
   id: string
   workflowName: string
@@ -22,6 +24,9 @@ interface Run {
   finalOutput: unknown
   nodeStatuses: Record<string, NodeStatus> | null
   editedContent: Record<string, string> | null
+  assigneeId: string | null
+  assignee: Assignee | null
+  internalNotes: string | null
   workflow?: { nodes?: Array<{ id: string; label: string; type: string; config: Record<string, unknown> }> } | null
 }
 
@@ -71,6 +76,21 @@ function getPreview(run: Run): string {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function AssigneeAvatar({ assignee }: { assignee: Assignee | null }) {
+  if (!assignee) return null
+  const initials = assignee.name
+    ? assignee.name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+    : '?'
+  if (assignee.avatarStorageKey) {
+    return <img src={assignee.avatarStorageKey} alt={assignee.name ?? ''} className="h-5 w-5 rounded-full object-cover border border-border" title={assignee.name ?? ''} />
+  }
+  return (
+    <div className="h-5 w-5 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center justify-center text-[9px] font-semibold shrink-0" title={assignee.name ?? ''}>
+      {initials}
+    </div>
+  )
 }
 
 // ── Status filter bar ─────────────────────────────────────────────────────────
@@ -140,10 +160,18 @@ function DeliverableCard({
               <span className="text-[10px] text-muted-foreground italic">No output</span>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            {run.workflowName}
-            {run.completedAt ? ` · ${formatDate(run.completedAt)}` : ` · ${formatDate(run.createdAt)}`}
-          </p>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <p className="text-[11px] text-muted-foreground">
+              {run.workflowName}
+              {run.completedAt ? ` · ${formatDate(run.completedAt)}` : ` · ${formatDate(run.createdAt)}`}
+            </p>
+            {run.assignee && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <AssigneeAvatar assignee={run.assignee} />
+                {run.assignee.name}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Download buttons */}
@@ -173,10 +201,18 @@ function DeliverableCard({
 
       {/* Content preview */}
       {preview && (
-        <div className="px-4 pb-3">
+        <div className="px-4 pb-1">
           <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
             {preview}{preview.length >= 300 ? '…' : ''}
           </p>
+        </div>
+      )}
+
+      {/* Internal notes */}
+      {run.internalNotes && (
+        <div className="mx-4 mb-3 flex items-start gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5">
+          <Icons.StickyNote className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-[10px] text-amber-700 line-clamp-2">{run.internalNotes}</p>
         </div>
       )}
 

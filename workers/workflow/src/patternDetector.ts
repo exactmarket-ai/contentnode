@@ -1,3 +1,4 @@
+import { callModel } from '@contentnode/ai'
 import { prisma, withAgency, type Prisma } from '@contentnode/database'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -452,6 +453,318 @@ function extractEvidenceText(fb: FeedbackWithStakeholder): string {
   const changes = (fb.specificChanges as Array<{ text?: string }>) ?? []
   if (changes[0]?.text) return changes[0].text.slice(0, 120)
   return 'Feedback submitted'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edit diff analysis — called when an editor saves editedContent
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface EditDiff {
+  runId: string
+  nodeId: string
+  editorId: string | null
+  originalWords: number
+  editedWords: number
+  removedPhrases: string[]       // short phrases (2–5 words) present in original, gone from edited
+  openingRewritten: boolean      // first paragraph changed significantly
+  internalNotes: string | null
+}
+
+function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+function extractNgrams(text: string, n: number): Set<string> {
+  const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean)
+  const ngrams = new Set<string>()
+  for (let i = 0; i <= words.length - n; i++) {
+    ngrams.add(words.slice(i, i + n).join(' '))
+  }
+  return ngrams
+}
+
+function firstParagraph(text: string): string {
+  return text.trim().split(/\n{2,}/)[0] ?? ''
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1
+  let intersection = 0
+  for (const v of a) { if (b.has(v)) intersection++ }
+  return intersection / (a.size + b.size - intersection)
+}
+
+function computeDiff(runId: string, nodeId: string, original: string, edited: string, editorId: string | null, notes: string | null): EditDiff {
+  const origWords = wordCount(original)
+  const editWords = wordCount(edited)
+
+  // Find 3-gram and 4-gram phrases removed
+  const orig3 = extractNgrams(original, 3)
+  const edit3 = extractNgrams(edited, 3)
+  const orig4 = extractNgrams(original, 4)
+  const edit4 = extractNgrams(edited, 4)
+
+  const removedPhrases: string[] = []
+  for (const p of orig4) { if (!edit4.has(p)) removedPhrases.push(p) }
+  if (removedPhrases.length === 0) {
+    for (const p of orig3) { if (!edit3.has(p)) removedPhrases.push(p) }
+  }
+  // Limit to most distinctive (shortest, most common-word-free)
+  const topRemoved = removedPhrases.slice(0, 10)
+
+  // Opening paragraph similarity
+  const origOpen = firstParagraph(original)
+  const editOpen = firstParagraph(edited)
+  const openSim = jaccardSimilarity(extractNgrams(origOpen, 2), extractNgrams(editOpen, 2))
+  const openingRewritten = openSim < 0.45 && origOpen.length > 50
+
+  return { runId, nodeId, editorId, originalWords: origWords, editedWords: editWords, removedPhrases: topRemoved, openingRewritten, internalNotes: notes }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main entry point for edit-based pattern detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function detectEditPatterns(
+  agencyId: string,
+  clientId: string,
+  _triggeredByRunId: string,
+): Promise<void> {
+  await withAgency(agencyId, async () => {
+    // Load all completed runs for this client with editedContent
+    const runs = await prisma.workflowRun.findMany({
+      where: {
+        agencyId,
+        workflow: { clientId },
+        status: 'completed',
+        editedContent: { not: Prisma.JsonNull },
+      },
+      select: {
+        id: true,
+        output: true,
+        editedContent: true,
+        assigneeId: true,
+        internalNotes: true,
+      },
+      orderBy: { completedAt: 'desc' },
+      take: 100,
+    })
+
+    if (runs.length === 0) return
+
+    const totalRuns = await prisma.workflowRun.count({
+      where: { agencyId, workflow: { clientId }, status: 'completed' },
+    })
+    const denominator = Math.max(totalRuns, 1)
+
+    // Compute diffs for each run
+    const diffs: EditDiff[] = []
+    for (const run of runs) {
+      const edited = (run.editedContent ?? {}) as Record<string, string>
+      const output = run.output as { nodeStatuses?: Record<string, { output?: unknown; status?: string }> }
+      const nodeStatuses = output?.nodeStatuses ?? {}
+
+      for (const [nodeId, editedText] of Object.entries(edited)) {
+        const original = nodeStatuses[nodeId]?.output
+        const originalText = typeof original === 'string' ? original
+          : (original as Record<string, unknown>)?.content as string | undefined ?? ''
+        if (!originalText.trim() || !editedText.trim()) continue
+        diffs.push(computeDiff(run.id, nodeId, originalText, editedText, run.assigneeId, run.internalNotes))
+      }
+    }
+
+    if (diffs.length === 0) return
+
+    const existingInsights = await prisma.insight.findMany({
+      where: { agencyId, clientId, status: { in: ['pending', 'applied'] }, type: { in: ['length', 'forbidden_term', 'structure'] } },
+      select: { type: true, title: true },
+    })
+    const existingKeys = new Set(existingInsights.map((i) => `${i.type}:${i.title.toLowerCase()}`))
+
+    const candidates: PatternCandidate[] = [
+      ...detectLengthEdits(diffs, denominator),
+      ...detectRemovedPhraseEdits(diffs, denominator),
+      ...detectOpeningEdits(diffs, denominator),
+    ]
+
+    const created: PatternCandidate[] = []
+    for (const candidate of candidates) {
+      const key = `${candidate.type}:${candidate.title.toLowerCase()}`
+      if (existingKeys.has(key)) continue
+      await prisma.insight.create({
+        data: {
+          agencyId,
+          clientId,
+          type: candidate.type,
+          title: candidate.title,
+          body: candidate.body,
+          confidence: candidate.confidence,
+          status: 'pending',
+          instanceCount: candidate.instanceCount,
+          stakeholderIds: candidate.stakeholderIds,
+          isCollective: candidate.isCollective,
+          evidenceQuotes: candidate.evidenceQuotes as object[],
+          suggestedNodeType: candidate.suggestedNodeType,
+          suggestedConfigChange: candidate.suggestedConfigChange as Prisma.InputJsonValue,
+        },
+      })
+      created.push(candidate)
+    }
+
+    // Generate corrected prompt suggestions for each new pattern
+    if (created.length > 0) {
+      generatePromptCorrections(agencyId, clientId, diffs, created).catch((e) =>
+        console.error('[patternDetector] prompt correction generation failed:', e)
+      )
+    }
+  })
+}
+
+// ─── Edit-specific pattern detectors ─────────────────────────────────────────
+
+function detectLengthEdits(diffs: EditDiff[], denominator: number): PatternCandidate[] {
+  const THRESHOLD = 3
+  const shrinkDiffs = diffs.filter((d) => d.editedWords < d.originalWords * 0.85)
+  const growDiffs   = diffs.filter((d) => d.editedWords > d.originalWords * 1.2)
+
+  const candidates: PatternCandidate[] = []
+  if (shrinkDiffs.length >= THRESHOLD) {
+    const avgRatio = shrinkDiffs.reduce((s, d) => s + d.editedWords / d.originalWords, 0) / shrinkDiffs.length
+    const targetWords = Math.round(shrinkDiffs.reduce((s, d) => s + d.editedWords, 0) / shrinkDiffs.length)
+    candidates.push({
+      type: 'length',
+      title: 'Content is consistently too long',
+      body: `Editors trimmed content by an average of ${Math.round((1 - avgRatio) * 100)}% across ${shrinkDiffs.length} runs. Target ~${targetWords} words.`,
+      suggestedNodeType: 'output:content-output',
+      suggestedConfigChange: { max_words: targetWords, min_words: Math.round(targetWords * 0.8) },
+      evidenceQuotes: shrinkDiffs.slice(0, 3).map((d) => ({ text: `Trimmed from ~${d.originalWords} to ~${d.editedWords} words`, stakeholderId: d.editorId ?? 'internal', stakeholderName: 'Internal editor', runId: d.runId })),
+      stakeholderIds: [...new Set(shrinkDiffs.map((d) => d.editorId ?? 'internal'))],
+      instanceCount: shrinkDiffs.length,
+      confidence: Math.min(1, shrinkDiffs.length / denominator * 3),
+      isCollective: false,
+    })
+  }
+  if (growDiffs.length >= THRESHOLD) {
+    const targetWords = Math.round(growDiffs.reduce((s, d) => s + d.editedWords, 0) / growDiffs.length)
+    candidates.push({
+      type: 'length',
+      title: 'Content is consistently too short',
+      body: `Editors expanded content in ${growDiffs.length} runs. Target ~${targetWords} words.`,
+      suggestedNodeType: 'output:content-output',
+      suggestedConfigChange: { min_words: targetWords, max_words: Math.round(targetWords * 1.3) },
+      evidenceQuotes: growDiffs.slice(0, 3).map((d) => ({ text: `Expanded from ~${d.originalWords} to ~${d.editedWords} words`, stakeholderId: d.editorId ?? 'internal', stakeholderName: 'Internal editor', runId: d.runId })),
+      stakeholderIds: [...new Set(growDiffs.map((d) => d.editorId ?? 'internal'))],
+      instanceCount: growDiffs.length,
+      confidence: Math.min(1, growDiffs.length / denominator * 3),
+      isCollective: false,
+    })
+  }
+  return candidates
+}
+
+function detectRemovedPhraseEdits(diffs: EditDiff[], denominator: number): PatternCandidate[] {
+  const THRESHOLD = 3
+  const phraseCount: Record<string, EditDiff[]> = {}
+  for (const d of diffs) {
+    for (const phrase of d.removedPhrases) {
+      phraseCount[phrase] ??= []
+      phraseCount[phrase].push(d)
+    }
+  }
+  const candidates: PatternCandidate[] = []
+  for (const [phrase, items] of Object.entries(phraseCount)) {
+    if (items.length < THRESHOLD) continue
+    candidates.push({
+      type: 'forbidden_term',
+      title: `Avoid: "${phrase}"`,
+      body: `Editors removed this phrase from ${items.length} runs. Add to the content rules.`,
+      suggestedNodeType: 'logic',
+      suggestedConfigChange: { forbidden_terms: [phrase] },
+      evidenceQuotes: items.slice(0, 3).map((d) => ({ text: `Removed in edit of run ${d.runId.slice(-6)}`, stakeholderId: d.editorId ?? 'internal', stakeholderName: 'Internal editor', runId: d.runId })),
+      stakeholderIds: [...new Set(items.map((d) => d.editorId ?? 'internal'))],
+      instanceCount: items.length,
+      confidence: Math.min(1, items.length / denominator * 3),
+      isCollective: false,
+    })
+  }
+  return candidates
+}
+
+function detectOpeningEdits(diffs: EditDiff[], denominator: number): PatternCandidate[] {
+  const THRESHOLD = 3
+  const rewrites = diffs.filter((d) => d.openingRewritten)
+  if (rewrites.length < THRESHOLD) return []
+  return [{
+    type: 'structure',
+    title: 'Opening paragraph consistently rewritten',
+    body: `Editors rewrote the opening paragraph in ${rewrites.length} runs. Consider changing the AI prompt to improve first-paragraph quality.`,
+    suggestedNodeType: 'logic:ai-generate',
+    suggestedConfigChange: { prompt_hint: 'opening_paragraph' },
+    evidenceQuotes: rewrites.slice(0, 3).map((d) => ({ text: `Opening rewritten in run ${d.runId.slice(-6)}${d.internalNotes ? ` — "${d.internalNotes.slice(0, 60)}"` : ''}`, stakeholderId: d.editorId ?? 'internal', stakeholderName: 'Internal editor', runId: d.runId })),
+    stakeholderIds: [...new Set(rewrites.map((d) => d.editorId ?? 'internal'))],
+    instanceCount: rewrites.length,
+    confidence: Math.min(1, rewrites.length / denominator * 3),
+    isCollective: false,
+  }]
+}
+
+// ─── Prompt correction generation ────────────────────────────────────────────
+
+async function generatePromptCorrections(
+  agencyId: string,
+  clientId: string,
+  diffs: EditDiff[],
+  patterns: PatternCandidate[],
+): Promise<void> {
+  // Take a representative sample of diffs to give the AI context
+  const sample = diffs.slice(0, 5)
+  const diffSummary = sample.map((d, i) =>
+    `Edit ${i + 1}: ${d.originalWords} words → ${d.editedWords} words. ` +
+    (d.openingRewritten ? 'Opening paragraph rewritten. ' : '') +
+    (d.removedPhrases.length > 0 ? `Phrases removed: ${d.removedPhrases.slice(0, 3).join(', ')}. ` : '') +
+    (d.internalNotes ? `Editor note: "${d.internalNotes}". ` : '')
+  ).join('\n')
+
+  const patternSummary = patterns.map((p) => `- ${p.title}: ${p.body}`).join('\n')
+
+  const prompt = `You are a prompt engineering expert. An AI content generation system produced content that human editors consistently modified.
+
+Here are patterns detected from ${diffs.length} rounds of edits:
+${patternSummary}
+
+Sample edit details:
+${diffSummary}
+
+Write a single, concise prompt instruction (2-4 sentences) that, if added to the AI content generation prompt, would produce content closer to what the editors want — avoiding the need for these manual corrections. Be specific and actionable.
+
+Return only the prompt instruction text, nothing else.`
+
+  try {
+    const result = await callModel(
+      { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY' },
+      prompt,
+    )
+    const instruction = result.trim()
+    if (!instruction || instruction.length < 20) return
+
+    await withAgency(agencyId, async () => {
+      await prisma.promptTemplate.create({
+        data: {
+          agencyId,
+          clientId,
+          name: `Auto: ${patterns[0]?.title ?? 'Content improvement'} (${new Date().toLocaleDateString()})`,
+          body: instruction,
+          category: 'general',
+          description: `Generated from ${diffs.length} edit diffs. Patterns: ${patterns.map((p) => p.title).join('; ')}`,
+          source: 'ai',
+          createdBy: 'system',
+        },
+      })
+    })
+    console.log(`[patternDetector] generated prompt correction for client ${clientId}`)
+  } catch (e) {
+    console.error('[patternDetector] prompt correction AI call failed:', e)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

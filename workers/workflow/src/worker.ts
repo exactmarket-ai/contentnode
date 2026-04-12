@@ -7,6 +7,7 @@ import {
   QUEUE_TRANSCRIPTION,
   QUEUE_ASSET_GENERATION,
   QUEUE_PATTERN_DETECTION,
+  QUEUE_EDIT_ANALYSIS,
   QUEUE_SCHEDULE_CHECKER,
   QUEUE_FRAMEWORK_RESEARCH,
   QUEUE_ATTACHMENT_PROCESS,
@@ -16,12 +17,13 @@ import {
   type TranscriptionJobData,
   type AssetGenerationJobData,
   type PatternDetectionJobData,
+  type EditAnalysisJobData,
   type FrameworkResearchJobData,
   type AttachmentProcessJobData,
   type BrandAttachmentProcessJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
-import { detectPatterns } from './patternDetector.js'
+import { detectPatterns, detectEditPatterns } from './patternDetector.js'
 import { runScheduleChecker } from './scheduleChecker.js'
 import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
@@ -91,6 +93,18 @@ const patternDetectionWorker = createWorker<PatternDetectionJobData>(
     console.log(`[pattern-detection] done for client ${clientId}`)
   },
   5
+)
+
+// ── edit-analysis ────────────────────────────────────────────────────────────
+const editAnalysisWorker = createWorker<EditAnalysisJobData>(
+  QUEUE_EDIT_ANALYSIS,
+  async (job: Job<EditAnalysisJobData>) => {
+    const { runId, clientId, agencyId } = job.data
+    console.log(`[edit-analysis] analyzing edits for run ${runId}, client ${clientId}`)
+    await detectEditPatterns(agencyId, clientId, runId)
+    console.log(`[edit-analysis] done for client ${clientId}`)
+  },
+  3
 )
 
 // ── asset-generation ──────────────────────────────────────────────────────────
@@ -204,6 +218,7 @@ async function shutdown() {
     transcriptionWorker.close(),
     assetGenerationWorker.close(),
     patternDetectionWorker.close(),
+    editAnalysisWorker.close(),
     scheduleCheckerWorker.close(),
     frameworkResearchWorker.close(),
     attachmentProcessWorker.close(),

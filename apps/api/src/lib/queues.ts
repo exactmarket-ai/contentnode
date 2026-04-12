@@ -3,6 +3,7 @@ import { getRedis } from './redis.js'
 
 export const QUEUE_WORKFLOW_RUNS = 'workflow-runs'
 export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
+export const QUEUE_EDIT_ANALYSIS = 'edit-analysis'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
@@ -14,6 +15,12 @@ export interface WorkflowRunJobData {
 
 export interface PatternDetectionJobData {
   feedbackId: string
+  clientId: string
+  agencyId: string
+}
+
+export interface EditAnalysisJobData {
+  runId: string
   clientId: string
   agencyId: string
 }
@@ -41,6 +48,7 @@ export interface BrandAttachmentProcessJobData {
 
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
 let patternDetectionQueue: Queue<PatternDetectionJobData> | null = null
+let editAnalysisQueue: Queue<EditAnalysisJobData> | null = null
 let frameworkResearchQueue: Queue<FrameworkResearchJobData> | null = null
 let attachmentProcessQueue: Queue<AttachmentProcessJobData> | null = null
 let brandAttachmentProcessQueue: Queue<BrandAttachmentProcessJobData> | null = null
@@ -68,6 +76,15 @@ export function getPatternDetectionQueue(): Queue<PatternDetectionJobData> {
     })
   }
   return patternDetectionQueue
+}
+
+export function getEditAnalysisQueue(): Queue<EditAnalysisJobData> {
+  if (!editAnalysisQueue) {
+    editAnalysisQueue = new Queue<EditAnalysisJobData>(QUEUE_EDIT_ANALYSIS, {
+      connection: getRedis(),
+    })
+  }
+  return editAnalysisQueue
 }
 
 /**
