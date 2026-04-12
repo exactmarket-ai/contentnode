@@ -185,12 +185,6 @@ function AssigneePicker() {
 
   return (
     <div ref={ref} className="relative">
-      {/* Ping glow — only when unassigned */}
-      {!assigneeName && !saving && (
-        <span className="pointer-events-none absolute -inset-[3px] rounded-lg">
-          <span className="absolute inset-0 rounded-lg animate-ping bg-orange-400/40" />
-        </span>
-      )}
       <button
         onClick={() => setOpen((v) => !v)}
         title={assigneeName ? `Assigned to ${assigneeName}` : 'Set default assignee'}
