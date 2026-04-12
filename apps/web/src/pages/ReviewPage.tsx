@@ -649,24 +649,15 @@ export function ReviewPage() {
 
   const outputs = run ? extractOutputs(run) : []
 
-  // Show/hide the selection bubble menu
+  // Hide bubble menu when selection collapses
   useEffect(() => {
     if (!editor) return
     const update = () => {
-      const { empty, from, to } = editor.state.selection
-      if (empty) { setSelMenu(null); return }
-      const text = editor.state.doc.textBetween(from, to, ' ').trim()
-      if (text.length < 3) { setSelMenu(null); return }
-      // Position above the selection start
-      const coords = editor.view.coordsAtPos(from)
-      setSelMenu({ text, x: coords.left, y: coords.top })
+      const { empty } = editor.state.selection
+      if (empty) setSelMenu(null)
     }
     editor.on('selectionUpdate', update)
-    editor.on('blur', () => setSelMenu(null))
-    return () => {
-      editor.off('selectionUpdate', update)
-      editor.off('blur', () => setSelMenu(null))
-    }
+    return () => { editor.off('selectionUpdate', update) }
   }, [editor])
 
   // Populate editor whenever the active tab or loaded run changes
@@ -932,7 +923,19 @@ export function ReviewPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Content pane */}
-        <main className="flex flex-1 flex-col overflow-hidden">
+        <main className="flex flex-1 flex-col overflow-hidden" onMouseUp={() => {
+            if (!editor) return
+            const { empty, from, to } = editor.state.selection
+            if (empty) { setSelMenu(null); return }
+            const text = editor.state.doc.textBetween(from, to, ' ').trim()
+            if (text.length < 3) { setSelMenu(null); return }
+            // Center over the selected text using the browser selection's bounding rect
+            const sel = window.getSelection()
+            if (sel && sel.rangeCount > 0) {
+              const rect = sel.getRangeAt(0).getBoundingClientRect()
+              setSelMenu({ text, x: rect.left + rect.width / 2, y: rect.bottom })
+            }
+          }}>
           {/* Tabs */}
           {outputs.length > 1 && (
             <div className="flex shrink-0 gap-1 border-b border-border bg-card px-6 pt-3">
@@ -1366,17 +1369,21 @@ export function ReviewPage() {
         </aside>
       </div>
 
-      {/* Selection bubble menu — appears above selected text in editor */}
+      {/* Selection bubble menu — appears near the end of the text selection */}
       {selMenu && !popover && (
         <div
-          className="fixed z-50 flex items-center overflow-hidden rounded-lg border border-border bg-white shadow-xl"
-          style={{ left: selMenu.x, top: selMenu.y - 48 }}
+          className="fixed z-50 flex items-center overflow-hidden rounded-lg border border-border bg-white shadow-xl -translate-x-1/2"
+          style={{
+            left: Math.min(Math.max(140, selMenu.x), window.innerWidth - 140),
+            top: selMenu.y + 8,
+          }}
         >
           <button
             onMouseDown={(e) => {
               e.preventDefault()
-              setPopover({ x: selMenu.x, y: selMenu.y, text: selMenu.text })
+              const { x, y, text } = selMenu
               setSelMenu(null)
+              setTimeout(() => setPopover({ x, y, text }), 0)
             }}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground hover:bg-blue-50 hover:text-blue-700 transition-colors"
           >
