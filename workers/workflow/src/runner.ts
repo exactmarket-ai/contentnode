@@ -900,6 +900,8 @@ export class WorkflowRunner {
         completedAt: new Date(),
         output: runOutput as unknown as Prisma.InputJsonValue,
         ...(failed ? { errorMessage: this.firstFailedNodeError(runOutput) } : {}),
+        // Auto-advance to 'pending' (agency review queue) on successful completion
+        ...(finalStatus === 'completed' ? { reviewStatus: 'pending' } : {}),
       },
     })
 

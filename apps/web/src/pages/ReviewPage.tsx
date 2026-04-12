@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { downloadDocx, downloadTxt, downloadDeliverableDocx } from '@/lib/downloadDocx'
+import { DeliverableStatusStepper, type ReviewStatus } from '@/components/deliverables/DeliverableStatusStepper'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -645,6 +646,22 @@ export function ReviewPage() {
     void links
   }
 
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  const handleReviewStatusChange = async (status: ReviewStatus) => {
+    if (!runId) return
+    setUpdatingStatus(true)
+    setReviewStatus(status)
+    try {
+      await apiFetch(`/api/v1/runs/${runId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewStatus: status }),
+      })
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
   const handleSaveNotes = async () => {
     if (!runId) return
     setSavingNotes(true)
@@ -933,6 +950,20 @@ export function ReviewPage() {
 
         {/* Sidebar */}
         <aside className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-card p-4">
+          {/* Pipeline status */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground">Pipeline stage</p>
+              {updatingStatus && <Icons.Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-3">
+              <DeliverableStatusStepper
+                status={reviewStatus as ReviewStatus}
+                onChange={handleReviewStatusChange}
+              />
+            </div>
+          </div>
+
           {/* Output decisions summary */}
           {outputs.length > 1 && (
             <div className="space-y-2">
