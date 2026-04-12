@@ -30,6 +30,7 @@ import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
 import { processBrandAttachment } from './brandExtraction.js'
 import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
+import { withAgency } from '@contentnode/database'
 
 // ── workflow-runs ─────────────────────────────────────────────────────────────
 const workflowRunsWorker = createWorker<WorkflowRunJobData>(
@@ -198,7 +199,7 @@ const promptSuggestWorker = createWorker<PromptSuggestJobData>(
   async (job: Job<PromptSuggestJobData>) => {
     console.log(`[prompt-suggestion] generating for client=${job.data.clientId}`)
     try {
-      await generatePromptSuggestions(job.data.clientId, job.data.agencyId)
+      await withAgency(job.data.agencyId, () => generatePromptSuggestions(job.data.clientId, job.data.agencyId))
     } catch (err) {
       console.error('[prompt-suggestion] job failed:', err)
       throw err

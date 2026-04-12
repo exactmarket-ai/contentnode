@@ -571,8 +571,9 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
   })
 
   // Regenerate prompt suggestions in background — non-fatal if it fails
+  // Must wrap in withAgency so the clients table RLS policy sees the session variable
   if (extractionSucceeded) {
-    generatePromptSuggestions(clientId, agencyId).catch((err) =>
+    withAgency(agencyId, () => generatePromptSuggestions(clientId, agencyId)).catch((err) =>
       console.error('[brand-attachment-process] prompt suggestion failed (non-fatal):', err)
     )
   }
