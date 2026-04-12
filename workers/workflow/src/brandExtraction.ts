@@ -468,9 +468,21 @@ export async function processBrandAttachment(job: BrandAttachmentProcessJobData)
     })
 
     if (extractedText !== null) {
-      // Generate per-file interpretation, then re-run the full brand JSON extraction
-      await generateFileSummary(attachmentId, extractedText)
-      await runBrandExtraction(agencyId, clientId, verticalId)
+      // Generate per-file interpretation, then re-run the full brand JSON extraction.
+      // Wrap both in a try/catch so a Claude timeout or API error leaves the attachment
+      // in a terminal state rather than stuck at 'processing' forever.
+      try {
+        await generateFileSummary(attachmentId, extractedText)
+        await runBrandExtraction(agencyId, clientId, verticalId)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`[brand-attachment-process] post-extraction step failed for ${attachmentId}:`, msg)
+        await prisma.clientBrandAttachment.update({
+          where: { id: attachmentId },
+          data: { extractionStatus: 'failed', summaryStatus: 'failed', errorMessage: msg },
+        })
+        throw err
+      }
     }
   })
 

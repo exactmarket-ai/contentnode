@@ -55,7 +55,9 @@ async function callAnthropic(config: ModelConfig, prompt: string, images?: Image
   const apiKey = config.api_key_ref ? resolveApiKey(config.api_key_ref) : (process.env.ANTHROPIC_API_KEY ?? '')
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set')
 
-  const client = new Anthropic({ apiKey })
+  // Default: 3-minute timeout per attempt, 1 retry max (= 6 min worst case).
+  // The SDK default of 10 min × 3 retries = 30 min is far too long for background jobs.
+  const client = new Anthropic({ apiKey, timeout: 3 * 60 * 1000, maxRetries: 1 })
 
   const userContent: Anthropic.MessageParam['content'] = images && images.length > 0
     ? [
