@@ -616,20 +616,18 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
             <Icons.Plus className="h-3.5 w-3.5 mr-1" />
             New template
           </Button>
-          {isAdmin && (
-            <Button
-              size="sm"
-              className="h-8 text-xs"
-              onClick={handleGenerate}
-              disabled={generating}
-              title="Generate AI templates from Brain data"
-            >
-              {generating
-                ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />Generating…</>
-                : <><Icons.Sparkles className="h-3.5 w-3.5 mr-1" />{hasAI ? 'Regenerate from Brain' : 'Generate from Brain'}</>
-              }
-            </Button>
-          )}
+          <Button
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleGenerate}
+            disabled={generating}
+            title="Generate AI templates from Brain data"
+          >
+            {generating
+              ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />Generating…</>
+              : <><Icons.Sparkles className="h-3.5 w-3.5 mr-1" />{hasAI ? 'Regenerate from Brain' : 'Generate from Brain'}</>
+            }
+          </Button>
         </div>
       </div>
 
@@ -681,7 +679,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
               ? 'No templates yet. Create one manually or generate from the Brain.'
               : 'No templates match this filter.'}
           </p>
-          {templates.length === 0 && isAdmin && (
+          {templates.length === 0 && (
             <Button size="sm" className="h-7 text-xs mt-1" onClick={handleGenerate} disabled={generating}>
               <Icons.Sparkles className="h-3.5 w-3.5 mr-1" />
               Generate from Brain
