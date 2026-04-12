@@ -189,11 +189,15 @@ function AssigneePicker() {
         onClick={() => setOpen((v) => !v)}
         title={assigneeName ? `Assigned to ${assigneeName}` : 'Set default assignee'}
         className={cn(
-          'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+          'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
           assigneeName
             ? 'border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
-            : 'border-border bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+            : 'border-orange-400 bg-orange-50 text-orange-700 hover:bg-orange-100',
         )}
+        style={!assigneeName ? {
+          boxShadow: '0 0 0 2px rgba(249,115,22,0.25), 0 0 8px 3px rgba(249,115,22,0.35)',
+          animation: 'assignee-pulse 2s ease-in-out infinite',
+        } : undefined}
       >
         {saving ? (
           <Icons.Loader2 className="h-3 w-3 animate-spin" />
@@ -206,6 +210,12 @@ function AssigneePicker() {
         )}
         {assigneeName ?? 'Assign'}
       </button>
+      <style>{`
+        @keyframes assignee-pulse {
+          0%, 100% { box-shadow: 0 0 0 2px rgba(249,115,22,0.25), 0 0 8px 3px rgba(249,115,22,0.35); }
+          50%       { box-shadow: 0 0 0 3px rgba(249,115,22,0.35), 0 0 14px 5px rgba(249,115,22,0.45); }
+        }
+      `}</style>
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-white shadow-lg overflow-hidden">
@@ -545,9 +555,6 @@ export function TopBar() {
         </Select>
       </div>
 
-      {/* Default assignee picker — only shown for saved workflows */}
-      {workflow.id && <AssigneePicker />}
-
       {/* Spacer */}
       <div className="flex-1" />
 
@@ -584,6 +591,9 @@ export function TopBar() {
           Review &amp; Approve
         </Button>
       )}
+
+      {/* Assignee picker — left of Review, glows orange when unassigned */}
+      {workflow.id && <AssigneePicker />}
 
       {/* Review — shown whenever there's a known run (persists across navigations) */}
       {activeRunId && (

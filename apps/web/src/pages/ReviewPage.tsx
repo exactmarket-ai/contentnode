@@ -1,12 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, assetUrl } from '@/lib/api'
 import { downloadDocx, downloadTxt, downloadDeliverableDocx } from '@/lib/downloadDocx'
 import { DeliverableStatusStepper, type ReviewStatus } from '@/components/deliverables/DeliverableStatusStepper'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Underline from '@tiptap/extension-underline'
+import Placeholder from '@tiptap/extension-placeholder'
+import { SearchAndReplaceExtension, searchState, searchPluginKey, srSetSearch, srNext, srPrev } from '@/pages/writer/SearchAndReplace'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,7 +75,14 @@ function toText(output: unknown): string {
   return ''
 }
 
-interface OutputTab { nodeId: string; label: string; content: string; originalContent: string; model?: string }
+interface OutputTab {
+  nodeId: string
+  label: string
+  content: string
+  originalContent: string
+  subtype?: string
+  assets?: { localPath: string }[]
+}
 
 function extractOutputs(run: RunData): OutputTab[] {
   const nodeMap = Object.fromEntries(
@@ -82,10 +94,21 @@ function extractOutputs(run: RunData): OutputTab[] {
     .map(([nodeId, s]) => {
       const node = nodeMap[nodeId]
       if (!node || node.type !== 'output') return null
+      const subtype = (node.config?.subtype as string) ?? ''
+
+      // Image / video nodes
+      if (subtype === 'image-generation' || subtype === 'video-generation') {
+        const out = s.output as Record<string, unknown> | undefined
+        const assets = out?.assets as { localPath: string }[] | undefined
+        if (!assets?.length) return null
+        return { nodeId, label: node.label || 'Media', content: '', originalContent: '', subtype, assets }
+      }
+
+      // Text nodes
       const originalContent = toText(s.output)
       if (!originalContent.trim()) return null
       const content = edited[nodeId] ?? originalContent
-      return { nodeId, label: node.label || 'Output', content, originalContent }
+      return { nodeId, label: node.label || 'Output', content, originalContent, subtype }
     })
     .filter(Boolean) as OutputTab[]
 
@@ -508,6 +531,40 @@ function OutputDecisionPicker({ value, onChange }: { value: string | undefined; 
   )
 }
 
+// ─── TipTap helpers ───────────────────────────────────────────────────────────
+
+function htmlToPlain(html: string) {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<\/li>/gi, '\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function plainToHtml(text: string) {
+  return '<p>' + text.split(/\n\n+/).map((p) => p.replace(/\n/g, '<br>')).join('</p><p>') + '</p>'
+}
+
+const EDITOR_STYLES = `
+  .review-tiptap { flex:1; min-height:60vh; background:#fff; color:inherit;
+    border:1px solid hsl(var(--border)); border-radius:0.75rem;
+    padding:2rem 2rem; font-size:0.875rem; line-height:1.75;
+    font-family:inherit; outline:none; }
+  .review-tiptap:focus-within { border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,0.2); }
+  .review-tiptap p { margin:0 0 0.75em; }
+  .review-tiptap h1 { font-size:1.6em; font-weight:700; margin:0 0 0.5em; }
+  .review-tiptap h2 { font-size:1.3em; font-weight:700; margin:0 0 0.5em; }
+  .review-tiptap h3 { font-size:1.1em; font-weight:600; margin:0 0 0.5em; }
+  .review-tiptap ul { margin:0 0 0.75em; padding-left:1.5em; list-style:disc; }
+  .review-tiptap ol { margin:0 0 0.75em; padding-left:1.5em; list-style:decimal; }
+  .review-tiptap li { margin-bottom:0.25em; }
+  .review-tiptap blockquote { border-left:3px solid hsl(var(--border)); margin:0 0 0.75em; padding-left:1em; color:#666; font-style:italic; }
+  .review-tiptap strong { font-weight:700; }
+  .review-tiptap em { font-style:italic; }
+  .review-tiptap u { text-decoration:underline; }
+  .review-tiptap p.is-editor-empty:first-child::before { content:attr(data-placeholder); color:#aaa; pointer-events:none; float:left; height:0; }
+`
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function ReviewPage() {
@@ -538,11 +595,27 @@ export function ReviewPage() {
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // Inline editing
+  // Inline editing — TipTap editor
   const [editMode, setEditMode] = useState(false)
-  const [editDraft, setEditDraft] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
   const [savedEditAt, setSavedEditAt] = useState<number | null>(null)
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchVal, setSearchVal] = useState('')
+  const [replaceVal, setReplaceVal] = useState('')
+  const [matchCount, setMatchCount] = useState(0)
+  const [matchIndex, setMatchIndex] = useState(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Underline,
+      Placeholder.configure({ placeholder: 'Start editing…' }),
+      SearchAndReplaceExtension,
+    ],
+    content: '',
+    editorProps: { attributes: { class: 'review-tiptap' } },
+  })
 
   // Send to contact dialog
   const [showSendDialog, setShowSendDialog] = useState(false)
@@ -677,25 +750,61 @@ export function ReviewPage() {
     }
   }
 
+  const editorDispatch = useCallback((meta: unknown) => {
+    if (!editor) return
+    editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, meta))
+    setMatchCount(searchState.results.length)
+    setMatchIndex(searchState.currentIndex)
+    const match = searchState.results[searchState.currentIndex]
+    if (match) {
+      editor.commands.setTextSelection({ from: match.from, to: match.to })
+      editor.commands.scrollIntoView()
+    }
+  }, [editor])
+
+  const handleSearchChange = (val: string) => { setSearchVal(val); srSetSearch(val, editorDispatch) }
+  const handleFindNext = () => srNext(editorDispatch)
+  const handleFindPrev = () => srPrev(editorDispatch)
+  const handleReplaceCurrent = () => {
+    if (!editor || !searchState.results.length) return
+    const match = searchState.results[searchState.currentIndex]
+    if (!match) return
+    editor.chain().setTextSelection({ from: match.from, to: match.to }).insertContent(searchState.replaceTerm).run()
+    editorDispatch({ replaced: true })
+  }
+  const handleReplaceAll = () => {
+    if (!editor || !searchState.searchTerm || !searchState.results.length) return
+    const sorted = [...searchState.results].sort((a, b) => b.from - a.from)
+    let tr = editor.state.tr
+    for (const m of sorted) {
+      if (searchState.replaceTerm) tr = tr.replaceWith(m.from, m.to, editor.state.schema.text(searchState.replaceTerm))
+      else tr = tr.delete(m.from, m.to)
+    }
+    editor.view.dispatch(tr)
+    searchState.results = []; searchState.currentIndex = 0
+    setMatchCount(0); setMatchIndex(0)
+  }
+
   const handleSaveEdit = async () => {
-    if (!runId) return
+    if (!runId || !editor) return
     const tab = outputs[activeTab]
     if (!tab) return
     setSavingEdit(true)
+    const plain = htmlToPlain(editor.getHTML())
     try {
       await apiFetch(`/api/v1/runs/${runId}/edited-content`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodeId: tab.nodeId, content: editDraft }),
+        body: JSON.stringify({ nodeId: tab.nodeId, content: plain }),
       })
-      // Update local state
       setRun((prev) => {
         if (!prev) return prev
         const existing = (prev.editedContent ?? {}) as Record<string, string>
-        return { ...prev, editedContent: { ...existing, [tab.nodeId]: editDraft } }
+        return { ...prev, editedContent: { ...existing, [tab.nodeId]: plain } }
       })
       setSavedEditAt(Date.now())
       setEditMode(false)
+      setShowSearch(false)
     } finally {
       setSavingEdit(false)
     }
@@ -845,13 +954,13 @@ export function ReviewPage() {
                 }}
               />
               <div className="ml-auto flex items-center gap-1.5">
-                {/* Edit toggle */}
-                {!editMode ? (
+                {/* Edit toggle — only for text outputs */}
+                {!outputs[activeTab]?.assets && (!editMode ? (
                   <button
                     onClick={() => {
                       const tab = outputs[activeTab]
-                      if (!tab) return
-                      setEditDraft(tab.content)
+                      if (!tab || !editor) return
+                      editor.commands.setContent(plainToHtml(tab.content))
                       setEditMode(true)
                     }}
                     className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:border-border/60 hover:text-foreground transition-colors"
@@ -862,7 +971,7 @@ export function ReviewPage() {
                 ) : (
                   <>
                     <button
-                      onClick={() => setEditMode(false)}
+                      onClick={() => { setEditMode(false); setShowSearch(false) }}
                       className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Icons.X className="h-3 w-3" />
@@ -880,7 +989,7 @@ export function ReviewPage() {
                       Save edits
                     </button>
                   </>
-                )}
+                ))}
                 {savedEditAt && !editMode && (
                   <span className="text-[10px] text-emerald-600 font-medium">Saved</span>
                 )}
@@ -920,25 +1029,128 @@ export function ReviewPage() {
             </div>
           )}
 
+          {/* Formatting toolbar — only visible in edit mode */}
+          {editMode && editor && (
+            <>
+              <div className="shrink-0 flex items-center gap-0.5 border-b border-border bg-card px-4 py-1.5 flex-wrap">
+                {/* Headings */}
+                {(['H1','H2','H3'] as const).map((h, i) => (
+                  <button key={h} onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleHeading({ level: (i+1) as 1|2|3 }).run() }}
+                    className={cn('px-2 py-1 text-xs rounded font-semibold transition-colors', editor.isActive('heading', { level: i+1 }) ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}>{h}</button>
+                ))}
+                <span className="mx-1 h-4 w-px bg-border" />
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run() }}
+                  className={cn('px-2 py-1 text-xs rounded font-bold transition-colors', editor.isActive('bold') ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}>B</button>
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run() }}
+                  className={cn('px-2 py-1 text-xs rounded italic transition-colors', editor.isActive('italic') ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}>I</button>
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleUnderline().run() }}
+                  className={cn('px-2 py-1 text-xs rounded underline transition-colors', editor.isActive('underline') ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}>U</button>
+                <span className="mx-1 h-4 w-px bg-border" />
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run() }}
+                  className={cn('px-2 py-1 text-xs rounded transition-colors', editor.isActive('bulletList') ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}>• List</button>
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run() }}
+                  className={cn('px-2 py-1 text-xs rounded transition-colors', editor.isActive('orderedList') ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}>1. List</button>
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBlockquote().run() }}
+                  className={cn('px-2 py-1 text-xs rounded transition-colors', editor.isActive('blockquote') ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}>" Quote</button>
+                <span className="mx-1 h-4 w-px bg-border" />
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().undo().run() }}
+                  className="px-2 py-1 text-xs rounded text-muted-foreground hover:bg-accent/60 transition-colors">↩ Undo</button>
+                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().redo().run() }}
+                  className="px-2 py-1 text-xs rounded text-muted-foreground hover:bg-accent/60 transition-colors">↪ Redo</button>
+                <span className="mx-1 h-4 w-px bg-border" />
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); setShowSearch((v) => { if (!v) setTimeout(() => searchInputRef.current?.focus(), 50); return !v }) }}
+                  className={cn('flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors', showSearch ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')}
+                  title="Find & Replace (⌘H)"
+                >
+                  <Icons.Search className="h-3 w-3" />
+                  Find &amp; Replace
+                </button>
+              </div>
+
+              {/* Search & Replace panel */}
+              {showSearch && (
+                <div className="shrink-0 flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <input ref={searchInputRef} value={searchVal} onChange={(e) => handleSearchChange(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleFindNext() }}
+                      placeholder="Find…" className="h-7 w-40 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <span className="text-[10px] text-muted-foreground w-14">
+                      {matchCount > 0 ? `${matchIndex + 1}/${matchCount}` : searchVal ? '0 results' : ''}
+                    </span>
+                    <button onMouseDown={(e) => { e.preventDefault(); handleFindPrev() }} className="rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent">↑</button>
+                    <button onMouseDown={(e) => { e.preventDefault(); handleFindNext() }} className="rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent">↓</button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input value={replaceVal} onChange={(e) => { setReplaceVal(e.target.value); searchState.replaceTerm = e.target.value }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleReplaceCurrent() }}
+                      placeholder="Replace with…" className="h-7 w-40 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <button onMouseDown={(e) => { e.preventDefault(); handleReplaceCurrent() }} className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent">Replace</button>
+                    <button onMouseDown={(e) => { e.preventDefault(); handleReplaceAll() }} className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent">All</button>
+                  </div>
+                  <button onMouseDown={(e) => { e.preventDefault(); setShowSearch(false); handleSearchChange('') }} className="ml-auto text-muted-foreground hover:text-foreground text-base leading-none">×</button>
+                </div>
+              )}
+            </>
+          )}
+
           <div className="flex-1 overflow-y-auto px-8 py-8">
+            <style>{EDITOR_STYLES}</style>
             <div className="mx-auto max-w-3xl">
-              {outputs.length > 0 ? (
-                editMode ? (
-                  <textarea
-                    className="w-full min-h-[60vh] rounded-xl border border-blue-400 bg-card p-8 text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-inherit"
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    autoFocus
-                  />
-                ) : (
+              {outputs.length > 0 ? (() => {
+                const tab = outputs[activeTab]
+                if (!tab) return null
+
+                // ── Image output ──────────────────────────────────────────────
+                if (tab.subtype === 'image-generation' && tab.assets?.length) {
+                  return (
+                    <div className="space-y-4">
+                      <div className={cn('grid gap-3', tab.assets.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                        {tab.assets.map((a, i) => (
+                          <div key={i} className="group relative overflow-hidden rounded-xl border border-border bg-card">
+                            <img src={assetUrl(a.localPath)} alt={`${tab.label} ${i + 1}`} className="w-full object-cover" />
+                            <a href={assetUrl(a.localPath)} download className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Icons.Download className="h-3.5 w-3.5" />
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-center text-xs text-muted-foreground">{tab.assets.length} image{tab.assets.length !== 1 ? 's' : ''}</p>
+                    </div>
+                  )
+                }
+
+                // ── Video output ──────────────────────────────────────────────
+                if (tab.subtype === 'video-generation' && tab.assets?.length) {
+                  return (
+                    <div className="space-y-3">
+                      {tab.assets.map((a, i) => (
+                        <div key={i} className="group relative overflow-hidden rounded-xl border border-border bg-black">
+                          <video src={assetUrl(a.localPath)} controls className="w-full" style={{ maxHeight: '70vh' }} />
+                          <a href={assetUrl(a.localPath)} download className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Icons.Download className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                }
+
+                // ── Text output — edit mode (TipTap) ─────────────────────────
+                if (editMode) {
+                  return <EditorContent editor={editor} />
+                }
+
+                // ── Text output — view mode ────────────────────────────────
+                return (
                   <div
                     className="select-text cursor-text whitespace-pre-wrap rounded-xl border border-border bg-card p-8 text-sm leading-relaxed text-foreground/90"
                     onMouseUp={handleMouseUp}
                   >
-                    {outputs[activeTab]?.content ?? ''}
+                    {tab.content}
                   </div>
                 )
-              ) : (
+              })() : (
                 <div className="flex flex-col items-center gap-3 py-20 text-center">
                   <Icons.FileX className="h-8 w-8 text-muted-foreground/40" />
                   <p className="text-sm text-muted-foreground">No content output found for this run.</p>
