@@ -1377,10 +1377,10 @@ export function ReviewPage() {
             left: Math.min(Math.max(140, selMenu.x), window.innerWidth - 140),
             top: selMenu.y + 8,
           }}
+          onMouseDown={(e) => e.preventDefault()}
         >
           <button
-            onMouseDown={(e) => {
-              e.preventDefault()
+            onClick={() => {
               const { x, y, text } = selMenu
               setSelMenu(null)
               setTimeout(() => setPopover({ x, y, text }), 0)
@@ -1392,11 +1392,7 @@ export function ReviewPage() {
           </button>
           <div className="w-px h-4 bg-violet-400/60 shrink-0" />
           <button
-            onMouseDown={(e) => {
-              e.preventDefault()
-              setSelMenu(null)
-              editor?.commands.focus()
-            }}
+            onClick={() => setSelMenu(null)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-colors"
           >
             <Icons.PenLine className="h-3.5 w-3.5" />
