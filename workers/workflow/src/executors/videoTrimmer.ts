@@ -86,14 +86,18 @@ export class VideoTrimmerExecutor extends NodeExecutor {
     const outputFilename = `trimmed_${randomUUID()}.mp4`
     const outputTmp      = path.join(tmpDir, outputFilename)
 
-    // Stream-copy for speed — no re-encode. Start-seek before -i is fast seek.
+    // Re-encode to guarantee exact frame-accurate trim.
+    // Stream copy (-c copy) fails on videos with sparse keyframes (e.g. looped-image
+    // compositions) because the container duration metadata is not updated correctly.
+    // veryfast preset adds ~2-3s overhead for a typical clip — acceptable for trim accuracy.
     const cmd = [
       'ffmpeg -y',
       `-ss ${startSec}`,
       `-i "${inputPath}"`,
       `-t ${durationSec}`,
-      '-c copy',
-      '-avoid_negative_ts make_zero',
+      '-c:v libx264 -preset veryfast -crf 23',
+      '-c:a aac -b:a 128k',
+      '-movflags +faststart',
       `"${outputTmp}"`,
     ].join(' ')
 
