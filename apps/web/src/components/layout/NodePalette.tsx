@@ -221,7 +221,7 @@ function NodesPalette() {
   const toggleCat = useCallback((cat: NodeCategory) => {
     setCollapsedCats(prev => {
       const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat) else next.add(cat)
+      if (next.has(cat)) { next.delete(cat) } else { next.add(cat) }
       writeCollapsed(next)
       return next
     })
