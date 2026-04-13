@@ -190,7 +190,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'image-resize',
     label: 'Image Resize', description: 'Resize an image to a social, web, or custom size',
-    category: 'logic', icon: 'Maximize2',
+    category: 'media', icon: 'Maximize2',
     defaultConfig: { subtype: 'image-resize', preset: 'instagram-square', fit: 'cover', format: 'same', quality: 85 },
   },
   {

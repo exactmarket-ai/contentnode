@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -15,7 +16,7 @@ const HEADER_BD   = '#e9d5ff'
 const BADGE_BG    = '#f3e8ff'
 const BADGE_TEXT  = '#6b21a8'
 
-// ─── Node voice picker (fixed-position dropdown, escapes ReactFlow clip) ─────
+// ─── Node voice picker — portal dropdown, outside ReactFlow event capture ─────
 
 function NodeVoicePicker({
   value,
@@ -31,22 +32,30 @@ function NodeVoicePicker({
   const [open, setOpen]       = useState(false)
   const [starred, toggleStar] = useStarredVoices()
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
-  const btnRef = useRef<HTMLButtonElement>(null)
+  const btnRef     = useRef<HTMLButtonElement>(null)
+  const dropRef    = useRef<HTMLDivElement>(null)
 
+  // Close on outside click — both refs are outside ReactFlow's synthetic tree
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (btnRef.current && !btnRef.current.closest('[data-voice-picker]')?.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        btnRef.current  && !btnRef.current.contains(target) &&
+        dropRef.current && !dropRef.current.contains(target)
+      ) {
         setOpen(false)
       }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    // Use capture:true so we get it before ReactFlow's handlers
+    document.addEventListener('mousedown', handler, true)
+    return () => document.removeEventListener('mousedown', handler, true)
   }, [open])
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!open && btnRef.current) {
+    e.preventDefault()
+    if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect()
       setDropPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 220) })
     }
@@ -56,17 +65,53 @@ function NodeVoicePicker({
   const starredVoices = voices.filter(v => starred.has(v.value))
   const otherVoices   = voices.filter(v => !starred.has(v.value))
   const current       = voices.find(v => v.value === value)
-  // Short display label: first word before ' —' or '('
   const shortLabel    = (current?.label ?? value).split(/\s[—(]/)[0]
 
+  const dropdown = open ? (
+    <div
+      ref={dropRef}
+      style={{
+        position: 'fixed',
+        top:      dropPos.top,
+        left:     dropPos.left,
+        width:    dropPos.width,
+        zIndex:   99999,
+        maxHeight: 260,
+        overflowY: 'auto',
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 6,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+      }}
+      onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
+    >
+      {starredVoices.length > 0 && (
+        <>
+          <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Starred</div>
+          {starredVoices.map(v => (
+            <NodeVoiceRow key={v.value} voice={v} selected={value === v.value} starred={true}
+              onSelect={() => { onChange(v.value); setOpen(false) }}
+              onStar={() => toggleStar(v.value)} />
+          ))}
+          <div className="mx-2 my-1 border-t border-slate-100" />
+        </>
+      )}
+      {otherVoices.map(v => (
+        <NodeVoiceRow key={v.value} voice={v} selected={value === v.value} starred={false}
+          onSelect={() => { onChange(v.value); setOpen(false) }}
+          onStar={() => toggleStar(v.value)} />
+      ))}
+    </div>
+  ) : null
+
   return (
-    <div data-voice-picker="" className="relative">
+    <>
       <button
         ref={btnRef}
         className="nodrag nopan flex h-6 items-center gap-1 rounded border px-1 text-[10px] font-medium"
         style={{ ...selectCss, width: 108, minWidth: 0 }}
+        onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
         onClick={handleOpen}
-        onMouseDown={e => e.stopPropagation()}
         title={current?.label ?? value}
       >
         {current && starred.has(current.value) && (
@@ -78,62 +123,31 @@ function NodeVoicePicker({
         }
         <Icons.ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" />
       </button>
-
-      {open && (
-        <div
-          className="nodrag nopan"
-          style={{
-            position: 'fixed',
-            top:      dropPos.top,
-            left:     dropPos.left,
-            width:    dropPos.width,
-            zIndex:   99999,
-            maxHeight: 260,
-            overflowY: 'auto',
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 6,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-          }}
-          onMouseDown={e => e.stopPropagation()}
-          onClick={e => e.stopPropagation()}
-        >
-          {starredVoices.length > 0 && (
-            <>
-              <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Starred</div>
-              {starredVoices.map(v => (
-                <NodeVoiceRow key={v.value} voice={v} selected={value === v.value} starred={true}
-                  onSelect={() => { onChange(v.value); setOpen(false) }}
-                  onStar={e => { e.stopPropagation(); toggleStar(v.value) }} />
-              ))}
-              <div className="mx-2 my-1 border-t border-slate-100" />
-            </>
-          )}
-          {otherVoices.map(v => (
-            <NodeVoiceRow key={v.value} voice={v} selected={value === v.value} starred={false}
-              onSelect={() => { onChange(v.value); setOpen(false) }}
-              onStar={e => { e.stopPropagation(); toggleStar(v.value) }} />
-          ))}
-        </div>
-      )}
-    </div>
+      {createPortal(dropdown, document.body)}
+    </>
   )
 }
 
 function NodeVoiceRow({ voice, selected, starred, onSelect, onStar }: {
   voice: { value: string; label: string }
   selected: boolean; starred: boolean
-  onSelect: () => void; onStar: (e: React.MouseEvent) => void
+  onSelect: () => void; onStar: () => void
 }) {
   return (
-    <div onClick={onSelect}
-      className={`flex cursor-pointer items-center justify-between px-2 py-1.5 text-[11px] hover:bg-slate-50 ${selected ? 'bg-slate-100 font-medium' : ''}`}>
+    <div
+      onMouseDown={e => { e.stopPropagation(); e.preventDefault(); onSelect() }}
+      className={`flex cursor-pointer items-center justify-between px-2 py-1.5 text-[11px] hover:bg-slate-50 ${selected ? 'bg-slate-100 font-medium' : ''}`}
+    >
       <span className="flex items-center gap-1.5 truncate min-w-0">
         {selected ? <Icons.Check className="h-3 w-3 shrink-0 text-violet-600" /> : <span className="w-3 shrink-0" />}
         <span className="truncate">{voice.label}</span>
       </span>
-      <button type="button" onClick={onStar} className="ml-1.5 shrink-0 rounded p-0.5 hover:bg-white"
-        title={starred ? 'Unstar' : 'Star'}>
+      <button
+        type="button"
+        onMouseDown={e => { e.stopPropagation(); e.preventDefault(); onStar() }}
+        className="ml-1.5 shrink-0 rounded p-0.5 hover:bg-white"
+        title={starred ? 'Unstar' : 'Star'}
+      >
         <Icons.Star className={`h-3 w-3 ${starred ? 'fill-amber-400 text-amber-400' : 'text-slate-300 hover:text-amber-400'}`} />
       </button>
     </div>
