@@ -352,34 +352,88 @@ async function generateFal(
 // ─────────────────────────────────────────────────────────────────────────────
 // ComfyUI (local — http://localhost:8188)
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// FLUX fp8 env vars (Comfy-Org format — files go in the listed model dirs):
+//   COMFYUI_MODEL         — diffusion model filename  (models/checkpoints/ or models/diffusion_models/)
+//                           e.g. flux1-dev-fp8.safetensors
+//   COMFYUI_FLUX_T5       — T5XXL text encoder        (models/text_encoders/)
+//                           e.g. t5xxl_fp8_e4m3fn.safetensors   default: t5xxl_fp8_e4m3fn.safetensors
+//   COMFYUI_FLUX_CLIP_L   — CLIP-L text encoder       (models/text_encoders/)
+//                           e.g. clip_l.safetensors               default: clip_l.safetensors
+//   COMFYUI_FLUX_VAE      — VAE filename               (models/vae/)
+//                           e.g. ae.safetensors                   default: ae.safetensors
+//
+// FLUX is detected when COMFYUI_MODEL contains "flux" (case-insensitive).
+// For SDXL / SD1.5 models, the legacy KSampler + CheckpointLoaderSimple workflow is used.
+
+function isFluxModel(modelName: string): boolean {
+  return modelName.toLowerCase().includes('flux')
+}
 
 async function generateComfyUI(
   prompt: ImagePromptOutput,
   cfg: ImageGenerationConfig,
 ): Promise<string[]> {
-  const baseUrl = process.env.COMFYUI_BASE_URL ?? 'http://localhost:8188'
+  const baseUrl   = process.env.COMFYUI_BASE_URL ?? 'http://localhost:8188'
+  const modelName = process.env.COMFYUI_MODEL    ?? 'v1-5-pruned-emaonly.ckpt'
   const { width, height } = aspectToDimensions(cfg.aspect_ratio ?? prompt.aspectRatio ?? '1:1')
-  const clientId = randomUUID()
+  const clientId  = randomUUID()
+  const seed      = cfg.seed ?? Math.floor(Math.random() * 2 ** 32)
 
-  // Minimal text-to-image workflow
-  const workflow = {
-    '6': { class_type: 'CLIPTextEncode', inputs: { clip: ['4', 1], text: prompt.positivePrompt } },
-    '7': { class_type: 'CLIPTextEncode', inputs: { clip: ['4', 1], text: prompt.negativePrompt || cfg.negative_prompt || '' } },
-    '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: process.env.COMFYUI_MODEL ?? 'v1-5-pruned-emaonly.ckpt' } },
-    '3': {
-      class_type: 'KSampler',
-      inputs: {
-        model: ['4', 0], positive: ['6', 0], negative: ['7', 0],
-        latent_image: ['5', 0], sampler_name: 'euler', scheduler: 'normal',
-        steps: cfg.quality === 'high' ? 30 : cfg.quality === 'draft' ? 10 : 20,
-        cfg: cfg.cfg_scale ?? 7,
-        seed: cfg.seed ?? Math.floor(Math.random() * 2 ** 32),
-        denoise: 1,
+  let workflow: Record<string, unknown>
+
+  if (isFluxModel(modelName)) {
+    // ── FLUX fp8 workflow (Comfy-Org format) ──────────────────────────────────
+    // Uses UNETLoader + DualCLIPLoader + VAELoader (separate model files).
+    // FLUX does not use classifier-free guidance (cfg=1) or negative prompts.
+    // Dev: 20 steps  |  Schnell: 4 steps (much faster, slightly lower quality)
+    const isSchnell = modelName.toLowerCase().includes('schnell')
+    const steps     = isSchnell
+      ? 4
+      : cfg.quality === 'high' ? 30 : cfg.quality === 'draft' ? 10 : 20
+
+    const t5Name    = process.env.COMFYUI_FLUX_T5     ?? 't5xxl_fp8_e4m3fn.safetensors'
+    const clipName  = process.env.COMFYUI_FLUX_CLIP_L ?? 'clip_l.safetensors'
+    const vaeName   = process.env.COMFYUI_FLUX_VAE    ?? 'ae.safetensors'
+
+    workflow = {
+      '1': { class_type: 'UNETLoader',     inputs: { unet_name: modelName, weight_dtype: 'fp8_e4m3fn' } },
+      '2': { class_type: 'DualCLIPLoader', inputs: { clip_name1: t5Name, clip_name2: clipName, type: 'flux' } },
+      '3': { class_type: 'VAELoader',      inputs: { vae_name: vaeName } },
+      '4': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: prompt.positivePrompt } },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width, height, batch_size: cfg.num_outputs ?? 1 } },
+      '6': {
+        class_type: 'KSampler',
+        inputs: {
+          model: ['1', 0], positive: ['4', 0], negative: ['4', 0],
+          latent_image: ['5', 0],
+          sampler_name: 'euler', scheduler: 'simple',
+          steps, cfg: 1, seed, denoise: 1,
+        },
       },
-    },
-    '5': { class_type: 'EmptyLatentImage', inputs: { width, height, batch_size: cfg.num_outputs ?? 1 } },
-    '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
-    '9': { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: 'contentnode' } },
+      '7': { class_type: 'VAEDecode',  inputs: { samples: ['6', 0], vae: ['3', 0] } },
+      '8': { class_type: 'SaveImage',  inputs: { images: ['7', 0], filename_prefix: 'contentnode' } },
+    }
+  } else {
+    // ── SDXL / SD1.5 workflow (legacy CheckpointLoaderSimple) ────────────────
+    workflow = {
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: modelName } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { clip: ['4', 1], text: prompt.positivePrompt } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { clip: ['4', 1], text: prompt.negativePrompt || cfg.negative_prompt || '' } },
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          model: ['4', 0], positive: ['6', 0], negative: ['7', 0],
+          latent_image: ['5', 0], sampler_name: 'euler', scheduler: 'normal',
+          steps: cfg.quality === 'high' ? 30 : cfg.quality === 'draft' ? 10 : 20,
+          cfg: cfg.cfg_scale ?? 7,
+          seed, denoise: 1,
+        },
+      },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width, height, batch_size: cfg.num_outputs ?? 1 } },
+      '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
+      '9': { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: 'contentnode' } },
+    }
   }
 
   const queueRes = await fetch(`${baseUrl}/prompt`, {
