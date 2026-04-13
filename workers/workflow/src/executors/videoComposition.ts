@@ -188,12 +188,22 @@ async function addTextWithSharp(
       const subFont  = subtitle ? Math.round(fontSize * 0.65) : 0
       const contentH = subtitle ? fontSize + lineGap + subFont : fontSize
       const barH     = contentH + vPad * 2
-      const titleY   = h - (barH - vPad)
-      const subY     = h - (barH - vPad - fontSize - lineGap)
-      textSvg = `
-        <text x="20" y="${titleY}" ${HANG} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
-        ${subtitle ? `<text x="20" y="${subY}" ${HANG} font-size="${subFont}" fill="#dddddd" ${FONT}>${escXml(subtitle)}</text>` : ''}
-      `
+      // Use dominant-baseline="middle" with y at the visual center of each text line.
+      // Single line: center of the whole bar. Multi-line: each line centered within its slot.
+      if (subtitle) {
+        const titleCenterY = h - barH + vPad + fontSize / 2
+        const subCenterY   = h - barH + vPad + fontSize + lineGap + subFont / 2
+        textSvg = `
+          <text x="20" y="${titleCenterY}" ${MID} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
+          <text x="20" y="${subCenterY}" ${MID} font-size="${subFont}" fill="#dddddd" ${FONT}>${escXml(subtitle)}</text>
+        `
+      } else {
+        // Single line: vertically center within the bar
+        const titleCenterY = h - barH / 2
+        textSvg = `
+          <text x="20" y="${titleCenterY}" ${MID} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
+        `
+      }
       break
     }
     case 'title_card':
@@ -204,8 +214,11 @@ async function addTextWithSharp(
       break
     case 'pill_badge': {
       const pad = 12
+      const bh  = fontSize + pad * 2
+      // Center text vertically within the badge box using dominant-baseline="middle"
+      const badgeCenterY = pad + bh / 2
       textSvg = `
-        <text x="${pad * 2}" y="${pad}" ${HANG} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
+        <text x="${pad * 2}" y="${badgeCenterY}" ${MID} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
       `
       break
     }
@@ -258,19 +271,29 @@ async function renderLocal(input: RenderInput): Promise<void> {
   switch (overlayStyle) {
     case 'lower_third': {
       // Bar height adapts to font size so text is always vertically centered
-      const vPad       = 14
-      const lineGap    = 6
-      const subFont    = subtitle ? Math.round(fontSize * 0.65) : 0
-      const contentH   = subtitle ? fontSize + lineGap + subFont : fontSize
-      const barH       = contentH + vPad * 2
-      // Title top:    bar_top + vPad  = (ih - barH) + vPad = h - (barH - vPad)
-      // Subtitle top: title_top + fontSize + lineGap         = h - (barH - vPad - fontSize - lineGap)
-      vf = [
-        `drawbox=x=0:y=ih-${barH}:w=iw:h=${barH}:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=20:y=h-${barH - vPad}:fontsize=${fontSize}:fontcolor=white:${FONT}`,
-        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y=h-${barH - vPad - fontSize - lineGap}:fontsize=${subFont}:fontcolor=#dddddd:${FONT}` : '',
-        'fade=t=in:st=0:d=0.5',
-      ].filter(Boolean).join(',')
+      const vPad    = 14
+      const lineGap = 6
+      const subFont = subtitle ? Math.round(fontSize * 0.65) : 0
+      const contentH = subtitle ? fontSize + lineGap + subFont : fontSize
+      const barH    = contentH + vPad * 2
+      // Use runtime `text_h` so centering is based on actual rendered glyph height
+      // (not fontSize, which includes reserved ascender/descender space in the em square)
+      // Single line:   y = h - barH + (barH - text_h) / 2
+      // Multi-line:    title anchored at barTop + vPad; subtitle below title
+      if (subtitle) {
+        vf = [
+          `drawbox=x=0:y=ih-${barH}:w=iw:h=${barH}:color=${colorA}:t=fill`,
+          `drawtext=text='${esc(title)}':x=20:y=h-${barH}+(${barH}-text_h)/2:fontsize=${fontSize}:fontcolor=white:${FONT}`,
+          `drawtext=text='${esc(subtitle)}':x=20:y=h-${barH - vPad - fontSize - lineGap}+(${fontSize + lineGap}-text_h)/2:fontsize=${subFont}:fontcolor=#dddddd:${FONT}`,
+          'fade=t=in:st=0:d=0.5',
+        ].join(',')
+      } else {
+        vf = [
+          `drawbox=x=0:y=ih-${barH}:w=iw:h=${barH}:color=${colorA}:t=fill`,
+          `drawtext=text='${esc(title)}':x=20:y=h-${barH}+(${barH}-text_h)/2:fontsize=${fontSize}:fontcolor=white:${FONT}`,
+          'fade=t=in:st=0:d=0.5',
+        ].join(',')
+      }
       break
     }
 
@@ -291,9 +314,10 @@ async function renderLocal(input: RenderInput): Promise<void> {
       const pad = 12
       const bh  = fontSize + pad * 2
       const bw  = Math.max(title.length * (fontSize * 0.6), 120) + pad * 2
+      // Use runtime `text_h` to center text vertically within the badge box
       vf = [
         `drawbox=x=${pad}:y=${pad}:w=${Math.round(bw)}:h=${bh}:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=${pad * 2}:y=${pad + 2}:fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        `drawtext=text='${esc(title)}':x=${pad * 2}:y=${pad}+(${bh}-text_h)/2:fontsize=${fontSize}:fontcolor=white:${FONT}`,
         'fade=t=in:st=0:d=0.5',
       ].join(',')
       break
