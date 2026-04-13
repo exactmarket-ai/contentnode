@@ -212,39 +212,51 @@ async function renderLocal(input: RenderInput): Promise<void> {
       vf = `drawtext=text='${esc(title)}':x=20:y=20:fontsize=${fontSize}:fontcolor=white:${FONT}`
   }
 
-  const inputs  = [`-loop 1 -t ${duration} -i "${bgPath}"`]
-  const maps    = ['-map 0:v']
+  const audioInputs = (outputFormat === 'video' && audioPath && fs.existsSync(audioPath))
+    ? [audioPath] : []
 
-  if (outputFormat === 'video' && audioPath && fs.existsSync(audioPath)) {
-    inputs.push(`-i "${audioPath}"`)
-    maps.push('-map 1:a', '-shortest')
-  }
-
-  let cmd: string
-  if (outputFormat === 'image') {
-    // Single JPEG frame — no audio, no duration encoding needed
-    cmd = [
+  // Build ffmpeg command from a given filter string (called twice if drawtext unavailable)
+  const buildCmd = (filterStr: string): string => {
+    if (outputFormat === 'image') {
+      return [
+        'ffmpeg -y',
+        `-loop 1 -t 1 -i "${bgPath}"`,
+        `-vf "${filterStr}"`,
+        '-map 0:v',
+        '-frames:v 1 -f image2',
+        `"${outputPath}"`,
+      ].join(' ')
+    }
+    return [
       'ffmpeg -y',
-      `-loop 1 -t 1 -i "${bgPath}"`,
-      `-vf "${vf}"`,
+      `-loop 1 -t ${duration} -i "${bgPath}"`,
+      ...audioInputs.map(a => `-i "${a}"`),
+      `-vf "${filterStr}"`,
       '-map 0:v',
-      '-frames:v 1 -f image2',
-      `"${outputPath}"`,
-    ].join(' ')
-  } else {
-    cmd = [
-      'ffmpeg -y',
-      ...inputs,
-      `-vf "${vf}"`,
-      ...maps,
+      ...audioInputs.map(() => '-map 1:a'),
+      ...audioInputs.map(() => '-shortest'),
       '-c:v libx264 -preset fast -crf 23',
-      audioPath ? '-c:a aac -b:a 128k' : '',
+      audioInputs.length ? '-c:a aac -b:a 128k' : '',
       `-t ${duration}`,
       `"${outputPath}"`,
     ].filter(Boolean).join(' ')
   }
 
-  await execAsync(cmd, { timeout: 120_000 })
+  try {
+    await execAsync(buildCmd(vf), { timeout: 120_000 })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    // drawtext requires libfreetype — not compiled into all ffmpeg builds (e.g. macOS Homebrew default).
+    // Fall back to rendering without text overlay so local dev still works.
+    if (vf.includes('drawtext') && (msg.includes('drawtext') || msg.includes('Filter not found'))) {
+      const vfNoText = vf.split(',').filter(f => !f.trim().startsWith('drawtext=')).join(',')
+      const fallbackVf = vfNoText || 'null'
+      console.warn('[video-composition] drawtext unavailable (ffmpeg built without libfreetype) — rendering without text overlay')
+      await execAsync(buildCmd(fallbackVf), { timeout: 120_000 })
+    } else {
+      throw err
+    }
+  }
 }
 
 // ─── Shotstack cloud renderer ─────────────────────────────────────────────────
