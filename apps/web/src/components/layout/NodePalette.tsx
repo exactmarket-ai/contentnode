@@ -41,6 +41,21 @@ function useNodeUsage() {
 const sortedByLabel = (nodes: PaletteNodeDef[]) =>
   [...nodes].sort((a, b) => a.label.localeCompare(b.label))
 
+// Category display order — Output listed after Media
+const CATEGORY_ORDER: NodeCategory[] = ['source', 'logic', 'media', 'output']
+
+// Number of nodes shown when a category section is collapsed
+const COLLAPSED_PREVIEW = 3
+
+// Persist collapsed state across sessions
+const COLLAPSED_KEY = 'contentnode:collapsedCats'
+function readCollapsed(): Set<NodeCategory> {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]')) } catch { return new Set() }
+}
+function writeCollapsed(cats: Set<NodeCategory>) {
+  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...cats])) } catch { /* ignore */ }
+}
+
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   source: 'Source', logic: 'Logic', output: 'Output', media: 'Media', insight: 'Insight', canvas: 'Canvas',
 }
@@ -199,8 +214,18 @@ function ClientTemplatesSection() {
 
 function NodesPalette() {
   const [search, setSearch] = useState('')
+  const [collapsedCats, setCollapsedCats] = useState<Set<NodeCategory>>(readCollapsed)
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
   const { usage, track } = useNodeUsage()
+
+  const toggleCat = useCallback((cat: NodeCategory) => {
+    setCollapsedCats(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat) else next.add(cat)
+      writeCollapsed(next)
+      return next
+    })
+  }, [])
 
   const filtered = PALETTE_NODES.filter(
     (n) =>
@@ -261,18 +286,42 @@ function NodesPalette() {
             </div>
           )}
 
-          {/* Categories, alphabetically sorted */}
-          {(['source', 'logic', 'output', 'media'] as NodeCategory[]).map((cat) => {
-            const items = byCategory(cat).filter((n) => !frequentSubtypes.has(n.subtype))
-            const allItems = byCategory(cat)
+          {/* Categories */}
+          {CATEGORY_ORDER.map((cat) => {
+            const allItems   = byCategory(cat)
             if (allItems.length === 0) return null
+            const items      = search ? allItems : allItems.filter((n) => !frequentSubtypes.has(n.subtype))
+            const isCollapsed = !search && collapsedCats.has(cat)
+
+            // Top-3 preview: most-used first, then alphabetical
+            const preview = [...items]
+              .sort((a, b) => (usage[b.subtype] ?? 0) - (usage[a.subtype] ?? 0))
+              .slice(0, COLLAPSED_PREVIEW)
+            const visibleItems = isCollapsed ? preview : items
+            const hiddenCount  = items.length - preview.length
+
             return (
               <div key={cat}>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b4b2a9' }}>
-                  {CATEGORY_LABELS[cat]}
-                </p>
+                <button
+                  className="mb-2 flex w-full items-center justify-between group/cathead"
+                  onClick={() => !search && toggleCat(cat)}
+                  style={{ cursor: search ? 'default' : 'pointer' }}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#b4b2a9' }}>
+                    {CATEGORY_LABELS[cat]}
+                  </p>
+                  {!search && (
+                    <Icons.ChevronDown
+                      className="h-3 w-3 transition-transform duration-150"
+                      style={{
+                        color: '#b4b2a9',
+                        transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      }}
+                    />
+                  )}
+                </button>
                 <div className="space-y-1.5">
-                  {(search ? allItems : items).map((def) => (
+                  {visibleItems.map((def) => (
                     <PaletteItem
                       key={def.subtype}
                       def={def}
@@ -280,6 +329,15 @@ function NodesPalette() {
                       onClick={() => addNodeBySubtype(def.subtype)}
                     />
                   ))}
+                  {isCollapsed && hiddenCount > 0 && (
+                    <button
+                      className="w-full rounded py-0.5 text-center text-[10px] transition-colors hover:text-foreground"
+                      style={{ color: '#b4b2a9' }}
+                      onClick={() => toggleCat(cat)}
+                    >
+                      +{hiddenCount} more
+                    </button>
+                  )}
                 </div>
               </div>
             )
