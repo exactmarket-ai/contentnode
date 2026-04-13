@@ -617,7 +617,7 @@ export class WorkflowRunner {
           })
 
           // Media generation nodes receive a structured inputs collection instead of flat strings
-          const MULTI_INPUT_SUBTYPES = new Set(['image-prompt-builder', 'video-prompt-builder', 'image-generation', 'video-generation', 'audio-mix'])
+          const MULTI_INPUT_SUBTYPES = new Set(['image-prompt-builder', 'video-prompt-builder', 'image-generation', 'video-generation', 'audio-mix', 'video-composition'])
 
           let input: unknown
           if (activeUpstreamEdges.length === 0) {

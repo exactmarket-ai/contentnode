@@ -69,6 +69,12 @@ function resolveInputs(input: unknown): ResolvedInputs {
   let audioKey:       string | null = null
   let audioLocalPath: string | null = null
 
+  // Plain string — single source/text-input node connected (runner prefixes "## Label\n\n")
+  if (typeof input === 'string') {
+    const body = input.replace(/^##[^\n]*\n\n/, '').trim()
+    return { bgStorageKey: null, bgUrl: null, text: body || null, audioKey: null, audioLocalPath: null }
+  }
+
   const items: StructuredInput[] = []
 
   if (input && typeof input === 'object' && Array.isArray((input as Record<string, unknown>).inputs)) {
@@ -93,9 +99,18 @@ function resolveInputs(input: unknown): ResolvedInputs {
   }
 
   for (const item of items) {
+    // Plain string content — e.g. text-input / source node output
+    if (typeof item.content === 'string') {
+      if (!text) {
+        const body = item.content.replace(/^##[^\n]*\n\n/, '').trim()
+        text = body || null
+      }
+      continue
+    }
+
     const c = item.content as Record<string, unknown> | null
     if (!c) continue
-    // Text node
+    // Text fields
     if (typeof c.text === 'string' && !text)    text = c.text
     if (typeof c.content === 'string' && !text) text = c.content
     if (typeof c.output === 'string' && !text)  text = c.output
