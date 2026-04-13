@@ -144,8 +144,7 @@ async function runUndetectable(content: string): Promise<string> {
   const userId = process.env.UNDETECTABLE_USER_ID
 
   if (!apiKey) throw new Error('Undetectable.ai: UNDETECTABLE_API_KEY is not set in worker environment')
-  if (!userId) throw new Error('Undetectable.ai: UNDETECTABLE_USER_ID is not set — set it to the email address on your Undetectable.ai account')
-  if (!userId.includes('@')) throw new Error(`Undetectable.ai: UNDETECTABLE_USER_ID looks wrong ("${userId}") — it must be the email address you used to sign up at undetectable.ai, not an API key or numeric ID`)
+  if (!userId) throw new Error('Undetectable.ai: UNDETECTABLE_USER_ID is not set — set it to the User ID from your Undetectable.ai account dashboard')
 
   const submitRes = await fetch('https://humanize.undetectable.ai/submit', {
     method: 'POST',
@@ -164,8 +163,8 @@ async function runUndetectable(content: string): Promise<string> {
     const errBody = await submitRes.text().catch(() => submitRes.statusText)
     if (submitRes.status === 404 || errBody.includes('User not found')) {
       throw new Error(
-        `Undetectable.ai: "User not found" — UNDETECTABLE_USER_ID is set to "${userId}" but no Undetectable.ai account exists with that email. ` +
-        `Check the email at undetectable.ai → Account settings and update UNDETECTABLE_USER_ID in Railway.`
+        `Undetectable.ai: "User not found" — UNDETECTABLE_USER_ID is set to "${userId}" but Undetectable.ai doesn't recognise it. ` +
+        `Find your User ID in the Undetectable.ai dashboard and update UNDETECTABLE_USER_ID in Railway.`
       )
     }
     throw new Error(`Undetectable.ai submit failed (${submitRes.status}): ${errBody}`)
