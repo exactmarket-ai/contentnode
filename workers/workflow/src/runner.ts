@@ -589,6 +589,7 @@ export class WorkflowRunner {
             workflowRunId: this.workflowRunId,
             agencyId: this.agencyId,
             nodeId: node.id,
+            nodeLabel: node.label ?? undefined,
             workflowId: workflow.id,
             clientId: workflow.clientId ?? null,
             userId: callerClerkId ?? null,

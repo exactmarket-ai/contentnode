@@ -85,6 +85,36 @@ export class SourceNodeExecutor extends NodeExecutor {
       }
     }
 
+    // ── Web scrape ────────────────────────────────────────────────────────────
+    if (subtype === 'web-scrape') {
+      const url = (config.url as string | undefined)?.trim()
+      if (!url) throw new Error(`"${ctx.nodeLabel ?? ctx.nodeId}": no URL configured. Open the node and enter the page URL.`)
+      return { output: await this.scrapeUrl(url) }
+    }
+
+    // ── API fetch ─────────────────────────────────────────────────────────────
+    if (subtype === 'api-fetch') {
+      const url = (config.url as string | undefined)?.trim()
+      if (!url) throw new Error(`"${ctx.nodeLabel ?? ctx.nodeId}": no URL configured. Open the node and enter the API endpoint URL.`)
+      const method  = ((config.method as string | undefined) ?? 'GET').toUpperCase()
+      const headers = (config.headers as Record<string, string> | undefined) ?? {}
+      const body    = method !== 'GET' && config.body ? JSON.stringify(config.body) : undefined
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body,
+        signal: AbortSignal.timeout(15_000),
+      }).catch((err: unknown) => {
+        throw new Error(`API Fetch: cannot reach "${url}" — ${(err as Error).message}`)
+      })
+      if (!res.ok) throw new Error(`API Fetch: HTTP ${res.status} from "${url}"`)
+      const ct = res.headers.get('content-type') ?? ''
+      const text = ct.includes('json')
+        ? JSON.stringify(await res.json(), null, 2)
+        : await res.text()
+      return { output: text }
+    }
+
     // ── Legacy single documentId path ────────────────────────────────────────
     const documentId = config.documentId as string | undefined
     if (documentId) {
@@ -100,9 +130,36 @@ export class SourceNodeExecutor extends NodeExecutor {
       }
     }
 
+    const label = ctx.nodeLabel ?? ctx.nodeId
     throw new Error(
-      `Source node ${ctx.nodeId}: no content configured. Upload a file or add inline text.`,
+      `"${label}": no content configured. ` +
+      (subtype === 'file-upload'
+        ? 'Open the node and upload a file.'
+        : 'Open the node and add text, or connect an upstream node.'),
     )
+  }
+
+  private async scrapeUrl(url: string): Promise<string> {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ContentNode/1.0)' },
+      signal: AbortSignal.timeout(15_000),
+    }).catch((err: unknown) => {
+      throw new Error(`Web Scrape: cannot reach "${url}" — ${(err as Error).message}`)
+    })
+    if (!res.ok) throw new Error(`Web Scrape: HTTP ${res.status} from "${url}"`)
+    const html = await res.text()
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+      .replace(/[ \t]{2,}/g, ' ')
+      .split('\n').map((l) => l.trim()).filter(Boolean).join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    if (!text) throw new Error(`Web Scrape: no readable text found at "${url}"`)
+    return text
   }
 
   private async readFileText(storageKey: string, label: string): Promise<string> {

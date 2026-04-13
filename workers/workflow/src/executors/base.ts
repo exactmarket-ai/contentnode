@@ -23,6 +23,7 @@ export interface NodeExecutionContext {
   workflowRunId: string
   agencyId: string
   nodeId: string
+  nodeLabel?: string
   workflowId: string
   clientId?: string | null
   /** Client brand profile — null if not yet populated */

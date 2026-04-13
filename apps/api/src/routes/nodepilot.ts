@@ -34,10 +34,10 @@ const NODE_REFERENCE = `
 AVAILABLE NODE TYPES (use "subtype" in suggestions):
 
 SOURCES — provide input data:
-  text-input        Static text or template literal
-  file-upload       Upload a document or image
-  api-fetch         Fetch data from an HTTP endpoint
-  web-scrape        Scrape content from a webpage
+  text-input        Static text or template literal — use for manually entered content
+  file-upload       Upload a document or image — use when user will upload a PDF/doc
+  api-fetch         Fetch JSON or text from an HTTP endpoint — use for REST APIs (config: { url, method, headers })
+  web-scrape        Fetch and extract text from any public URL — use when user provides a website/blog/article URL (config: { url: "https://..." })
   brand-context     Inject client brand profile + voice guidelines
   instruction-translator  Parse a brief into structured instructions
   gtm-framework     Inject GTM framework context
@@ -209,6 +209,8 @@ LAYOUT RULES:
 - Use y: 150 for a single-track workflow; offset parallel branches by 200px (y: 150 / y: 350 / y: 550)
 - For ai-generate nodes, always fill in a meaningful "prompt" string in config
 - CRITICAL: file-upload node configs must have NO "text" field — only "subtype". Never set config.text on a file-upload node. The user uploads the file at runtime; the node has no inline content.
+- CRITICAL: when the user provides a URL (blog post, article, webpage), ALWAYS use a web-scrape node (not text-input). Set config: { url: "https://the-url-they-provided" }. The web-scrape node fetches and extracts the text automatically at run time. Never put a URL in a text-input node — the AI would receive only the URL string, not the page content.
+- CRITICAL: never put a web-scrape node AND a separate text-input node both sourcing the same URL. The web-scrape node IS the input — connect it directly to the next processing node.
 - CRITICAL: ai-generate prompts MUST include the literal token {{input}} somewhere in the text — this is the only placeholder the engine substitutes with upstream content. NEVER use {{brand_voice}}, {{whitepaper_content}}, or any other variable name — they will not be resolved and the model will receive an empty placeholder. Instead write the instruction in plain English and end with "{{input}}" or embed it inline: "Write a script in the brand voice shown above.\n\n{{input}}"
 - For text-input nodes, ALWAYS put a descriptive placeholder in "text" — never use "". E.g. "Enter your series topics here, one per line" or "Paste your content brief here". This prevents a 'no content' warning on the canvas.
 - Suggest 2–3 variations (e.g. simple vs. full-pipeline, text vs. video)
