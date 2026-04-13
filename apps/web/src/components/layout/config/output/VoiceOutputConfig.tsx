@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { FieldGroup } from '../shared'
-import { assetUrl } from '@/lib/api'
+import { assetUrl, apiFetch } from '@/lib/api'
 
 // ─── Metadata ────────────────────────────────────────────────────────────────
 
@@ -20,20 +20,35 @@ const VOICES_OPENAI = [
   { value: 'cedar',   label: 'Cedar — deep, grounded' },
 ]
 
-const VOICES_ELEVENLABS = [
-  { value: 'rachel',    label: 'Rachel — warm, versatile (F)' },
-  { value: 'sarah',     label: 'Sarah — soft, young (F)' },
-  { value: 'emily',     label: 'Emily — calm, natural (F)' },
-  { value: 'charlotte', label: 'Charlotte — warm, British (F)' },
-  { value: 'matilda',   label: 'Matilda — natural, friendly (F)' },
-  { value: 'dorothy',   label: 'Dorothy — pleasant, British (F)' },
-  { value: 'adam',      label: 'Adam — deep, confident (M)' },
-  { value: 'daniel',    label: 'Daniel — authoritative, British (M)' },
-  { value: 'josh',      label: 'Josh — young, dynamic (M)' },
-  { value: 'harry',     label: 'Harry — warm, grounded (M)' },
-  { value: 'liam',      label: 'Liam — energetic, clear (M)' },
-  { value: 'ethan',     label: 'Ethan — conversational (M)' },
+// Fallback list shown before the live fetch resolves (or if key is not set)
+const VOICES_ELEVENLABS_FALLBACK = [
+  { value: 'rachel', label: 'Rachel — warm, versatile (F)' },
+  { value: 'adam',   label: 'Adam — deep, confident (M)' },
+  { value: 'josh',   label: 'Josh — young, dynamic (M)' },
 ]
+
+function useElevenLabsVoices(enabled: boolean) {
+  const [voices, setVoices] = useState<{ value: string; label: string }[]>(VOICES_ELEVENLABS_FALLBACK)
+  const [loading, setLoading] = useState(false)
+
+  const fetchVoices = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await apiFetch('/api/v1/voice-providers/elevenlabs/voices')
+      if (res.ok) {
+        const json = await res.json() as { data: { value: string; label: string }[] }
+        if (json.data?.length) setVoices(json.data)
+      }
+    } catch { /* keep fallback */ }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    if (enabled) fetchVoices()
+  }, [enabled, fetchVoices])
+
+  return { voices, loading, refetch: fetchVoices }
+}
 
 const VOICES_LOCAL = [
   // American Female
@@ -239,8 +254,10 @@ export function VoiceOutputConfig({
   const similarity    = (config.similarity_boost as number) ?? 0.75
   const styleExag     = (config.style_exaggeration as number) ?? 0.0
 
+  const { voices: elVoices, loading: elLoading, refetch: elRefetch } = useElevenLabsVoices(provider === 'elevenlabs')
+
   const voiceOptions =
-    provider === 'elevenlabs' ? VOICES_ELEVENLABS
+    provider === 'elevenlabs' ? elVoices
     : provider === 'local'   ? VOICES_LOCAL
     : VOICES_OPENAI
 
@@ -343,14 +360,24 @@ export function VoiceOutputConfig({
       </FieldGroup>
 
       {/* ── Voice ─────────────────────────────────────────────────────────── */}
-      <FieldGroup label="Voice">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium">Voice</span>
+          {provider === 'elevenlabs' && (
+            <button onClick={elRefetch} disabled={elLoading} title="Refresh voice list"
+              className="flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors">
+              <Icons.RefreshCw className={`h-2.5 w-2.5 ${elLoading ? 'animate-spin' : ''}`} />
+              {elLoading ? 'Loading…' : `${elVoices.length} voices`}
+            </button>
+          )}
+        </div>
         <VoicePicker value={voice} voices={voiceOptions} onChange={(v) => onChange('voice', v)} />
         {provider === 'elevenlabs' && (
           <p className="mt-0.5 text-[9px] text-muted-foreground/60">
             Or paste a custom ElevenLabs voice ID directly into the node selector.
           </p>
         )}
-      </FieldGroup>
+      </div>
 
       {/* ── Model (provider-specific) ────────────────────────────────────── */}
       {provider === 'openai' && (
