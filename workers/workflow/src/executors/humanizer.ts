@@ -140,8 +140,12 @@ async function processInChunks(
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function runUndetectable(content: string): Promise<string> {
-  const apiKey = process.env.UNDETECTABLE_API_KEY!
-  const userId = process.env.UNDETECTABLE_USER_ID!
+  const apiKey = process.env.UNDETECTABLE_API_KEY
+  const userId = process.env.UNDETECTABLE_USER_ID
+
+  if (!apiKey) throw new Error('Undetectable.ai: UNDETECTABLE_API_KEY is not set in worker environment')
+  if (!userId) throw new Error('Undetectable.ai: UNDETECTABLE_USER_ID is not set — set it to the email address on your Undetectable.ai account')
+  if (!userId.includes('@')) throw new Error(`Undetectable.ai: UNDETECTABLE_USER_ID looks wrong ("${userId}") — it must be the email address you used to sign up at undetectable.ai, not an API key or numeric ID`)
 
   const submitRes = await fetch('https://humanize.undetectable.ai/submit', {
     method: 'POST',
@@ -157,8 +161,14 @@ async function runUndetectable(content: string): Promise<string> {
   })
 
   if (!submitRes.ok) {
-    const text = await submitRes.text()
-    throw new Error(`Undetectable.ai submit failed (${submitRes.status}): ${text}`)
+    const errBody = await submitRes.text().catch(() => submitRes.statusText)
+    if (submitRes.status === 404 || errBody.includes('User not found')) {
+      throw new Error(
+        `Undetectable.ai: "User not found" — UNDETECTABLE_USER_ID is set to "${userId}" but no Undetectable.ai account exists with that email. ` +
+        `Check the email at undetectable.ai → Account settings and update UNDETECTABLE_USER_ID in Railway.`
+      )
+    }
+    throw new Error(`Undetectable.ai submit failed (${submitRes.status}): ${errBody}`)
   }
 
   const { id } = (await submitRes.json()) as { id: string }
