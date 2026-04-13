@@ -289,9 +289,10 @@ export function WorkflowListPage() {
               {workflows.map((wf) => (
                 <div
                   key={wf.id}
-                  className={`flex items-center justify-between rounded-lg border bg-card px-4 py-3 transition-colors ${
-                    selected.has(wf.id) ? 'border-blue-400 bg-blue-50' : 'border-border hover:border-border/80'
+                  className={`flex items-center justify-between rounded-lg border bg-card px-4 py-3 transition-colors cursor-pointer ${
+                    selected.has(wf.id) ? 'border-blue-400 bg-blue-50' : 'border-border hover:bg-muted/40 hover:border-muted-foreground/20'
                   }`}
+                  onClick={() => navigate(`/workflows/${wf.id}`)}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <input
@@ -299,6 +300,7 @@ export function WorkflowListPage() {
                       className="h-3.5 w-3.5 rounded accent-blue-600 cursor-pointer shrink-0"
                       checked={selected.has(wf.id)}
                       onChange={() => toggleSelect(wf.id)}
+                      onClick={(e) => e.stopPropagation()}
                     />
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-600">
                       <Icons.Workflow className="h-4 w-4" />
@@ -310,9 +312,9 @@ export function WorkflowListPage() {
                           className="h-6 rounded border border-input bg-background px-1.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-ring w-48"
                           value={renameValue}
                           onChange={(e) => setRenameValue(e.target.value)}
-                          onBlur={() => commitRename(wf.id)}
+                          onBlur={() => void commitRename(wf.id)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') commitRename(wf.id)
+                            if (e.key === 'Enter') void commitRename(wf.id)
                             if (e.key === 'Escape') setRenamingId(null)
                           }}
                           onClick={(e) => e.stopPropagation()}
@@ -353,17 +355,9 @@ export function WorkflowListPage() {
                       variant="ghost"
                       title="Rename"
                       className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                      onClick={() => startRename(wf)}
+                      onClick={(e) => { e.stopPropagation(); startRename(wf) }}
                     >
                       <Icons.Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs px-3"
-                      onClick={() => navigate(`/workflows/${wf.id}`)}
-                    >
-                      Open
                     </Button>
                     <Button
                       size="sm"
@@ -371,7 +365,7 @@ export function WorkflowListPage() {
                       title={wf.isTemplate ? 'Manage template' : 'Save as template'}
                       className="h-7 w-7 p-0 transition-colors"
                       style={wf.isTemplate ? { color: '#a200ee' } : { color: 'var(--muted-foreground)' }}
-                      onClick={() => openPromoteModal(wf)}
+                      onClick={(e) => { e.stopPropagation(); openPromoteModal(wf) }}
                     >
                       <Icons.Bookmark className="h-3.5 w-3.5" style={wf.isTemplate ? { fill: '#a200ee' } : {}} />
                     </Button>
@@ -380,7 +374,7 @@ export function WorkflowListPage() {
                       variant="ghost"
                       className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
                       disabled={deleting}
-                      onClick={() => handleDeleteOne(wf)}
+                      onClick={(e) => { e.stopPropagation(); void handleDeleteOne(wf) }}
                     >
                       <Icons.Trash2 className="h-3.5 w-3.5" />
                     </Button>
