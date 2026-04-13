@@ -244,8 +244,6 @@ function NodesPalette() {
         .slice(0, FREQUENT_MAX)
     : []
 
-  const frequentSubtypes = new Set(frequent.map((n) => n.subtype))
-
   return (
     <>
       <ClientIndicator />
@@ -290,7 +288,7 @@ function NodesPalette() {
           {CATEGORY_ORDER.map((cat) => {
             const allItems   = byCategory(cat)
             if (allItems.length === 0) return null
-            const items      = search ? allItems : allItems.filter((n) => !frequentSubtypes.has(n.subtype))
+            const items      = allItems
             const isCollapsed = !search && collapsedCats.has(cat)
 
             // Top-3 preview: most-used first, then alphabetical
@@ -357,7 +355,7 @@ function NodesPalette() {
 
 // ─── CollapsedToolbar ─────────────────────────────────────────────────────────
 
-function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
+function CollapsedToolbar({ onExpand: _onExpand }: { onExpand: () => void }) {
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
   const canvasTool = useWorkflowStore((s) => s.canvasTool)
   const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
@@ -385,16 +383,7 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
 
   return (
     <div ref={toolbarRef} className="relative flex h-full flex-col items-center py-2 gap-1">
-      {/* Expand button */}
-      <button
-        onClick={onExpand}
-        title="Expand palette"
-        className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Icons.PanelLeftOpen className="h-4 w-4" />
-      </button>
-
-      <div className="my-1 h-px w-7 bg-border" />
+      <div className="mt-1 mb-1 h-px w-7 bg-border" />
 
       {/* Canvas tool buttons */}
       <button
@@ -523,7 +512,15 @@ export function NodePalette() {
   // Collapsed icon-bar mode
   if (collapsed) {
     return (
-      <div className="flex h-full w-[52px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+      <div className="relative flex h-full w-[52px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+        {/* Right-edge expand handle */}
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Expand palette"
+          className="absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+        >
+          <Icons.ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
+        </button>
         <CollapsedToolbar onExpand={() => setCollapsed(false)} />
       </div>
     )
@@ -531,8 +528,17 @@ export function NodePalette() {
 
   // Expanded mode
   return (
-    <div className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
-      {/* Header with tabs + collapse button */}
+    <div className="relative flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+      {/* Right-edge collapse handle */}
+      <button
+        onClick={() => setCollapsed(true)}
+        title="Collapse palette"
+        className="absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+      >
+        <Icons.ChevronLeft className="h-2.5 w-2.5 text-muted-foreground" />
+      </button>
+
+      {/* Header with tabs */}
       <div className="flex items-center border-b border-border">
         <button
           onClick={() => setTab('nodes')}
@@ -557,14 +563,6 @@ export function NodePalette() {
         >
           <Icons.Lightbulb className="h-3.5 w-3.5" />
           Insights
-        </button>
-        {/* Collapse button */}
-        <button
-          onClick={() => setCollapsed(true)}
-          title="Collapse palette"
-          className="flex h-full items-center px-2 text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
-        >
-          <Icons.PanelLeftClose className="h-3.5 w-3.5" />
         </button>
       </div>
 

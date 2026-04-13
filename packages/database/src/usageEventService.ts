@@ -6,7 +6,7 @@ import type { PermissionSet } from './permissionService.js'
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ToolType = 'llm' | 'graphics' | 'video' | 'content'
+export type ToolType = 'llm' | 'graphics' | 'video' | 'audio' | 'content'
 export type EventStatus = 'success' | 'error' | 'cancelled'
 
 export interface UsageEventInput {
@@ -152,6 +152,56 @@ export const costEstimator = {
     const rate = modelRates[perImageKey] ?? modelRates['per_image'] ?? null
     if (rate === null) return null
     return rate * count
+  },
+
+  /**
+   * Estimate USD cost for a TTS call billed per character.
+   * provider: 'elevenlabs' or 'openai-tts'
+   * model:    e.g. 'eleven_turbo_v2_5' (ElevenLabs) or 'tts-1' (OpenAI)
+   * For ElevenLabs, keys are stored as 'tts-<model>' in provider-rates.json.
+   */
+  estimateCharCost(
+    provider: string,
+    model: string,
+    charCount: number,
+    isOnline: boolean,
+  ): number | null {
+    if (!isOnline) return 0
+    const rates = getRates()
+    // ElevenLabs TTS keys: elevenlabs / tts-<model> or tts-default
+    const modelRates =
+      rates[provider]?.[`tts-${model}`] ??
+      rates[provider]?.['tts-default'] ??
+      rates[`${provider}-tts`]?.[model] ??
+      null
+    if (!modelRates) return null
+    const perK = modelRates['per_1k_chars'] ?? null
+    if (perK === null) return null
+    return (charCount / 1000) * perK
+  },
+
+  /**
+   * Estimate USD cost for audio generation billed per second (music/SFX).
+   * provider: 'elevenlabs'
+   * model:    e.g. 'music_v1' — keys stored as 'music-<model>' or 'sfx-<model>'
+   */
+  estimateAudioCost(
+    provider: string,
+    service: string,   // 'music' | 'sfx'
+    model: string,
+    durationSecs: number,
+    isOnline: boolean,
+  ): number | null {
+    if (!isOnline) return 0
+    const rates = getRates()
+    const modelRates =
+      rates[provider]?.[`${service}-${model}`] ??
+      rates[provider]?.[`${service}-default`] ??
+      null
+    if (!modelRates) return null
+    const perSec = modelRates['per_second_audio'] ?? null
+    if (perSec === null) return null
+    return perSec * durationSecs
   },
 
   /**

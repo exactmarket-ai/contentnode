@@ -57,6 +57,7 @@ import { CharacterAnimationConfig } from './config/output/CharacterAnimationConf
 import { VideoCompositionConfig } from './config/output/VideoCompositionConfig'
 import { VideoTrimmerConfig } from './config/output/VideoTrimmerConfig'
 import { VideoResizeConfig } from './config/output/VideoResizeConfig'
+import { AudioReplaceConfig } from './config/output/AudioReplaceConfig'
 
 
 // ─── Config dispatcher ────────────────────────────────────────────────────────
@@ -179,6 +180,8 @@ function NodeConfigForm({
       return <AudioMixConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
     case 'audio_input':
       return <AudioInputConfig config={config} onChange={onChange} />
+    case 'audio_replace':
+      return <AudioReplaceConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
     case 'character_animation':
       return <CharacterAnimationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
     case 'video_composition':

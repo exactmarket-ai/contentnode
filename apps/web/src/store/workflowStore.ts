@@ -511,6 +511,21 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       encode_preset: 'fast',
     },
   },
+  // Audio Replace — mix or replace a video's audio track
+  {
+    type: 'audio_replace', subtype: 'audio-replace',
+    label: 'Audio Replace', description: 'Swap or blend a video\'s audio track — add background music to Character Animation or any video',
+    category: 'media', icon: 'ListMusic',
+    defaultConfig: {
+      subtype:            'audio-replace',
+      mode:               'replace',
+      music_volume:       0.3,
+      video_volume:       1.0,
+      loop_audio:         true,
+      fade_in_seconds:    1.0,
+      fade_out_seconds:   2.0,
+    },
+  },
   // Canvas utilities
   {
     type: 'group', subtype: 'group',
@@ -519,6 +534,36 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     defaultConfig: { subtype: 'group' },
   },
 ]
+
+// ─── nodePILOT types ──────────────────────────────────────────────────────────
+
+export interface PilotSuggestionNode {
+  id:       string
+  subtype:  string
+  label:    string
+  position: { x: number; y: number }
+  config:   Record<string, unknown>
+}
+
+export interface PilotSuggestionEdge {
+  source: string
+  target: string
+  label?: string
+}
+
+export interface PilotSuggestion {
+  id:          string
+  title:       string
+  description: string
+  nodes:       PilotSuggestionNode[]
+  edges:       PilotSuggestionEdge[]
+}
+
+export interface PilotMessage {
+  role:         'user' | 'assistant'
+  content:      string
+  suggestions?: PilotSuggestion[]
+}
 
 // ─── Insight state for confirmation banner ────────────────────────────────────
 
@@ -609,6 +654,19 @@ interface WorkflowState {
   // Can be any action: navigate to a route, sign out, etc.
   pendingNavAction: (() => void) | null
   setPendingNavAction: (action: (() => void) | null) => void
+
+  // ── nodePILOT ─────────────────────────────────────────────────────────────
+  pilotOpen:        boolean
+  pilotMessages:    PilotMessage[]
+  pilotSuggestions: PilotSuggestion[]
+  pilotLoading:     boolean
+
+  setPilotOpen:        (open: boolean) => void
+  addPilotMessage:     (msg: PilotMessage) => void
+  setPilotSuggestions: (suggestions: PilotSuggestion[]) => void
+  setPilotLoading:     (loading: boolean) => void
+  clearPilot:          () => void
+  applyPilotSuggestion:(suggestion: PilotSuggestion) => void
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -644,6 +702,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   canvasTool: 'select',
   rfInstance: null,
   pendingNavAction: null,
+
+  // nodePILOT — starts expanded
+  pilotOpen:        true,
+  pilotMessages:    [],
+  pilotSuggestions: [],
+  pilotLoading:     false,
 
   // Graph actions — each mutation marks the graph dirty
   onNodesChange: (changes) => {
@@ -845,6 +909,72 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setRfInstance: (instance) => set({ rfInstance: instance }),
   setCanvasTool: (tool) => set({ canvasTool: tool }),
   setPendingNavAction: (action) => set({ pendingNavAction: action }),
+
+  // ── nodePILOT actions ─────────────────────────────────────────────────────
+  setPilotOpen: (open) => set({ pilotOpen: open }),
+  addPilotMessage: (msg) =>
+    set((state) => ({ pilotMessages: [...state.pilotMessages, msg] })),
+  setPilotSuggestions: (suggestions) => set({ pilotSuggestions: suggestions }),
+  setPilotLoading: (loading) => set({ pilotLoading: loading }),
+  clearPilot: () => set({ pilotMessages: [], pilotSuggestions: [], pilotLoading: false }),
+
+  applyPilotSuggestion: (suggestion) => {
+    const { nodes: existingNodes, edges: existingEdges, rfInstance } = get()
+
+    // Calculate Y offset so new nodes appear below existing ones
+    let maxY = 0
+    for (const n of existingNodes) {
+      const bottom = n.position.y + (n.height ?? 80) + 40
+      if (bottom > maxY) maxY = bottom
+    }
+    const yOffset = existingNodes.length > 0 ? maxY + 60 : 0
+
+    // Remap suggestion node IDs to fresh UUIDs
+    const idMap = new Map(suggestion.nodes.map((n) => [n.id, `node_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${n.id}`]))
+
+    // Build React Flow nodes, merging PALETTE_NODES defaultConfig
+    const newRfNodes: Node[] = suggestion.nodes.map((sn) => {
+      const def = PALETTE_NODES.find((p) => p.subtype === sn.subtype)
+      const mergedConfig = { ...(def?.defaultConfig ?? {}), ...sn.config, subtype: sn.subtype }
+      return {
+        id:       idMap.get(sn.id)!,
+        type:     def?.type ?? 'logic',
+        position: { x: sn.position.x, y: sn.position.y + yOffset },
+        data: {
+          label:       sn.label,
+          description: def?.description ?? '',
+          icon:        def?.icon ?? 'Box',
+          config:      mergedConfig,
+          ...mergedConfig,  // includes subtype from mergedConfig
+        },
+      }
+    })
+
+    // Build React Flow edges with remapped IDs
+    const newRfEdges: Edge[] = suggestion.edges.map((se) => ({
+      id:     `edge_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      source: idMap.get(se.source) ?? se.source,
+      target: idMap.get(se.target) ?? se.target,
+      label:  se.label,
+      animated: false,
+    }))
+
+    // If we have rfInstance, center viewport on the new nodes
+    if (rfInstance && newRfNodes.length > 0) {
+      const xs = newRfNodes.map((n) => n.position.x)
+      const centerX = (Math.min(...xs) + Math.max(...xs)) / 2
+      const centerY = newRfNodes[0].position.y
+      setTimeout(() => {
+        rfInstance.setCenter(centerX, centerY + 200, { zoom: 0.8, duration: 600 })
+      }, 100)
+    }
+
+    set({
+      nodes:      [...existingNodes, ...newRfNodes],
+      edges:      [...existingEdges, ...newRfEdges],
+      graphDirty: true,
+    })
+  },
 
   addNodeBySubtype: (subtype, screenPosition) => {
     const { rfInstance, addNode, setSelectedNodeId } = get()

@@ -23,6 +23,12 @@ interface UsageData {
     videosGenerated: number
     videoIntelligenceCalls?: number
     videoIntelligenceCostUsd?: number
+    voiceChars?: number
+    voiceGenerationSecs?: number
+    charAnimSecs?: number
+    musicSecs?: number
+    videoCompSecs?: number
+    videoCompCostUsd?: number
   }
   llm: {
     totalTokens: number
@@ -34,6 +40,10 @@ interface UsageData {
   translation: { totalChars: number; byProvider: { provider: string; chars: number }[] }
   imageGeneration?: { totalImages: number; byService: { service: string; count: number }[] }
   videoGeneration?: { totalVideos: number; totalSecondGenerated: number; byService: { service: string; count: number }[] }
+  voiceGeneration?: { totalChars: number; totalSecs: number; byProvider: { provider: string; chars: number; secs: number; costUsd: number }[] }
+  characterAnimation?: { totalSecs: number; byProvider: { provider: string; secs: number; costUsd: number }[] }
+  musicGeneration?: { totalSecs: number; byProvider: { provider: string; secs: number; costUsd: number }[] }
+  videoComposition?: { totalSecs: number; totalCostUsd: number }
   byClient: { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls?: number; videosGenerated?: number; imagesGenerated?: number }[]
   byWorkflow: { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }[]
   byUser: { userId: string; userName: string; tokens: number; humanizerWords: number; imagesGenerated: number; videosGenerated: number; translationChars: number }[]
@@ -63,6 +73,27 @@ const VIDEO_SERVICE_DEFS: VideoServiceDef[] = [
   { name: 'ComfyUI AnimateDiff', rateLabel: 'self-hosted' },
   { name: 'CogVideoX',           rateLabel: 'self-hosted' },
   { name: 'Wan2.1',              rateLabel: 'self-hosted' },
+]
+
+interface VoiceServiceDef { key: string; displayName: string; rateLabel: string }
+interface CharAnimServiceDef { key: string; displayName: string; rateLabel: string }
+interface MusicServiceDef { key: string; displayName: string; rateLabel: string }
+
+const VOICE_SERVICE_DEFS: VoiceServiceDef[] = [
+  { key: 'elevenlabs', displayName: 'ElevenLabs',   rateLabel: '$0.33/1k chars' },
+  { key: 'openai',     displayName: 'OpenAI TTS',   rateLabel: '$0.015–0.030/1k chars' },
+  { key: 'local',      displayName: 'Local TTS',    rateLabel: 'self-hosted' },
+]
+
+const CHAR_ANIM_SERVICE_DEFS: CharAnimServiceDef[] = [
+  { key: 'd-id',       displayName: 'D-ID',          rateLabel: '$0.0033/sec' },
+  { key: 'heygen',     displayName: 'HeyGen',         rateLabel: '$0.005/sec' },
+  { key: 'sadtalker',  displayName: 'SadTalker',      rateLabel: 'self-hosted' },
+]
+
+const MUSIC_SERVICE_DEFS: MusicServiceDef[] = [
+  { key: 'elevenlabs', displayName: 'ElevenLabs Music/SFX', rateLabel: '$0.05/sec' },
+  { key: 'local',      displayName: 'Local MusicGen',       rateLabel: 'self-hosted' },
 ]
 
 function MiniBar({ value, max, date }: { value: number; max: number; date: string }) {
@@ -185,6 +216,12 @@ export function UsagePage() {
               <StatCard icon={Icons.Video} label="Videos Generated" value={fmt(data.totals.videosGenerated ?? 0)} sub="this billing period" color="text-violet-400" />
               <StatCard icon={Icons.ScanSearch} label="Video Intelligence" value={fmt(data.totals.videoIntelligenceCalls ?? 0)} sub={`~$${((data.totals.videoIntelligenceCostUsd ?? 0)).toFixed(2)} est.`} color="text-purple-400" />
             </div>
+            <div className="grid grid-cols-4 gap-3">
+              <StatCard icon={Icons.Mic2} label="Voice Generation" value={fmt(data.totals.voiceChars ?? 0, ' chars')} sub={`${Math.round(data.totals.voiceGenerationSecs ?? 0)}s audio`} color="text-teal-400" />
+              <StatCard icon={Icons.PersonStanding} label="Character Animation" value={`${Math.round(data.totals.charAnimSecs ?? 0)}s`} sub="video generated" color="text-sky-400" />
+              <StatCard icon={Icons.Music} label="Music Generation" value={`${Math.round(data.totals.musicSecs ?? 0)}s`} sub="audio generated" color="text-emerald-400" />
+              <StatCard icon={Icons.Film} label="Video Composition" value={`${Math.round(data.totals.videoCompSecs ?? 0)}s`} sub={`~$${((data.totals.videoCompCostUsd ?? 0)).toFixed(2)} est.`} color="text-orange-400" />
+            </div>
 
             {/* Daily chart */}
             <div className="rounded-xl border border-border bg-card p-5">
@@ -295,6 +332,109 @@ export function UsagePage() {
                 })}
               </div>
             </Section>
+
+            {/* Voice Generation */}
+            <Section
+              title="Voice Generation (TTS)"
+              icon={Icons.Mic2}
+              color="text-teal-400"
+              total={(data.totals.voiceChars ?? 0) > 0 ? `${fmt(data.totals.voiceChars ?? 0, ' chars')} · ${Math.round(data.totals.voiceGenerationSecs ?? 0)}s` : '0 chars'}
+            >
+              {(data.voiceGeneration?.totalChars ?? 0) === 0 ? (
+                <p className="text-xs text-muted-foreground">No voice generation usage recorded</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {VOICE_SERVICE_DEFS.map((svc) => {
+                    const usage = data.voiceGeneration?.byProvider.find((p) => p.provider === svc.key)
+                    const chars = usage?.chars ?? 0
+                    const secs  = usage?.secs ?? 0
+                    const cost  = usage?.costUsd ?? 0
+                    return (
+                      <div key={svc.key} className={cn('rounded-lg border p-3 space-y-1', chars > 0 ? 'border-teal-500/40 bg-teal-950/20' : 'border-border bg-muted/20')}>
+                        <p className="text-xs font-medium truncate">{svc.displayName}</p>
+                        <p className={cn('text-xl font-semibold tabular-nums', chars > 0 ? 'text-teal-400' : 'text-muted-foreground/50')}>{fmt(chars)}</p>
+                        <p className="text-[10px] text-muted-foreground">{chars > 0 ? `${Math.round(secs)}s · ~$${cost.toFixed(2)}` : svc.rateLabel}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Section>
+
+            {/* Character Animation */}
+            <Section
+              title="Character Animation"
+              icon={Icons.PersonStanding}
+              color="text-sky-400"
+              total={(data.totals.charAnimSecs ?? 0) > 0 ? `${Math.round(data.totals.charAnimSecs ?? 0)}s video` : '0s'}
+            >
+              {(data.characterAnimation?.totalSecs ?? 0) === 0 ? (
+                <p className="text-xs text-muted-foreground">No character animation usage recorded</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {CHAR_ANIM_SERVICE_DEFS.map((svc) => {
+                    const usage = data.characterAnimation?.byProvider.find((p) => p.provider === svc.key)
+                    const secs  = usage?.secs ?? 0
+                    const cost  = usage?.costUsd ?? 0
+                    return (
+                      <div key={svc.key} className={cn('rounded-lg border p-3 space-y-1', secs > 0 ? 'border-sky-500/40 bg-sky-950/20' : 'border-border bg-muted/20')}>
+                        <p className="text-xs font-medium truncate">{svc.displayName}</p>
+                        <p className={cn('text-xl font-semibold tabular-nums', secs > 0 ? 'text-sky-400' : 'text-muted-foreground/50')}>{Math.round(secs)}s</p>
+                        <p className="text-[10px] text-muted-foreground">{secs > 0 ? `~$${cost.toFixed(2)}` : svc.rateLabel}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Section>
+
+            {/* Music Generation */}
+            <Section
+              title="Music Generation"
+              icon={Icons.Music}
+              color="text-emerald-400"
+              total={(data.totals.musicSecs ?? 0) > 0 ? `${Math.round(data.totals.musicSecs ?? 0)}s audio` : '0s'}
+            >
+              {(data.musicGeneration?.totalSecs ?? 0) === 0 ? (
+                <p className="text-xs text-muted-foreground">No music generation usage recorded</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {MUSIC_SERVICE_DEFS.map((svc) => {
+                    const usage = data.musicGeneration?.byProvider.find((p) => p.provider === svc.key)
+                    const secs  = usage?.secs ?? 0
+                    const cost  = usage?.costUsd ?? 0
+                    return (
+                      <div key={svc.key} className={cn('rounded-lg border p-3 space-y-1', secs > 0 ? 'border-emerald-500/40 bg-emerald-950/20' : 'border-border bg-muted/20')}>
+                        <p className="text-xs font-medium truncate">{svc.displayName}</p>
+                        <p className={cn('text-xl font-semibold tabular-nums', secs > 0 ? 'text-emerald-400' : 'text-muted-foreground/50')}>{Math.round(secs)}s</p>
+                        <p className="text-[10px] text-muted-foreground">{secs > 0 ? `~$${cost.toFixed(2)}` : svc.rateLabel}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Section>
+
+            {/* Video Composition */}
+            {(data.totals.videoCompSecs ?? 0) > 0 && (
+              <Section
+                title="Video Composition (Shotstack)"
+                icon={Icons.Film}
+                color="text-orange-400"
+                total={`${Math.round(data.totals.videoCompSecs ?? 0)}s · ~$${((data.totals.videoCompCostUsd ?? 0)).toFixed(2)}`}
+              >
+                <div className="flex items-center justify-between rounded-lg border border-orange-500/40 bg-orange-950/20 px-4 py-3">
+                  <div>
+                    <p className="text-xs font-medium">Shotstack Cloud</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">$0.005/sec · cloud render</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-semibold tabular-nums text-orange-400">{Math.round(data.videoComposition?.totalSecs ?? 0)}s</p>
+                    <p className="text-[10px] text-muted-foreground">~${(data.videoComposition?.totalCostUsd ?? 0).toFixed(2)} est.</p>
+                  </div>
+                </div>
+              </Section>
+            )}
 
             {/* By client */}
             {data.byClient.length > 0 && (

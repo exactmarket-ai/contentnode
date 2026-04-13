@@ -104,6 +104,24 @@ export interface NodeExecutionResult {
   waitingReview?: boolean
   /** The content to display for human review */
   reviewContent?: string
+  /**
+   * Media billing metadata — set by voice/music/character-animation/video-composition executors.
+   * The runner reads this and fires a UsageEvent + UsageRecord for each media API call.
+   */
+  mediaUsage?: {
+    /** Normalized provider: 'elevenlabs' | 'openai' | 'did' | 'heygen' | 'shotstack' | 'local' */
+    provider:    string
+    /** 'voice_generation' | 'character_animation' | 'music_generation' | 'video_composition' */
+    subtype:     string
+    /** Output duration in seconds (video/audio). For TTS, use charCount instead. */
+    durationSecs?: number
+    /** Input characters billed (TTS providers bill per-char) */
+    charCount?:    number
+    /** Model identifier used (voice model, animation model, etc.) */
+    model?:        string
+    /** false for local/self-hosted providers (estimatedCostUsd = 0) */
+    isOnline:      boolean
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

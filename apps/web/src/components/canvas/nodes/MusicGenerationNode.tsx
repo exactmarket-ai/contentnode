@@ -155,7 +155,7 @@ export const MusicGenerationNode = memo(({ id, data, selected }: NodeProps) => {
     : { border: '1px solid #e0deda' }
 
   return (
-    <div className="relative rounded-md bg-white transition-all" style={{ ...cardStyle, width: 380 }}>
+    <div className="relative rounded-md bg-white transition-all" style={{ ...cardStyle, width: 380, minHeight: 220 }}>
       <Handle type="target" position={Position.Left} id="prompt" style={{ top: '50%' }} title="Prompt (optional upstream text)" />
       <Handle type="source" position={Position.Right} id="audio" style={{ top: '50%' }} title="Generated audio" />
 
@@ -219,7 +219,7 @@ export const MusicGenerationNode = memo(({ id, data, selected }: NodeProps) => {
           <textarea
             ref={promptRef}
             className="nodrag nopan w-full resize-none rounded border bg-white px-1.5 py-1 text-[10px] leading-[1.4] placeholder:text-slate-300 focus:outline-none"
-            style={{ color: '#27500a', borderColor: HEADER_BD }} rows={2}
+            style={{ color: '#27500a', borderColor: HEADER_BD }} rows={4}
             placeholder={service === 'music'
               ? 'Describe the score — e.g. calm cinematic piano, slow tempo, hopeful…'
               : 'Describe the sound — e.g. gentle rain on leaves, soft café ambience…'}

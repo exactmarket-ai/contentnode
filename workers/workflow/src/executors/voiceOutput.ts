@@ -193,6 +193,17 @@ export class VoiceOutputNodeExecutor extends NodeExecutor {
       type: 'audio',
     }
 
-    return { output: result, wordsProcessed: wordCount }
+    return {
+      output: result,
+      wordsProcessed: wordCount,
+      mediaUsage: {
+        provider:    provider === 'local' ? 'local' : provider,  // 'openai' | 'elevenlabs' | 'local'
+        subtype:     'voice_generation',
+        durationSecs: durationSeconds,
+        charCount:   script.length,
+        model:       result.model,
+        isOnline:    provider !== 'local',
+      },
+    }
   }
 }

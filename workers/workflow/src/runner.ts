@@ -36,6 +36,7 @@ import { CharacterAnimationNodeExecutor } from './executors/characterAnimation.j
 import { VideoCompositionExecutor } from './executors/videoComposition.js'
 import { VideoTrimmerExecutor } from './executors/videoTrimmer.js'
 import { VideoResizeExecutor } from './executors/videoResize.js'
+import { AudioReplaceExecutor } from './executors/audioReplace.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -122,6 +123,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'video_composition':             VideoCompositionExecutor,
   'logic:video-trimmer':           VideoTrimmerExecutor,
   'logic:video-resize':            VideoResizeExecutor,
+  'audio_replace':                 AudioReplaceExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {
@@ -825,6 +827,75 @@ export class WorkflowRunner {
                 nodeType:          node.type,
                 inputTokens:       result.tokensUsed,
                 outputTokens:      0,
+                estimatedCostUsd:  costUsd ?? undefined,
+                durationMs,
+                status:            'success',
+                permissionsAtTime: ctx.resolvedPermissions,
+              }).catch(() => {})
+            }
+
+            // Record media provider usage (voice, character animation, music, video composition)
+            if (result.mediaUsage) {
+              const mu = result.mediaUsage
+              const startedAt  = runOutput.nodeStatuses[node.id]?.startedAt
+              const durationMs = startedAt ? Date.now() - new Date(startedAt).getTime() : 0
+              const toolType   = (mu.subtype === 'voice_generation' || mu.subtype === 'music_generation')
+                ? ('audio' as const) : ('video' as const)
+
+              // Estimate cost based on subtype
+              let costUsd: number | null = null
+              if (mu.subtype === 'voice_generation' && mu.charCount) {
+                costUsd = costEstimator.estimateCharCost(mu.provider, mu.model ?? 'default', mu.charCount, mu.isOnline)
+              } else if (mu.subtype === 'music_generation' && mu.durationSecs) {
+                const service = mu.model?.startsWith('sfx') ? 'sfx' : 'music'
+                costUsd = costEstimator.estimateAudioCost(mu.provider, service, mu.model ?? 'default', mu.durationSecs, mu.isOnline)
+              } else if (mu.durationSecs) {
+                costUsd = costEstimator.estimateVideoCost(mu.provider, mu.model ?? 'default', mu.durationSecs, mu.isOnline)
+              }
+
+              // Monthly bucket UsageRecord (existing aggregate path)
+              const metricKey = mu.subtype === 'voice_generation'       ? 'voice_generation_chars'
+                              : mu.subtype === 'character_animation'    ? 'character_animation_secs'
+                              : mu.subtype === 'music_generation'       ? 'music_generation_secs'
+                              : 'video_composition_secs'
+              const quantity  = mu.subtype === 'voice_generation' ? (mu.charCount ?? 0) : (mu.durationSecs ?? 0)
+              if (quantity > 0) {
+                const now = new Date()
+                prisma.usageRecord.create({
+                  data: {
+                    agencyId:    this.agencyId,
+                    metric:      metricKey,
+                    quantity,
+                    periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
+                    periodEnd:   new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+                    metadata: {
+                      provider:      mu.provider,
+                      model:         mu.model ?? 'default',
+                      workflowRunId: this.workflowRunId,
+                      ...(mu.subtype === 'voice_generation' ? { charCount: mu.charCount, durationSecs: mu.durationSecs } : { durationSecs: mu.durationSecs }),
+                      ...(costUsd !== null ? { estimatedCostUsd: costUsd } : {}),
+                    },
+                  },
+                }).catch(() => {})
+              }
+
+              // Granular UsageEvent
+              usageEventService.record({
+                agencyId:          this.agencyId,
+                userId:            ctx.userId ?? undefined,
+                userRole:          ctx.userRole ?? undefined,
+                clientId:          workflow.clientId ?? undefined,
+                toolType,
+                toolSubtype:       mu.subtype,
+                provider:          mu.provider,
+                model:             mu.model ?? 'default',
+                isOnline:          mu.isOnline,
+                workflowId:        workflow.id,
+                workflowRunId:     this.workflowRunId,
+                nodeId:            node.id,
+                nodeType:          node.type,
+                ...(mu.charCount    ? { inputCharacters: mu.charCount }         : {}),
+                ...(mu.durationSecs ? { outputDurationSecs: mu.durationSecs }    : {}),
                 estimatedCostUsd:  costUsd ?? undefined,
                 durationMs,
                 status:            'success',

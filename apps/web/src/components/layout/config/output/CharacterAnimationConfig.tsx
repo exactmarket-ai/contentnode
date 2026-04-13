@@ -26,9 +26,11 @@ export function CharacterAnimationConfig({
   onChange: (k: string, v: unknown) => void
   nodeRunStatus?: { status?: string; output?: unknown }
 }) {
-  const provider        = (config.provider as string)       ?? 'did'
-  const characterImage  = (config.character_image as string) ?? ''
-  const heygenAvatarId  = (config.heygen_avatar_id as string) ?? ''
+  const provider           = (config.provider as string)               ?? 'did'
+  const characterImage     = (config.character_image as string)         ?? ''
+  const heygenAvatarId     = (config.heygen_avatar_id as string)        ?? ''
+  const heygenTalkingPhoto = (config.heygen_talking_photo_id as string) ?? ''
+  const heygenVoiceId      = (config.heygen_voice_id as string)         ?? ''
   const sadtalkerUrl    = (config.sadtalker_base_url as string) ?? 'http://localhost:7860'
   const expressionScale = (config.expression_scale as number) ?? 1.0
   const stillMode       = (config.still_mode as boolean)    ?? false
@@ -88,7 +90,10 @@ export function CharacterAnimationConfig({
       {/* How to connect */}
       <div className="rounded-md border border-violet-100 bg-violet-50/40 px-3 py-2 text-[10px] text-violet-800 space-y-1">
         <p className="font-medium">How to connect</p>
-        <p>Connect <strong>Voice Output</strong> or <strong>Audio Mix → Audio</strong> handle. Optionally connect an <strong>Image Generation → Image</strong> handle to override the photo below.</p>
+        {provider === 'heygen'
+          ? <p>Connect an <strong>AI Generate</strong> or <strong>Text Input</strong> node with the script — HeyGen will speak it. Or connect <strong>Voice Output → Audio</strong> to use pre-rendered audio. Optionally connect <strong>Image Generation → Image</strong> to override the photo.</p>
+          : <p>Connect <strong>Voice Output</strong> or <strong>Audio Mix → Audio</strong> handle. Optionally connect an <strong>Image Generation → Image</strong> handle to override the photo below.</p>
+        }
       </div>
 
       {/* Provider */}
@@ -121,19 +126,51 @@ export function CharacterAnimationConfig({
         />
       </FieldGroup>
 
-      {/* HeyGen avatar ID */}
+      {/* HeyGen identity options */}
       {provider === 'heygen' && (
-        <FieldGroup label="HeyGen Avatar ID">
-          <Input
-            className="h-8 text-xs font-mono"
-            placeholder="e.g. Abigail_expressive_2024112501"
-            value={heygenAvatarId}
-            onChange={e => onChange('heygen_avatar_id', e.target.value)}
-          />
-          <p className="text-[9px] text-muted-foreground/60 mt-0.5">
-            Find your avatar ID in the HeyGen dashboard under Avatars. If blank, the character photo is used as a talking photo.
-          </p>
-        </FieldGroup>
+        <>
+          <div className="rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-[10px] text-blue-800 space-y-1">
+            <p className="font-medium">HeyGen requires a pre-registered identity</p>
+            <p>Fill in an <strong>Avatar ID</strong> (stock avatar from your account) or a <strong>Talking Photo ID</strong> (a photo you've registered in HeyGen). To animate any custom photo without pre-registration, use <strong>D-ID</strong> instead.</p>
+          </div>
+          <FieldGroup label="Avatar ID">
+            <Input
+              className="h-8 text-xs font-mono"
+              placeholder="e.g. Abigail_expressive_2024112501"
+              value={heygenAvatarId}
+              onChange={e => onChange('heygen_avatar_id', e.target.value)}
+            />
+            <p className="text-[9px] text-muted-foreground/60 mt-0.5">
+              Find under <strong>Avatars</strong> in your HeyGen dashboard.
+            </p>
+          </FieldGroup>
+          <FieldGroup label="Talking Photo ID">
+            <Input
+              className="h-8 text-xs font-mono"
+              placeholder="e.g. tp_abc123..."
+              value={heygenTalkingPhoto}
+              onChange={e => onChange('heygen_talking_photo_id', e.target.value)}
+            />
+            <p className="text-[9px] text-muted-foreground/60 mt-0.5">
+              Registered via HeyGen dashboard → <strong>Avatars → Talking Photo</strong>.
+            </p>
+          </FieldGroup>
+          <div className="rounded-md border border-green-200 bg-green-50/60 px-3 py-2 text-[10px] text-green-800 space-y-1">
+            <p className="font-medium">Voice — no Voice Output node needed</p>
+            <p>HeyGen has built-in TTS. Connect an <strong>AI Generate</strong> or <strong>Text Input</strong> node with the script and HeyGen will speak it. Optionally enter a Voice ID below to pick a specific voice.</p>
+          </div>
+          <FieldGroup label="Voice ID (optional)">
+            <Input
+              className="h-8 text-xs font-mono"
+              placeholder="Leave blank for HeyGen default voice"
+              value={heygenVoiceId}
+              onChange={e => onChange('heygen_voice_id', e.target.value)}
+            />
+            <p className="text-[9px] text-muted-foreground/60 mt-0.5">
+              Find voice IDs under <strong>Voices</strong> in your HeyGen dashboard.
+            </p>
+          </FieldGroup>
+        </>
       )}
 
       {/* SadTalker local URL */}

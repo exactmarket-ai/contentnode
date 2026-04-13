@@ -33,7 +33,19 @@ function buildPrompt(template: string | undefined, input: unknown): string {
       : JSON.stringify(input)
 
   if (!template) return inputStr
-  return template.replace('{{input}}', inputStr)
+
+  // If the template contains {{input}}, substitute it
+  if (template.includes('{{input}}')) {
+    return template.replace('{{input}}', inputStr)
+  }
+
+  // If the template has no {{input}} placeholder (e.g. AI-generated prompts using
+  // custom variable names like {{brand_voice}}), append the upstream content so it
+  // always reaches the model rather than being silently dropped.
+  if (inputStr.trim()) {
+    return `${template}\n\n---\n${inputStr}`
+  }
+  return template
 }
 
 /**

@@ -1,9 +1,6 @@
-import { writeFileSync, unlinkSync, mkdirSync } from 'node:fs'
 import { join, extname } from 'node:path'
-import { tmpdir } from 'node:os'
-import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
-import PDFParser from 'pdf2json'
+import { PDFParse } from 'pdf-parse'
 import { downloadBuffer, isS3Mode } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
@@ -24,9 +21,13 @@ export class SourceNodeExecutor extends NodeExecutor {
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     // ── Inline text (text-input subtype or pasted content) ───────────────────
+    // config.text is ONLY real content for text-input nodes.
+    // file-upload nodes use config.text as a UI placeholder/hint — never as content.
+    const subtype = config.subtype as string | undefined
+    const isTextInputNode = subtype === 'text-input'
     const inlineContent =
       (config.inlineText as string | undefined) ||
-      (config.text as string | undefined) ||
+      (isTextInputNode ? (config.text as string | undefined) : undefined) ||
       (config.pasted_text as string | undefined)
 
     if (inlineContent) return { output: inlineContent }
@@ -69,7 +70,19 @@ export class SourceNodeExecutor extends NodeExecutor {
         parts.push(text)
         fileNames.push(f.name)
       }
-      if (parts.length > 0) return { output: parts.join('\n\n---\n\n'), sourceFiles: fileNames }
+      if (parts.length > 0) {
+        const nonEmpty = parts.filter((p) => p.trim().length > 0)
+        if (nonEmpty.length === 0) {
+          const names = fileNames.join(', ')
+          throw new Error(
+            `Source node: file(s) [${names}] were uploaded but yielded no readable text. ` +
+            `This usually means a scanned/image-only PDF. ` +
+            `Try: (1) use a text-based PDF, (2) run OCR on it first, or (3) paste the content directly into a Text Input node.`
+          )
+        }
+        const keptNames = fileNames.filter((_, i) => parts[i].trim().length > 0)
+        return { output: nonEmpty.join('\n\n---\n\n'), sourceFiles: keptNames }
+      }
     }
 
     // ── Legacy single documentId path ────────────────────────────────────────
@@ -106,37 +119,14 @@ export class SourceNodeExecutor extends NodeExecutor {
     } else if (new Set(['.txt', '.md', '.csv', '.json', '.html', '.htm']).has(ext)) {
       text = buffer.toString('utf8')
     } else if (ext === '.pdf') {
-      // pdf2json requires a file path — write to a temp file, parse, delete
-      const tmpDir = tmpdir()
-      mkdirSync(tmpDir, { recursive: true })
-      const tmpPath = join(tmpDir, `${randomUUID()}.pdf`)
-      writeFileSync(tmpPath, buffer)
-      try {
-        text = await Promise.race([
-          new Promise<string>((resolve, reject) => {
-            const parser = new PDFParser(null, true)
-            parser.on('pdfParser_dataReady', (data: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
-              const pages = data.Pages ?? []
-              const out = pages.map((p) =>
-                (p.Texts ?? []).map((t) => {
-                  const raw = t.R?.[0]?.T ?? ''
-                  try { return decodeURIComponent(raw) } catch { return raw }
-                }).join(' ')
-              ).join('\n\n')
-              resolve(out)
-            })
-            parser.on('pdfParser_dataError', (err: Error | { parserError: Error }) => {
-              reject(err instanceof Error ? err : err.parserError)
-            })
-            parser.loadPDF(tmpPath)
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`PDF parsing timed out for ${label}`)), 15000)
-          ),
-        ])
-      } finally {
-        try { unlinkSync(tmpPath) } catch {}
-      }
+      const parser = new PDFParse({ data: buffer })
+      const parsed = await Promise.race([
+        parser.getText(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`PDF parsing timed out for "${label}"`)), 30_000)
+        ),
+      ])
+      text = parsed.text
     } else {
       try {
         text = buffer.toString('utf8')

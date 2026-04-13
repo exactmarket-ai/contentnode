@@ -1,8 +1,29 @@
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import sharp from 'sharp'
+
+const execAsync = promisify(exec)
+
+/** Probe an audio/video buffer for duration using ffprobe. Returns 0 on failure. */
+async function probeDuration(buf: Buffer, ext = 'mp3'): Promise<number> {
+  const tmp = path.join(os.tmpdir(), `probe_${randomUUID()}.${ext}`)
+  try {
+    fs.writeFileSync(tmp, buf)
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmp}"`,
+      { timeout: 10_000 },
+    )
+    return parseFloat(stdout.trim()) || 0
+  } catch {
+    return 0
+  } finally {
+    try { fs.unlinkSync(tmp) } catch { /* ignore */ }
+  }
+}
 import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
@@ -575,6 +596,9 @@ export class CharacterAnimationNodeExecutor extends NodeExecutor {
     const storageKey = await saveGeneratedFile(videoBuffer, filename, 'video/mp4')
     const localPath  = `/files/generated/${filename}`
 
+    // Probe output video duration for billing — non-blocking, failure returns 0
+    const durationSecs = await probeDuration(videoBuffer, 'mp4')
+
     return {
       output: {
         localPath,
@@ -582,6 +606,13 @@ export class CharacterAnimationNodeExecutor extends NodeExecutor {
         type:     'video',
         provider,
       } satisfies CharacterAnimationResult,
+      mediaUsage: {
+        provider:    provider === 'sadtalker' ? 'local' : provider,
+        subtype:     'character_animation',
+        durationSecs,
+        model:       'default',
+        isOnline:    provider !== 'sadtalker',
+      },
     }
   }
 }

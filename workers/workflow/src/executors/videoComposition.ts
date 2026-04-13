@@ -856,6 +856,16 @@ export class VideoCompositionExecutor extends NodeExecutor {
         outputFormat,
         type: isImage ? 'image' : 'video',
       } satisfies VideoCompositionResult,
+      // Only track Shotstack renders (local ffmpeg has no per-use cost)
+      ...(actualMode === 'cloud' && outputFormat === 'video' ? {
+        mediaUsage: {
+          provider:    'shotstack',
+          subtype:     'video_composition',
+          durationSecs: duration,
+          model:       'default',
+          isOnline:    true,
+        },
+      } : {}),
     }
   }
 }

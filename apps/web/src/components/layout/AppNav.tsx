@@ -45,6 +45,7 @@ const BOTTOM_NAV_ITEMS = [
   { to: '/settings', icon: Icons.Settings2,   label: 'Settings', ...ACTIVE },
 ]
 
+
 interface AppNavProps {
   onSignOut?: () => void
 }
@@ -129,34 +130,29 @@ export function AppNav({ onSignOut }: AppNavProps) {
   return (
     <aside
       className={cn(
-        'flex shrink-0 flex-col gap-1 border-r border-border bg-card py-3 px-2 transition-all duration-200',
+        'relative flex shrink-0 flex-col gap-1 border-r border-border bg-card py-3 px-2 transition-all duration-200',
         collapsed ? 'w-14' : 'w-48',
       )}
     >
+      {/* Right-edge collapse/expand handle — same pattern as Node Config panel */}
+      <button
+        onClick={() => setCollapsed((v) => !v)}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        className="absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+      >
+        {collapsed
+          ? <Icons.ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
+          : <Icons.ChevronLeft  className="h-2.5 w-2.5 text-muted-foreground" />}
+      </button>
+
       {/* Logo */}
       {collapsed ? (
-        <div className="mb-2 flex flex-col items-center gap-1">
+        <div className="mb-2 flex items-center justify-center">
           <img src="/logo-icon.png" alt="ContentNode AI" className="h-8 w-auto object-contain" />
-          <button
-            onClick={() => setCollapsed(false)}
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            title="Expand sidebar"
-          >
-            <Icons.PanelLeftOpen className="h-4 w-4" />
-          </button>
         </div>
       ) : (
-        <div className="mb-2 flex flex-col items-center gap-1 px-1">
+        <div className="mb-2 px-1">
           <img src="/logo-full.png" alt="ContentNode AI" className="w-full max-w-[152px] h-auto object-contain" />
-          <div className="flex w-full justify-end">
-            <button
-              onClick={() => setCollapsed(true)}
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              title="Collapse sidebar"
-            >
-              <Icons.PanelLeftClose className="h-4 w-4" />
-            </button>
-          </div>
         </div>
       )}
 

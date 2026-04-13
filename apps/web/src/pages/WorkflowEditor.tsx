@@ -12,6 +12,7 @@ import { HumanReviewPanel } from '@/components/review/HumanReviewPanel'
 import { RunHistoryPanel } from '@/components/layout/RunHistoryPanel'
 import { AlignmentToolbar } from '@/components/canvas/AlignmentToolbar'
 import { RunNamingPanel } from '@/components/canvas/RunNamingPanel'
+import { NodePilot } from '@/components/pilot/NodePilot'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 
@@ -403,7 +404,7 @@ export function WorkflowEditor() {
             </button>
           </div>
         )}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           <NodePalette />
           <main className="relative flex-1 overflow-hidden">
             <WorkflowCanvas />
@@ -469,6 +470,7 @@ export function WorkflowEditor() {
             <RunHistoryPanel workflowId={workflow.id} onClose={() => setHistoryOpen(false)} />
           )}
         </div>
+        <NodePilot />
       </div>
     </>
   )

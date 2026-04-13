@@ -112,5 +112,33 @@
     "veo-2": {
       "per_second_video": 0.035
     }
+  },
+  "did": {
+    "default": {
+      "per_second_video": 0.0033
+    }
+  },
+  "heygen": {
+    "default": {
+      "per_second_video": 0.0050
+    }
+  },
+  "elevenlabs": {
+    "tts-eleven_turbo_v2_5":    { "per_1k_chars": 0.33 },
+    "tts-eleven_turbo_v2":      { "per_1k_chars": 0.33 },
+    "tts-eleven_multilingual_v2":{ "per_1k_chars": 0.33 },
+    "tts-default":              { "per_1k_chars": 0.33 },
+    "music-music_v1":           { "per_second_audio": 0.05 },
+    "music-default":            { "per_second_audio": 0.05 },
+    "sfx-default":              { "per_second_audio": 0.05 }
+  },
+  "openai-tts": {
+    "tts-1":    { "per_1k_chars": 0.015 },
+    "tts-1-hd": { "per_1k_chars": 0.030 }
+  },
+  "shotstack": {
+    "default": {
+      "per_second_video": 0.005
+    }
   }
 }

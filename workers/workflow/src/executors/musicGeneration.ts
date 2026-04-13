@@ -140,7 +140,16 @@ export class MusicGenerationNodeExecutor extends NodeExecutor {
       type:             'audio',
     }
 
-    return { output: result }
+    return {
+      output: result,
+      mediaUsage: {
+        provider:    provider,   // 'elevenlabs' | 'local'
+        subtype:     'music_generation',
+        durationSecs: actualDuration,
+        model:       service === 'music' ? 'music_v1' : service === 'sfx' ? 'sfx_default' : 'local',
+        isOnline:    provider !== 'local',
+      },
+    }
   }
 }
 

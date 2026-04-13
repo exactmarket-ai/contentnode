@@ -95,6 +95,49 @@ export async function usageRoutes(app: FastifyInstance) {
       return s + ((meta['durationSecs'] as number) ?? 0)
     }, 0)
 
+    // ── Voice generation (TTS) ───────────────────────────────────────────────
+    const voiceRecords = allRecords.filter((r) => r.metric === 'voice_generation_chars')
+    const totalVoiceChars = voiceRecords.reduce((s, r) => s + r.quantity, 0)
+    const totalVoiceSecs  = voiceRecords.reduce((s, r) => s + (((r.metadata as Record<string, unknown>)['durationSecs'] as number) ?? 0), 0)
+    const voiceByProvider: Record<string, { chars: number; secs: number; costUsd: number }> = {}
+    for (const r of voiceRecords) {
+      const meta     = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? 'unknown'
+      voiceByProvider[provider] = voiceByProvider[provider] ?? { chars: 0, secs: 0, costUsd: 0 }
+      voiceByProvider[provider].chars   += r.quantity
+      voiceByProvider[provider].secs    += (meta['durationSecs'] as number) ?? 0
+      voiceByProvider[provider].costUsd += (meta['estimatedCostUsd'] as number) ?? 0
+    }
+
+    // ── Character animation (D-ID / HeyGen) ───────────────────────────────────
+    const charAnimRecords = allRecords.filter((r) => r.metric === 'character_animation_secs')
+    const totalCharAnimSecs = charAnimRecords.reduce((s, r) => s + r.quantity, 0)
+    const charAnimByProvider: Record<string, { secs: number; costUsd: number }> = {}
+    for (const r of charAnimRecords) {
+      const meta     = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? 'unknown'
+      charAnimByProvider[provider] = charAnimByProvider[provider] ?? { secs: 0, costUsd: 0 }
+      charAnimByProvider[provider].secs    += r.quantity
+      charAnimByProvider[provider].costUsd += (meta['estimatedCostUsd'] as number) ?? 0
+    }
+
+    // ── Music generation (ElevenLabs Music / SFX) ────────────────────────────
+    const musicRecords = allRecords.filter((r) => r.metric === 'music_generation_secs')
+    const totalMusicSecs = musicRecords.reduce((s, r) => s + r.quantity, 0)
+    const musicByProvider: Record<string, { secs: number; costUsd: number }> = {}
+    for (const r of musicRecords) {
+      const meta     = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? 'unknown'
+      musicByProvider[provider] = musicByProvider[provider] ?? { secs: 0, costUsd: 0 }
+      musicByProvider[provider].secs    += r.quantity
+      musicByProvider[provider].costUsd += (meta['estimatedCostUsd'] as number) ?? 0
+    }
+
+    // ── Video composition (Shotstack) ────────────────────────────────────────
+    const videoCompRecords = allRecords.filter((r) => r.metric === 'video_composition_secs')
+    const totalVideoCompSecs = videoCompRecords.reduce((s, r) => s + r.quantity, 0)
+    const totalVideoCompCost = videoCompRecords.reduce((s, r) => s + (((r.metadata as Record<string, unknown>)['estimatedCostUsd'] as number) ?? 0), 0)
+
     // ── Email ────────────────────────────────────────────────────────────────
     const emailRecords = allRecords.filter((r) => r.metric === 'email_sent')
     const totalEmailsSent = emailRecords.reduce((s, r) => s + r.quantity, 0)
@@ -336,6 +379,12 @@ export async function usageRoutes(app: FastifyInstance) {
           videoSecondGenerated: totalVideoSecs,
           videoIntelligenceCalls: totalVideoIntelCalls,
           videoIntelligenceCostUsd: totalVideoIntelCostUsd,
+          voiceChars: totalVoiceChars,
+          voiceGenerationSecs: totalVoiceSecs,
+          charAnimSecs: totalCharAnimSecs,
+          musicSecs: totalMusicSecs,
+          videoCompSecs: totalVideoCompSecs,
+          videoCompCostUsd: totalVideoCompCost,
         },
         llm: {
           totalTokens,
@@ -366,6 +415,23 @@ export async function usageRoutes(app: FastifyInstance) {
           totalVideos: totalVideosGenerated,
           totalSecondGenerated: totalVideoSecs,
           byService: Object.entries(videosByService).map(([service, count]) => ({ service, count })).sort((a, b) => b.count - a.count),
+        },
+        voiceGeneration: {
+          totalChars: totalVoiceChars,
+          totalSecs: totalVoiceSecs,
+          byProvider: Object.entries(voiceByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.chars - a.chars),
+        },
+        characterAnimation: {
+          totalSecs: totalCharAnimSecs,
+          byProvider: Object.entries(charAnimByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.secs - a.secs),
+        },
+        musicGeneration: {
+          totalSecs: totalMusicSecs,
+          byProvider: Object.entries(musicByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.secs - a.secs),
+        },
+        videoComposition: {
+          totalSecs: totalVideoCompSecs,
+          totalCostUsd: totalVideoCompCost,
         },
         byClient: Object.values(tokensByClient).sort((a, b) => b.tokens - a.tokens),
         byWorkflow: Object.values(tokensByWorkflow).sort((a, b) => b.tokens - a.tokens),
