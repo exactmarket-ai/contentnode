@@ -171,13 +171,13 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'video-intelligence',
     label: 'Video Intelligence', description: 'Watch a video with Gemini AI — understand visuals, on-screen text, topics and tone',
-    category: 'logic', icon: 'Eye',
+    category: 'media', icon: 'Eye',
     defaultConfig: { subtype: 'video-intelligence', model: 'gemini-2.5-flash', prompt: '' },
   },
   {
     type: 'logic', subtype: 'video-prompt-builder',
     label: 'Video Prompt Builder', description: 'Translate a creative brief or image into a structured video generation prompt',
-    category: 'logic', icon: 'Video',
+    category: 'media', icon: 'Video',
     defaultConfig: {
       subtype: 'video-prompt-builder',
       provider: 'anthropic',
@@ -196,7 +196,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'image-prompt-builder',
     label: 'Image Prompt Builder', description: 'Translate a creative brief into a structured image generation prompt',
-    category: 'logic', icon: 'ImageIcon',
+    category: 'media', icon: 'ImageIcon',
     defaultConfig: {
       subtype: 'image-prompt-builder',
       provider: 'anthropic',
@@ -289,7 +289,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'video-frame-extractor',
     label: 'Video Frame Extractor', description: 'Extract a thumbnail frame from an upstream video',
-    category: 'logic', icon: 'Camera',
+    category: 'media', icon: 'Camera',
     defaultConfig: {
       subtype: 'video-frame-extractor',
       timestamp_mode: 'percent',

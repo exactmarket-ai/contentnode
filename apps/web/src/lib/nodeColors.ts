@@ -100,6 +100,7 @@ const MEDIA_SUBTYPES = new Set([
   'audio-input', 'voice-output', 'music-generation', 'audio-mix',
   'video-generation', 'image-generation', 'character-animation', 'media-download',
   'image-resize', 'video-composition',
+  'video-frame-extractor', 'video-intelligence', 'video-prompt-builder', 'image-prompt-builder',
 ])
 
 const MEDIA_TYPES = new Set([

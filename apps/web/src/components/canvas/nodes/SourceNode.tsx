@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useState, useRef, useEffect } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -21,6 +21,14 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   const status = nodeStatuses[id]?.status ?? 'idle'
   const [dropping, setDropping] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => e.stopPropagation()
+    el.addEventListener('wheel', handler)
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
 
   const IconComp = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[data.icon as string] ?? Icons.Box
 
@@ -190,6 +198,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
         <div>
           {/* Inline textarea — full bleed */}
           <textarea
+            ref={textareaRef}
             className="nodrag nopan w-full resize-none border-0 border-b bg-white px-3 py-2.5 text-xs leading-relaxed outline-none placeholder:text-muted-foreground/50"
             style={{ borderColor: spec.headerBorder, minHeight: 140, display: 'block' }}
             placeholder="Enter text or use {{variable}} templates…"

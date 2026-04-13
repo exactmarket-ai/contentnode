@@ -1,4 +1,5 @@
 import { memo, useRef, useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -7,12 +8,12 @@ import { EditableLabel } from './EditableLabel'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
-const ACCENT      = '#0369a1' // sky-700
-const ACCENT_RING = 'rgba(3,105,161,0.12)'
-const HEADER_BG   = '#f0f9ff' // sky-50
-const HEADER_BD   = '#bae6fd' // sky-200
-const BADGE_BG    = '#e0f2fe' // sky-100
-const BADGE_TEXT  = '#0c4a6e' // sky-900
+const ACCENT      = '#7c3aed' // media violet
+const ACCENT_RING = 'rgba(124,58,237,0.12)'
+const HEADER_BG   = '#faf5ff'
+const HEADER_BD   = '#e9d5ff'
+const BADGE_BG    = '#f3e8ff'
+const BADGE_TEXT  = '#6b21a8'
 
 const OVERLAY_LABELS: Record<string, string> = {
   lower_third: 'Lower Third',
@@ -27,6 +28,134 @@ const selectCss: React.CSSProperties = {
   backgroundColor: HEADER_BG,
   cursor:          'pointer',
   outline:         'none',
+}
+
+// ─── Duration slider popup ────────────────────────────────────────────────────
+
+const MIN_DUR = 1
+const MAX_DUR = 120
+const TICK_VALUES = [1, 15, 30, 60, 90, 120]
+
+function DurationSliderPopup({
+  value,
+  onChange,
+  anchorRef,
+  onClose,
+}: {
+  value:     number
+  onChange:  (v: number) => void
+  anchorRef: React.RefObject<HTMLButtonElement>
+  onClose:   () => void
+}) {
+  const popupRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+
+  // Position centred above the anchor button
+  useEffect(() => {
+    const rect = anchorRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const POPUP_H = 220
+    const POPUP_W = 58
+    setPos({
+      top:  rect.top - POPUP_H - 8,
+      left: rect.left + rect.width / 2 - POPUP_W / 2,
+    })
+  }, [anchorRef])
+
+  // Close on outside mousedown (capture phase, same as voice picker)
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    document.addEventListener('mousedown', handler, true)
+    return () => document.removeEventListener('mousedown', handler, true)
+  }, [onClose])
+
+  // Percentage of the way through the range (for tick positioning)
+  const pct = (v: number) => ((v - MIN_DUR) / (MAX_DUR - MIN_DUR)) * 100
+
+  const popup = (
+    <div
+      ref={popupRef}
+      onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
+      style={{
+        position:     'fixed',
+        top:          pos.top,
+        left:         pos.left,
+        width:        58,
+        height:       220,
+        zIndex:       99999,
+        background:   '#fff',
+        border:       `1.5px solid ${HEADER_BD}`,
+        borderRadius: 10,
+        boxShadow:    `0 8px 24px rgba(124,58,237,0.18), 0 2px 8px rgba(0,0,0,0.10)`,
+        display:      'flex',
+        flexDirection:'column',
+        alignItems:   'center',
+        padding:      '10px 0 10px',
+        gap:          0,
+        userSelect:   'none',
+      }}
+    >
+      {/* Current value badge */}
+      <div style={{
+        background:   BADGE_BG,
+        color:        BADGE_TEXT,
+        borderRadius: 99,
+        fontSize:     11,
+        fontWeight:   700,
+        padding:      '2px 8px',
+        marginBottom: 8,
+        letterSpacing: '-0.3px',
+      }}>
+        {value}s
+      </div>
+
+      {/* Slider track area */}
+      <div style={{ position: 'relative', flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+
+        {/* Tick marks — positioned along the rotated axis */}
+        <div style={{ position: 'absolute', top: 0, left: 4, bottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pointerEvents: 'none' }}>
+          {[...TICK_VALUES].reverse().map(v => (
+            <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <div style={{ width: 4, height: 1, background: value === v ? ACCENT : HEADER_BD }} />
+              <span style={{ fontSize: 8, color: value === v ? BADGE_TEXT : '#c4b5fd', fontWeight: value === v ? 700 : 400, lineHeight: 1 }}>
+                {v}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Vertical range input (rotated horizontal range) */}
+        <div style={{ width: 20, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', marginLeft: 18 }}>
+          <input
+            type="range"
+            min={MIN_DUR}
+            max={MAX_DUR}
+            step={1}
+            value={value}
+            onChange={e => onChange(Number(e.target.value))}
+            onMouseDown={e => e.stopPropagation()}
+            style={{
+              width:        160,
+              height:       4,
+              transform:    'rotate(-90deg)',
+              cursor:       'pointer',
+              accentColor:  ACCENT,
+              transformOrigin: 'center center',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Bottom label */}
+      <div style={{ fontSize: 8, color: '#c4b5fd', marginTop: 4 }}>seconds</div>
+    </div>
+  )
+
+  return createPortal(popup, document.body)
 }
 
 // ─── Main node ────────────────────────────────────────────────────────────────
@@ -44,16 +173,21 @@ export const VideoCompositionNode = memo(({ id, data, selected }: NodeProps) => 
   const isFailed  = status === 'failed'
 
   const renderMode = (config.render_mode as string) ?? 'local'
+  const duration   = (config.duration as number) ?? 10
   const bgImage    = (config.background_url as string) ?? ''
 
   const videoLocalPath = runOutput?.localPath as string | undefined
   const fullVideoUrl   = videoLocalPath ? assetUrl(videoLocalPath) : null
   const cloudUrl       = runOutput?.cloudUrl as string | undefined
 
-  const videoRef     = useRef<HTMLVideoElement | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [dropping,  setDropping]  = useState(false)
+  const videoRef      = useRef<HTMLVideoElement | null>(null)
+  const fileInputRef  = useRef<HTMLInputElement>(null)
+  const durationBtnRef = useRef<HTMLButtonElement>(null)
+
+  const [isPlaying,      setIsPlaying]      = useState(false)
+  const [dropping,       setDropping]       = useState(false)
+  const [sliderOpen,     setSliderOpen]     = useState(false)
+
   useEffect(() => { setIsPlaying(false) }, [fullVideoUrl])
 
   const set = (key: string, value: unknown) =>
@@ -192,28 +326,40 @@ export const VideoCompositionNode = memo(({ id, data, selected }: NodeProps) => 
           style={{ backgroundColor: HEADER_BG + 'cc', borderColor: HEADER_BD }}>
           <div className="flex items-center gap-1.5">
             <Icons.Film className="h-2.5 w-2.5 shrink-0" style={{ color: ACCENT }} />
-            <select className="nodrag nopan h-6 rounded border text-[10px] font-medium px-1 flex-1"
+            <select className="nodrag nopan h-6 rounded border text-[10px] font-medium px-1 flex-1 min-w-0"
               style={selectCss} value={(config.overlay_style as string) ?? 'lower_third'}
               onChange={e => { e.stopPropagation(); set('overlay_style', e.target.value) }}
               onClick={e => e.stopPropagation()}>
               {Object.entries(OVERLAY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            {/* Render mode toggle */}
+            <select className="nodrag nopan h-6 rounded border text-[10px] font-medium px-1 shrink-0"
+              style={{ ...selectCss, width: 74 }}
+              value={renderMode}
+              onChange={e => { e.stopPropagation(); set('render_mode', e.target.value) }}
+              onClick={e => e.stopPropagation()}>
+              <option value="local">Local</option>
+              <option value="cloud">Shotstack</option>
+            </select>
+            {/* Duration button — opens vertical slider popup */}
             <button
-              className="nodrag ml-1 flex items-center gap-1 shrink-0"
-              title={renderMode === 'cloud' ? 'Cloud render (Shotstack)' : 'Local render (ffmpeg)'}
-              onClick={e => { e.stopPropagation(); set('render_mode', renderMode === 'cloud' ? 'local' : 'cloud') }}
+              ref={durationBtnRef}
+              className="nodrag nopan shrink-0 flex items-center gap-0.5 rounded border px-1.5 h-6 text-[10px] font-semibold transition-colors"
+              style={{
+                borderColor:     sliderOpen ? ACCENT : HEADER_BD,
+                backgroundColor: sliderOpen ? BADGE_BG : HEADER_BG,
+                color:           BADGE_TEXT,
+                cursor:          'pointer',
+                outline:         'none',
+              }}
+              onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
+              onClick={e => { e.stopPropagation(); setSliderOpen(o => !o) }}
+              title="Set duration"
             >
-              <div className="relative inline-flex h-3.5 w-6 shrink-0 rounded-full border border-transparent transition-colors"
-                style={{ backgroundColor: renderMode === 'cloud' ? ACCENT : '#d1d5db' }}>
-                <span className="pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform mt-px"
-                  style={{ transform: renderMode === 'cloud' ? 'translateX(10px)' : 'translateX(1px)' }} />
-              </div>
-              <span className="text-[9px]" style={{ color: renderMode === 'cloud' ? ACCENT : '#9ca3af' }}>
-                {renderMode === 'cloud' ? 'Cloud' : 'Local'}
-              </span>
+              <Icons.Clock className="h-2.5 w-2.5 shrink-0" style={{ color: ACCENT }} />
+              {duration}s
             </button>
           </div>
+
           {cloudUrl && (
             <p className="mt-1 text-[9px] truncate" style={{ color: ACCENT }}>
               ☁ {cloudUrl}
@@ -221,6 +367,16 @@ export const VideoCompositionNode = memo(({ id, data, selected }: NodeProps) => 
           )}
         </div>
       </div>
+
+      {/* Duration slider portal */}
+      {sliderOpen && (
+        <DurationSliderPopup
+          value={duration}
+          onChange={v => set('duration', v)}
+          anchorRef={durationBtnRef}
+          onClose={() => setSliderOpen(false)}
+        />
+      )}
     </div>
   )
 })

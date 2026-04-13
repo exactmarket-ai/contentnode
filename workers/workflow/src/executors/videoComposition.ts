@@ -136,7 +136,6 @@ async function renderLocal(input: RenderInput): Promise<void> {
   const title    = lines[0]?.trim() ?? text.trim()
   const subtitle = lines[1]?.trim() ?? ''
 
-  const color    = hexToFfmpeg(brandColor)
   const colorA   = hexToFfmpegAlpha(brandColor)
 
   // Sanitize text for ffmpeg drawtext (escape colons, backslashes, apostrophes)
@@ -144,13 +143,17 @@ async function renderLocal(input: RenderInput): Promise<void> {
 
   let vf: string
 
+  // Font bundled via font-dejavu apk package (Dockerfile.worker)
+  const FONT = 'fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf'
+
   switch (overlayStyle) {
     case 'lower_third': {
-      // Colored bar at bottom + two text lines, with fade-in + slide-up
+      // Colored bar at bottom + two text lines with slide-up; global fade-in via fade filter
       vf = [
         `drawbox=x=0:y=ih-120:w=600:h=80:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=20:y='ih-100+if(lt(t\\,0.4)\\,(1-t/0.4)*30\\,0)':fontsize=${fontSize}:fontcolor=white:alpha='if(lt(t\\,0.3)\\,t/0.3\\,1)'`,
-        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y='ih-72+if(lt(t\\,0.4)\\,(1-t/0.4)*30\\,0)':fontsize=${Math.round(fontSize * 0.65)}:fontcolor=#aaaaaa:alpha='if(lt(t\\,0.3)\\,t/0.3\\,1)'` : '',
+        `drawtext=text='${esc(title)}':x=20:y='ih-100+if(lt(t\\,0.4)\\,(1-t/0.4)*30\\,0)':fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y='ih-72+if(lt(t\\,0.4)\\,(1-t/0.4)*30\\,0)':fontsize=${Math.round(fontSize * 0.65)}:fontcolor=#aaaaaa:${FONT}` : '',
+        'fade=t=in:st=0:d=0.5',
       ].filter(Boolean).join(',')
       break
     }
@@ -159,7 +162,8 @@ async function renderLocal(input: RenderInput): Promise<void> {
       // Semi-transparent full-width bar, centered text
       vf = [
         `drawbox=x=0:y=(ih-${fontSize + 60})/2:w=iw:h=${fontSize + 60}:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=(w-text_w)/2:y='(h-text_h)/2+if(lt(t\\,0.4)\\,(1-t/0.4)*30\\,0)':fontsize=${fontSize}:fontcolor=white:alpha='if(lt(t\\,0.3)\\,t/0.3\\,1)'`,
+        `drawtext=text='${esc(title)}':x=(w-text_w)/2:y='(h-text_h)/2':fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        'fade=t=in:st=0:d=0.5',
       ].join(',')
       break
     }
@@ -171,7 +175,8 @@ async function renderLocal(input: RenderInput): Promise<void> {
       const bw  = Math.max(title.length * (fontSize * 0.6), 120) + pad * 2
       vf = [
         `drawbox=x=${pad}:y=${pad}:w=${Math.round(bw)}:h=${bh}:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=${pad * 2}:y='${pad + 2}+if(lt(t\\,0.4)\\,(1-t/0.4)*20\\,0)':fontsize=${fontSize}:fontcolor=white:alpha='if(lt(t\\,0.3)\\,t/0.3\\,1)'`,
+        `drawtext=text='${esc(title)}':x=${pad * 2}:y=${pad + 2}:fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        'fade=t=in:st=0:d=0.5',
       ].join(',')
       break
     }
@@ -179,14 +184,15 @@ async function renderLocal(input: RenderInput): Promise<void> {
     case 'fullscreen': {
       // Large centered text, no box
       vf = [
-        `drawtext=text='${esc(title)}':x=(w-text_w)/2:y='(h-text_h)/2+if(lt(t\\,0.4)\\,(1-t/0.4)*40\\,0)':fontsize=${Math.round(fontSize * 1.5)}:fontcolor=white:shadowcolor=black:shadowx=2:shadowy=2:alpha='if(lt(t\\,0.3)\\,t/0.3\\,1)'`,
-        subtitle ? `drawtext=text='${esc(subtitle)}':x=(w-text_w)/2:y='(h+${Math.round(fontSize * 1.5)} * 0.6)/2+if(lt(t\\,0.4)\\,(1-t/0.4)*40\\,0)':fontsize=${fontSize}:fontcolor=#dddddd:alpha='if(lt(t\\,0.3)\\,t/0.3\\,1)'` : '',
+        `drawtext=text='${esc(title)}':x=(w-text_w)/2:y=(h-text_h)/2:fontsize=${Math.round(fontSize * 1.5)}:fontcolor=white:shadowcolor=black:shadowx=2:shadowy=2:${FONT}`,
+        subtitle ? `drawtext=text='${esc(subtitle)}':x=(w-text_w)/2:y=(h+${Math.round(fontSize * 1.5)})/2:fontsize=${fontSize}:fontcolor=#dddddd:${FONT}` : '',
+        'fade=t=in:st=0:d=0.5',
       ].filter(Boolean).join(',')
       break
     }
 
     default:
-      vf = `drawtext=text='${esc(title)}':x=20:y=20:fontsize=${fontSize}:fontcolor=white`
+      vf = `drawtext=text='${esc(title)}':x=20:y=20:fontsize=${fontSize}:fontcolor=white:${FONT}`
   }
 
   const inputs  = [`-loop 1 -t ${duration} -i "${bgPath}"`]
