@@ -81,7 +81,7 @@ function MessageBubble({
                   </button>
                   <button
                     onClick={() => onApply?.(s)}
-                    className="rounded-md border border-border hover:border-violet-300 text-muted-foreground hover:text-violet-600 text-[10px] px-2 py-1.5 transition-colors whitespace-nowrap"
+                    className="flex-1 rounded-md bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
                   >
                     Add directly
                   </button>
