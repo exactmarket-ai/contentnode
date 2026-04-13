@@ -26,7 +26,8 @@ export interface VideoCompositionResult {
   renderMode: 'local' | 'cloud'
   cloudUrl?:  string
   duration:   number
-  type:       'video'
+  type:       'video' | 'image'
+  outputFormat: 'video' | 'image'
 }
 
 // ─── Shared render input ──────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ interface RenderInput {
   fontSize:     number
   duration:     number
   outputPath:   string
+  outputFormat: 'video' | 'image'
 }
 
 type OverlayStyle = 'lower_third' | 'title_card' | 'pill_badge' | 'fullscreen'
@@ -144,7 +146,7 @@ function hexToFfmpegAlpha(hex: string, alpha = 'CC'): string {
 // ─── Local ffmpeg renderer ────────────────────────────────────────────────────
 
 async function renderLocal(input: RenderInput): Promise<void> {
-  const { bgPath, text, audioPath, overlayStyle, brandColor, fontSize, duration, outputPath } = input
+  const { bgPath, text, audioPath, overlayStyle, brandColor, fontSize, duration, outputPath, outputFormat } = input
 
   // Split text into title + subtitle at first newline or mid-point
   const lines    = text.split('\n')
@@ -213,21 +215,34 @@ async function renderLocal(input: RenderInput): Promise<void> {
   const inputs  = [`-loop 1 -t ${duration} -i "${bgPath}"`]
   const maps    = ['-map 0:v']
 
-  if (audioPath && fs.existsSync(audioPath)) {
+  if (outputFormat === 'video' && audioPath && fs.existsSync(audioPath)) {
     inputs.push(`-i "${audioPath}"`)
     maps.push('-map 1:a', '-shortest')
   }
 
-  const cmd = [
-    'ffmpeg -y',
-    ...inputs,
-    `-vf "${vf}"`,
-    ...maps,
-    '-c:v libx264 -preset fast -crf 23',
-    audioPath ? '-c:a aac -b:a 128k' : '',
-    `-t ${duration}`,
-    `"${outputPath}"`,
-  ].filter(Boolean).join(' ')
+  let cmd: string
+  if (outputFormat === 'image') {
+    // Single JPEG frame — no audio, no duration encoding needed
+    cmd = [
+      'ffmpeg -y',
+      `-loop 1 -t 1 -i "${bgPath}"`,
+      `-vf "${vf}"`,
+      '-map 0:v',
+      '-frames:v 1 -f image2',
+      `"${outputPath}"`,
+    ].join(' ')
+  } else {
+    cmd = [
+      'ffmpeg -y',
+      ...inputs,
+      `-vf "${vf}"`,
+      ...maps,
+      '-c:v libx264 -preset fast -crf 23',
+      audioPath ? '-c:a aac -b:a 128k' : '',
+      `-t ${duration}`,
+      `"${outputPath}"`,
+    ].filter(Boolean).join(' ')
+  }
 
   await execAsync(cmd, { timeout: 120_000 })
 }
@@ -392,7 +407,8 @@ export class VideoCompositionExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
-    const renderMode    = (config.render_mode as string)   ?? 'local'
+    const renderMode    = (config.render_mode as string)    ?? 'local'
+    const outputFormat  = (config.output_format as 'video' | 'image') ?? 'video'
     const overlayStyle  = (config.overlay_style as OverlayStyle) ?? 'lower_third'
     const brandColor    = (config.brand_color as string)   ?? '#1a73e8'
     const fontSize      = (config.font_size as number)     ?? 28
@@ -448,7 +464,8 @@ export class VideoCompositionExecutor extends NodeExecutor {
       ? `${apiBase}${audioLocalPath}`
       : null
 
-    const outputTmp = path.join(tmpDir, `vc_${randomUUID()}.mp4`)
+    const outputExt = outputFormat === 'image' ? 'jpg' : 'mp4'
+    const outputTmp = path.join(tmpDir, `vc_${randomUUID()}.${outputExt}`)
 
     const renderInput: RenderInput = {
       bgPath,
@@ -460,12 +477,16 @@ export class VideoCompositionExecutor extends NodeExecutor {
       fontSize,
       duration,
       outputPath: outputTmp,
+      outputFormat,
     }
 
     let actualMode: 'local' | 'cloud' = renderMode as 'local' | 'cloud'
     let cloudUrl: string | undefined
 
-    if (renderMode === 'cloud') {
+    // Image mode always uses local ffmpeg (Shotstack doesn't produce still images)
+    if (outputFormat === 'image') actualMode = 'local'
+
+    if (renderMode === 'cloud' && outputFormat !== 'image') {
       try {
         const renderId = await renderCloud(renderInput)
         const videoUrl = await pollShotstack(renderId)
@@ -495,8 +516,10 @@ export class VideoCompositionExecutor extends NodeExecutor {
       try { fs.unlinkSync(audioPath) } catch { /* ignore */ }
     }
 
-    const filename   = `video_comp_${randomUUID()}.mp4`
-    const storageKey = await saveGeneratedFile(videoBuffer, filename, 'video/mp4')
+    const isImage    = outputFormat === 'image'
+    const filename   = isImage ? `video_comp_${randomUUID()}.jpg` : `video_comp_${randomUUID()}.mp4`
+    const mimeType   = isImage ? 'image/jpeg' : 'video/mp4'
+    const storageKey = await saveGeneratedFile(videoBuffer, filename, mimeType)
     const localPath  = `/files/generated/${filename}`
 
     return {
@@ -506,7 +529,8 @@ export class VideoCompositionExecutor extends NodeExecutor {
         renderMode: actualMode,
         cloudUrl,
         duration,
-        type: 'video',
+        outputFormat,
+        type: isImage ? 'image' : 'video',
       } satisfies VideoCompositionResult,
     }
   }

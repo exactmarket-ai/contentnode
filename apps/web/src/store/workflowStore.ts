@@ -479,12 +479,36 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     defaultConfig: {
       subtype:       'video-composition',
       render_mode:   'local',
+      output_format: 'video',
       overlay_style: 'lower_third',
       brand_color:   '#1a73e8',
       font_size:     28,
       duration:      10,
       background_url: '',
       text:          '',
+    },
+  },
+  {
+    type: 'logic', subtype: 'video-trimmer',
+    label: 'Video Trimmer', description: 'Extract a time range from a video — set start and duration or end time',
+    category: 'media', icon: 'Scissors',
+    defaultConfig: {
+      subtype:    'video-trimmer',
+      trim_mode:  'duration',
+      start_time: 0,
+      duration:   10,
+      end_time:   10,
+    },
+  },
+  {
+    type: 'logic', subtype: 'video-resize',
+    label: 'Social Video Resizer', description: 'Crop and scale a video to platform aspect ratios — 9:16, 1:1, 4:5, 16:9',
+    category: 'media', icon: 'Maximize2',
+    defaultConfig: {
+      subtype: 'video-resize',
+      preset:  'reels',
+      crf:     23,
+      encode_preset: 'fast',
     },
   },
   // Canvas utilities

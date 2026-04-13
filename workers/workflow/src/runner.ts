@@ -34,6 +34,8 @@ import { AudioMixNodeExecutor } from './executors/audioMix.js'
 import { AudioInputNodeExecutor } from './executors/audioInput.js'
 import { CharacterAnimationNodeExecutor } from './executors/characterAnimation.js'
 import { VideoCompositionExecutor } from './executors/videoComposition.js'
+import { VideoTrimmerExecutor } from './executors/videoTrimmer.js'
+import { VideoResizeExecutor } from './executors/videoResize.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -118,6 +120,8 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'audio_input':                   AudioInputNodeExecutor,
   'character_animation':           CharacterAnimationNodeExecutor,
   'video_composition':             VideoCompositionExecutor,
+  'logic:video-trimmer':           VideoTrimmerExecutor,
+  'logic:video-resize':            VideoResizeExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {

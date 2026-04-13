@@ -55,6 +55,8 @@ import { AudioMixConfig } from './config/output/AudioMixConfig'
 import { AudioInputConfig } from './config/source/AudioInputConfig'
 import { CharacterAnimationConfig } from './config/output/CharacterAnimationConfig'
 import { VideoCompositionConfig } from './config/output/VideoCompositionConfig'
+import { VideoTrimmerConfig } from './config/output/VideoTrimmerConfig'
+import { VideoResizeConfig } from './config/output/VideoResizeConfig'
 
 
 // ─── Config dispatcher ────────────────────────────────────────────────────────
@@ -128,6 +130,10 @@ function NodeConfigForm({
         return <VideoIntelligenceConfig config={config} onChange={onChange} />
       if (subtype === 'image-resize')
         return <ImageResizeConfig config={config} onChange={onChange} />
+      if (subtype === 'video-trimmer')
+        return <VideoTrimmerConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'video-resize')
+        return <VideoResizeConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'transform')
         return <TransformConfig config={config} onChange={onChange} />
       if (subtype === 'condition')

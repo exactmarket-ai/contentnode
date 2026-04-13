@@ -26,46 +26,55 @@ export function VideoCompositionConfig({
   onChange: (k: string, v: unknown) => void
   nodeRunStatus?: { status?: string; output?: unknown }
 }) {
-  const renderMode   = (config.render_mode as string)   ?? 'local'
-  const overlayStyle = (config.overlay_style as string) ?? 'lower_third'
-  const brandColor   = (config.brand_color as string)   ?? '#1a73e8'
-  const fontSize     = (config.font_size as number)     ?? 28
-  const duration     = (config.duration as number)      ?? 10
+  const renderMode   = (config.render_mode as string)    ?? 'local'
+  const outputFormat = (config.output_format as string)  ?? 'video'
+  const overlayStyle = (config.overlay_style as string)  ?? 'lower_third'
+  const brandColor   = (config.brand_color as string)    ?? '#1a73e8'
+  const fontSize     = (config.font_size as number)      ?? 28
+  const duration     = (config.duration as number)       ?? 10
   const bgUrl        = (config.background_url as string) ?? ''
-  const textConfig   = (config.text as string)          ?? ''
+  const textConfig   = (config.text as string)           ?? ''
 
-  const runOutput    = nodeRunStatus?.output as Record<string, unknown> | undefined
-  const hasPassed    = nodeRunStatus?.status === 'passed'
-  const videoPath    = runOutput?.localPath as string | undefined
-  const cloudUrl     = runOutput?.cloudUrl as string | undefined
-  const fullVideoUrl = videoPath ? assetUrl(videoPath) : null
+  const runOutput     = nodeRunStatus?.output as Record<string, unknown> | undefined
+  const hasPassed     = nodeRunStatus?.status === 'passed'
+  const outputPath    = runOutput?.localPath as string | undefined
+  const cloudUrl      = runOutput?.cloudUrl as string | undefined
+  const fullOutputUrl = outputPath ? assetUrl(outputPath) : null
+  const resultIsImage = (runOutput?.outputFormat ?? runOutput?.type) === 'image'
 
   const overlayMeta = OVERLAY_STYLES.find(o => o.value === overlayStyle)
 
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Post-run video */}
-      {hasPassed && fullVideoUrl && (
+      {/* Post-run output (video or image) */}
+      {hasPassed && fullOutputUrl && (
         <>
           <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-2 space-y-2">
             <div className="flex items-center gap-2">
-              <Icons.Film className="h-3.5 w-3.5 text-sky-700" />
-              <span className="text-xs font-medium text-sky-800">Composed video</span>
+              {resultIsImage
+                ? <Icons.Image className="h-3.5 w-3.5 text-sky-700" />
+                : <Icons.Film className="h-3.5 w-3.5 text-sky-700" />}
+              <span className="text-xs font-medium text-sky-800">
+                {resultIsImage ? 'Composed image' : 'Composed video'}
+              </span>
               <span className="ml-auto text-[9px] rounded-full px-1.5 py-px font-medium"
                 style={{ backgroundColor: runOutput?.renderMode === 'cloud' ? '#e0f2fe' : '#f0fdf4', color: runOutput?.renderMode === 'cloud' ? '#0369a1' : '#166534' }}>
                 {runOutput?.renderMode === 'cloud' ? '☁ Cloud' : '⚙ Local'}
               </span>
             </div>
-            <video controls className="w-full rounded" style={{ maxHeight: 200 }}>
-              <source src={fullVideoUrl} type="video/mp4" />
-            </video>
+            {resultIsImage
+              ? <img src={fullOutputUrl} alt="composition" className="w-full rounded" style={{ maxHeight: 200, objectFit: 'contain' }} />
+              : <video controls className="w-full rounded" style={{ maxHeight: 200 }}>
+                  <source src={fullOutputUrl} type="video/mp4" />
+                </video>
+            }
             {cloudUrl && (
               <p className="text-[9px] text-sky-600 truncate">Shotstack: {cloudUrl}</p>
             )}
             <div className="flex justify-end">
               <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]"
-                onClick={() => downloadAsset(fullVideoUrl!, 'composition.mp4')}>
+                onClick={() => downloadAsset(fullOutputUrl!, resultIsImage ? 'composition.jpg' : 'composition.mp4')}>
                 <Icons.Download className="h-3 w-3" />
                 Download
               </Button>
@@ -79,6 +88,30 @@ export function VideoCompositionConfig({
       <div className="rounded-md border border-sky-100 bg-sky-50/40 px-3 py-2 text-[10px] text-sky-800 space-y-1">
         <p className="font-medium">How to connect</p>
         <p>Connect <strong>Image → Image</strong>, <strong>Content/Text → Text</strong>, and optionally <strong>Audio → Audio</strong> handles.</p>
+      </div>
+
+      {/* Output format */}
+      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+        <div>
+          <p className="text-xs font-medium">Output format</p>
+          <p className="text-[10px] text-muted-foreground">
+            {outputFormat === 'image' ? 'JPEG image — one still frame (use for thumbnails)' : 'MP4 video — animated output with text overlay'}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 ml-2 shrink-0">
+          <button
+            onClick={() => onChange('output_format', 'video')}
+            className={`px-2 py-1 rounded text-[10px] font-semibold border transition-colors ${outputFormat === 'video' ? 'bg-sky-100 border-sky-400 text-sky-800' : 'bg-background border-border text-muted-foreground'}`}
+          >
+            <Icons.Film className="inline h-3 w-3 mr-0.5" />VID
+          </button>
+          <button
+            onClick={() => onChange('output_format', 'image')}
+            className={`px-2 py-1 rounded text-[10px] font-semibold border transition-colors ${outputFormat === 'image' ? 'bg-sky-100 border-sky-400 text-sky-800' : 'bg-background border-border text-muted-foreground'}`}
+          >
+            <Icons.Image className="inline h-3 w-3 mr-0.5" />IMG
+          </button>
+        </div>
       </div>
 
       {/* Render mode */}
@@ -161,15 +194,17 @@ export function VideoCompositionConfig({
         </div>
       </FieldGroup>
 
-      {/* Duration */}
-      <FieldGroup label={`Duration — ${duration}s`}>
-        <input type="range" min={3} max={60} step={1} value={duration}
-          onChange={e => onChange('duration', parseInt(e.target.value))}
-          className="w-full accent-sky-600" />
-        <div className="flex justify-between text-[9px] text-muted-foreground/50 mt-0.5">
-          <span>3s</span><span>60s</span>
-        </div>
-      </FieldGroup>
+      {/* Duration — only relevant for video output */}
+      {outputFormat !== 'image' && (
+        <FieldGroup label={`Duration — ${duration}s`}>
+          <input type="range" min={3} max={60} step={1} value={duration}
+            onChange={e => onChange('duration', parseInt(e.target.value))}
+            className="w-full accent-sky-600" />
+          <div className="flex justify-between text-[9px] text-muted-foreground/50 mt-0.5">
+            <span>3s</span><span>60s</span>
+          </div>
+        </FieldGroup>
+      )}
 
       {/* Cloud env note */}
       {renderMode === 'cloud' && (

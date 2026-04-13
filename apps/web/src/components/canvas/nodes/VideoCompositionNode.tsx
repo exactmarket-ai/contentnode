@@ -172,13 +172,15 @@ export const VideoCompositionNode = memo(({ id, data, selected }: NodeProps) => 
   const isPassed  = status === 'passed'
   const isFailed  = status === 'failed'
 
-  const renderMode = (config.render_mode as string) ?? 'local'
-  const duration   = (config.duration as number) ?? 10
-  const bgImage    = (config.background_url as string) ?? ''
+  const renderMode   = (config.render_mode as string) ?? 'local'
+  const outputFormat = (config.output_format as string) ?? 'video'
+  const duration     = (config.duration as number) ?? 10
+  const bgImage      = (config.background_url as string) ?? ''
 
-  const videoLocalPath = runOutput?.localPath as string | undefined
-  const fullVideoUrl   = videoLocalPath ? assetUrl(videoLocalPath) : null
-  const cloudUrl       = runOutput?.cloudUrl as string | undefined
+  const videoLocalPath  = runOutput?.localPath as string | undefined
+  const fullVideoUrl    = videoLocalPath ? assetUrl(videoLocalPath) : null
+  const cloudUrl        = runOutput?.cloudUrl as string | undefined
+  const outputIsImage   = (runOutput?.outputFormat ?? runOutput?.type) === 'image'
 
   const videoRef      = useRef<HTMLVideoElement | null>(null)
   const fileInputRef  = useRef<HTMLInputElement>(null)
@@ -247,7 +249,18 @@ export const VideoCompositionNode = memo(({ id, data, selected }: NodeProps) => 
         onChange={e => { const f = e.target.files?.[0]; if (f) loadBgFile(f); e.target.value = '' }} />
 
       {/* Media area — 16:9 */}
-      {isPassed && fullVideoUrl ? (
+      {isPassed && fullVideoUrl && outputIsImage ? (
+        // Image output preview
+        <div className="relative overflow-hidden group/img" style={{ aspectRatio: '16 / 9' }}>
+          <img src={fullVideoUrl} alt="composition" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 hidden group-hover/img:flex items-end justify-end p-1.5">
+            <button className="nodrag flex items-center justify-center rounded bg-black/60 p-1.5 hover:bg-black/80 transition-colors"
+              onClick={e => { e.stopPropagation(); downloadAsset(fullVideoUrl!, 'composition.jpg') }}>
+              <Icons.Download className="h-2.5 w-2.5 text-white" />
+            </button>
+          </div>
+        </div>
+      ) : isPassed && fullVideoUrl ? (
         <div className="relative overflow-hidden group/vid" style={{ aspectRatio: '16 / 9' }}>
           <video ref={videoRef} src={fullVideoUrl} className="w-full h-full object-cover"
             style={{ backgroundColor: '#000' }}
@@ -340,23 +353,42 @@ export const VideoCompositionNode = memo(({ id, data, selected }: NodeProps) => 
               <option value="local">Local</option>
               <option value="cloud">Shotstack</option>
             </select>
-            {/* Duration button — opens vertical slider popup */}
+            {/* Duration button — only shown in video mode; opens vertical slider popup */}
+            {outputFormat !== 'image' && (
+              <button
+                ref={durationBtnRef}
+                className="nodrag nopan shrink-0 flex items-center gap-0.5 rounded border px-1.5 h-6 text-[10px] font-semibold transition-colors"
+                style={{
+                  borderColor:     sliderOpen ? ACCENT : HEADER_BD,
+                  backgroundColor: sliderOpen ? BADGE_BG : HEADER_BG,
+                  color:           BADGE_TEXT,
+                  cursor:          'pointer',
+                  outline:         'none',
+                }}
+                onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
+                onClick={e => { e.stopPropagation(); setSliderOpen(o => !o) }}
+                title="Set duration"
+              >
+                <Icons.Clock className="h-2.5 w-2.5 shrink-0" style={{ color: ACCENT }} />
+                {duration}s
+              </button>
+            )}
+            {/* VID/IMG toggle */}
             <button
-              ref={durationBtnRef}
-              className="nodrag nopan shrink-0 flex items-center gap-0.5 rounded border px-1.5 h-6 text-[10px] font-semibold transition-colors"
+              className="nodrag nopan shrink-0 flex items-center gap-0.5 rounded border px-1.5 h-6 text-[10px] font-bold transition-colors"
               style={{
-                borderColor:     sliderOpen ? ACCENT : HEADER_BD,
-                backgroundColor: sliderOpen ? BADGE_BG : HEADER_BG,
-                color:           BADGE_TEXT,
+                borderColor:     HEADER_BD,
+                backgroundColor: outputFormat === 'image' ? BADGE_BG : HEADER_BG,
+                color:           outputFormat === 'image' ? BADGE_TEXT : '#94a3b8',
                 cursor:          'pointer',
                 outline:         'none',
               }}
               onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
-              onClick={e => { e.stopPropagation(); setSliderOpen(o => !o) }}
-              title="Set duration"
+              onClick={e => { e.stopPropagation(); const next = outputFormat === 'image' ? 'video' : 'image'; set('output_format', next); if (next === 'image') setSliderOpen(false) }}
+              title={outputFormat === 'image' ? 'Output: JPEG image — click for video' : 'Output: MP4 video — click for image'}
             >
-              <Icons.Clock className="h-2.5 w-2.5 shrink-0" style={{ color: ACCENT }} />
-              {duration}s
+              {outputFormat === 'image' ? <Icons.Image className="h-2.5 w-2.5 shrink-0" style={{ color: ACCENT }} /> : <Icons.Film className="h-2.5 w-2.5 shrink-0" style={{ color: '#94a3b8' }} />}
+              {outputFormat === 'image' ? 'IMG' : 'VID'}
             </button>
           </div>
 

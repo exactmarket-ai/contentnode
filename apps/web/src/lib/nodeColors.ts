@@ -101,6 +101,7 @@ const MEDIA_SUBTYPES = new Set([
   'video-generation', 'image-generation', 'character-animation', 'media-download',
   'image-resize', 'video-composition',
   'video-frame-extractor', 'video-intelligence', 'video-prompt-builder', 'image-prompt-builder',
+  'video-trimmer', 'video-resize',
 ])
 
 const MEDIA_TYPES = new Set([
