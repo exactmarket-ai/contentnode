@@ -163,11 +163,11 @@ async function renderLocal(input: RenderInput): Promise<void> {
 
   switch (overlayStyle) {
     case 'lower_third': {
-      // Colored bar at bottom + two text lines with slide-up; global fade-in via fade filter
+      // Colored bar at bottom + two text lines; global fade-in via fade filter
       vf = [
         `drawbox=x=0:y=ih-120:w=600:h=80:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=20:y='ih-100+if(lt(t\\,0.4)\\,(1-t/0.4)*30\\,0)':fontsize=${fontSize}:fontcolor=white:${FONT}`,
-        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y='ih-72+if(lt(t\\,0.4)\\,(1-t/0.4)*30\\,0)':fontsize=${Math.round(fontSize * 0.65)}:fontcolor=#aaaaaa:${FONT}` : '',
+        `drawtext=text='${esc(title)}':x=20:y=ih-100:fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y=ih-72:fontsize=${Math.round(fontSize * 0.65)}:fontcolor=#aaaaaa:${FONT}` : '',
         'fade=t=in:st=0:d=0.5',
       ].filter(Boolean).join(',')
       break
