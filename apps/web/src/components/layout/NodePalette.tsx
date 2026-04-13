@@ -42,13 +42,14 @@ const sortedByLabel = (nodes: PaletteNodeDef[]) =>
   [...nodes].sort((a, b) => a.label.localeCompare(b.label))
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
-  source: 'Source', logic: 'Logic', output: 'Output', insight: 'Insight', canvas: 'Canvas',
+  source: 'Source', logic: 'Logic', output: 'Output', media: 'Media', insight: 'Insight', canvas: 'Canvas',
 }
 
 const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
   source:  NODE_SPEC['input'],
   logic:   NODE_SPEC['ai-model'],
   output:  NODE_SPEC['transform'],
+  media:   NODE_SPEC['media'],
   insight: NODE_SPEC['ai-model'],
   canvas:  NODE_SPEC['input'],
 }
@@ -60,6 +61,7 @@ const CATEGORY_TOOLBAR_ICONS: Record<string, IconComponent> = {
   source: Icons.Database,
   logic:  Icons.GitBranch,
   output: Icons.Share2,
+  media:  Icons.Film,
 }
 
 // ─── PaletteItem ──────────────────────────────────────────────────────────────
@@ -260,7 +262,7 @@ function NodesPalette() {
           )}
 
           {/* Categories, alphabetically sorted */}
-          {(['source', 'logic', 'output'] as NodeCategory[]).map((cat) => {
+          {(['source', 'logic', 'output', 'media'] as NodeCategory[]).map((cat) => {
             const items = byCategory(cat).filter((n) => !frequentSubtypes.has(n.subtype))
             const allItems = byCategory(cat)
             if (allItems.length === 0) return null
@@ -321,7 +323,7 @@ function CollapsedToolbar({ onExpand }: { onExpand: () => void }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [openCat])
 
-  const categories: NodeCategory[] = ['source', 'logic', 'output']
+  const categories: NodeCategory[] = ['source', 'logic', 'output', 'media']
 
   return (
     <div ref={toolbarRef} className="relative flex h-full flex-col items-center py-2 gap-1">

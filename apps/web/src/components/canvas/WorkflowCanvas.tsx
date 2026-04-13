@@ -20,6 +20,7 @@ import { VoiceOutputNode } from './nodes/VoiceOutputNode'
 import { MusicGenerationNode } from './nodes/MusicGenerationNode'
 import { AudioMixNode } from './nodes/AudioMixNode'
 import { AudioInputNode } from './nodes/AudioInputNode'
+import { CharacterAnimationNode } from './nodes/CharacterAnimationNode'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { NodeContextMenu } from './NodeContextMenu'
 
@@ -35,6 +36,7 @@ const nodeTypes = {
   music_generation: MusicGenerationNode,
   audio_mix: AudioMixNode,
   audio_input: AudioInputNode,
+  character_animation: CharacterAnimationNode,
 }
 
 let nodeIdCounter = 1

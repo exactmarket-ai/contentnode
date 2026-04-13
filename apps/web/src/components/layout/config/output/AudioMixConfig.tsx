@@ -16,6 +16,7 @@ export function AudioMixConfig({
   const voiceVolume  = (config.voice_volume as number) ?? 1.0
   const musicVolume  = (config.music_volume as number) ?? 0.25
   const duckEnabled  = (config.duck_enabled as boolean) ?? true
+  const loopMusic    = (config.loop_music as boolean) ?? true
   const fadeIn       = (config.fade_in_seconds as number) ?? 1.0
   const fadeOut      = (config.fade_out_seconds as number) ?? 2.0
   const voiceDelay   = (config.voice_delay_seconds as number) ?? 0
@@ -81,6 +82,21 @@ export function AudioMixConfig({
           <span>0%</span><span>50%</span><span>100%</span>
         </div>
       </FieldGroup>
+
+      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+        <div>
+          <p className="text-xs font-medium">Loop music track</p>
+          <p className="text-[10px] text-muted-foreground">
+            Repeat music to fill the full voice duration
+          </p>
+        </div>
+        <button
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${loopMusic ? 'bg-teal-600' : 'bg-input'}`}
+          onClick={() => onChange('loop_music', !loopMusic)}
+        >
+          <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${loopMusic ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
+      </div>
 
       <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
         <div>

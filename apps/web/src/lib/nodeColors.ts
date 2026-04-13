@@ -2,7 +2,7 @@
 // Implements the ContentNodeAI card spec exactly.
 // Each node subtype maps to one of 5 types: prompt | input | ai-model | transform | eval
 
-export type NodeSpecType = 'prompt' | 'input' | 'ai-model' | 'transform' | 'eval' | 'generate'
+export type NodeSpecType = 'prompt' | 'input' | 'ai-model' | 'transform' | 'eval' | 'generate' | 'media'
 
 export interface NodeSpec {
   accent: string
@@ -83,20 +83,42 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
     badgeText:      '#5f5e5a',
     label:          'Eval',
   },
+  media: {
+    accent:         '#7c3aed',
+    headerBg:       '#faf5ff',
+    headerBorder:   '#e9d5ff',
+    headerBgHover:  '#f3e8ff',
+    activeRing:     'rgba(124,58,237,0.12)',
+    activeTextColor:'#ffffff',
+    badgeBg:        '#f3e8ff',
+    badgeText:      '#6b21a8',
+    label:          'Media',
+  },
 }
+
+const MEDIA_SUBTYPES = new Set([
+  'audio-input', 'voice-output', 'music-generation', 'audio-mix',
+  'video-generation', 'image-generation', 'character-animation', 'media-download',
+])
+
+const MEDIA_TYPES = new Set([
+  'voice_output', 'music_generation', 'audio_mix', 'audio_input', 'character_animation',
+])
 
 /** Map our node type + subtype to a spec type */
 export function getNodeSpec(type: string, subtype?: string): NodeSpec {
   let specType: NodeSpecType = 'eval'
 
-  if (type === 'source' || type === 'gtm_framework' || type === 'brand_context' || type === 'audio_input') {
+  if (MEDIA_TYPES.has(type) || (subtype && MEDIA_SUBTYPES.has(subtype))) {
+    specType = 'media'
+  } else if (type === 'source' || type === 'gtm_framework' || type === 'brand_context') {
     specType = 'input'
   } else if (type === 'logic') {
-    specType = 'ai-model' // all logic nodes are orange
+    specType = 'ai-model'
   } else if (type === 'insight') {
     specType = 'ai-model'
   } else {
-    specType = 'transform' // output nodes are green
+    specType = 'transform'
   }
 
   return NODE_SPEC[specType]

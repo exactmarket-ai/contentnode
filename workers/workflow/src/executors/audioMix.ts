@@ -79,6 +79,7 @@ export class AudioMixNodeExecutor extends NodeExecutor {
     const voiceVolume = (config.voice_volume as number) ?? 1.0
     const musicVolume = (config.music_volume as number) ?? 0.25
     const duckEnabled = (config.duck_enabled as boolean) ?? true
+    const loopMusic   = (config.loop_music as boolean) ?? true
     const fadeIn      = (config.fade_in_seconds as number) ?? 1.0
     const fadeOut     = (config.fade_out_seconds as number) ?? 2.0
     const voiceDelay  = Math.max(0, (config.voice_delay_seconds as number) ?? 0)
@@ -100,8 +101,8 @@ export class AudioMixNodeExecutor extends NodeExecutor {
     const tmpOut    = path.join(tmpDir, `mix_${randomUUID()}.mp3`)
 
     const filterComplex = duckEnabled
-      ? buildDuckingFilter(voiceVolume, musicVolume, voiceDelay, musicDelay)
-      : buildSimpleMixFilter(voiceVolume, musicVolume, fadeIn, fadeOut, voiceDelay, musicDelay)
+      ? buildDuckingFilter(voiceVolume, musicVolume, voiceDelay, musicDelay, loopMusic)
+      : buildSimpleMixFilter(voiceVolume, musicVolume, fadeIn, fadeOut, voiceDelay, musicDelay, loopMusic)
 
     const cmd = [
       'ffmpeg -y',
@@ -156,19 +157,21 @@ function buildSimpleMixFilter(
   fadeOut: number,
   voiceDelay: number = 0,
   musicDelay: number = 0,
+  loopMusic: boolean = true,
 ): string {
   const hasDelay = voiceDelay > 0 || musicDelay > 0
   const voiceMs  = Math.round(voiceDelay * 1000)
   const musicMs  = Math.round(musicDelay * 1000)
   const duration = hasDelay ? 'longest' : 'first'
+  const loopFilter = loopMusic ? 'aloop=loop=-1:size=2e+09,' : ''
 
   const voiceChain = voiceDelay > 0
     ? `[0:a]volume=${voiceVolume},adelay=${voiceMs}:all=1[v]`
     : `[0:a]volume=${voiceVolume}[v]`
 
   const musicChain = musicDelay > 0
-    ? `[1:a]aloop=loop=-1:size=2e+09,volume=${musicVolume},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=9999:d=${fadeOut},adelay=${musicMs}:all=1[m]`
-    : `[1:a]aloop=loop=-1:size=2e+09,volume=${musicVolume},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=9999:d=${fadeOut}[m]`
+    ? `[1:a]${loopFilter}volume=${musicVolume},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=9999:d=${fadeOut},adelay=${musicMs}:all=1[m]`
+    : `[1:a]${loopFilter}volume=${musicVolume},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=9999:d=${fadeOut}[m]`
 
   return [
     voiceChain,
@@ -186,19 +189,21 @@ function buildDuckingFilter(
   musicVolume: number,
   voiceDelay: number = 0,
   musicDelay: number = 0,
+  loopMusic: boolean = true,
 ): string {
   const hasDelay = voiceDelay > 0 || musicDelay > 0
   const voiceMs  = Math.round(voiceDelay * 1000)
   const musicMs  = Math.round(musicDelay * 1000)
   const duration = hasDelay ? 'longest' : 'first'
+  const loopFilter = loopMusic ? 'aloop=loop=-1:size=2e+09,' : ''
 
   const voiceChain = voiceDelay > 0
     ? `[0:a]volume=${voiceVolume},adelay=${voiceMs}:all=1,asplit=2[voice_out][sc]`
     : `[0:a]volume=${voiceVolume},asplit=2[voice_out][sc]`
 
   const musicChain = musicDelay > 0
-    ? `[1:a]aloop=loop=-1:size=2e+09,volume=${musicVolume * 2},adelay=${musicMs}:all=1[music]`
-    : `[1:a]aloop=loop=-1:size=2e+09,volume=${musicVolume * 2}[music]`
+    ? `[1:a]${loopFilter}volume=${musicVolume * 2},adelay=${musicMs}:all=1[music]`
+    : `[1:a]${loopFilter}volume=${musicVolume * 2}[music]`
 
   return [
     voiceChain,

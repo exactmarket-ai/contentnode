@@ -107,6 +107,17 @@ export async function pollRunUntilTerminal(runId: string) {
       return
     }
     if (data.status === 'failed') {
+      // Mark any node still showing 'running' as failed so the glow clears
+      const currentStatuses = useWorkflowStore.getState().nodeRunStatuses
+      const patched = Object.fromEntries(
+        Object.entries(currentStatuses).map(([nid, ns]) => [
+          nid,
+          (ns as { status: string }).status === 'running'
+            ? { ...(ns as object), status: 'failed', error: data.errorMessage ?? 'Run failed' }
+            : ns,
+        ])
+      )
+      store.setNodeRunStatuses(patched as Parameters<typeof store.setNodeRunStatuses>[0])
       store.setRunStatus('failed')
       if (data.errorMessage) store.setRunError(data.errorMessage)
       return

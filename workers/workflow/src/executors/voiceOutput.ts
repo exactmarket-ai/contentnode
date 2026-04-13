@@ -69,7 +69,10 @@ export class VoiceOutputNodeExecutor extends NodeExecutor {
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const provider  = (config.provider as string) ?? 'openai'
-    const voice     = (config.voice as string) ?? 'nova'
+    const rawVoice  = (config.voice as string) ?? 'echo'
+    // Map legacy OpenAI voice names that were removed from the API to current equivalents
+    const LEGACY_VOICE_MAP: Record<string, string> = { nova: 'echo', fable: 'alloy', onyx: 'shimmer' }
+    const voice     = LEGACY_VOICE_MAP[rawVoice] ?? rawVoice
     const speed     = Math.max(0.25, Math.min(4.0, (config.speed as number) ?? 1.0))
     const format    = ((config.format as string) ?? 'mp3') as 'mp3' | 'wav' | 'opus'
     const mergeMode = (config.merge_mode as string) ?? 'concatenate'
@@ -106,13 +109,19 @@ export class VoiceOutputNodeExecutor extends NodeExecutor {
 
       const responseFormat = format === 'wav' ? 'wav' : format === 'opus' ? 'opus' : 'mp3'
 
-      const response = await client.audio.speech.create({
-        model,
-        voice: voice as 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer',
-        input: script,
-        speed,
-        response_format: responseFormat,
-      })
+      let response: Response
+      try {
+        response = await client.audio.speech.create({
+          model,
+          voice,
+          input: script,
+          speed,
+          response_format: responseFormat,
+        })
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        throw new Error(`Voice Output (OpenAI TTS): ${msg} [model=${model}, voice=${voice}, chars=${script.length}]`)
+      }
 
       audioBuffer = Buffer.from(await response.arrayBuffer())
 

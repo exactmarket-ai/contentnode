@@ -7,12 +7,12 @@ import { EditableLabel } from './EditableLabel'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
-const ACCENT      = '#3b6d11' // transform green
-const ACCENT_RING = 'rgba(59,109,17,0.12)'
-const HEADER_BG   = '#f4f9ee'
-const HEADER_BD   = '#d0e8b0'
-const BADGE_BG    = '#eaf3de'
-const BADGE_TEXT  = '#27500a'
+const ACCENT      = '#7c3aed' // media violet
+const ACCENT_RING = 'rgba(124,58,237,0.12)'
+const HEADER_BG   = '#faf5ff'
+const HEADER_BD   = '#e9d5ff'
+const BADGE_BG    = '#f3e8ff'
+const BADGE_TEXT  = '#6b21a8'
 
 const selectCss: React.CSSProperties = {
   borderColor:     HEADER_BD,
@@ -106,6 +106,7 @@ export const AudioMixNode = memo(({ id, data, selected }: NodeProps) => {
   const voiceVolume  = (config.voice_volume as number) ?? 1.0
   const musicVolume  = (config.music_volume as number) ?? 0.25
   const duckEnabled  = (config.duck_enabled as boolean) ?? true
+  const loopMusic    = (config.loop_music as boolean) ?? true
   const voiceDelay   = (config.voice_delay_seconds as number) ?? 0
   const musicDelay   = (config.music_delay_seconds as number) ?? 0
 
@@ -199,17 +200,29 @@ export const AudioMixNode = memo(({ id, data, selected }: NodeProps) => {
               onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} />
             <span className="text-[9px] shrink-0" style={{ color: '#9ca3af', width: 20 }}>vol</span>
           </div>
-          {/* Duck toggle */}
-          <button className="nodrag flex items-center gap-1.5 w-full text-left"
-            onClick={e => { e.stopPropagation(); updateNodeData(id, { config: { ...config, duck_enabled: !duckEnabled } }) }}>
-            <Icons.ChevronsDown className="h-2.5 w-2.5 shrink-0" style={{ color: duckEnabled ? ACCENT : '#9ca3af' }} />
-            <span className="text-[10px]" style={{ color: '#27500a' }}>Auto-duck</span>
-            <div className="ml-auto relative inline-flex h-3.5 w-6 shrink-0 rounded-full border border-transparent transition-colors"
-              style={{ backgroundColor: duckEnabled ? ACCENT : '#d1d5db' }}>
-              <span className="pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform mt-px"
-                style={{ transform: duckEnabled ? 'translateX(10px)' : 'translateX(1px)' }} />
-            </div>
-          </button>
+          {/* Loop + Duck toggles */}
+          <div className="flex items-center gap-3">
+            <button className="nodrag flex items-center gap-1 text-left"
+              onClick={e => { e.stopPropagation(); updateNodeData(id, { config: { ...config, loop_music: !loopMusic } }) }}>
+              <Icons.Repeat className="h-2.5 w-2.5 shrink-0" style={{ color: loopMusic ? ACCENT : '#9ca3af' }} />
+              <span className="text-[10px]" style={{ color: '#27500a' }}>Loop</span>
+              <div className="ml-1 relative inline-flex h-3.5 w-6 shrink-0 rounded-full border border-transparent transition-colors"
+                style={{ backgroundColor: loopMusic ? ACCENT : '#d1d5db' }}>
+                <span className="pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform mt-px"
+                  style={{ transform: loopMusic ? 'translateX(10px)' : 'translateX(1px)' }} />
+              </div>
+            </button>
+            <button className="nodrag flex items-center gap-1 text-left"
+              onClick={e => { e.stopPropagation(); updateNodeData(id, { config: { ...config, duck_enabled: !duckEnabled } }) }}>
+              <Icons.ChevronsDown className="h-2.5 w-2.5 shrink-0" style={{ color: duckEnabled ? ACCENT : '#9ca3af' }} />
+              <span className="text-[10px]" style={{ color: '#27500a' }}>Auto-duck</span>
+              <div className="ml-1 relative inline-flex h-3.5 w-6 shrink-0 rounded-full border border-transparent transition-colors"
+                style={{ backgroundColor: duckEnabled ? ACCENT : '#d1d5db' }}>
+                <span className="pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform mt-px"
+                  style={{ transform: duckEnabled ? 'translateX(10px)' : 'translateX(1px)' }} />
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* Track timing */}

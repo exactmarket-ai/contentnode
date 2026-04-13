@@ -7,12 +7,12 @@ import { EditableLabel } from './EditableLabel'
 
 // ─── Color system ─────────────────────────────────────────────────────────────
 
-const ACCENT      = '#3b6d11' // transform green
-const ACCENT_RING = 'rgba(59,109,17,0.12)'
-const HEADER_BG   = '#f4f9ee'
-const HEADER_BD   = '#d0e8b0'
-const BADGE_BG    = '#eaf3de'
-const BADGE_TEXT  = '#27500a'
+const ACCENT      = '#7c3aed' // media violet
+const ACCENT_RING = 'rgba(124,58,237,0.12)'
+const HEADER_BG   = '#faf5ff'
+const HEADER_BD   = '#e9d5ff'
+const BADGE_BG    = '#f3e8ff'
+const BADGE_TEXT  = '#6b21a8'
 
 // ─── Provider / voice options ────────────────────────────────────────────────
 
@@ -41,10 +41,34 @@ const VOICES_ELEVENLABS = [
 ]
 
 const VOICES_LOCAL = [
-  { value: 'af_heart',   label: 'Heart'   },
-  { value: 'af_bella',   label: 'Bella'   },
-  { value: 'am_michael', label: 'Michael' },
-  { value: 'bm_lewis',   label: 'Lewis'   },
+  { value: 'af_heart',   label: 'Heart'    },
+  { value: 'af_bella',   label: 'Bella'    },
+  { value: 'af_aoede',   label: 'Aoede'    },
+  { value: 'af_alloy',   label: 'Alloy'    },
+  { value: 'af_jessica', label: 'Jessica'  },
+  { value: 'af_kore',    label: 'Kore'     },
+  { value: 'af_nicole',  label: 'Nicole'   },
+  { value: 'af_nova',    label: 'Nova'     },
+  { value: 'af_river',   label: 'River'    },
+  { value: 'af_sarah',   label: 'Sarah'    },
+  { value: 'af_sky',     label: 'Sky'      },
+  { value: 'am_michael', label: 'Michael'  },
+  { value: 'am_adam',    label: 'Adam'     },
+  { value: 'am_echo',    label: 'Echo'     },
+  { value: 'am_eric',    label: 'Eric'     },
+  { value: 'am_fenrir',  label: 'Fenrir'   },
+  { value: 'am_liam',    label: 'Liam'     },
+  { value: 'am_onyx',    label: 'Onyx'     },
+  { value: 'am_puck',    label: 'Puck'     },
+  { value: 'am_santa',   label: 'Santa'    },
+  { value: 'bf_alice',    label: 'Alice'   },
+  { value: 'bf_emma',     label: 'Emma'    },
+  { value: 'bf_isabella', label: 'Isabella'},
+  { value: 'bf_lily',     label: 'Lily'    },
+  { value: 'bm_lewis',   label: 'Lewis'    },
+  { value: 'bm_daniel',  label: 'Daniel'   },
+  { value: 'bm_fable',   label: 'Fable'    },
+  { value: 'bm_george',  label: 'George'   },
 ]
 
 const SPEEDS = [
@@ -182,6 +206,14 @@ export const VoiceOutputNode = memo(({ id, data, selected }: NodeProps) => {
 
   const audioRef  = useRef<HTMLAudioElement | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
+  const directionRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = directionRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => e.stopPropagation()
+    el.addEventListener('wheel', handler)
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
 
   // Reset playing state when audio URL changes (new run)
   useEffect(() => { setIsPlaying(false) }, [fullAudioUrl])
@@ -352,6 +384,7 @@ export const VoiceOutputNode = memo(({ id, data, selected }: NodeProps) => {
 
           {/* Row 2: voice direction textarea */}
           <textarea
+            ref={directionRef}
             className="nodrag nopan w-full resize-none rounded border bg-white px-1.5 py-1 text-[10px] leading-[1.4] placeholder:text-slate-300 focus:outline-none"
             style={{ color: '#27500a', borderColor: HEADER_BD }}
             rows={2}

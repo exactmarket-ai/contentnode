@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react'
 import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
@@ -7,12 +8,16 @@ import { assetUrl } from '@/lib/api'
 // ─── Metadata ────────────────────────────────────────────────────────────────
 
 const VOICES_OPENAI = [
-  { value: 'alloy',   label: 'Alloy — neutral, versatile' },
   { value: 'echo',    label: 'Echo — calm, professional' },
-  { value: 'fable',   label: 'Fable — warm, storytelling' },
-  { value: 'onyx',    label: 'Onyx — deep, authoritative' },
-  { value: 'nova',    label: 'Nova — clear, energetic' },
   { value: 'shimmer', label: 'Shimmer — soft, gentle' },
+  { value: 'alloy',   label: 'Alloy — neutral, versatile' },
+  { value: 'ash',     label: 'Ash — warm, natural' },
+  { value: 'ballad',  label: 'Ballad — expressive, narrative' },
+  { value: 'coral',   label: 'Coral — bright, conversational' },
+  { value: 'sage',    label: 'Sage — composed, thoughtful' },
+  { value: 'verse',   label: 'Verse — dynamic, clear' },
+  { value: 'marin',   label: 'Marin — smooth, confident' },
+  { value: 'cedar',   label: 'Cedar — deep, grounded' },
 ]
 
 const VOICES_ELEVENLABS = [
@@ -31,11 +36,165 @@ const VOICES_ELEVENLABS = [
 ]
 
 const VOICES_LOCAL = [
-  { value: 'af_heart',   label: 'Heart (af)' },
-  { value: 'af_bella',   label: 'Bella (af)' },
-  { value: 'am_michael', label: 'Michael (am)' },
-  { value: 'bm_lewis',   label: 'Lewis (bm)' },
+  // American Female
+  { value: 'af_heart',   label: 'Heart — warm, expressive (AF)' },
+  { value: 'af_bella',   label: 'Bella — smooth, natural (AF)' },
+  { value: 'af_aoede',   label: 'Aoede — clear, neutral (AF)' },
+  { value: 'af_alloy',   label: 'Alloy — versatile, confident (AF)' },
+  { value: 'af_jessica', label: 'Jessica — bright, conversational (AF)' },
+  { value: 'af_kore',    label: 'Kore — composed, steady (AF)' },
+  { value: 'af_nicole',  label: 'Nicole — gentle, warm (AF)' },
+  { value: 'af_nova',    label: 'Nova — energetic, clear (AF)' },
+  { value: 'af_river',   label: 'River — calm, measured (AF)' },
+  { value: 'af_sarah',   label: 'Sarah — soft, young (AF)' },
+  { value: 'af_sky',     label: 'Sky — airy, light (AF)' },
+  // American Male
+  { value: 'am_michael', label: 'Michael — deep, professional (AM)' },
+  { value: 'am_adam',    label: 'Adam — authoritative (AM)' },
+  { value: 'am_echo',    label: 'Echo — calm, steady (AM)' },
+  { value: 'am_eric',    label: 'Eric — clear, neutral (AM)' },
+  { value: 'am_fenrir',  label: 'Fenrir — bold, resonant (AM)' },
+  { value: 'am_liam',    label: 'Liam — energetic, young (AM)' },
+  { value: 'am_onyx',    label: 'Onyx — deep, rich (AM)' },
+  { value: 'am_puck',    label: 'Puck — expressive, dynamic (AM)' },
+  { value: 'am_santa',   label: 'Santa — warm, jolly (AM)' },
+  // British Female
+  { value: 'bf_alice',    label: 'Alice — crisp, British (BF)' },
+  { value: 'bf_emma',     label: 'Emma — warm, British (BF)' },
+  { value: 'bf_isabella', label: 'Isabella — refined, British (BF)' },
+  { value: 'bf_lily',     label: 'Lily — light, British (BF)' },
+  // British Male
+  { value: 'bm_lewis',  label: 'Lewis — grounded, British (BM)' },
+  { value: 'bm_daniel', label: 'Daniel — authoritative, British (BM)' },
+  { value: 'bm_fable',  label: 'Fable — storytelling, British (BM)' },
+  { value: 'bm_george', label: 'George — steady, British (BM)' },
 ]
+
+// ─── Starred voices (localStorage) ───────────────────────────────────────────
+
+const STORAGE_KEY = 'contentnode:starred_voices'
+
+function useStarredVoices(): [Set<string>, (voice: string) => void] {
+  const [starred, setStarred] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
+    } catch { return new Set() }
+  })
+
+  const toggle = (voice: string) => {
+    setStarred(prev => {
+      const next = new Set(prev)
+      if (next.has(voice)) next.delete(voice)
+      else next.add(voice)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  return [starred, toggle]
+}
+
+// ─── Voice picker ─────────────────────────────────────────────────────────────
+
+function VoicePicker({
+  value,
+  voices,
+  onChange,
+}: {
+  value: string
+  voices: { value: string; label: string }[]
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [starred, toggleStar] = useStarredVoices()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const current = voices.find(v => v.value === value)
+  const starredVoices = voices.filter(v => starred.has(v.value))
+  const otherVoices   = voices.filter(v => !starred.has(v.value))
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex h-8 w-full items-center justify-between rounded-md border border-input bg-transparent px-2.5 text-xs shadow-sm hover:bg-accent focus:outline-none"
+      >
+        <span className="flex items-center gap-1.5 truncate">
+          {current && starred.has(current.value) && (
+            <Icons.Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" />
+          )}
+          <span className="truncate">{current?.label ?? value}</span>
+        </span>
+        <Icons.ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground ml-1" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-white shadow-xl">
+          {starredVoices.length > 0 && (
+            <>
+              <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+                Starred
+              </div>
+              {starredVoices.map(v => (
+                <VoiceRow key={v.value} voice={v} selected={value === v.value} starred={true}
+                  onSelect={() => { onChange(v.value); setOpen(false) }}
+                  onStar={(e) => { e.stopPropagation(); toggleStar(v.value) }} />
+              ))}
+              <div className="mx-2 my-1 border-t border-border" />
+            </>
+          )}
+          {otherVoices.map(v => (
+            <VoiceRow key={v.value} voice={v} selected={value === v.value} starred={false}
+              onSelect={() => { onChange(v.value); setOpen(false) }}
+              onStar={(e) => { e.stopPropagation(); toggleStar(v.value) }} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VoiceRow({
+  voice, selected, starred, onSelect, onStar,
+}: {
+  voice: { value: string; label: string }
+  selected: boolean
+  starred: boolean
+  onSelect: () => void
+  onStar: (e: React.MouseEvent) => void
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      className={`flex cursor-pointer items-center justify-between px-2 py-1.5 text-xs hover:bg-gray-100 ${selected ? 'bg-gray-100 font-medium' : ''}`}
+    >
+      <span className="flex items-center gap-1.5 truncate">
+        {selected && <Icons.Check className="h-3 w-3 shrink-0 text-primary" />}
+        {!selected && <span className="w-3" />}
+        <span className="truncate">{voice.label}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onStar}
+        className="ml-2 shrink-0 rounded p-0.5 hover:bg-background"
+        title={starred ? 'Unstar' : 'Star this voice'}
+      >
+        <Icons.Star className={`h-3 w-3 ${starred ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/40 hover:text-amber-400'}`} />
+      </button>
+    </div>
+  )
+}
 
 const ELEVENLABS_MODELS = [
   { value: 'eleven_flash_v2_5',      label: 'Flash v2.5 — ultra-fast, lowest latency' },
@@ -68,7 +227,7 @@ export function VoiceOutputConfig({
   nodeRunStatus?: { status?: string; output?: unknown; error?: string }
 }) {
   const provider      = (config.provider as string) ?? 'openai'
-  const voice         = (config.voice as string) ?? 'nova'
+  const voice         = (config.voice as string) ?? 'echo'
   const model         = (config.model as string) ?? 'tts-1'
   const speed         = (config.speed as number) ?? 1.0
   const format        = (config.format as string) ?? 'mp3'
@@ -156,7 +315,7 @@ export function VoiceOutputConfig({
 
       {/* ── Provider ──────────────────────────────────────────────────────── */}
       <FieldGroup label="Provider">
-        <Select value={provider} onValueChange={(v) => { onChange('provider', v); onChange('voice', v === 'elevenlabs' ? 'rachel' : v === 'local' ? 'af_heart' : 'nova') }}>
+        <Select value={provider} onValueChange={(v) => { onChange('provider', v); onChange('voice', v === 'elevenlabs' ? 'rachel' : v === 'local' ? 'af_heart' : 'echo') }}>
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="openai" className="text-xs">OpenAI TTS</SelectItem>
@@ -185,14 +344,7 @@ export function VoiceOutputConfig({
 
       {/* ── Voice ─────────────────────────────────────────────────────────── */}
       <FieldGroup label="Voice">
-        <Select value={voice} onValueChange={(v) => onChange('voice', v)}>
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {voiceOptions.map((v) => (
-              <SelectItem key={v.value} value={v.value} className="text-xs">{v.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <VoicePicker value={voice} voices={voiceOptions} onChange={(v) => onChange('voice', v)} />
         {provider === 'elevenlabs' && (
           <p className="mt-0.5 text-[9px] text-muted-foreground/60">
             Or paste a custom ElevenLabs voice ID directly into the node selector.

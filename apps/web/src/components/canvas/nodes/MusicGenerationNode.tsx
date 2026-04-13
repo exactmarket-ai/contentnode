@@ -7,12 +7,12 @@ import { EditableLabel } from './EditableLabel'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
-const ACCENT      = '#3b6d11' // transform green
-const ACCENT_RING = 'rgba(59,109,17,0.12)'
-const HEADER_BG   = '#f4f9ee'
-const HEADER_BD   = '#d0e8b0'
-const BADGE_BG    = '#eaf3de'
-const BADGE_TEXT  = '#27500a'
+const ACCENT      = '#7c3aed' // media violet
+const ACCENT_RING = 'rgba(124,58,237,0.12)'
+const HEADER_BG   = '#faf5ff'
+const HEADER_BD   = '#e9d5ff'
+const BADGE_BG    = '#f3e8ff'
+const BADGE_TEXT  = '#6b21a8'
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -126,6 +126,14 @@ export const MusicGenerationNode = memo(({ id, data, selected }: NodeProps) => {
   const audioRef   = useRef<HTMLAudioElement | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   useEffect(() => { setIsPlaying(false) }, [fullAudioUrl])
+  const promptRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = promptRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => e.stopPropagation()
+    el.addEventListener('wheel', handler)
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
 
   const togglePlay = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -209,6 +217,7 @@ export const MusicGenerationNode = memo(({ id, data, selected }: NodeProps) => {
           </div>
           {/* Row 2: prompt */}
           <textarea
+            ref={promptRef}
             className="nodrag nopan w-full resize-none rounded border bg-white px-1.5 py-1 text-[10px] leading-[1.4] placeholder:text-slate-300 focus:outline-none"
             style={{ color: '#27500a', borderColor: HEADER_BD }} rows={2}
             placeholder={service === 'music'

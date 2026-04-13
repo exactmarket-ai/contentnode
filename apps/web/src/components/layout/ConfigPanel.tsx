@@ -53,6 +53,7 @@ import { VoiceOutputConfig } from './config/output/VoiceOutputConfig'
 import { MusicGenerationConfig } from './config/output/MusicGenerationConfig'
 import { AudioMixConfig } from './config/output/AudioMixConfig'
 import { AudioInputConfig } from './config/source/AudioInputConfig'
+import { CharacterAnimationConfig } from './config/output/CharacterAnimationConfig'
 
 
 // ─── Config dispatcher ────────────────────────────────────────────────────────
@@ -171,6 +172,8 @@ function NodeConfigForm({
       return <AudioMixConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
     case 'audio_input':
       return <AudioInputConfig config={config} onChange={onChange} />
+    case 'character_animation':
+      return <CharacterAnimationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
     default:
       return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
   }
@@ -193,7 +196,7 @@ export function ConfigPanel() {
 
   if (!node) {
     return (
-      <div className="relative flex h-full w-[320px] shrink-0 flex-col overflow-hidden border-l border-border bg-card">
+      <div className="relative flex h-full w-[320px] shrink-0 flex-col overflow-hidden border-l border-border bg-card" onWheel={(e) => e.stopPropagation()}>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border">
             <Icons.MousePointerClick className="h-5 w-5 text-muted-foreground" />
@@ -241,6 +244,7 @@ export function ConfigPanel() {
     <div
       className="relative flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-card transition-[width] duration-200"
       style={{ width: expanded ? 600 : 320 }}
+      onWheel={(e) => e.stopPropagation()}
     >
       {/* Left-edge expand/collapse handle */}
       <button

@@ -32,6 +32,7 @@ import { VoiceOutputNodeExecutor } from './executors/voiceOutput.js'
 import { MusicGenerationNodeExecutor } from './executors/musicGeneration.js'
 import { AudioMixNodeExecutor } from './executors/audioMix.js'
 import { AudioInputNodeExecutor } from './executors/audioInput.js'
+import { CharacterAnimationNodeExecutor } from './executors/characterAnimation.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -114,6 +115,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'music_generation':              MusicGenerationNodeExecutor,
   'audio_mix':                     AudioMixNodeExecutor,
   'audio_input':                   AudioInputNodeExecutor,
+  'character_animation':           CharacterAnimationNodeExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {
@@ -854,7 +856,9 @@ export class WorkflowRunner {
             })
           } catch (err) {
             failed = true
-            const errorMessage = err instanceof Error ? err.message : String(err)
+            const errorMessage = err instanceof Error
+              ? (err.cause instanceof Error ? `${err.message}: ${err.cause.message}` : err.message)
+              : String(err)
             console.error(`[runner] node ${node.id} (${node.type}:${((node.config as Record<string,unknown>)?.subtype as string) ?? ''}) failed:`, errorMessage, err instanceof Error ? err.stack : '')
 
             runOutput.nodeStatuses[node.id] = {

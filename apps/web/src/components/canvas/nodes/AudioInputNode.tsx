@@ -7,12 +7,12 @@ import { EditableLabel } from './EditableLabel'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
-const ACCENT      = '#185fa5' // input blue
-const ACCENT_RING = 'rgba(24,95,165,0.12)'
-const HEADER_BG   = '#f0f6fd'
-const HEADER_BD   = '#b8d8f5'
-const BADGE_BG    = '#e6f1fb'
-const BADGE_TEXT  = '#0c447c'
+const ACCENT      = '#7c3aed' // media violet
+const ACCENT_RING = 'rgba(124,58,237,0.12)'
+const HEADER_BG   = '#faf5ff'
+const HEADER_BD   = '#e9d5ff'
+const BADGE_BG    = '#f3e8ff'
+const BADGE_TEXT  = '#6b21a8'
 
 // ─── Waveform ─────────────────────────────────────────────────────────────────
 
@@ -174,7 +174,7 @@ export const AudioInputNode = memo(({ id, data, selected }: NodeProps) => {
       <div className="flex items-center gap-2 rounded-t-md border-b px-3 py-2"
         style={{ backgroundColor: selected ? ACCENT : HEADER_BG, borderBottomColor: selected ? ACCENT : HEADER_BD }}>
         <div className="shrink-0" style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: selected ? 'rgba(255,255,255,0.7)' : ACCENT }} />
-        <EditableLabel value={data.label as string} onSave={v => updateNodeData(id, { label: v })} color={selected ? '#e6f1fb' : '#0c447c'} />
+        <EditableLabel value={data.label as string} onSave={v => updateNodeData(id, { label: v })} color={selected ? '#fff' : '#27500a'} />
         <span className="ml-auto shrink-0 rounded-full px-1.5 py-px text-[9px] font-semibold"
           style={{ backgroundColor: selected ? 'rgba(255,255,255,0.2)' : BADGE_BG, color: selected ? '#fff' : BADGE_TEXT }}>
           AUDIO IN
@@ -196,7 +196,7 @@ export const AudioInputNode = memo(({ id, data, selected }: NodeProps) => {
                 style={{ width: 22, height: 22, color: ACCENT, borderColor: HEADER_BD }} onClick={togglePlay}>
                 {isPlaying ? <Icons.Pause className="h-2.5 w-2.5" /> : <Icons.Play className="h-2.5 w-2.5" />}
               </button>
-              <span className="text-[9px] truncate font-medium flex-1 min-w-0" style={{ color: '#0c447c' }} title={storedAudio.filename}>
+              <span className="text-[9px] truncate font-medium flex-1 min-w-0" style={{ color: ACCENT }} title={storedAudio.filename}>
                 {storedAudio.filename}
               </span>
               <button className="nodrag shrink-0 text-[9px] px-1.5 rounded hover:opacity-70"

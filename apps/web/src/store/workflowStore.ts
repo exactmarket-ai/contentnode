@@ -46,7 +46,7 @@ export interface NodeRunStatus {
 
 // ─── Node palette definition (used by NodePalette + node factories) ───────────
 
-export type NodeCategory = 'source' | 'logic' | 'output' | 'insight' | 'canvas'
+export type NodeCategory = 'source' | 'logic' | 'output' | 'media' | 'insight' | 'canvas'
 
 export interface PaletteNodeDef {
   type: string         // matches executor registry key prefix
@@ -120,7 +120,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'audio_input', subtype: 'audio-input',
     label: 'Audio Input', description: 'Upload an existing audio file to use as a source in your workflow',
-    category: 'source', icon: 'FileAudio',
+    category: 'media', icon: 'FileAudio',
     defaultConfig: { subtype: 'audio-input' },
   },
   // Logic
@@ -334,7 +334,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'output', subtype: 'media-download',
     label: 'Media Download', description: 'Preview and download an image or video from an upstream node',
-    category: 'output', icon: 'ImageDown',
+    category: 'media', icon: 'ImageDown',
     defaultConfig: { subtype: 'media-download' },
   },
   {
@@ -352,7 +352,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'output', subtype: 'video-generation',
     label: 'Video Generation', description: 'Generate video clips using Runway, Kling, Luma, Pika, or local models',
-    category: 'output', icon: 'Film',
+    category: 'media', icon: 'Film',
     defaultConfig: {
       subtype: 'video-generation',
       provider: 'runway',
@@ -369,7 +369,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'output', subtype: 'image-generation',
     label: 'Image Generation', description: 'Generate images from a prompt using DALL-E 3, Stability AI, or Fal.ai',
-    category: 'output', icon: 'Image',
+    category: 'media', icon: 'Image',
     defaultConfig: {
       subtype: 'image-generation',
       provider: 'dalle3',
@@ -409,11 +409,11 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'voice_output', subtype: 'voice-output',
     label: 'Voice Output', description: 'Convert text to speech — OpenAI TTS, ElevenLabs, or local kokoro',
-    category: 'output', icon: 'AudioWaveform',
+    category: 'media', icon: 'AudioWaveform',
     defaultConfig: {
       subtype:           'voice-output',
       provider:          'openai',
-      voice:             'nova',
+      voice:             'echo',
       model:             'tts-1',
       speed:             1.0,
       format:            'mp3',
@@ -430,7 +430,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'music_generation', subtype: 'music-generation',
     label: 'Music Generation', description: 'Generate ambient music or sound effects via ElevenLabs',
-    category: 'output', icon: 'Music',
+    category: 'media', icon: 'Music',
     defaultConfig: {
       subtype:            'music-generation',
       service:            'music',
@@ -444,7 +444,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'audio_mix', subtype: 'audio-mix',
     label: 'Audio Mix', description: 'Mix voice and music tracks — sidechain ducking, fade in/out',
-    category: 'output', icon: 'Layers',
+    category: 'media', icon: 'Layers',
     defaultConfig: {
       subtype:          'audio-mix',
       voice_volume:        1.0,
@@ -454,6 +454,22 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       fade_out_seconds:    2.0,
       voice_delay_seconds: 0,
       music_delay_seconds: 0,
+    },
+  },
+  // Character Animation
+  {
+    type: 'character_animation', subtype: 'character-animation',
+    label: 'Character Animation', description: 'Animate a photo into a talking presenter video — D-ID, HeyGen, or local SadTalker',
+    category: 'media', icon: 'UserRound',
+    defaultConfig: {
+      subtype:             'character-animation',
+      provider:            'did',
+      character_image:     '',
+      heygen_avatar_id:    '',
+      sadtalker_base_url:  'http://localhost:7860',
+      expression_scale:    1.0,
+      still_mode:          false,
+      locked:              false,
     },
   },
   // Canvas utilities
