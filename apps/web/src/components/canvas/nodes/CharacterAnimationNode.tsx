@@ -2,7 +2,7 @@ import { memo, useState, useRef, useEffect, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { assetUrl, downloadAsset } from '@/lib/api'
+import { assetUrl, downloadAsset, compressImageFile } from '@/lib/api'
 import { EditableLabel } from './EditableLabel'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -74,12 +74,11 @@ export const CharacterAnimationNode = memo(({ id, data, selected }: NodeProps) =
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
     const allowedExt = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
     if (!allowed.has(file.type) && !allowedExt.has(ext)) return
-    const reader = new FileReader()
-    reader.onload = e => {
-      const dataUri = e.target?.result as string
-      if (dataUri) set('character_image', dataUri)
-    }
-    reader.readAsDataURL(file)
+    compressImageFile(file).then(dataUri => set('character_image', dataUri)).catch(() => {
+      const reader = new FileReader()
+      reader.onload = e => { const d = e.target?.result as string; if (d) set('character_image', d) }
+      reader.readAsDataURL(file)
+    })
   }, [config, id, updateNodeData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDrop = useCallback((e: React.DragEvent) => {

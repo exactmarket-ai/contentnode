@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { compressImageFile } from '@/lib/api'
 
 interface AttachmentZoneProps {
   /** Current value: a URL, base64 data URI, or empty string */
@@ -28,11 +29,17 @@ export function AttachmentZone({ value, onChange, accept = 'image/*', label, hin
   const inputRef = useRef<HTMLInputElement>(null)
 
   const readFile = (file: File) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      if (typeof e.target?.result === 'string') onChange(e.target.result)
+    if (file.type.startsWith('image/')) {
+      compressImageFile(file).then(onChange).catch(() => {
+        const reader = new FileReader()
+        reader.onload = (e) => { if (typeof e.target?.result === 'string') onChange(e.target.result) }
+        reader.readAsDataURL(file)
+      })
+    } else {
+      const reader = new FileReader()
+      reader.onload = (e) => { if (typeof e.target?.result === 'string') onChange(e.target.result) }
+      reader.readAsDataURL(file)
     }
-    reader.readAsDataURL(file)
   }
 
   const handleDrop = (e: React.DragEvent) => {

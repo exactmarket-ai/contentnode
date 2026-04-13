@@ -10,3 +10,5 @@ dist
 uploads/
 copilot/
 profiles/
+.kokoro-models/
+contentnode/

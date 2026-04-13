@@ -25,6 +25,42 @@ export function assetUrl(localPath: string): string {
   return `${BASE_URL}${localPath}`
 }
 
+/**
+ * Compress an image File to a base64 JPEG data URI using the browser Canvas API.
+ * Resizes to maxWidth if larger, then encodes at the given quality.
+ * Falls back to a plain FileReader read if canvas is unavailable.
+ */
+export function compressImageFile(
+  file: File,
+  maxWidth = 1280,
+  quality = 0.85,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const scale  = Math.min(1, maxWidth / img.width)
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width  * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        // Canvas unavailable — fall back to uncompressed read
+        const reader = new FileReader()
+        reader.onload = e => resolve(e.target?.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+        return
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = reject
+    img.src = objectUrl
+  })
+}
+
 // Download a cross-origin asset as a blob so the browser doesn't navigate away.
 export async function downloadAsset(url: string, filename: string): Promise<void> {
   try {

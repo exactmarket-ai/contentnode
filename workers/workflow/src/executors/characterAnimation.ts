@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import sharp from 'sharp'
 import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
@@ -85,25 +84,6 @@ function resolveInputs(input: unknown): ResolvedInputs {
 
 interface PhotoAsset { buffer: Buffer; mime: string }
 
-// Resize + compress to stay under provider upload limits (D-ID: 10 MB)
-async function compressPhoto(photo: PhotoAsset, maxBytes = 8 * 1024 * 1024): Promise<PhotoAsset> {
-  if (photo.buffer.length <= maxBytes) return photo
-  // Resize to max 1280px wide, convert to jpeg at quality 85
-  const compressed = await sharp(photo.buffer)
-    .resize({ width: 1280, withoutEnlargement: true })
-    .jpeg({ quality: 85 })
-    .toBuffer()
-  // If still too large, reduce quality further
-  if (compressed.length > maxBytes) {
-    const smaller = await sharp(photo.buffer)
-      .resize({ width: 800, withoutEnlargement: true })
-      .jpeg({ quality: 75 })
-      .toBuffer()
-    return { buffer: smaller, mime: 'image/jpeg' }
-  }
-  return { buffer: compressed, mime: 'image/jpeg' }
-}
-
 async function resolvePhoto(imageKey: string | null, configImage: string): Promise<PhotoAsset | null> {
   // Base64 data URI from node drag-and-drop or config panel
   if (configImage && configImage.startsWith('data:')) {
@@ -160,13 +140,11 @@ async function generateWithDID(
   const auth     = didAuth(apiKey)
   const audioUrl = `${apiBase}${audioLocalPath}`
 
-  // Compress photo to stay under D-ID's 10 MB limit
-  const compressed = await compressPhoto(photo)
-  const photoExt   = compressed.mime.includes('png') ? 'png' : 'jpg'
+  const photoExt = photo.mime.includes('png') ? 'png' : 'jpg'
 
   // Upload photo to D-ID /images → get a D-ID-hosted URL for source_url
   const photoForm = new FormData()
-  photoForm.append('image', new Blob([compressed.buffer], { type: compressed.mime }), `photo.${photoExt}`)
+  photoForm.append('image', new Blob([photo.buffer], { type: photo.mime }), `photo.${photoExt}`)
 
   const imgRes = await fetch('https://api.d-id.com/images', {
     method: 'POST',
