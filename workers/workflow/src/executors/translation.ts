@@ -126,6 +126,7 @@ async function logTranslationUsage(
   charCount: number,
   targetLanguage: string,
   workflowRunId: string,
+  userId?: string | null,
 ): Promise<void> {
   const now = new Date()
   const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -139,7 +140,7 @@ async function logTranslationUsage(
         quantity: charCount,
         periodStart,
         periodEnd,
-        metadata: { provider, targetLanguage, workflowRunId } as Prisma.InputJsonValue,
+        metadata: { provider, targetLanguage, workflowRunId, ...(userId ? { userId } : {}) } as Prisma.InputJsonValue,
       },
     }),
   )
@@ -225,7 +226,7 @@ export class TranslationNodeExecutor extends NodeExecutor {
     const charCount = content.length
 
     // Log usage (non-blocking)
-    logTranslationUsage(ctx.agencyId, usedProvider, charCount, targetLanguage, ctx.workflowRunId).catch(
+    logTranslationUsage(ctx.agencyId, usedProvider, charCount, targetLanguage, ctx.workflowRunId, ctx.userId).catch(
       (err) => { console.error('[translation] failed to record usage:', err) },
     )
 

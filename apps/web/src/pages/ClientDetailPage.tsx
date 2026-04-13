@@ -8,11 +8,10 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { apiFetch, assetUrl } from '@/lib/api'
 import { downloadBrandProfileDocx, downloadCompanyProfileDocx } from '@/lib/downloadDocx'
-import { ClientReportsTab } from './ClientReportsTab'
+import { ClientBillingReportsTab } from './ClientBillingReportsTab'
 import { ClientFrameworkTab } from './ClientFrameworkTab'
 import { ClientBrandingTab } from './ClientBrandingTab'
 import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
-import { ClientUsageTab } from './ClientUsageTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
@@ -762,29 +761,8 @@ function OverviewReviewsCard({ clientId, onTabChange }: { clientId: string; onTa
   )
 }
 
-function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabChange: (tab: Tab) => void; onUpdate: (updated: Partial<Client>) => void }) {
+function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (tab: Tab) => void; onUpdate: (updated: Partial<Client>) => void }) {
   const { isAdmin, loading: roleLoading } = useCurrentUser()
-  const [togglingOffline, setTogglingOffline] = useState(false)
-  const [toggleError, setToggleError] = useState<string | null>(null)
-
-  const toggleRequireOffline = async () => {
-    setTogglingOffline(true)
-    setToggleError(null)
-    try {
-      const res = await apiFetch(`/api/v1/clients/${client.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requireOffline: !client.requireOffline }),
-      })
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error ?? 'Failed to update')
-      onUpdate({ requireOffline: body.data.requireOffline })
-    } catch (err) {
-      setToggleError(err instanceof Error ? err.message : 'Failed to save')
-    } finally {
-      setTogglingOffline(false)
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -793,7 +771,7 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
           { icon: Icons.Users, value: client._count.stakeholders, label: 'Contacts', tab: 'stakeholders' as Tab },
           { icon: Icons.Workflow, value: client._count.workflows, label: 'Workflows', tab: 'workflows' as Tab },
           { icon: Icons.Lightbulb, value: client.insights.length, label: 'Active Insights', tab: 'insights' as Tab },
-          { icon: Icons.BarChart2, value: 'Usage', label: 'View Usage', tab: 'usage' as Tab },
+          { icon: Icons.BarChart2, value: 'Usage', label: 'View Usage', tab: 'reports' as Tab },
         ].map(({ icon: Icon, value, label, tab }) => (
           <button
             key={label}
@@ -807,41 +785,6 @@ function OverviewTab({ client, onTabChange, onUpdate }: { client: Client; onTabC
             <p className="text-lg font-semibold group-hover:text-blue-600 transition-colors">{value}</p>
           </button>
         ))}
-      </div>
-
-      {client.industry && (
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-1">Industry</p>
-          <p className="text-sm font-medium">{client.industry}</p>
-        </div>
-      )}
-
-      {/* AI Policy */}
-      <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50' : 'border-border bg-card'}`}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-2.5">
-            <Icons.ShieldAlert className={`mt-0.5 h-4 w-4 shrink-0 ${client.requireOffline ? 'text-amber-600' : 'text-muted-foreground'}`} />
-            <div>
-              <p className="text-sm font-medium">Local AI Only</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {client.requireOffline
-                  ? 'All workflows for this client are restricted to local Ollama models. Cloud AI providers are blocked.'
-                  : 'This client can use any AI provider. Enable this if the client has a policy against cloud AI.'}
-              </p>
-              {toggleError && <p className="text-[11px] text-red-600 mt-1">{toggleError}</p>}
-            </div>
-          </div>
-          <button
-            onClick={toggleRequireOffline}
-            disabled={togglingOffline}
-            title={client.requireOffline ? 'Disable local-only policy' : 'Enable local-only policy'}
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${client.requireOffline ? 'bg-amber-500' : 'bg-border'}`}
-          >
-            {togglingOffline
-              ? <Icons.Loader2 className="h-3 w-3 animate-spin text-white mx-auto" />
-              : <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${client.requireOffline ? 'translate-x-4' : 'translate-x-0'}`} />}
-          </button>
-        </div>
       </div>
 
       <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
@@ -4163,7 +4106,7 @@ interface DivisionData {
 
 interface VerticalItem { id: string; name: string }
 
-function StructureTab({ client }: { client: Client }) {
+function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated: Partial<Client>) => void }) {
   const [divisions, setDivisions] = useState<DivisionData[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -4192,6 +4135,28 @@ function StructureTab({ client }: { client: Client }) {
   const [editJobName, setEditJobName] = useState('')
   const [editJobBudget, setEditJobBudget] = useState('')
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null)
+
+  // Local AI Only toggle
+  const [togglingOffline, setTogglingOffline] = useState(false)
+  const [offlineToggleError, setOfflineToggleError] = useState('')
+  const toggleRequireOffline = async () => {
+    setTogglingOffline(true)
+    setOfflineToggleError('')
+    try {
+      const res = await apiFetch(`/api/v1/clients/${client.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requireOffline: !client.requireOffline }),
+      })
+      if (!res.ok) throw new Error('Failed to update')
+      const body = await res.json()
+      onUpdate({ requireOffline: body.data.requireOffline })
+    } catch {
+      setOfflineToggleError('Failed to update setting.')
+    } finally {
+      setTogglingOffline(false)
+    }
+  }
 
   const load = () => {
     setLoading(true)
@@ -4402,7 +4367,36 @@ function StructureTab({ client }: { client: Client }) {
   }
 
   return (
-    <div>
+    <div className="space-y-4">
+
+      {/* ── AI Policy ── */}
+      <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50/60' : 'border-border bg-card'}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-2.5">
+            <Icons.ShieldAlert className={`mt-0.5 h-4 w-4 shrink-0 ${client.requireOffline ? 'text-amber-600' : 'text-muted-foreground'}`} />
+            <div>
+              <p className="text-sm font-medium">Local AI Only</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {client.requireOffline
+                  ? 'All workflows for this client are restricted to local Ollama models. Cloud AI providers are blocked.'
+                  : 'This client can use any AI provider. Enable this to enforce a local-only policy for this client.'}
+              </p>
+              {offlineToggleError && <p className="text-[11px] text-red-600 mt-1">{offlineToggleError}</p>}
+            </div>
+          </div>
+          <button
+            onClick={toggleRequireOffline}
+            disabled={togglingOffline}
+            title={client.requireOffline ? 'Disable local-only policy' : 'Enable local-only policy'}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${client.requireOffline ? 'bg-amber-500' : 'bg-border'}`}
+          >
+            {togglingOffline
+              ? <Icons.Loader2 className="h-3 w-3 animate-spin text-white mx-auto" />
+              : <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${client.requireOffline ? 'translate-x-4' : 'translate-x-0'}`} />}
+          </button>
+        </div>
+      </div>
+
     <div className="grid grid-cols-2 gap-4 items-start">
 
       {/* ── Left card: Divisions & Jobs ── */}
@@ -4790,7 +4784,7 @@ function StructureTab({ client }: { client: Client }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'deliverables', 'library', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'usage', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'deliverables', 'library', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4809,6 +4803,7 @@ export function ClientDetailPage() {
   }, [setSearchParams])
   const [showEditClient, setShowEditClient] = useState(false)
   const [archivingClient, setArchivingClient] = useState(false)
+  const { isAdmin } = useCurrentUser()
 
   const loadClient = useCallback(() => {
     if (!id) return
@@ -4874,13 +4869,17 @@ export function ClientDetailPage() {
     access:        'Access',
     reviews:       'Reviews',
     insights:      'Insights',
-    usage:         'Usage',
     runs:          'Runs',
-    reports:       'Reports',
+    reports:       'Reports & Usage',
     profile:       'Profile',
     company:       'Company',
     structure:     'Structure',
   }
+
+  // Tabs that live under the "Settings" group
+  const SETTINGS_TABS: Tab[] = ['structure', 'reports', 'access', 'stakeholders', 'runs']
+  const MAIN_TABS: Tab[] = TABS.filter((t) => !SETTINGS_TABS.includes(t))
+  const inSettings = SETTINGS_TABS.includes(activeTab)
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -4905,37 +4904,11 @@ export function ClientDetailPage() {
             <p className="text-[11px] text-muted-foreground">{client.industry}</p>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-            onClick={() => setShowEditClient(true)}
-            title="Edit client"
-          >
-            <Icons.Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 text-muted-foreground hover:text-amber-600"
-            onClick={handleArchiveClient}
-            disabled={archivingClient}
-            title={client.status === 'archived' ? 'Unarchive client' : 'Archive client'}
-          >
-            {archivingClient
-              ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : client.status === 'archived'
-                ? <Icons.ArchiveRestore className="h-3.5 w-3.5" />
-                : <Icons.Archive className="h-3.5 w-3.5" />
-            }
-          </Button>
-        </div>
       </header>
 
-      {/* Tabs */}
+      {/* Tabs — primary row */}
       <div className="flex gap-0 border-b border-border bg-card px-6 print:hidden">
-        {TABS.map((tab) => (
+        {MAIN_TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => switchTab(tab)}
@@ -4949,7 +4922,70 @@ export function ClientDetailPage() {
             {TAB_LABELS[tab]}
           </button>
         ))}
+        {/* Settings group entry point */}
+        <button
+          onClick={() => switchTab('structure')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ml-auto',
+            inSettings
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Icons.Settings className="h-3 w-3" />
+          Settings
+        </button>
       </div>
+
+      {/* Settings sub-tab row — only visible when a settings tab is active */}
+      {inSettings && (
+        <div className="flex items-center border-b border-border bg-muted/30 px-6 print:hidden">
+          <div className="flex gap-0 flex-1">
+            {SETTINGS_TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => switchTab(tab)}
+                className={cn(
+                  'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            ))}
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-1 py-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowEditClient(true)}
+                title="Edit client"
+              >
+                <Icons.Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-600"
+                onClick={handleArchiveClient}
+                disabled={archivingClient}
+                title={client.status === 'archived' ? 'Unarchive client' : 'Archive client'}
+              >
+                {archivingClient
+                  ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : client.status === 'archived'
+                    ? <Icons.ArchiveRestore className="h-3.5 w-3.5" />
+                    : <Icons.Archive className="h-3.5 w-3.5" />
+                }
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tab content */}
       {activeTab === 'framework'
@@ -4977,12 +5013,11 @@ export function ClientDetailPage() {
         {activeTab === 'access' && <AccessTab client={client} />}
         {activeTab === 'reviews' && <ReviewsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'insights' && <InsightsTab insights={client.insights} />}
-        {activeTab === 'usage' && <ClientUsageTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'runs' && <RunsIntelligenceTab clientId={client.id} />}
-        {activeTab === 'reports' && <ClientReportsTab clientId={client.id} />}
+        {activeTab === 'reports' && <ClientBillingReportsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'company' && <CompanyProfileTab clientId={client.id} clientName={client.name} />}
-        {activeTab === 'structure' && <StructureTab client={client} />}
+        {activeTab === 'structure' && <StructureTab client={client} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
       </div>}
 
       {showEditClient && (

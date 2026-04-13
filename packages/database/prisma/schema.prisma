@@ -506,6 +506,7 @@ model WorkflowRun {
 
   assigneeId          String?   @map("assignee_id")
   internalNotes       String?   @map("internal_notes")
+  dueDate             DateTime? @map("due_date")
 
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   user              User?                 @relation("RunTriggeredBy", fields: [triggeredBy], references: [id])

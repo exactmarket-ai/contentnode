@@ -589,7 +589,7 @@ export async function clientRoutes(app: FastifyInstance) {
     // Fetch all usage records attributed to this client's workflow runs in one shot
     const runRecords = runIds.length
       ? await prisma.usageRecord.findMany({
-          where: { agencyId, metric: { in: ['ai_tokens', 'humanizer_words', 'image_generations', 'video_generations', 'translation_chars', 'detection_call', 'video_intelligence_call', 'assemblyai_seconds'] } },
+          where: { agencyId, metric: { in: ['ai_tokens', 'humanizer_words', 'image_generations', 'video_generations', 'translation_chars', 'detection_call', 'video_intelligence_call', 'assemblyai_seconds', 'voice_generation_chars', 'character_animation_secs', 'music_generation_secs', 'video_composition_secs'] } },
           select: { metric: true, quantity: true, metadata: true },
         })
       : []
@@ -599,37 +599,113 @@ export async function clientRoutes(app: FastifyInstance) {
       return runId && runIdSet.has(runId)
     })
 
-    // AI tokens by model
+    // ── Reference rates for cost estimation ────────────────────────────────────
+    // These are approximate public list prices. Actual costs depend on plan/volume.
+    const RATES = {
+      // Anthropic tokens: input / output per million tokens
+      tokens: {
+        'claude-opus-4-6':         { in: 15.00,  out: 75.00 },
+        'claude-sonnet-4-6':       { in: 3.00,   out: 15.00 },
+        'claude-sonnet-4-5':       { in: 3.00,   out: 15.00 },
+        'claude-haiku-4-5-20251001': { in: 0.80, out: 4.00 },
+        'claude-haiku-4-5':        { in: 0.80,   out: 4.00 },
+        'gpt-4o':                  { in: 5.00,   out: 15.00 },
+        'gpt-4o-mini':             { in: 0.15,   out: 0.60 },
+      } as Record<string, { in: number; out: number }>,
+      // Image gen: estimated USD per image
+      imagePerImage: {
+        dalle3: 0.04, openai: 0.04,
+        falai: 0.03, fal: 0.03,
+        stability: 0.025, stabilityai: 0.025,
+        imagineart: 0.02,
+        comfyui: 0, automatic1111: 0, local: 0,
+      } as Record<string, number>,
+      // Video gen: USD per second of generated video
+      videoPerSec: {
+        runway: 0.05, kling: 0.075, luma: 0.03, pika: 0.05, lumalabs: 0.03,
+        stability: 0, veo2: 0, local: 0,
+      } as Record<string, number>,
+      // Humanizer: USD per 1000 words
+      humPer1kWords: {
+        undetectable: 0.50, bypassgpt: 0.30, stealthgpt: 0.40,
+        claude: 0, cnhumanizer: 0, humanizeai: 0, local: 0,
+      } as Record<string, number>,
+      // Detection: USD per call
+      detectionPerCall: {
+        gptzero: 0.01, originality: 0.01, sapling: 0.01, copyleaks: 0.01,
+        local: 0,
+      } as Record<string, number>,
+      // Translation: USD per 1000 chars
+      translationPer1kChars: {
+        deepl: 0.025, google: 0.020,
+      } as Record<string, number>,
+      // AssemblyAI: USD per minute
+      assemblyaiPerMin: 0.0065,
+    }
+
+    const rate = <T extends Record<string, number>>(map: T, key: string) =>
+      map[key.toLowerCase()] ?? map['default'] ?? 0
+
+    // ── AI tokens by model ──────────────────────────────────────────────────────
     const tokensByModel: Record<string, number> = {}
     for (const r of clientRunRecords.filter((r) => r.metric === 'ai_tokens')) {
       const model = ((r.metadata as Record<string, unknown>)['model'] as string) ?? 'unknown'
       tokensByModel[model] = (tokensByModel[model] ?? 0) + r.quantity
     }
 
-    // Humanizer words by service
-    const humWordsByService: Record<string, number> = {}
+    // ── Humanizer by service ────────────────────────────────────────────────────
+    const humByService: Record<string, number> = {}
     for (const r of clientRunRecords.filter((r) => r.metric === 'humanizer_words')) {
       const service = ((r.metadata as Record<string, unknown>)['service'] as string) ?? 'unknown'
-      humWordsByService[service] = (humWordsByService[service] ?? 0) + r.quantity
+      humByService[service] = (humByService[service] ?? 0) + r.quantity
     }
 
-    // Images / videos generated
-    const totalImagesGenerated = clientRunRecords
-      .filter((r) => r.metric === 'image_generations')
-      .reduce((s, r) => s + r.quantity, 0)
-    const totalVideosGenerated = clientRunRecords
-      .filter((r) => r.metric === 'video_generations')
-      .reduce((s, r) => s + r.quantity, 0)
+    // ── Image generation by provider ───────────────────────────────────────────
+    const imageByProvider: Record<string, { count: number; costUsd: number }> = {}
+    for (const r of clientRunRecords.filter((r) => r.metric === 'image_generations')) {
+      const meta = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? (meta['service'] as string) ?? 'unknown'
+      const perImage = rate(RATES.imagePerImage, provider)
+      imageByProvider[provider] = imageByProvider[provider] ?? { count: 0, costUsd: 0 }
+      imageByProvider[provider].count   += r.quantity
+      imageByProvider[provider].costUsd += r.quantity * perImage
+    }
 
-    // Translation characters
-    const totalTranslationChars = clientRunRecords
-      .filter((r) => r.metric === 'translation_chars')
-      .reduce((s, r) => s + r.quantity, 0)
+    // ── Video generation by provider ────────────────────────────────────────────
+    const videoGenByProvider: Record<string, { count: number; secs: number; costUsd: number }> = {}
+    for (const r of clientRunRecords.filter((r) => r.metric === 'video_generations')) {
+      const meta = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? (meta['service'] as string) ?? 'unknown'
+      const secs = (meta['durationSecs'] as number) ?? 0
+      const perSec = rate(RATES.videoPerSec, provider)
+      videoGenByProvider[provider] = videoGenByProvider[provider] ?? { count: 0, secs: 0, costUsd: 0 }
+      videoGenByProvider[provider].count   += r.quantity
+      videoGenByProvider[provider].secs    += secs
+      videoGenByProvider[provider].costUsd += secs * perSec
+    }
 
-    // Detection calls
-    const detectionCalls = clientRunRecords.filter((r) => r.metric === 'detection_call').length
+    // ── Detection by service ────────────────────────────────────────────────────
+    const detectionByService: Record<string, { calls: number; costUsd: number }> = {}
+    for (const r of clientRunRecords.filter((r) => r.metric === 'detection_call')) {
+      const service = ((r.metadata as Record<string, unknown>)['service'] as string) ?? 'unknown'
+      const perCall = rate(RATES.detectionPerCall, service)
+      detectionByService[service] = detectionByService[service] ?? { calls: 0, costUsd: 0 }
+      detectionByService[service].calls   += 1
+      detectionByService[service].costUsd += perCall
+    }
 
-    // Video intelligence calls (Google Gemini)
+    // ── Translation by provider ─────────────────────────────────────────────────
+    const translationByProvider: Record<string, { chars: number; costUsd: number }> = {}
+    for (const r of clientRunRecords.filter((r) => r.metric === 'translation_chars')) {
+      const meta = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? 'unknown'
+      const per1k = rate(RATES.translationPer1kChars, provider)
+      translationByProvider[provider] = translationByProvider[provider] ?? { chars: 0, costUsd: 0 }
+      translationByProvider[provider].chars   += r.quantity
+      translationByProvider[provider].costUsd += (r.quantity / 1000) * per1k
+    }
+
+    // ── Video intelligence calls (Google Gemini) ────────────────────────────────
     const videoIntelligenceCalls = clientRunRecords.filter((r) => r.metric === 'video_intelligence_call').length
 
     // AssemblyAI from workflow runs (video transcription node)
@@ -673,6 +749,7 @@ export async function clientRoutes(app: FastifyInstance) {
       })
       .reduce((s, r) => s + r.quantity, 0)
     const assemblyaiMinutes = Math.round((workflowAssemblyaiSecs + fileAssemblyaiSecs) / 60)
+    const assemblyaiCostUsd = assemblyaiMinutes * RATES.assemblyaiPerMin
 
     // Brand / GTM files processed for this client
     const [brandFilesReady, fwFilesReady] = await Promise.all([
@@ -681,24 +758,162 @@ export async function clientRoutes(app: FastifyInstance) {
     ])
 
     const totalTokens = Object.values(tokensByModel).reduce((s, n) => s + n, 0)
-    const totalHumWords = Object.values(humWordsByService).reduce((s, n) => s + n, 0)
+    const totalHumWords = Object.values(humByService).reduce((s, n) => s + n, 0)
+
+    // AI token cost estimates (assume ~50/50 input/output split)
+    const totalTokensCostUsd = Object.entries(tokensByModel).reduce((sum, [model, tokens]) => {
+      const r = RATES.tokens[model] ?? RATES.tokens['claude-sonnet-4-5'] ?? { in: 3.00, out: 15.00 }
+      return sum + (tokens / 2 / 1_000_000) * r.in + (tokens / 2 / 1_000_000) * r.out
+    }, 0)
+
+    // Humanizer cost
+    const humBySvcArray = Object.entries(humByService).map(([service, words]) => ({
+      service, words,
+      costUsd: (words / 1000) * rate(RATES.humPer1kWords, service),
+    })).sort((a, b) => b.words - a.words)
+    const totalHumCostUsd = humBySvcArray.reduce((s, v) => s + v.costUsd, 0)
+
+    // Detection cost
+    const detectionArray = Object.entries(detectionByService).map(([service, d]) => ({ service, ...d })).sort((a, b) => b.calls - a.calls)
+    const totalDetectionCalls = detectionArray.reduce((s, v) => s + v.calls, 0)
+    const totalDetectionCostUsd = detectionArray.reduce((s, v) => s + v.costUsd, 0)
+
+    // Translation cost
+    const translationArray = Object.entries(translationByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.chars - a.chars)
+    const totalTranslationChars = translationArray.reduce((s, v) => s + v.chars, 0)
+    const totalTranslationCostUsd = translationArray.reduce((s, v) => s + v.costUsd, 0)
+
+    // Image generation totals
+    const imageArray = Object.entries(imageByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.count - a.count)
+    const totalImagesGenerated = imageArray.reduce((s, v) => s + v.count, 0)
+    const totalImageCostUsd = imageArray.reduce((s, v) => s + v.costUsd, 0)
+
+    // Video generation totals
+    const videoGenArray = Object.entries(videoGenByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.count - a.count)
+    const totalVideosGenerated = videoGenArray.reduce((s, v) => s + v.count, 0)
+    const totalVideoGenSecs = videoGenArray.reduce((s, v) => s + v.secs, 0)
+    const totalVideoGenCostUsd = videoGenArray.reduce((s, v) => s + v.costUsd, 0)
+
+    // ── Media billing: voice / animation / music / composition ────────────────
+    const voiceByProvider: Record<string, { chars: number; secs: number; costUsd: number }> = {}
+    for (const r of clientRunRecords.filter((r) => r.metric === 'voice_generation_chars')) {
+      const meta = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? 'unknown'
+      voiceByProvider[provider] = voiceByProvider[provider] ?? { chars: 0, secs: 0, costUsd: 0 }
+      voiceByProvider[provider].chars   += r.quantity
+      voiceByProvider[provider].secs    += (meta['durationSecs'] as number) ?? 0
+      voiceByProvider[provider].costUsd += (meta['estimatedCostUsd'] as number) ?? 0
+    }
+
+    const charAnimByProvider: Record<string, { secs: number; costUsd: number }> = {}
+    for (const r of clientRunRecords.filter((r) => r.metric === 'character_animation_secs')) {
+      const meta = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? 'unknown'
+      charAnimByProvider[provider] = charAnimByProvider[provider] ?? { secs: 0, costUsd: 0 }
+      charAnimByProvider[provider].secs    += r.quantity
+      charAnimByProvider[provider].costUsd += (meta['estimatedCostUsd'] as number) ?? 0
+    }
+
+    const musicByProvider: Record<string, { secs: number; costUsd: number }> = {}
+    for (const r of clientRunRecords.filter((r) => r.metric === 'music_generation_secs')) {
+      const meta = r.metadata as Record<string, unknown>
+      const provider = (meta['provider'] as string) ?? 'unknown'
+      musicByProvider[provider] = musicByProvider[provider] ?? { secs: 0, costUsd: 0 }
+      musicByProvider[provider].secs    += r.quantity
+      musicByProvider[provider].costUsd += (meta['estimatedCostUsd'] as number) ?? 0
+    }
+
+    const videoCompRecords = clientRunRecords.filter((r) => r.metric === 'video_composition_secs')
+    const totalVideoCompSecs = videoCompRecords.reduce((s, r) => s + r.quantity, 0)
+    const totalVideoCompCostUsd = videoCompRecords.reduce((s, r) => s + (((r.metadata as Record<string, unknown>)['estimatedCostUsd'] as number) ?? 0), 0)
+
+    const totalVoiceChars   = Object.values(voiceByProvider).reduce((s, v) => s + v.chars, 0)
+    const totalVoiceSecs    = Object.values(voiceByProvider).reduce((s, v) => s + v.secs, 0)
+    const totalVoiceCostUsd = Object.values(voiceByProvider).reduce((s, v) => s + v.costUsd, 0)
+    const totalCharAnimSecs    = Object.values(charAnimByProvider).reduce((s, v) => s + v.secs, 0)
+    const totalCharAnimCostUsd = Object.values(charAnimByProvider).reduce((s, v) => s + v.costUsd, 0)
+    const totalMusicSecs    = Object.values(musicByProvider).reduce((s, v) => s + v.secs, 0)
+    const totalMusicCostUsd = Object.values(musicByProvider).reduce((s, v) => s + v.costUsd, 0)
+
+    // Grand total estimated cost across ALL services
+    const grandTotalCostUsd =
+      totalTokensCostUsd + totalHumCostUsd + totalDetectionCostUsd +
+      totalTranslationCostUsd + totalImageCostUsd + totalVideoGenCostUsd +
+      totalVoiceCostUsd + totalCharAnimCostUsd + totalMusicCostUsd +
+      totalVideoCompCostUsd + assemblyaiCostUsd
 
     return reply.send({
       data: {
         totalRuns: runIds.length,
-        totalTokens,
-        tokensByModel: Object.entries(tokensByModel).map(([model, tokens]) => ({ model, tokens })).sort((a, b) => b.tokens - a.tokens),
-        totalHumWords,
-        humWordsByService: Object.entries(humWordsByService).map(([service, words]) => ({ service, words })).sort((a, b) => b.words - a.words),
-        transcriptionMinutes,
-        assemblyaiMinutes,
-        detectionCalls,
-        videoIntelligenceCalls,
-        totalImagesGenerated,
-        totalVideosGenerated,
-        totalTranslationChars,
         brandFilesReady,
         fwFilesReady,
+
+        // ── AI text generation ─────────────────────────────────────────────
+        totalTokens,
+        totalTokensCostUsd,
+        tokensByModel: Object.entries(tokensByModel).map(([model, tokens]) => ({ model, tokens })).sort((a, b) => b.tokens - a.tokens),
+
+        // ── Humanizer ─────────────────────────────────────────────────────
+        totalHumWords,
+        totalHumCostUsd,
+        humWordsByService: humBySvcArray,
+
+        // ── Image generation ───────────────────────────────────────────────
+        totalImagesGenerated,
+        totalImageCostUsd,
+        imageGeneration: { byProvider: imageArray },
+
+        // ── Video generation ───────────────────────────────────────────────
+        totalVideosGenerated,
+        totalVideoGenSecs,
+        totalVideoGenCostUsd,
+        videoGeneration: { byProvider: videoGenArray },
+
+        // ── Voice TTS ──────────────────────────────────────────────────────
+        voiceGeneration: {
+          totalChars: totalVoiceChars,
+          totalSecs: totalVoiceSecs,
+          totalCostUsd: totalVoiceCostUsd,
+          byProvider: Object.entries(voiceByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.chars - a.chars),
+        },
+
+        // ── Character animation ────────────────────────────────────────────
+        characterAnimation: {
+          totalSecs: totalCharAnimSecs,
+          totalCostUsd: totalCharAnimCostUsd,
+          byProvider: Object.entries(charAnimByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.secs - a.secs),
+        },
+
+        // ── Music generation ───────────────────────────────────────────────
+        musicGeneration: {
+          totalSecs: totalMusicSecs,
+          totalCostUsd: totalMusicCostUsd,
+          byProvider: Object.entries(musicByProvider).map(([provider, d]) => ({ provider, ...d })).sort((a, b) => b.secs - a.secs),
+        },
+
+        // ── Video composition ──────────────────────────────────────────────
+        videoComposition: { totalSecs: totalVideoCompSecs, totalCostUsd: totalVideoCompCostUsd },
+
+        // ── AI detection ───────────────────────────────────────────────────
+        detectionCalls: totalDetectionCalls,
+        totalDetectionCostUsd,
+        detectionByService: detectionArray,
+
+        // ── Translation ────────────────────────────────────────────────────
+        totalTranslationChars,
+        totalTranslationCostUsd,
+        translationByProvider: translationArray,
+
+        // ── Transcription ──────────────────────────────────────────────────
+        transcriptionMinutes,
+        assemblyaiMinutes,
+        assemblyaiCostUsd,
+
+        // ── Video intelligence (Google Gemini) ─────────────────────────────
+        videoIntelligenceCalls,
+
+        // ── Grand total ────────────────────────────────────────────────────
+        grandTotalCostUsd,
       },
     })
   })

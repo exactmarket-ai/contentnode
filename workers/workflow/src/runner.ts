@@ -873,6 +873,7 @@ export class WorkflowRunner {
                       provider:      mu.provider,
                       model:         mu.model ?? 'default',
                       workflowRunId: this.workflowRunId,
+                      ...(ctx.userId ? { userId: ctx.userId } : {}),
                       ...(mu.subtype === 'voice_generation' ? { charCount: mu.charCount, durationSecs: mu.durationSecs } : { durationSecs: mu.durationSecs }),
                       ...(costUsd !== null ? { estimatedCostUsd: costUsd } : {}),
                     },

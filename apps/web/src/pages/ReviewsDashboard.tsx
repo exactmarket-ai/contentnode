@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,17 @@ interface ReviewRun {
   reviewStatus: string
   completedAt: string | null
   createdAt: string
+  dueDate: string | null
+  assigneeId: string | null
+  assignee: { id: string; name: string | null; avatarStorageKey: string | null } | null
+  triggeredByUser: { name: string | null; email: string } | null
+}
+
+interface TeamMember {
+  id: string
+  name: string | null
+  email: string
+  avatarStorageKey?: string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,19 +51,220 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function formatDateShort(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function isDue(iso: string) {
+  return new Date(iso) < new Date()
+}
+
+function userInitials(name: string | null | undefined, email: string) {
+  if (name) {
+    const parts = name.trim().split(' ')
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : name.slice(0, 2).toUpperCase()
+  }
+  return email.slice(0, 2).toUpperCase()
+}
+
+// ── Inline Assignee Picker ────────────────────────────────────────────────────
+
+function AssigneePicker({
+  runId,
+  current,
+  teamMembers,
+  onAssigned,
+}: {
+  runId: string
+  current: ReviewRun['assignee']
+  teamMembers: TeamMember[]
+  onAssigned: (assignee: ReviewRun['assignee']) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  async function assign(memberId: string | null) {
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/v1/runs/${runId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigneeId: memberId }),
+      })
+      if (res.ok) {
+        const member = memberId ? (teamMembers.find((m) => m.id === memberId) ?? null) : null
+        onAssigned(member ? { id: member.id, name: member.name ?? null, avatarStorageKey: member.avatarStorageKey ?? null } : null)
+      }
+    } finally {
+      setSaving(false)
+      setOpen(false)
+    }
+  }
+
+  const label = current?.name ?? current?.id?.slice(0, 6) ?? 'Unassigned'
+
+  return (
+    <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors',
+          current ? 'text-foreground hover:bg-accent' : 'text-muted-foreground hover:bg-accent/60',
+        )}
+        title="Reassign"
+      >
+        {saving ? (
+          <Icons.Loader2 className="h-3 w-3 animate-spin" />
+        ) : current ? (
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-[10px] font-semibold text-blue-700">
+            {userInitials(current.name, current.id)}
+          </span>
+        ) : (
+          <Icons.UserCircle2 className="h-4 w-4 text-muted-foreground/60" />
+        )}
+        <span className="max-w-[80px] truncate">{current ? label : '—'}</span>
+        <Icons.ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-popover shadow-lg">
+          <div className="p-1">
+            <button
+              onClick={() => assign(null)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+            >
+              <Icons.UserCircle2 className="h-3.5 w-3.5" />
+              Unassigned
+            </button>
+            {teamMembers.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => assign(m.id)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent',
+                  current?.id === m.id ? 'text-blue-600 font-medium' : 'text-foreground',
+                )}
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-semibold text-blue-700">
+                  {userInitials(m.name, m.email)}
+                </span>
+                <span className="truncate">{m.name ?? m.email}</span>
+                {current?.id === m.id && <Icons.Check className="ml-auto h-3 w-3 shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Inline Due Date Picker ────────────────────────────────────────────────────
+
+function DueDateCell({
+  runId,
+  dueDate,
+  onUpdated,
+}: {
+  runId: string
+  dueDate: string | null
+  onUpdated: (date: string | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!editing) return
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setEditing(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [editing])
+
+  async function saveDate(value: string) {
+    setSaving(true)
+    setEditing(false)
+    try {
+      const iso = value ? new Date(value).toISOString() : null
+      const res = await apiFetch(`/api/v1/runs/${runId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueDate: iso }),
+      })
+      if (res.ok) onUpdated(iso)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const overdue = dueDate && isDue(dueDate)
+
+  return (
+    <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>
+      {editing ? (
+        <input
+          autoFocus
+          type="date"
+          defaultValue={dueDate ? dueDate.slice(0, 10) : ''}
+          onChange={(e) => saveDate(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && setEditing(false)}
+          className="h-7 w-32 rounded border border-blue-400 bg-background px-2 text-xs focus:outline-none"
+        />
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-accent/60',
+            overdue ? 'text-red-500 font-medium' : dueDate ? 'text-foreground' : 'text-muted-foreground',
+          )}
+          title="Set due date"
+        >
+          {saving ? (
+            <Icons.Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Icons.CalendarDays className="h-3 w-3 shrink-0" />
+          )}
+          {dueDate ? formatDateShort(dueDate) : '—'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function ReviewsDashboard() {
   const navigate = useNavigate()
   const [runs, setRuns] = useState<ReviewRun[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    apiFetch('/api/v1/runs?status=completed&limit=200')
-      .then((r) => r.json())
-      .then(({ data }) => { setRuns(data ?? []); setLoading(false) })
+    Promise.all([
+      apiFetch('/api/v1/runs?status=completed&limit=200').then((r) => r.json()),
+      apiFetch('/api/v1/team').then((r) => r.json()),
+    ])
+      .then(([runsRes, teamRes]) => {
+        setRuns(runsRes.data ?? [])
+        setTeamMembers(teamRes.data ?? [])
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [])
 
@@ -69,6 +281,10 @@ export function ReviewsDashboard() {
   // Stat counts
   const counts: Record<string, number> = {}
   for (const r of runs) counts[r.reviewStatus] = (counts[r.reviewStatus] ?? 0) + 1
+
+  function updateRun(id: string, patch: Partial<ReviewRun>) {
+    setRuns((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -150,7 +366,7 @@ export function ReviewsDashboard() {
             </p>
           </div>
         ) : (
-          <div className="px-6 pt-4">
+          <div className="px-6 pt-4 pb-8">
             <div className="rounded-xl border border-border overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
@@ -158,6 +374,9 @@ export function ReviewsDashboard() {
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Review</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Client</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Created by</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Assigned to</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due date</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Completed</th>
                     <th className="px-4 py-2.5" />
                   </tr>
@@ -166,27 +385,55 @@ export function ReviewsDashboard() {
                   {filtered.map((r) => {
                     const cfg = STATUS_CONFIG[r.reviewStatus] ?? STATUS_CONFIG.none
                     const title = [r.projectName, r.workflowName, r.itemName].filter(Boolean).join(' — ')
+                    const createdBy = r.triggeredByUser
+                      ? (r.triggeredByUser.name ?? r.triggeredByUser.email)
+                      : null
                     return (
                       <tr
                         key={r.id}
                         onClick={() => navigate(`/review/${r.id}`)}
                         className="cursor-pointer hover:bg-accent/30 transition-colors"
                       >
-                        <td className="px-4 py-3 font-medium text-foreground/90 max-w-xs truncate">{title}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{r.clientName ?? '—'}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2.5 font-medium text-foreground/90 max-w-[200px] truncate">{title}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{r.clientName ?? '—'}</td>
+                        <td className="px-4 py-2.5">
                           <span className={cn('inline-flex items-center gap-1.5 font-medium', cfg.color)}>
                             <span className={cn('h-1.5 w-1.5 rounded-full', cfg.dot)} />
                             {cfg.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="px-4 py-2.5 text-muted-foreground">
+                          {createdBy ? (
+                            <span className="flex items-center gap-1.5">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600">
+                                {userInitials(r.triggeredByUser?.name, r.triggeredByUser?.email ?? '')}
+                              </span>
+                              <span className="max-w-[80px] truncate">{createdBy}</span>
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <AssigneePicker
+                            runId={r.id}
+                            current={r.assignee}
+                            teamMembers={teamMembers}
+                            onAssigned={(assignee) => updateRun(r.id, { assignee, assigneeId: assignee?.id ?? null })}
+                          />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <DueDateCell
+                            runId={r.id}
+                            dueDate={r.dueDate}
+                            onUpdated={(date) => updateRun(r.id, { dueDate: date })}
+                          />
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">
                           {r.completedAt ? formatDate(r.completedAt) : '—'}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-muted-foreground/50 group-hover:text-muted-foreground">
-                            <Icons.ChevronRight className="h-3.5 w-3.5 inline" />
-                          </span>
+                        <td className="px-4 py-2.5 text-right">
+                          <Icons.ChevronRight className="h-3.5 w-3.5 inline text-muted-foreground/50" />
                         </td>
                       </tr>
                     )

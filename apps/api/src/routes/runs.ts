@@ -6,6 +6,7 @@ import { prisma, type Prisma, permissionService } from '@contentnode/database'
 import { auditService } from '../services/audit.js'
 import { getWorkflowRunsQueue, getEditAnalysisQueue } from '../lib/queues.js'
 import { sendReviewEmail } from '../lib/email.js'
+import { getClerkUserNames } from '../lib/clerk.js'
 
 // Providers that are local/offline for permission classification
 const OFFLINE_IMAGE_PROVIDERS = new Set(['comfyui', 'automatic1111'])
@@ -658,6 +659,8 @@ export async function runRoutes(app: FastifyInstance) {
         editedContent: true,
         assigneeId: true,
         internalNotes: true,
+        dueDate: true,
+        input: true,
         assignee: { select: { id: true, name: true, avatarStorageKey: true } },
         division: { select: { id: true, name: true } },
         job: { select: { id: true, name: true, budgetCents: true } },
@@ -685,9 +688,37 @@ export async function runRoutes(app: FastifyInstance) {
       statsByStatus[r.status] = (statsByStatus[r.status] ?? 0) + 1
     }
 
+    // Resolve triggeredBy display names from input.triggeredByClerkId
+    const clerkIds = runs
+      .map((r) => (r.input as Record<string, unknown>)?.triggeredByClerkId as string | undefined)
+      .filter((id): id is string => !!id)
+    const uniqueClerkIds = [...new Set(clerkIds)]
+
+    // Also look up by DB user id (triggeredBy) as secondary source
+    const dbUserIds = runs
+      .map((r) => r.triggeredBy)
+      .filter((id): id is string => !!id)
+    const [clerkNames, dbUsers] = await Promise.all([
+      getClerkUserNames(uniqueClerkIds),
+      dbUserIds.length > 0
+        ? prisma.user.findMany({ where: { id: { in: dbUserIds } }, select: { id: true, name: true, email: true } })
+        : Promise.resolve([]),
+    ])
+    const dbUserMap = Object.fromEntries(dbUsers.map((u) => [u.id, u]))
+
     const data = runs.map((r) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const output = r.output as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const inputJson = r.input as any
+      const clerkId = inputJson?.triggeredByClerkId as string | undefined
+      const clerkUser = clerkId ? clerkNames[clerkId] : undefined
+      const dbUser = r.triggeredBy ? dbUserMap[r.triggeredBy] : undefined
+      const triggeredByUser = clerkUser
+        ? { name: clerkUser.name, email: clerkUser.email }
+        : dbUser
+        ? { name: dbUser.name, email: dbUser.email }
+        : null
       return {
         id: r.id,
         workflowId: r.workflowId,
@@ -719,6 +750,8 @@ export async function runRoutes(app: FastifyInstance) {
         assigneeId: r.assigneeId ?? null,
         assignee: r.assignee ?? null,
         internalNotes: r.internalNotes ?? null,
+        dueDate: r.dueDate ?? null,
+        triggeredByUser,
       }
     })
 
@@ -738,6 +771,7 @@ export async function runRoutes(app: FastifyInstance) {
       reviewerIds:   z.array(z.string()).optional(),
       assigneeId:    z.string().nullable().optional(),
       internalNotes: z.string().nullable().optional(),
+      dueDate:       z.string().datetime({ offset: true }).nullable().optional(),
     }).safeParse(req.body)
 
     if (!body.success) return reply.code(400).send({ error: 'Invalid body', details: body.error.issues })
@@ -756,6 +790,7 @@ export async function runRoutes(app: FastifyInstance) {
         ...(body.data.reviewerIds   !== undefined ? { reviewerIds: body.data.reviewerIds as Prisma.InputJsonValue } : {}),
         ...(body.data.assigneeId    !== undefined ? { assigneeId: body.data.assigneeId }       : {}),
         ...(body.data.internalNotes !== undefined ? { internalNotes: body.data.internalNotes } : {}),
+        ...(body.data.dueDate       !== undefined ? { dueDate: body.data.dueDate ? new Date(body.data.dueDate) : null } : {}),
       },
       include: {
         division: { select: { id: true, name: true } },

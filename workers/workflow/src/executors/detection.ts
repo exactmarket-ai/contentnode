@@ -1,7 +1,7 @@
 import { prisma, withAgency, type Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
-async function logDetectionUsage(agencyId: string, service: string, workflowRunId: string | undefined, wordCount: number) {
+async function logDetectionUsage(agencyId: string, service: string, workflowRunId: string | undefined, wordCount: number, userId?: string | null) {
   try {
     const now = new Date()
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -14,7 +14,7 @@ async function logDetectionUsage(agencyId: string, service: string, workflowRunI
           quantity: wordCount,
           periodStart,
           periodEnd,
-          metadata: { service, workflowRunId } as Prisma.InputJsonValue,
+          metadata: { service, workflowRunId, ...(userId ? { userId } : {}) } as Prisma.InputJsonValue,
         },
       })
     )
@@ -149,7 +149,7 @@ export class DetectionNodeExecutor extends NodeExecutor {
           .map((s) => s.sentence)
 
         result = { overall_score: score, flagged_sentences: flagged, content, service }
-        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount)
+        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount, ctx.userId)
         break
       }
 
@@ -175,7 +175,7 @@ export class DetectionNodeExecutor extends NodeExecutor {
           .map((item) => item.text)
 
         result = { overall_score: score, flagged_sentences: flagged, content, service }
-        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount)
+        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount, ctx.userId)
         break
       }
 
@@ -201,7 +201,7 @@ export class DetectionNodeExecutor extends NodeExecutor {
           .map((s) => s.sentence)
 
         result = { overall_score: score, flagged_sentences: flagged, content, service }
-        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount)
+        await logDetectionUsage(ctx.agencyId, service, ctx.workflowRunId, wordCount, ctx.userId)
         break
       }
 

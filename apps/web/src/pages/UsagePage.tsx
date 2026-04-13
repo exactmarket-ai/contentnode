@@ -167,9 +167,144 @@ function StatCard({ icon: Icon, label, value, sub, color = 'text-foreground' }: 
   )
 }
 
+// ── Team efficiency types ────────────────────────────────────────────────────
+
+interface TeamUser {
+  userId: string
+  name: string | null
+  email: string
+  completedRuns: number
+  totalRuns: number
+  tokens: number
+  tokenCostUsd: number
+  byModel: Record<string, number>
+  humanizerWords: number
+  humanizerCostUsd: number
+  detectionCalls: number
+  detectionCostUsd: number
+  translationChars: number
+  translationCostUsd: number
+  mediaCostUsd: number
+  mediaBreakdown: Record<string, number>
+  totalCostUsd: number
+  efficiencyScore: number | null
+  tokensPerRun: number | null
+}
+
+interface TeamData {
+  users: TeamUser[]
+  grandTotalCostUsd: number
+  days: number
+}
+
+function efficiencyLabel(score: number | null, avg: number): { label: string; color: string } {
+  if (score === null) return { label: 'No runs', color: 'text-muted-foreground' }
+  if (avg === 0) return { label: 'Active', color: 'text-blue-400' }
+  const ratio = score / avg
+  if (ratio < 0.75) return { label: 'Efficient', color: 'text-emerald-400' }
+  if (ratio < 1.25) return { label: 'Average', color: 'text-yellow-400' }
+  if (ratio < 2)    return { label: 'Above Avg', color: 'text-orange-400' }
+  return { label: 'High Usage', color: 'text-red-400' }
+}
+
+function UserEfficiencyCard({ user, avgScore }: { user: TeamUser; avgScore: number }) {
+  const [open, setOpen] = useState(false)
+  const { label, color } = efficiencyLabel(user.efficiencyScore, avgScore)
+  const displayName = user.name ?? user.email.split('@')[0]
+  const models = Object.entries(user.byModel).sort((a, b) => b[1] - a[1])
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-4 pt-4 pb-3 space-y-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase">
+              {displayName.slice(0, 2)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{displayName}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+            </div>
+          </div>
+          <span className={cn('shrink-0 text-xs font-medium', color)}>{label}</span>
+        </div>
+
+        {/* Stat row */}
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-lg bg-muted/40 px-2 py-2">
+            <p className="text-base font-semibold tabular-nums">${user.totalCostUsd.toFixed(2)}</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">Total Cost</p>
+          </div>
+          <div className="rounded-lg bg-muted/40 px-2 py-2">
+            <p className="text-base font-semibold tabular-nums">{user.completedRuns}</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">Completed</p>
+          </div>
+          <div className="rounded-lg bg-muted/40 px-2 py-2">
+            <p className={cn('text-base font-semibold tabular-nums', color)}>
+              {user.efficiencyScore !== null ? `$${user.efficiencyScore.toFixed(2)}` : '—'}
+            </p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">Cost/Run</p>
+          </div>
+        </div>
+
+        {/* Token bar */}
+        {user.tokens > 0 && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>AI Tokens</span>
+              <span>{fmt(user.tokens)}{user.tokensPerRun !== null ? ` · ${fmt(user.tokensPerRun)}/run` : ''}</span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-blue-600" style={{ width: '100%' }} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Expandable model breakdown */}
+      {models.length > 0 && (
+        <>
+          <button
+            className="flex w-full items-center justify-between border-t border-border px-4 py-2 text-[10px] text-muted-foreground hover:bg-muted/20 transition-colors"
+            onClick={() => setOpen(!open)}
+          >
+            <span>{models.length} model{models.length !== 1 ? 's' : ''} used</span>
+            <Icons.ChevronDown className={cn('h-3 w-3 transition-transform', open ? 'rotate-180' : '')} />
+          </button>
+          {open && (
+            <div className="border-t border-border bg-muted/20 px-4 py-3 space-y-1.5">
+              {models.map(([model, tokens]) => (
+                <div key={model} className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground truncate">{model}</span>
+                  <span className="font-medium tabular-nums ml-2">{fmt(tokens)}</span>
+                </div>
+              ))}
+              {user.humanizerWords > 0 && (
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50">
+                  <span className="text-purple-400">Humanizer</span>
+                  <span className="font-medium tabular-nums">{fmt(user.humanizerWords)} words</span>
+                </div>
+              )}
+              {user.mediaCostUsd > 0 && (
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-teal-400">Media (voice/video)</span>
+                  <span className="font-medium tabular-nums">~${user.mediaCostUsd.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export function UsagePage() {
   const [data, setData] = useState<UsageData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [teamData, setTeamData] = useState<TeamData | null>(null)
+  const [teamLoading, setTeamLoading] = useState(true)
 
   useEffect(() => {
     apiFetch('/api/v1/usage')
@@ -177,6 +312,12 @@ export function UsagePage() {
       .then(({ data }) => setData(data))
       .catch(console.error)
       .finally(() => setLoading(false))
+
+    apiFetch('/api/v1/reports/usage-by-user?days=30')
+      .then((r) => r.json())
+      .then(({ data }) => setTeamData(data))
+      .catch(console.error)
+      .finally(() => setTeamLoading(false))
   }, [])
 
   const period = data
@@ -500,7 +641,7 @@ export function UsagePage() {
               </Section>
             )}
 
-            {/* By user */}
+            {/* Usage by User — simple bar view from existing records */}
             {data.byUser?.length > 0 && (
               <Section title="Usage by User" icon={Icons.User} total={`${data.byUser.length} users`}>
                 {data.totals.tokens > 0 && (
@@ -545,6 +686,81 @@ export function UsagePage() {
                 )}
               </Section>
             )}
+
+            {/* Team Efficiency */}
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <Icons.Users className="h-4 w-4 text-blue-400" />
+                  <span className="text-sm font-semibold">Team Efficiency</span>
+                  {teamData && (
+                    <span className="text-xs text-muted-foreground ml-1">
+                      — {teamData.users.length} user{teamData.users.length !== 1 ? 's' : ''} · ${teamData.grandTotalCostUsd.toFixed(2)} total
+                    </span>
+                  )}
+                </div>
+                {teamData && teamData.users.length > 0 && (
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" /> Efficient</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-500 inline-block" /> Average</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500 inline-block" /> High Usage</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-5">
+                {teamLoading ? (
+                  <div className="flex items-center justify-center py-10">
+                    <Icons.Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : !teamData || teamData.users.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-8">
+                    No per-user data yet. Usage will appear here as team members run workflows.
+                  </p>
+                ) : (() => {
+                  const usersWithRuns = teamData.users.filter((u) => u.efficiencyScore !== null)
+                  const avgScore = usersWithRuns.length > 0
+                    ? usersWithRuns.reduce((s, u) => s + u.efficiencyScore!, 0) / usersWithRuns.length
+                    : 0
+
+                  return (
+                    <>
+                      {/* Summary row */}
+                      <div className="grid grid-cols-4 gap-3 mb-5">
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-center">
+                          <p className="text-lg font-semibold">${teamData.grandTotalCostUsd.toFixed(2)}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Team Total Cost</p>
+                        </div>
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-center">
+                          <p className="text-lg font-semibold">{teamData.users.reduce((s, u) => s + u.completedRuns, 0)}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Total Completed Runs</p>
+                        </div>
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-center">
+                          <p className="text-lg font-semibold">${avgScore.toFixed(2)}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Avg Cost / Run</p>
+                        </div>
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-center">
+                          <p className="text-lg font-semibold">{teamData.users.length}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Active Users</p>
+                        </div>
+                      </div>
+
+                      {/* User cards */}
+                      <div className="grid grid-cols-2 gap-3">
+                        {teamData.users.map((u) => (
+                          <UserEfficiencyCard key={u.userId} user={u} avgScore={avgScore} />
+                        ))}
+                      </div>
+
+                      <p className="mt-4 text-[10px] text-muted-foreground text-center">
+                        Efficiency score = estimated cost per completed workflow run. Lower is better.
+                        New usage records are attributed to users going forward.
+                      </p>
+                    </>
+                  )
+                })()}
+              </div>
+            </div>
 
           </div>
         )}
