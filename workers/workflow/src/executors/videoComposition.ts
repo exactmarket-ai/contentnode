@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto'
 import path           from 'node:path'
 import fs             from 'node:fs'
 import os             from 'node:os'
+import sharp from 'sharp'
 import { saveGeneratedFile, downloadBuffer, localPath as storagePath } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
@@ -143,6 +144,82 @@ function hexToFfmpegAlpha(hex: string, alpha = 'CC'): string {
   return `0x${h.toUpperCase()}${alpha}`
 }
 
+// ─── Sharp SVG text fallback (used when ffmpeg lacks libfreetype) ─────────────
+
+/** Escape special XML characters for safe embedding in SVG text nodes */
+function escXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+/**
+ * Composite text onto an image file using sharp + SVG.
+ * Used as a fallback when the local ffmpeg build lacks drawtext (libfreetype).
+ * Overwrites `imagePath` in-place with the composited result.
+ */
+async function addTextWithSharp(
+  imagePath:    string,
+  title:        string,
+  subtitle:     string,
+  overlayStyle: string,
+  fontSize:     number,
+): Promise<void> {
+  const img = sharp(imagePath)
+  const { width: w = 1280, height: h = 720 } = await img.metadata()
+
+  const FONT = 'font-family="Arial, Helvetica, sans-serif"'
+  const BOLD = `${FONT} font-weight="bold"`
+
+  let textSvg: string
+
+  switch (overlayStyle) {
+    case 'lower_third':
+      textSvg = `
+        <text x="20" y="${h - 100 + fontSize}" fill="white" font-size="${fontSize}" ${BOLD}>${escXml(title)}</text>
+        ${subtitle ? `<text x="20" y="${h - 72 + Math.round(fontSize * 0.65)}" fill="#aaaaaa" font-size="${Math.round(fontSize * 0.65)}" ${FONT}>${escXml(subtitle)}</text>` : ''}
+      `
+      break
+    case 'title_card':
+      textSvg = `
+        <text x="${w / 2}" y="${h / 2 + fontSize / 2}" fill="white" font-size="${fontSize}" text-anchor="middle" ${BOLD}>${escXml(title)}</text>
+      `
+      break
+    case 'pill_badge': {
+      const pad = 12
+      textSvg = `
+        <text x="${pad * 2}" y="${pad + fontSize}" fill="white" font-size="${fontSize}" ${BOLD}>${escXml(title)}</text>
+      `
+      break
+    }
+    case 'fullscreen':
+      textSvg = `
+        <text x="${w / 2}" y="${h / 2 + Math.round(fontSize * 1.5) / 2}" fill="white" font-size="${Math.round(fontSize * 1.5)}" text-anchor="middle" ${BOLD}
+          style="filter:drop-shadow(2px 2px 0 black)">${escXml(title)}</text>
+        ${subtitle ? `<text x="${w / 2}" y="${h / 2 + Math.round(fontSize * 1.5) + fontSize}" fill="#dddddd" font-size="${fontSize}" text-anchor="middle" ${FONT}>${escXml(subtitle)}</text>` : ''}
+      `
+      break
+    default:
+      textSvg = `
+        <text x="20" y="${fontSize + 4}" fill="white" font-size="${fontSize}" ${BOLD}>${escXml(title)}</text>
+      `
+  }
+
+  const svg = Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${textSvg}</svg>`
+  )
+
+  const composited = await sharp(imagePath)
+    .composite([{ input: svg, blend: 'over' }])
+    .jpeg({ quality: 92 })
+    .toBuffer()
+
+  fs.writeFileSync(imagePath, composited)
+}
+
 // ─── Local ffmpeg renderer ────────────────────────────────────────────────────
 
 async function renderLocal(input: RenderInput): Promise<void> {
@@ -252,12 +329,15 @@ async function renderLocal(input: RenderInput): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // drawtext requires libfreetype — not compiled into all ffmpeg builds (e.g. macOS Homebrew default).
-    // Fall back to rendering without text overlay so local dev still works.
+    // Render without drawtext first, then composite text via sharp SVG for image output.
     if (activeVf.includes('drawtext') && (msg.includes('drawtext') || msg.includes('Filter not found'))) {
+      console.warn('[video-composition] drawtext unavailable (ffmpeg lacks libfreetype) — using sharp SVG text fallback')
       const vfNoText = activeVf.split(',').filter(f => !f.trim().startsWith('drawtext=')).join(',')
-      const fallbackVf = vfNoText || 'null'
-      console.warn('[video-composition] drawtext unavailable (ffmpeg built without libfreetype) — rendering without text overlay')
-      await execAsync(buildCmd(fallbackVf), { timeout: 120_000 })
+      await execAsync(buildCmd(vfNoText || 'null'), { timeout: 120_000 })
+      // For image output, composite the text on top using sharp (works without libfreetype)
+      if (outputFormat === 'image' && title) {
+        await addTextWithSharp(outputPath, title, subtitle, overlayStyle, fontSize)
+      }
     } else {
       throw err
     }
