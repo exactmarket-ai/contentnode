@@ -99,10 +99,12 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
 const MEDIA_SUBTYPES = new Set([
   'audio-input', 'voice-output', 'music-generation', 'audio-mix',
   'video-generation', 'image-generation', 'character-animation', 'media-download',
+  'image-resize', 'video-composition',
 ])
 
 const MEDIA_TYPES = new Set([
   'voice_output', 'music_generation', 'audio_mix', 'audio_input', 'character_animation',
+  'video_composition',
 ])
 
 /** Map our node type + subtype to a spec type */
