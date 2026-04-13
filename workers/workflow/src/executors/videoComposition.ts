@@ -171,40 +171,55 @@ async function addTextWithSharp(
   const img = sharp(imagePath)
   const { width: w = 1280, height: h = 720 } = await img.metadata()
 
-  const FONT = 'font-family="Arial, Helvetica, sans-serif"'
-  const BOLD = `${FONT} font-weight="bold"`
+  // dominant-baseline="hanging" → y is the top of the text (matches ffmpeg drawtext y semantics)
+  // dominant-baseline="middle"  → y is the vertical center of the text
+  const FONT  = 'font-family="Arial, Helvetica, sans-serif"'
+  const BOLD  = `${FONT} font-weight="bold"`
+  const HANG  = 'dominant-baseline="hanging"'   // top-aligned (matches ffmpeg drawtext y)
+  const MID   = 'dominant-baseline="middle"'    // center-aligned
 
   let textSvg: string
 
   switch (overlayStyle) {
-    case 'lower_third':
+    case 'lower_third': {
+      // Mirror the dynamic barH calculation from renderLocal
+      const vPad     = 14
+      const lineGap  = 6
+      const subFont  = subtitle ? Math.round(fontSize * 0.65) : 0
+      const contentH = subtitle ? fontSize + lineGap + subFont : fontSize
+      const barH     = contentH + vPad * 2
+      const titleY   = h - (barH - vPad)
+      const subY     = h - (barH - vPad - fontSize - lineGap)
       textSvg = `
-        <text x="20" y="${h - 100 + fontSize}" fill="white" font-size="${fontSize}" ${BOLD}>${escXml(title)}</text>
-        ${subtitle ? `<text x="20" y="${h - 72 + Math.round(fontSize * 0.65)}" fill="#aaaaaa" font-size="${Math.round(fontSize * 0.65)}" ${FONT}>${escXml(subtitle)}</text>` : ''}
+        <text x="20" y="${titleY}" ${HANG} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
+        ${subtitle ? `<text x="20" y="${subY}" ${HANG} font-size="${subFont}" fill="#dddddd" ${FONT}>${escXml(subtitle)}</text>` : ''}
       `
       break
+    }
     case 'title_card':
+      // Text centered in the image (bar is also centered)
       textSvg = `
-        <text x="${w / 2}" y="${h / 2 + fontSize / 2}" fill="white" font-size="${fontSize}" text-anchor="middle" ${BOLD}>${escXml(title)}</text>
+        <text x="${w / 2}" y="${h / 2}" ${MID} text-anchor="middle" font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
       `
       break
     case 'pill_badge': {
       const pad = 12
       textSvg = `
-        <text x="${pad * 2}" y="${pad + fontSize}" fill="white" font-size="${fontSize}" ${BOLD}>${escXml(title)}</text>
+        <text x="${pad * 2}" y="${pad}" ${HANG} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
       `
       break
     }
-    case 'fullscreen':
+    case 'fullscreen': {
+      const bigFont = Math.round(fontSize * 1.5)
       textSvg = `
-        <text x="${w / 2}" y="${h / 2 + Math.round(fontSize * 1.5) / 2}" fill="white" font-size="${Math.round(fontSize * 1.5)}" text-anchor="middle" ${BOLD}
-          style="filter:drop-shadow(2px 2px 0 black)">${escXml(title)}</text>
-        ${subtitle ? `<text x="${w / 2}" y="${h / 2 + Math.round(fontSize * 1.5) + fontSize}" fill="#dddddd" font-size="${fontSize}" text-anchor="middle" ${FONT}>${escXml(subtitle)}</text>` : ''}
+        <text x="${w / 2}" y="${h / 2}" ${MID} text-anchor="middle" font-size="${bigFont}" fill="white" ${BOLD}>${escXml(title)}</text>
+        ${subtitle ? `<text x="${w / 2}" y="${h / 2 + bigFont}" ${MID} text-anchor="middle" font-size="${fontSize}" fill="#dddddd" ${FONT}>${escXml(subtitle)}</text>` : ''}
       `
       break
+    }
     default:
       textSvg = `
-        <text x="20" y="${fontSize + 4}" fill="white" font-size="${fontSize}" ${BOLD}>${escXml(title)}</text>
+        <text x="20" y="8" ${HANG} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
       `
   }
 
@@ -242,21 +257,30 @@ async function renderLocal(input: RenderInput): Promise<void> {
 
   switch (overlayStyle) {
     case 'lower_third': {
-      // Colored bar at bottom + two text lines; global fade-in via fade filter
+      // Bar height adapts to font size so text is always vertically centered
+      const vPad       = 14
+      const lineGap    = 6
+      const subFont    = subtitle ? Math.round(fontSize * 0.65) : 0
+      const contentH   = subtitle ? fontSize + lineGap + subFont : fontSize
+      const barH       = contentH + vPad * 2
+      // Title top:    bar_top + vPad  = (ih - barH) + vPad = h - (barH - vPad)
+      // Subtitle top: title_top + fontSize + lineGap         = h - (barH - vPad - fontSize - lineGap)
       vf = [
-        `drawbox=x=0:y=ih-120:w=600:h=80:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=20:y=h-100:fontsize=${fontSize}:fontcolor=white:${FONT}`,
-        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y=h-72:fontsize=${Math.round(fontSize * 0.65)}:fontcolor=#aaaaaa:${FONT}` : '',
+        `drawbox=x=0:y=ih-${barH}:w=iw:h=${barH}:color=${colorA}:t=fill`,
+        `drawtext=text='${esc(title)}':x=20:y=h-${barH - vPad}:fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y=h-${barH - vPad - fontSize - lineGap}:fontsize=${subFont}:fontcolor=#dddddd:${FONT}` : '',
         'fade=t=in:st=0:d=0.5',
       ].filter(Boolean).join(',')
       break
     }
 
     case 'title_card': {
-      // Semi-transparent full-width bar, centered text
+      // Full-width bar centered vertically; text centered in both axes
+      const barH = fontSize + 60
+      // Use explicit h/2 - fontSize/2 instead of text_h variable (more reliable cross-build)
       vf = [
-        `drawbox=x=0:y=(ih-${fontSize + 60})/2:w=iw:h=${fontSize + 60}:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=(w-text_w)/2:y='(h-text_h)/2':fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        `drawbox=x=0:y=(ih-${barH})/2:w=iw:h=${barH}:color=${colorA}:t=fill`,
+        `drawtext=text='${esc(title)}':x=(w-text_w)/2:y=(h-${fontSize})/2:fontsize=${fontSize}:fontcolor=white:${FONT}`,
         'fade=t=in:st=0:d=0.5',
       ].join(',')
       break
