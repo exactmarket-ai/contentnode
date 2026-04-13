@@ -135,12 +135,8 @@ async function resolvePhoto(imageKey: string | null, configImage: string): Promi
 // proper Basic auth credentials.
 
 function didAuth(apiKey: string): string {
-  const colonIdx = apiKey.indexOf(':')
-  if (colonIdx === -1) throw new Error('Character Animation (D-ID): DID_API_KEY format invalid — expected base64(email):secret')
-  const b64Email = apiKey.slice(0, colonIdx)
-  const secret   = apiKey.slice(colonIdx + 1)
-  const email    = Buffer.from(b64Email, 'base64').toString('utf8')
-  return `Basic ${Buffer.from(`${email}:${secret}`).toString('base64')}`
+  // D-ID API keys are already formatted as base64(email):secret — use as-is
+  return `Basic ${apiKey}`
 }
 
 // ─── D-ID ────────────────────────────────────────────────────────────────────
