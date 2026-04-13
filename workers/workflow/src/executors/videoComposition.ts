@@ -88,6 +88,15 @@ function resolveInputs(input: unknown): ResolvedInputs {
     const o = input as Record<string, unknown>
     if (typeof o.text === 'string')       text = o.text
     if (typeof o.content === 'string')    text = text ?? o.content
+    // Image generation output: { assets: [{ type: 'image', storageKey, localPath }] }
+    if (Array.isArray(o.assets)) {
+      for (const a of o.assets as Record<string, unknown>[]) {
+        if (a.type === 'image' && typeof a.storageKey === 'string') {
+          bgStorageKey = a.storageKey
+          break
+        }
+      }
+    }
     if (typeof o.storageKey === 'string') {
       if (o.type === 'audio' || typeof o.transcript === 'string') {
         audioKey = o.storageKey; audioLocalPath = (o.localPath as string) ?? null
@@ -117,7 +126,16 @@ function resolveInputs(input: unknown): ResolvedInputs {
     if (typeof c.text === 'string' && !text)    text = c.text
     if (typeof c.content === 'string' && !text) text = c.content
     if (typeof c.output === 'string' && !text)  text = c.output
-    // Image
+    // Image generation output: { assets: [{ type: 'image', storageKey, localPath }] }
+    if (!bgStorageKey && Array.isArray(c.assets)) {
+      for (const a of c.assets as Record<string, unknown>[]) {
+        if (a.type === 'image' && typeof a.storageKey === 'string') {
+          bgStorageKey = a.storageKey
+          break
+        }
+      }
+    }
+    // Direct storageKey on content (video upload, resize, etc.)
     if (typeof c.storageKey === 'string') {
       if (c.type === 'image' && !bgStorageKey) bgStorageKey = c.storageKey
       else if (c.type === 'audio' || typeof c.transcript === 'string') {
