@@ -54,6 +54,7 @@ import { MusicGenerationConfig } from './config/output/MusicGenerationConfig'
 import { AudioMixConfig } from './config/output/AudioMixConfig'
 import { AudioInputConfig } from './config/source/AudioInputConfig'
 import { CharacterAnimationConfig } from './config/output/CharacterAnimationConfig'
+import { VideoCompositionConfig } from './config/output/VideoCompositionConfig'
 
 
 // ─── Config dispatcher ────────────────────────────────────────────────────────
@@ -174,6 +175,8 @@ function NodeConfigForm({
       return <AudioInputConfig config={config} onChange={onChange} />
     case 'character_animation':
       return <CharacterAnimationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+    case 'video_composition':
+      return <VideoCompositionConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
     default:
       return <p className="text-xs text-muted-foreground">No configuration for this node type.</p>
   }

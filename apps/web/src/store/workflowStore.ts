@@ -472,6 +472,21 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       locked:              false,
     },
   },
+  {
+    type: 'video_composition', subtype: 'video-composition',
+    label: 'Video Composition', description: 'Compose a video from a background image, text overlay, and optional audio — local ffmpeg or Shotstack cloud',
+    category: 'media', icon: 'Film',
+    defaultConfig: {
+      subtype:       'video-composition',
+      render_mode:   'local',
+      overlay_style: 'lower_third',
+      brand_color:   '#1a73e8',
+      font_size:     28,
+      duration:      10,
+      background_url: '',
+      text:          '',
+    },
+  },
   // Canvas utilities
   {
     type: 'group', subtype: 'group',
