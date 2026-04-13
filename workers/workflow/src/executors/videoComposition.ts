@@ -212,6 +212,11 @@ async function renderLocal(input: RenderInput): Promise<void> {
       vf = `drawtext=text='${esc(title)}':x=20:y=20:fontsize=${fontSize}:fontcolor=white:${FONT}`
   }
 
+  // Fade filter only makes sense for video — at t=0 it produces a black frame
+  const activeVf = outputFormat === 'image'
+    ? vf.split(',').filter(f => !f.trim().startsWith('fade=')).join(',') || 'null'
+    : vf
+
   const audioInputs = (outputFormat === 'video' && audioPath && fs.existsSync(audioPath))
     ? [audioPath] : []
 
@@ -243,13 +248,13 @@ async function renderLocal(input: RenderInput): Promise<void> {
   }
 
   try {
-    await execAsync(buildCmd(vf), { timeout: 120_000 })
+    await execAsync(buildCmd(activeVf), { timeout: 120_000 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // drawtext requires libfreetype — not compiled into all ffmpeg builds (e.g. macOS Homebrew default).
     // Fall back to rendering without text overlay so local dev still works.
-    if (vf.includes('drawtext') && (msg.includes('drawtext') || msg.includes('Filter not found'))) {
-      const vfNoText = vf.split(',').filter(f => !f.trim().startsWith('drawtext=')).join(',')
+    if (activeVf.includes('drawtext') && (msg.includes('drawtext') || msg.includes('Filter not found'))) {
+      const vfNoText = activeVf.split(',').filter(f => !f.trim().startsWith('drawtext=')).join(',')
       const fallbackVf = vfNoText || 'null'
       console.warn('[video-composition] drawtext unavailable (ffmpeg built without libfreetype) — rendering without text overlay')
       await execAsync(buildCmd(fallbackVf), { timeout: 120_000 })
