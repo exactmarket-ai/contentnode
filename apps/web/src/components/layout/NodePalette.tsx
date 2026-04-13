@@ -303,22 +303,22 @@ function NodesPalette() {
             return (
               <div key={cat}>
                 <button
-                  className="mb-2 flex w-full items-center justify-between group/cathead"
+                  className="mb-2 flex items-center gap-1.5 rounded px-1 -ml-1 py-0.5 transition-colors hover:bg-accent group/cathead"
                   onClick={() => !search && toggleCat(cat)}
                   style={{ cursor: search ? 'default' : 'pointer' }}
                 >
-                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#b4b2a9' }}>
-                    {CATEGORY_LABELS[cat]}
-                  </p>
                   {!search && (
                     <Icons.ChevronDown
-                      className="h-3 w-3 transition-transform duration-150"
+                      className="h-3.5 w-3.5 shrink-0 transition-transform duration-150"
                       style={{
-                        color: '#b4b2a9',
+                        color: '#7c7b74',
                         transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
                       }}
                     />
                   )}
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#b4b2a9' }}>
+                    {CATEGORY_LABELS[cat]}
+                  </p>
                 </button>
                 <div className="space-y-1.5">
                   {visibleItems.map((def) => (
