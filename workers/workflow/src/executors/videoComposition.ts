@@ -166,8 +166,8 @@ async function renderLocal(input: RenderInput): Promise<void> {
       // Colored bar at bottom + two text lines; global fade-in via fade filter
       vf = [
         `drawbox=x=0:y=ih-120:w=600:h=80:color=${colorA}:t=fill`,
-        `drawtext=text='${esc(title)}':x=20:y=ih-100:fontsize=${fontSize}:fontcolor=white:${FONT}`,
-        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y=ih-72:fontsize=${Math.round(fontSize * 0.65)}:fontcolor=#aaaaaa:${FONT}` : '',
+        `drawtext=text='${esc(title)}':x=20:y=h-100:fontsize=${fontSize}:fontcolor=white:${FONT}`,
+        subtitle ? `drawtext=text='${esc(subtitle)}':x=20:y=h-72:fontsize=${Math.round(fontSize * 0.65)}:fontcolor=#aaaaaa:${FONT}` : '',
         'fade=t=in:st=0:d=0.5',
       ].filter(Boolean).join(',')
       break
