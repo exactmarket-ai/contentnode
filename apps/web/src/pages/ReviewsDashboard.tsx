@@ -245,6 +245,56 @@ function DueDateCell({
   )
 }
 
+// ── Sort helpers ──────────────────────────────────────────────────────────────
+
+type SortKey = 'completedAt' | 'review' | 'clientName' | 'reviewStatus' | 'createdBy' | 'assignee' | 'dueDate'
+type SortDir = 'asc' | 'desc'
+
+const STATUS_ORDER: Record<string, number> = {
+  none: 0, pending: 1, sent_to_client: 2, client_responded: 3, closed: 4,
+}
+
+function getSortValue(r: ReviewRun, key: SortKey): string | number {
+  switch (key) {
+    case 'completedAt': return r.completedAt ? new Date(r.completedAt).getTime() : Infinity
+    case 'review':      return [r.projectName, r.workflowName, r.itemName].filter(Boolean).join(' ').toLowerCase()
+    case 'clientName':  return (r.clientName ?? '').toLowerCase()
+    case 'reviewStatus': return STATUS_ORDER[r.reviewStatus] ?? 99
+    case 'createdBy':   return (r.triggeredByUser?.name ?? r.triggeredByUser?.email ?? '').toLowerCase()
+    case 'assignee':    return (r.assignee?.name ?? '').toLowerCase()
+    case 'dueDate':     return r.dueDate ? new Date(r.dueDate).getTime() : Infinity
+  }
+}
+
+function SortableHeader({
+  label, sortKey, current, dir, onSort,
+}: {
+  label: string
+  sortKey: SortKey
+  current: SortKey
+  dir: SortDir
+  onSort: (k: SortKey) => void
+}) {
+  const active = current === sortKey
+  return (
+    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
+      <button
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          'inline-flex items-center gap-1 transition-colors hover:text-foreground',
+          active ? 'text-foreground' : '',
+        )}
+      >
+        {label}
+        <span className="flex flex-col leading-none">
+          <Icons.ChevronUp className={cn('h-2.5 w-2.5', active && dir === 'asc' ? 'text-blue-500' : 'opacity-30')} />
+          <Icons.ChevronDown className={cn('h-2.5 w-2.5 -mt-0.5', active && dir === 'desc' ? 'text-blue-500' : 'opacity-30')} />
+        </span>
+      </button>
+    </th>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function ReviewsDashboard() {
@@ -254,6 +304,8 @@ export function ReviewsDashboard() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('completedAt')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
 
   useEffect(() => {
     Promise.all([
@@ -268,15 +320,31 @@ export function ReviewsDashboard() {
       .catch(() => setLoading(false))
   }, [])
 
-  const filtered = runs.filter((r) => {
-    if (filter !== 'all' && r.reviewStatus !== filter) return false
-    if (search) {
-      const q = search.toLowerCase()
-      const name = [r.clientName, r.projectName, r.workflowName, r.itemName].filter(Boolean).join(' ').toLowerCase()
-      if (!name.includes(q)) return false
+  function handleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
     }
-    return true
-  })
+  }
+
+  const filtered = runs
+    .filter((r) => {
+      if (filter !== 'all' && r.reviewStatus !== filter) return false
+      if (search) {
+        const q = search.toLowerCase()
+        const name = [r.clientName, r.projectName, r.workflowName, r.itemName].filter(Boolean).join(' ').toLowerCase()
+        if (!name.includes(q)) return false
+      }
+      return true
+    })
+    .sort((a, b) => {
+      const av = getSortValue(a, sortKey)
+      const bv = getSortValue(b, sortKey)
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return sortDir === 'asc' ? cmp : -cmp
+    })
 
   // Stat counts
   const counts: Record<string, number> = {}
@@ -371,13 +439,13 @@ export function ReviewsDashboard() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Review</th>
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Client</th>
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Created by</th>
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Assigned to</th>
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due date</th>
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Completed</th>
+                    <SortableHeader label="Date"        sortKey="completedAt"  current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Review"      sortKey="review"       current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Client"      sortKey="clientName"   current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Status"      sortKey="reviewStatus" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Created by"  sortKey="createdBy"    current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Assigned to" sortKey="assignee"     current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Due date"    sortKey="dueDate"      current={sortKey} dir={sortDir} onSort={handleSort} />
                     <th className="px-4 py-2.5" />
                   </tr>
                 </thead>
@@ -394,6 +462,9 @@ export function ReviewsDashboard() {
                         onClick={() => navigate(`/review/${r.id}`)}
                         className="cursor-pointer hover:bg-accent/30 transition-colors"
                       >
+                        <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {r.completedAt ? formatDate(r.completedAt) : '—'}
+                        </td>
                         <td className="px-4 py-2.5 font-medium text-foreground/90 max-w-[200px] truncate">{title}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{r.clientName ?? '—'}</td>
                         <td className="px-4 py-2.5">
@@ -428,9 +499,6 @@ export function ReviewsDashboard() {
                             dueDate={r.dueDate}
                             onUpdated={(date) => updateRun(r.id, { dueDate: date })}
                           />
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground">
-                          {r.completedAt ? formatDate(r.completedAt) : '—'}
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <Icons.ChevronRight className="h-3.5 w-3.5 inline text-muted-foreground/50" />
