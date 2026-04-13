@@ -353,18 +353,15 @@ async function generateFal(
 // ComfyUI (local — http://localhost:8188)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// FLUX fp8 env vars (Comfy-Org format — files go in the listed model dirs):
-//   COMFYUI_MODEL         — diffusion model filename  (models/checkpoints/ or models/diffusion_models/)
-//                           e.g. flux1-dev-fp8.safetensors
-//   COMFYUI_FLUX_T5       — T5XXL text encoder        (models/text_encoders/)
-//                           e.g. t5xxl_fp8_e4m3fn.safetensors   default: t5xxl_fp8_e4m3fn.safetensors
-//   COMFYUI_FLUX_CLIP_L   — CLIP-L text encoder       (models/text_encoders/)
-//                           e.g. clip_l.safetensors               default: clip_l.safetensors
-//   COMFYUI_FLUX_VAE      — VAE filename               (models/vae/)
-//                           e.g. ae.safetensors                   default: ae.safetensors
+// Env vars:
+//   COMFYUI_BASE_URL  — URL of the running ComfyUI instance (default: http://localhost:8188)
+//   COMFYUI_MODEL     — checkpoint filename in models/checkpoints/
+//                       e.g. flux1-dev-fp8.safetensors  (default: v1-5-pruned-emaonly.ckpt)
 //
 // FLUX is detected when COMFYUI_MODEL contains "flux" (case-insensitive).
-// For SDXL / SD1.5 models, the legacy KSampler + CheckpointLoaderSimple workflow is used.
+// FLUX merged checkpoints (single file bundling UNet + text encoders + VAE)
+// are loaded via CheckpointLoaderSimple — no separate companion files needed.
+// For SDXL / SD1.5, the same workflow is used with standard CFG settings.
 
 function isFluxModel(modelName: string): boolean {
   return modelName.toLowerCase().includes('flux')
@@ -383,36 +380,31 @@ async function generateComfyUI(
   let workflow: Record<string, unknown>
 
   if (isFluxModel(modelName)) {
-    // ── FLUX fp8 workflow (Comfy-Org format) ──────────────────────────────────
-    // Uses UNETLoader + DualCLIPLoader + VAELoader (separate model files).
-    // FLUX does not use classifier-free guidance (cfg=1) or negative prompts.
-    // Dev: 20 steps  |  Schnell: 4 steps (much faster, slightly lower quality)
+    // ── FLUX merged checkpoint workflow ───────────────────────────────────────
+    // Merged checkpoints bundle UNet + text encoders + VAE in one file.
+    // Place in models/checkpoints/ and load via CheckpointLoaderSimple.
+    // FLUX does not use CFG guidance (cfg=1) and ignores negative prompts.
+    // Dev: 20 steps  |  Schnell: 4 steps
     const isSchnell = modelName.toLowerCase().includes('schnell')
     const steps     = isSchnell
       ? 4
       : cfg.quality === 'high' ? 30 : cfg.quality === 'draft' ? 10 : 20
 
-    const t5Name    = process.env.COMFYUI_FLUX_T5     ?? 't5xxl_fp8_e4m3fn.safetensors'
-    const clipName  = process.env.COMFYUI_FLUX_CLIP_L ?? 'clip_l.safetensors'
-    const vaeName   = process.env.COMFYUI_FLUX_VAE    ?? 'ae.safetensors'
-
     workflow = {
-      '1': { class_type: 'UNETLoader',     inputs: { unet_name: modelName, weight_dtype: 'fp8_e4m3fn' } },
-      '2': { class_type: 'DualCLIPLoader', inputs: { clip_name1: t5Name, clip_name2: clipName, type: 'flux' } },
-      '3': { class_type: 'VAELoader',      inputs: { vae_name: vaeName } },
-      '4': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: prompt.positivePrompt } },
-      '5': { class_type: 'EmptyLatentImage', inputs: { width, height, batch_size: cfg.num_outputs ?? 1 } },
-      '6': {
+      '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: modelName } },
+      '2': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: prompt.positivePrompt } },
+      '3': { class_type: 'EmptyLatentImage', inputs: { width, height, batch_size: cfg.num_outputs ?? 1 } },
+      '4': {
         class_type: 'KSampler',
         inputs: {
-          model: ['1', 0], positive: ['4', 0], negative: ['4', 0],
-          latent_image: ['5', 0],
+          model: ['1', 0], positive: ['2', 0], negative: ['2', 0],
+          latent_image: ['3', 0],
           sampler_name: 'euler', scheduler: 'simple',
           steps, cfg: 1, seed, denoise: 1,
         },
       },
-      '7': { class_type: 'VAEDecode',  inputs: { samples: ['6', 0], vae: ['3', 0] } },
-      '8': { class_type: 'SaveImage',  inputs: { images: ['7', 0], filename_prefix: 'contentnode' } },
+      '5': { class_type: 'VAEDecode', inputs: { samples: ['4', 0], vae: ['1', 2] } },
+      '6': { class_type: 'SaveImage', inputs: { images: ['5', 0], filename_prefix: 'contentnode' } },
     }
   } else {
     // ── SDXL / SD1.5 workflow (legacy CheckpointLoaderSimple) ────────────────
