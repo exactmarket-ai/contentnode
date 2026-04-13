@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { portalFetch } from './PortalPage'
+import { assetUrl } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,14 @@ interface DeliverableDetail {
   priorFeedback: Array<{ id: string; decision: string | null; comment: string | null; createdAt: string }>
 }
 
-interface OutputTab { nodeId: string; label: string; content: string }
+interface OutputTab {
+  nodeId: string
+  label: string
+  content: string
+  mediaPath?: string
+  mediaType?: 'video' | 'audio' | 'image'
+  assets?: { localPath: string }[]
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,6 +47,9 @@ function toText(output: unknown): string {
   return ''
 }
 
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.avi', '.mkv'])
+function isVideoPath(p: string) { return VIDEO_EXTS.has(p.slice(p.lastIndexOf('.')).toLowerCase()) }
+
 function extractOutputs(d: DeliverableDetail): OutputTab[] {
   const nodeMap = Object.fromEntries((d.workflowNodes ?? []).map((n) => [n.id, n]))
   const tabs: OutputTab[] = Object.entries(d.nodeStatuses)
@@ -46,6 +57,25 @@ function extractOutputs(d: DeliverableDetail): OutputTab[] {
     .map(([nodeId, s]) => {
       const node = nodeMap[nodeId]
       if (!node || node.type !== 'output') return null
+      const out = s.output as Record<string, unknown>
+
+      // Direct video (character-animation, video-composition, audio-mix)
+      if (out.type === 'video' && typeof out.localPath === 'string') {
+        return { nodeId, label: node.label || 'Video', content: '', mediaPath: out.localPath, mediaType: 'video' as const }
+      }
+
+      // Direct audio (voice-output, music-generation)
+      if (out.type === 'audio' && typeof out.localPath === 'string') {
+        return { nodeId, label: node.label || 'Audio', content: '', mediaPath: out.localPath, mediaType: 'audio' as const }
+      }
+
+      // Assets array (image-generation / video-generation)
+      const assets = out.assets as { localPath: string }[] | undefined
+      if (assets?.length) {
+        const isVideo = isVideoPath(assets[0].localPath)
+        return { nodeId, label: node.label || 'Media', content: '', assets, mediaType: isVideo ? 'video' as const : 'image' as const }
+      }
+
       const content = toText(s.output)
       if (!content.trim()) return null
       return { nodeId, label: node.label || 'Output', content }
@@ -333,7 +363,9 @@ export function PortalReviewPage() {
           <Icons.ClipboardEdit className="h-4 w-4 text-purple-400" />
           <span className="text-sm font-semibold">{deliverable.workflowName}</span>
         </div>
-        <span className="text-xs text-muted-foreground">Select text to suggest a correction</span>
+        {!outputs[activeTab]?.mediaType && (
+          <span className="text-xs text-muted-foreground">Select text to suggest a correction</span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {corrections.length > 0 && (
             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-medium text-blue-700">
@@ -372,14 +404,79 @@ export function PortalReviewPage() {
           )}
           <div className="flex-1 overflow-y-auto px-8 py-8">
           <div className="mx-auto max-w-3xl">
-            {outputs.length > 0 ? (
-              <div
-                className="select-text cursor-text whitespace-pre-wrap rounded-xl border border-border bg-card p-8 text-sm leading-relaxed text-foreground/90"
-                onMouseUp={handleMouseUp}
-              >
-                {outputs[activeTab]?.content ?? ''}
-              </div>
-            ) : (
+            {outputs.length > 0 ? (() => {
+              const tab = outputs[activeTab]
+
+              // Direct video (character-animation, video-composition)
+              if (tab?.mediaType === 'video' && tab.mediaPath) return (
+                <div className="group relative overflow-hidden rounded-xl border border-border bg-black">
+                  <video src={assetUrl(tab.mediaPath)} controls className="w-full" style={{ maxHeight: '70vh' }} />
+                  <a href={assetUrl(tab.mediaPath)} download className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Icons.Download className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              )
+
+              // Direct audio (voice-output, music-generation)
+              if (tab?.mediaType === 'audio' && tab.mediaPath) return (
+                <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                      <Icons.Music className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{tab.label}</p>
+                      <p className="text-[11px] text-muted-foreground">Audio output</p>
+                    </div>
+                    <a href={assetUrl(tab.mediaPath)} download className="ml-auto flex h-8 w-8 items-center justify-center rounded-full border border-border hover:bg-accent transition-colors">
+                      <Icons.Download className="h-3.5 w-3.5 text-muted-foreground" />
+                    </a>
+                  </div>
+                  <audio src={assetUrl(tab.mediaPath)} controls className="w-full" />
+                </div>
+              )
+
+              // Assets: video grid (video-generation)
+              if (tab?.mediaType === 'video' && tab.assets?.length) return (
+                <div className="space-y-3">
+                  {tab.assets.map((a, i) => (
+                    <div key={i} className="group relative overflow-hidden rounded-xl border border-border bg-black">
+                      <video src={assetUrl(a.localPath)} controls className="w-full" style={{ maxHeight: '70vh' }} />
+                      <a href={assetUrl(a.localPath)} download className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Icons.Download className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )
+
+              // Assets: image grid (image-generation)
+              if (tab?.mediaType === 'image' && tab.assets?.length) return (
+                <div className="space-y-4">
+                  <div className={cn('grid gap-3', tab.assets.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                    {tab.assets.map((a, i) => (
+                      <div key={i} className="group relative overflow-hidden rounded-xl border border-border bg-card">
+                        <img src={assetUrl(a.localPath)} alt={`${tab.label} ${i + 1}`} className="w-full object-cover" />
+                        <a href={assetUrl(a.localPath)} download className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Icons.Download className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-center text-xs text-muted-foreground">{tab.assets.length} image{tab.assets.length !== 1 ? 's' : ''}</p>
+                </div>
+              )
+
+              // Text output — with text-selection correction feature
+              return (
+                <div
+                  className="select-text cursor-text whitespace-pre-wrap rounded-xl border border-border bg-card p-8 text-sm leading-relaxed text-foreground/90"
+                  onMouseUp={handleMouseUp}
+                >
+                  {tab?.content ?? ''}
+                </div>
+              )
+            })() : (
               <div className="flex flex-col items-center gap-3 py-20 text-center">
                 <Icons.FileX className="h-8 w-8 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">No content available for this deliverable.</p>

@@ -82,6 +82,8 @@ interface OutputTab {
   originalContent: string
   subtype?: string
   assets?: { localPath: string }[]
+  mediaPath?: string
+  mediaType?: 'video' | 'audio'
 }
 
 function extractOutputs(run: RunData): OutputTab[] {
@@ -95,13 +97,23 @@ function extractOutputs(run: RunData): OutputTab[] {
       const node = nodeMap[nodeId]
       if (!node || node.type !== 'output') return null
       const subtype = (node.config?.subtype as string) ?? ''
+      const out = s.output as Record<string, unknown>
 
-      // Image / video nodes
+      // Image / video generation nodes (output stored in assets array)
       if (subtype === 'image-generation' || subtype === 'video-generation') {
-        const out = s.output as Record<string, unknown> | undefined
         const assets = out?.assets as { localPath: string }[] | undefined
         if (!assets?.length) return null
         return { nodeId, label: node.label || 'Media', content: '', originalContent: '', subtype, assets }
+      }
+
+      // Direct video outputs: character-animation, video-composition, audio-mix
+      if (out.type === 'video' && typeof out.localPath === 'string') {
+        return { nodeId, label: node.label || 'Video', content: '', originalContent: '', subtype, mediaPath: out.localPath, mediaType: 'video' as const }
+      }
+
+      // Direct audio outputs: voice-output, music-generation
+      if (out.type === 'audio' && typeof out.localPath === 'string') {
+        return { nodeId, label: node.label || 'Audio', content: '', originalContent: '', subtype, mediaPath: out.localPath, mediaType: 'audio' as const }
       }
 
       // Text nodes
@@ -664,7 +676,7 @@ export function ReviewPage() {
   useEffect(() => {
     if (!editor || !run) return
     const tab = extractOutputs(run)[activeTab]
-    if (!tab || tab.assets) return // skip media tabs
+    if (!tab || tab.assets || tab.mediaPath) return // skip media tabs
     editor.commands.setContent(plainToHtml(tab.content))
   }, [editor, activeTab, run]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -979,7 +991,7 @@ export function ReviewPage() {
               />
               <div className="ml-auto flex items-center gap-1.5">
                 {/* Save edits — always visible for text outputs */}
-                {!outputs[activeTab]?.assets && (
+                {!outputs[activeTab]?.assets && !outputs[activeTab]?.mediaPath && (
                   <>
                     {outputs[activeTab]?.content !== outputs[activeTab]?.originalContent && (
                       <span className="text-[10px] text-blue-600 font-medium flex items-center gap-0.5">
@@ -1038,8 +1050,8 @@ export function ReviewPage() {
             </div>
           )}
 
-          {/* Formatting toolbar — always visible for text outputs */}
-          {!outputs[activeTab]?.assets && editor && (
+          {/* Formatting toolbar — only for text outputs */}
+          {!outputs[activeTab]?.assets && !outputs[activeTab]?.mediaPath && editor && (
             <>
               <div className="shrink-0 flex items-center gap-0.5 border-b border-border bg-card px-4 py-1.5 flex-wrap">
                 {/* Headings */}
@@ -1141,6 +1153,39 @@ export function ReviewPage() {
                           </a>
                         </div>
                       ))}
+                    </div>
+                  )
+                }
+
+                // ── Direct video output (character-animation, video-composition, audio-mix) ──
+                if (tab.mediaType === 'video' && tab.mediaPath) {
+                  return (
+                    <div className="group relative overflow-hidden rounded-xl border border-border bg-black">
+                      <video src={assetUrl(tab.mediaPath)} controls className="w-full" style={{ maxHeight: '70vh' }} />
+                      <a href={assetUrl(tab.mediaPath)} download className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Icons.Download className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  )
+                }
+
+                // ── Direct audio output (voice-output, music-generation) ──
+                if (tab.mediaType === 'audio' && tab.mediaPath) {
+                  return (
+                    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                          <Icons.Music className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{tab.label}</p>
+                          <p className="text-[11px] text-muted-foreground">Audio output</p>
+                        </div>
+                        <a href={assetUrl(tab.mediaPath)} download className="ml-auto flex h-8 w-8 items-center justify-center rounded-full border border-border hover:bg-accent transition-colors">
+                          <Icons.Download className="h-3.5 w-3.5 text-muted-foreground" />
+                        </a>
+                      </div>
+                      <audio src={assetUrl(tab.mediaPath)} controls className="w-full" />
                     </div>
                   )
                 }
