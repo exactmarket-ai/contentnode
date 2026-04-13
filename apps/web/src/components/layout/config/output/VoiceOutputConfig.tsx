@@ -1,115 +1,17 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { FieldGroup } from '../shared'
-import { assetUrl, apiFetch, downloadAsset } from '@/lib/api'
+import { assetUrl, downloadAsset } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-
-// ─── Metadata ────────────────────────────────────────────────────────────────
-
-const VOICES_OPENAI = [
-  { value: 'echo',    label: 'Echo — calm, professional' },
-  { value: 'shimmer', label: 'Shimmer — soft, gentle' },
-  { value: 'alloy',   label: 'Alloy — neutral, versatile' },
-  { value: 'ash',     label: 'Ash — warm, natural' },
-  { value: 'ballad',  label: 'Ballad — expressive, narrative' },
-  { value: 'coral',   label: 'Coral — bright, conversational' },
-  { value: 'sage',    label: 'Sage — composed, thoughtful' },
-  { value: 'verse',   label: 'Verse — dynamic, clear' },
-  { value: 'marin',   label: 'Marin — smooth, confident' },
-  { value: 'cedar',   label: 'Cedar — deep, grounded' },
-]
-
-// Fallback list shown before the live fetch resolves (or if key is not set)
-const VOICES_ELEVENLABS_FALLBACK = [
-  { value: 'rachel', label: 'Rachel — warm, versatile (F)' },
-  { value: 'adam',   label: 'Adam — deep, confident (M)' },
-  { value: 'josh',   label: 'Josh — young, dynamic (M)' },
-]
-
-function useElevenLabsVoices(enabled: boolean) {
-  const [voices, setVoices] = useState<{ value: string; label: string }[]>(VOICES_ELEVENLABS_FALLBACK)
-  const [loading, setLoading] = useState(false)
-
-  const fetchVoices = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await apiFetch('/api/v1/voice-providers/elevenlabs/voices')
-      if (res.ok) {
-        const json = await res.json() as { data: { value: string; label: string }[] }
-        if (json.data?.length) setVoices(json.data)
-      }
-    } catch { /* keep fallback */ }
-    finally { setLoading(false) }
-  }, [])
-
-  useEffect(() => {
-    if (enabled) fetchVoices()
-  }, [enabled, fetchVoices])
-
-  return { voices, loading, refetch: fetchVoices }
-}
-
-const VOICES_LOCAL = [
-  // American Female
-  { value: 'af_heart',   label: 'Heart — warm, expressive (AF)' },
-  { value: 'af_bella',   label: 'Bella — smooth, natural (AF)' },
-  { value: 'af_aoede',   label: 'Aoede — clear, neutral (AF)' },
-  { value: 'af_alloy',   label: 'Alloy — versatile, confident (AF)' },
-  { value: 'af_jessica', label: 'Jessica — bright, conversational (AF)' },
-  { value: 'af_kore',    label: 'Kore — composed, steady (AF)' },
-  { value: 'af_nicole',  label: 'Nicole — gentle, warm (AF)' },
-  { value: 'af_nova',    label: 'Nova — energetic, clear (AF)' },
-  { value: 'af_river',   label: 'River — calm, measured (AF)' },
-  { value: 'af_sarah',   label: 'Sarah — soft, young (AF)' },
-  { value: 'af_sky',     label: 'Sky — airy, light (AF)' },
-  // American Male
-  { value: 'am_michael', label: 'Michael — deep, professional (AM)' },
-  { value: 'am_adam',    label: 'Adam — authoritative (AM)' },
-  { value: 'am_echo',    label: 'Echo — calm, steady (AM)' },
-  { value: 'am_eric',    label: 'Eric — clear, neutral (AM)' },
-  { value: 'am_fenrir',  label: 'Fenrir — bold, resonant (AM)' },
-  { value: 'am_liam',    label: 'Liam — energetic, young (AM)' },
-  { value: 'am_onyx',    label: 'Onyx — deep, rich (AM)' },
-  { value: 'am_puck',    label: 'Puck — expressive, dynamic (AM)' },
-  { value: 'am_santa',   label: 'Santa — warm, jolly (AM)' },
-  // British Female
-  { value: 'bf_alice',    label: 'Alice — crisp, British (BF)' },
-  { value: 'bf_emma',     label: 'Emma — warm, British (BF)' },
-  { value: 'bf_isabella', label: 'Isabella — refined, British (BF)' },
-  { value: 'bf_lily',     label: 'Lily — light, British (BF)' },
-  // British Male
-  { value: 'bm_lewis',  label: 'Lewis — grounded, British (BM)' },
-  { value: 'bm_daniel', label: 'Daniel — authoritative, British (BM)' },
-  { value: 'bm_fable',  label: 'Fable — storytelling, British (BM)' },
-  { value: 'bm_george', label: 'George — steady, British (BM)' },
-]
-
-// ─── Starred voices (localStorage) ───────────────────────────────────────────
-
-const STORAGE_KEY = 'contentnode:starred_voices'
-
-function useStarredVoices(): [Set<string>, (voice: string) => void] {
-  const [starred, setStarred] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
-    } catch { return new Set() }
-  })
-
-  const toggle = (voice: string) => {
-    setStarred(prev => {
-      const next = new Set(prev)
-      if (next.has(voice)) next.delete(voice)
-      else next.add(voice)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]))
-      return next
-    })
-  }
-
-  return [starred, toggle]
-}
+import {
+  VOICES_OPENAI,
+  VOICES_LOCAL,
+  useElevenLabsVoices,
+  useStarredVoices,
+  voicesForProvider,
+} from '@/lib/voices'
 
 // ─── Voice picker ─────────────────────────────────────────────────────────────
 
@@ -256,11 +158,7 @@ export function VoiceOutputConfig({
   const styleExag     = (config.style_exaggeration as number) ?? 0.0
 
   const { voices: elVoices, loading: elLoading, refetch: elRefetch } = useElevenLabsVoices(provider === 'elevenlabs')
-
-  const voiceOptions =
-    provider === 'elevenlabs' ? elVoices
-    : provider === 'local'   ? VOICES_LOCAL
-    : VOICES_OPENAI
+  const voiceOptions = voicesForProvider(provider, elVoices)
 
   const isLocked   = (config.locked as boolean) ?? false
 

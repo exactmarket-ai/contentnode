@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { assetUrl, downloadAsset } from '@/lib/api'
+import { useElevenLabsVoices, useStarredVoices, voicesForProvider } from '@/lib/voices'
 import { EditableLabel } from './EditableLabel'
 
 // ─── Color system ─────────────────────────────────────────────────────────────
@@ -14,62 +15,130 @@ const HEADER_BD   = '#e9d5ff'
 const BADGE_BG    = '#f3e8ff'
 const BADGE_TEXT  = '#6b21a8'
 
-// ─── Provider / voice options ────────────────────────────────────────────────
+// ─── Node voice picker (fixed-position dropdown, escapes ReactFlow clip) ─────
 
-const VOICES_OPENAI = [
-  { value: 'alloy',   label: 'Alloy'   },
-  { value: 'echo',    label: 'Echo'    },
-  { value: 'fable',   label: 'Fable'   },
-  { value: 'onyx',    label: 'Onyx'    },
-  { value: 'nova',    label: 'Nova'    },
-  { value: 'shimmer', label: 'Shimmer' },
-]
+function NodeVoicePicker({
+  value,
+  voices,
+  onChange,
+  loading,
+}: {
+  value:    string
+  voices:   { value: string; label: string }[]
+  onChange: (v: string) => void
+  loading?: boolean
+}) {
+  const [open, setOpen]       = useState(false)
+  const [starred, toggleStar] = useStarredVoices()
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
 
-const VOICES_ELEVENLABS = [
-  { value: 'rachel',    label: 'Rachel (F)'    },
-  { value: 'sarah',     label: 'Sarah (F)'     },
-  { value: 'emily',     label: 'Emily (F)'     },
-  { value: 'charlotte', label: 'Charlotte (F)' },
-  { value: 'matilda',   label: 'Matilda (F)'   },
-  { value: 'dorothy',   label: 'Dorothy (F)'   },
-  { value: 'adam',      label: 'Adam (M)'      },
-  { value: 'daniel',    label: 'Daniel (M)'    },
-  { value: 'josh',      label: 'Josh (M)'      },
-  { value: 'harry',     label: 'Harry (M)'     },
-  { value: 'liam',      label: 'Liam (M)'      },
-  { value: 'ethan',     label: 'Ethan (M)'     },
-]
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current && !btnRef.current.closest('[data-voice-picker]')?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
 
-const VOICES_LOCAL = [
-  { value: 'af_heart',   label: 'Heart'    },
-  { value: 'af_bella',   label: 'Bella'    },
-  { value: 'af_aoede',   label: 'Aoede'    },
-  { value: 'af_alloy',   label: 'Alloy'    },
-  { value: 'af_jessica', label: 'Jessica'  },
-  { value: 'af_kore',    label: 'Kore'     },
-  { value: 'af_nicole',  label: 'Nicole'   },
-  { value: 'af_nova',    label: 'Nova'     },
-  { value: 'af_river',   label: 'River'    },
-  { value: 'af_sarah',   label: 'Sarah'    },
-  { value: 'af_sky',     label: 'Sky'      },
-  { value: 'am_michael', label: 'Michael'  },
-  { value: 'am_adam',    label: 'Adam'     },
-  { value: 'am_echo',    label: 'Echo'     },
-  { value: 'am_eric',    label: 'Eric'     },
-  { value: 'am_fenrir',  label: 'Fenrir'   },
-  { value: 'am_liam',    label: 'Liam'     },
-  { value: 'am_onyx',    label: 'Onyx'     },
-  { value: 'am_puck',    label: 'Puck'     },
-  { value: 'am_santa',   label: 'Santa'    },
-  { value: 'bf_alice',    label: 'Alice'   },
-  { value: 'bf_emma',     label: 'Emma'    },
-  { value: 'bf_isabella', label: 'Isabella'},
-  { value: 'bf_lily',     label: 'Lily'    },
-  { value: 'bm_lewis',   label: 'Lewis'    },
-  { value: 'bm_daniel',  label: 'Daniel'   },
-  { value: 'bm_fable',   label: 'Fable'    },
-  { value: 'bm_george',  label: 'George'   },
-]
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setDropPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 220) })
+    }
+    setOpen(o => !o)
+  }
+
+  const starredVoices = voices.filter(v => starred.has(v.value))
+  const otherVoices   = voices.filter(v => !starred.has(v.value))
+  const current       = voices.find(v => v.value === value)
+  // Short display label: first word before ' —' or '('
+  const shortLabel    = (current?.label ?? value).split(/\s[—(]/)[0]
+
+  return (
+    <div data-voice-picker="" className="relative">
+      <button
+        ref={btnRef}
+        className="nodrag nopan flex h-6 items-center gap-1 rounded border px-1 text-[10px] font-medium"
+        style={{ ...selectCss, width: 108, minWidth: 0 }}
+        onClick={handleOpen}
+        onMouseDown={e => e.stopPropagation()}
+        title={current?.label ?? value}
+      >
+        {current && starred.has(current.value) && (
+          <Icons.Star className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" />
+        )}
+        {loading
+          ? <span className="animate-pulse truncate flex-1">Loading…</span>
+          : <span className="truncate flex-1">{shortLabel}</span>
+        }
+        <Icons.ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" />
+      </button>
+
+      {open && (
+        <div
+          className="nodrag nopan"
+          style={{
+            position: 'fixed',
+            top:      dropPos.top,
+            left:     dropPos.left,
+            width:    dropPos.width,
+            zIndex:   99999,
+            maxHeight: 260,
+            overflowY: 'auto',
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+          }}
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+        >
+          {starredVoices.length > 0 && (
+            <>
+              <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Starred</div>
+              {starredVoices.map(v => (
+                <NodeVoiceRow key={v.value} voice={v} selected={value === v.value} starred={true}
+                  onSelect={() => { onChange(v.value); setOpen(false) }}
+                  onStar={e => { e.stopPropagation(); toggleStar(v.value) }} />
+              ))}
+              <div className="mx-2 my-1 border-t border-slate-100" />
+            </>
+          )}
+          {otherVoices.map(v => (
+            <NodeVoiceRow key={v.value} voice={v} selected={value === v.value} starred={false}
+              onSelect={() => { onChange(v.value); setOpen(false) }}
+              onStar={e => { e.stopPropagation(); toggleStar(v.value) }} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NodeVoiceRow({ voice, selected, starred, onSelect, onStar }: {
+  voice: { value: string; label: string }
+  selected: boolean; starred: boolean
+  onSelect: () => void; onStar: (e: React.MouseEvent) => void
+}) {
+  return (
+    <div onClick={onSelect}
+      className={`flex cursor-pointer items-center justify-between px-2 py-1.5 text-[11px] hover:bg-slate-50 ${selected ? 'bg-slate-100 font-medium' : ''}`}>
+      <span className="flex items-center gap-1.5 truncate min-w-0">
+        {selected ? <Icons.Check className="h-3 w-3 shrink-0 text-violet-600" /> : <span className="w-3 shrink-0" />}
+        <span className="truncate">{voice.label}</span>
+      </span>
+      <button type="button" onClick={onStar} className="ml-1.5 shrink-0 rounded p-0.5 hover:bg-white"
+        title={starred ? 'Unstar' : 'Star'}>
+        <Icons.Star className={`h-3 w-3 ${starred ? 'fill-amber-400 text-amber-400' : 'text-slate-300 hover:text-amber-400'}`} />
+      </button>
+    </div>
+  )
+}
 
 const SPEEDS = [
   { value: 0.5,  label: '0.5×'  },
@@ -187,15 +256,13 @@ export const VoiceOutputNode = memo(({ id, data, selected }: NodeProps) => {
   const isLocked  = (config.locked as boolean) ?? false
 
   const provider  = (config.provider as string) ?? 'openai'
-  const voice     = (config.voice as string) ?? 'nova'
+  const voice     = (config.voice as string) ?? 'echo'
   const speed     = (config.speed as number) ?? 1.0
   const model     = (config.model as string) ?? 'tts-1'
   const direction = (config.direction as string) ?? ''
 
-  const voiceOptions =
-    provider === 'elevenlabs' ? VOICES_ELEVENLABS
-    : provider === 'local'   ? VOICES_LOCAL
-    : VOICES_OPENAI
+  const { voices: elVoices, loading: elLoading } = useElevenLabsVoices(provider === 'elevenlabs')
+  const voiceOptions = voicesForProvider(provider, elVoices)
 
   const audioLocalPath  = runOutput?.localPath as string | undefined
   const transcript      = runOutput?.transcript as string | undefined
@@ -344,17 +411,12 @@ export const VoiceOutputNode = memo(({ id, data, selected }: NodeProps) => {
               <option value="local">Local</option>
             </select>
 
-            <select
-              className="nodrag nopan h-6 rounded border text-[10px] font-medium px-1"
-              style={{ ...selectCss, width: 96 }}
+            <NodeVoicePicker
               value={voice}
-              onChange={(e) => { e.stopPropagation(); set('voice', e.target.value) }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {voiceOptions.map((v) => (
-                <option key={v.value} value={v.value}>{v.label}</option>
-              ))}
-            </select>
+              voices={voiceOptions}
+              loading={provider === 'elevenlabs' && elLoading}
+              onChange={v => set('voice', v)}
+            />
 
             <select
               className="nodrag nopan h-6 rounded border text-[10px] font-medium px-1"
