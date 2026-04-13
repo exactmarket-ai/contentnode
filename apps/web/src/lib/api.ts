@@ -66,14 +66,18 @@ export async function downloadAsset(url: string, filename: string): Promise<void
   try {
     const res  = await fetch(url)
     const blob = await res.blob()
-    const a    = document.createElement('a')
-    a.href     = URL.createObjectURL(blob)
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href     = objectUrl
     a.download = filename
+    a.style.display = 'none'
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(a.href)
+    document.body.removeChild(a)
+    // Delay revoke so the browser has time to start the download
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
   } catch (e) {
     console.error('[downloadAsset] failed:', e)
-    // Fallback: open in new tab
     window.open(url, '_blank')
   }
 }

@@ -3,7 +3,8 @@ import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { FieldGroup } from '../shared'
-import { assetUrl, apiFetch } from '@/lib/api'
+import { assetUrl, apiFetch, downloadAsset } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 // ─── Metadata ────────────────────────────────────────────────────────────────
 
@@ -316,7 +317,6 @@ export function VoiceOutputConfig({
                 <span className="text-[10px] text-cyan-500">{wordCount.toLocaleString()} words</span>
               )}
             </div>
-            {/* Native audio player for config panel */}
             <audio controls className="w-full" style={{ height: 36 }}>
               <source src={fullAudioUrl} />
             </audio>
@@ -325,6 +325,13 @@ export function VoiceOutputConfig({
                 {transcript}
               </p>
             )}
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]"
+                onClick={() => downloadAsset(fullAudioUrl!, 'voice.mp3')}>
+                <Icons.Download className="h-3 w-3" />
+                Download
+              </Button>
+            </div>
           </div>
           <Separator />
         </>
