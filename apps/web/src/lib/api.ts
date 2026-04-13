@@ -25,6 +25,23 @@ export function assetUrl(localPath: string): string {
   return `${BASE_URL}${localPath}`
 }
 
+// Download a cross-origin asset as a blob so the browser doesn't navigate away.
+export async function downloadAsset(url: string, filename: string): Promise<void> {
+  try {
+    const res  = await fetch(url)
+    const blob = await res.blob()
+    const a    = document.createElement('a')
+    a.href     = URL.createObjectURL(blob)
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(a.href)
+  } catch (e) {
+    console.error('[downloadAsset] failed:', e)
+    // Fallback: open in new tab
+    window.open(url, '_blank')
+  }
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = await getToken()
   const headers: Record<string, string> = {

@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FieldGroup } from '../shared'
-import { assetUrl, apiFetch } from '@/lib/api'
+import { assetUrl, apiFetch, downloadAsset } from '@/lib/api'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -100,11 +100,10 @@ export function AudioInputConfig({
                 <Icons.Upload className="h-3 w-3" />
                 Replace
               </Button>
-              <Button asChild variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]">
-                <a href={fullAudioUrl} download>
-                  <Icons.Download className="h-3 w-3" />
-                  Download
-                </a>
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]"
+                onClick={() => downloadAsset(fullAudioUrl!, 'audio.mp3')}>
+                <Icons.Download className="h-3 w-3" />
+                Download
               </Button>
               <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-[11px] text-destructive hover:text-destructive"
                 onClick={handleRemove}>

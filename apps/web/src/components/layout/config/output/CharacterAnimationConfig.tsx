@@ -3,6 +3,7 @@ import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FieldGroup } from '../shared'
+import { downloadAsset } from '@/lib/api'
 import { AttachmentZone } from '../AttachmentZone'
 import { assetUrl } from '@/lib/api'
 
@@ -73,11 +74,10 @@ export function CharacterAnimationConfig({
               <source src={fullVideoUrl} type="video/mp4" />
             </video>
             <div className="flex justify-end">
-              <Button asChild variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]">
-                <a href={fullVideoUrl} download>
-                  <Icons.Download className="h-3 w-3" />
-                  Download
-                </a>
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]"
+                onClick={() => downloadAsset(fullVideoUrl!, 'character-animation.mp4')}>
+                <Icons.Download className="h-3 w-3" />
+                Download
               </Button>
             </div>
           </div>

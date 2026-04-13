@@ -2,7 +2,7 @@ import { memo, useState, useRef, useEffect, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { assetUrl } from '@/lib/api'
+import { assetUrl, downloadAsset } from '@/lib/api'
 import { EditableLabel } from './EditableLabel'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -271,10 +271,10 @@ export const AudioMixNode = memo(({ id, data, selected }: NodeProps) => {
                   {formatDuration(durationSec)}
                 </span>
               )}
-              <a className="nodrag ml-auto flex items-center justify-center rounded border bg-white p-1 hover:opacity-80"
-                style={{ borderColor: HEADER_BD, color: ACCENT }} href={fullAudioUrl} download onClick={e => e.stopPropagation()}>
+              <button className="nodrag ml-auto flex items-center justify-center rounded border bg-white p-1 hover:opacity-80"
+                style={{ borderColor: HEADER_BD, color: ACCENT }} onClick={e => { e.stopPropagation(); downloadAsset(fullAudioUrl!, 'mix.mp3') }}>
                 <Icons.Download className="h-2.5 w-2.5" />
-              </a>
+              </button>
             </div>
           </div>
         ) : isRunning ? (

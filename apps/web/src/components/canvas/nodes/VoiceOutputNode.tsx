@@ -2,7 +2,7 @@ import { memo, useState, useRef, useEffect, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { assetUrl } from '@/lib/api'
+import { assetUrl, downloadAsset } from '@/lib/api'
 import { EditableLabel } from './EditableLabel'
 
 // ─── Color system ─────────────────────────────────────────────────────────────
@@ -434,16 +434,14 @@ export const VoiceOutputNode = memo(({ id, data, selected }: NodeProps) => {
                 <span className="text-[9px]" style={{ color: '#94a3b8' }}>{wordCount.toLocaleString()} words</span>
               )}
 
-              <a
+              <button
                 className="nodrag ml-auto flex items-center justify-center rounded border bg-white p-1 hover:opacity-80 transition-opacity"
                 style={{ borderColor: HEADER_BD, color: ACCENT }}
-                href={fullAudioUrl}
-                download
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); downloadAsset(fullAudioUrl, 'voice.mp3') }}
                 title="Download audio"
               >
                 <Icons.Download className="h-2.5 w-2.5" />
-              </a>
+              </button>
             </div>
           </div>
         ) : isRunning ? (

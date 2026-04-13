@@ -2,7 +2,7 @@ import * as Icons from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { FieldGroup } from '../shared'
-import { assetUrl } from '@/lib/api'
+import { assetUrl, downloadAsset } from '@/lib/api'
 
 export function AudioMixConfig({
   config,
@@ -46,11 +46,10 @@ export function AudioMixConfig({
               <source src={fullAudioUrl} />
             </audio>
             <div className="flex justify-end">
-              <Button asChild variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]">
-                <a href={fullAudioUrl} download>
-                  <Icons.Download className="h-3 w-3" />
-                  Download
-                </a>
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]"
+                onClick={() => downloadAsset(fullAudioUrl!, 'mix.mp3')}>
+                <Icons.Download className="h-3 w-3" />
+                Download
               </Button>
             </div>
           </div>

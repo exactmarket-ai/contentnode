@@ -2,7 +2,7 @@ import { memo, useState, useRef, useEffect, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { assetUrl } from '@/lib/api'
+import { assetUrl, downloadAsset } from '@/lib/api'
 import { EditableLabel } from './EditableLabel'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -160,10 +160,10 @@ export const CharacterAnimationNode = memo(({ id, data, selected }: NodeProps) =
               style={{ width: 26, height: 26, color: '#fff' }} onClick={togglePlay}>
               {isPlaying ? <Icons.Pause className="h-3 w-3" /> : <Icons.Play className="h-3 w-3" />}
             </button>
-            <a className="nodrag flex items-center justify-center rounded bg-black/60 p-1.5 hover:bg-black/80 transition-colors"
-              href={fullVideoUrl} download onClick={e => e.stopPropagation()}>
+            <button className="nodrag flex items-center justify-center rounded bg-black/60 p-1.5 hover:bg-black/80 transition-colors"
+              onClick={e => { e.stopPropagation(); downloadAsset(fullVideoUrl!, 'character-animation.mp4') }}>
               <Icons.Download className="h-2.5 w-2.5 text-white" />
-            </a>
+            </button>
           </div>
         </div>
       ) : characterImage ? (
