@@ -1155,15 +1155,26 @@ function BrandBuilderSection({
     setLoading(true)
     apiFetch(`${base}${qs}`)
       .then((r) => r.json())
-      .then(({ data: d }) => {
+      .then(async ({ data: d }) => {
         if (d?.dataJson) {
           setData(d.dataJson as BuilderData)
           setHasData(true)
+        } else {
+          // No manual data yet — seed from brand profile (extracted from uploaded documents)
+          try {
+            const profileBase = `/api/v1/clients/${clientId}/brand-profile`
+            const pr = await apiFetch(`${profileBase}${qs}`)
+            const { data: profile } = await pr.json()
+            const profileData = profile?.editedJson ?? profile?.extractedJson
+            if (profileData && typeof profileData === 'object' && Object.keys(profileData).length > 0) {
+              setData(profileData as BuilderData)
+            }
+          } catch { /* non-critical */ }
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [base, qs])
+  }, [base, qs, clientId])
 
   const handleSave = async () => {
     setSaving(true)

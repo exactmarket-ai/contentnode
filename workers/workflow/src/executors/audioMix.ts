@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
-import { saveGeneratedFile, localPath as storagePath } from '@contentnode/storage'
+import { saveGeneratedFile, localPath as storagePath, downloadBuffer } from '@contentnode/storage'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 const execAsync = promisify(exec)
@@ -31,9 +31,16 @@ interface StructuredInput {
   content:   unknown
 }
 
-function resolveAudioInputs(input: unknown): { voiceKey: string | null; musicKey: string | null } {
+interface ResolvedAudioInputs {
+  voiceKey:  string | null
+  musicKey:  string | null
+  videoKey:  string | null   // when a video node is connected, mix its embedded audio with music
+}
+
+function resolveAudioInputs(input: unknown): ResolvedAudioInputs {
   let voiceKey: string | null = null
   let musicKey: string | null = null
+  let videoKey: string | null = null
 
   const inputs: StructuredInput[] = []
 
@@ -42,10 +49,12 @@ function resolveAudioInputs(input: unknown): { voiceKey: string | null; musicKey
   } else if (Array.isArray(input)) {
     inputs.push(...(input as StructuredInput[]))
   } else if (input && typeof input === 'object') {
-    // Single input — treat as voice
     const o = input as Record<string, unknown>
-    if (typeof o.storageKey === 'string') voiceKey = o.storageKey
-    return { voiceKey, musicKey }
+    if (typeof o.storageKey === 'string') {
+      if (o.type === 'video') videoKey = o.storageKey
+      else voiceKey = o.storageKey
+    }
+    return { voiceKey, musicKey, videoKey }
   }
 
   for (const item of inputs) {
@@ -53,19 +62,19 @@ function resolveAudioInputs(input: unknown): { voiceKey: string | null; musicKey
     if (!content || typeof content.storageKey !== 'string') continue
     const key = content.storageKey as string
 
-    // Voice: has transcript. Music: has service or prompt field.
-    if (typeof content.transcript === 'string') {
+    if (content.type === 'video') {
+      videoKey = videoKey ?? key
+    } else if (typeof content.transcript === 'string') {
       voiceKey = voiceKey ?? key
     } else if (content.service === 'music' || content.service === 'sfx' || typeof content.prompt === 'string') {
       musicKey = musicKey ?? key
     } else {
-      // Unknown — assign to first available slot
       if (!voiceKey) voiceKey = key
       else if (!musicKey) musicKey = key
     }
   }
 
-  return { voiceKey, musicKey }
+  return { voiceKey, musicKey, videoKey }
 }
 
 // ─── Executor ────────────────────────────────────────────────────────────────
@@ -85,19 +94,79 @@ export class AudioMixNodeExecutor extends NodeExecutor {
     const voiceDelay  = Math.max(0, (config.voice_delay_seconds as number) ?? 0)
     const musicDelay  = Math.max(0, (config.music_delay_seconds as number) ?? 0)
 
-    const { voiceKey, musicKey } = resolveAudioInputs(input)
-    if (!voiceKey) throw new Error('Audio Mix: no voice audio input connected')
+    const { voiceKey, musicKey, videoKey } = resolveAudioInputs(input)
     if (!musicKey) throw new Error('Audio Mix: no music audio input connected')
+    if (!voiceKey && !videoKey) throw new Error('Audio Mix: no voice or video input connected')
 
-    // Resolve real filesystem paths
-    const voicePath = storagePath(voiceKey)
+    const tmpDir = os.tmpdir()
+
+    // ── Video + music path: mix video's embedded audio with background music ──
+    // Outputs a VIDEO file with mixed audio (video frames copied, no re-encode).
+    // -filter_complex only processes audio — no -vf conflict, no A/V drift.
+    if (videoKey) {
+      const musicPath = storagePath(musicKey)
+      if (!fs.existsSync(musicPath)) throw new Error(`Audio Mix: music file not found at ${musicPath}`)
+
+      const videoBuf  = await downloadBuffer(videoKey)
+      const videoTmp  = path.join(tmpDir, `mix_vid_${randomUUID()}.mp4`)
+      fs.writeFileSync(videoTmp, Buffer.from(videoBuf))
+
+      const outTmp = path.join(tmpDir, `mix_out_${randomUUID()}.mp4`)
+
+      const loopFilter = loopMusic ? 'aloop=loop=-1:size=2e+09,' : ''
+      const filterComplex = [
+        `[0:a]volume=${voiceVolume}[v]`,
+        `[1:a]${loopFilter}volume=${musicVolume},afade=t=in:st=0:d=1,afade=t=out:st=9999:d=2[m]`,
+        `[v][m]amix=inputs=2:duration=first:normalize=0:dropout_transition=2[out]`,
+      ].join(';')
+
+      const cmd = [
+        'ffmpeg -y -loglevel error -nostats',
+        `-i "${videoTmp}"`,
+        `-i "${musicPath}"`,
+        `-filter_complex "${filterComplex}"`,
+        '-map 0:v',           // copy video stream — no re-encode, no A/V drift
+        '-map "[out]"',
+        '-c:v copy',
+        '-c:a aac -b:a 192k',
+        `"${outTmp}"`,
+      ].join(' ')
+
+      try {
+        await execAsync(cmd, { timeout: 120_000, maxBuffer: 50 * 1024 * 1024 })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        throw new Error(`Audio Mix: ffmpeg failed — ${message}`)
+      }
+
+      const videoBuffer  = fs.readFileSync(outTmp)
+      fs.unlinkSync(outTmp)
+      try { fs.unlinkSync(videoTmp) } catch { /* ignore */ }
+
+      const filename   = `mix_${randomUUID()}.mp4`
+      const storageKey = await saveGeneratedFile(videoBuffer, filename, 'video/mp4')
+      const localPath  = `/files/generated/${filename}`
+      const durationSeconds = await getAudioDuration(storagePath(musicKey))
+
+      return {
+        output: {
+          localPath,
+          storageKey,
+          duration_seconds: durationSeconds,
+          voice_volume:     voiceVolume,
+          music_volume:     musicVolume,
+          type: 'video',
+        },
+      }
+    }
+
+    // ── Audio-only path (no video): mix voice + music → MP3 ──────────────────
+    const voicePath = storagePath(voiceKey!)
     const musicPath = storagePath(musicKey)
 
     if (!fs.existsSync(voicePath)) throw new Error(`Audio Mix: voice file not found at ${voicePath}`)
     if (!fs.existsSync(musicPath)) throw new Error(`Audio Mix: music file not found at ${musicPath}`)
 
-    // Output to a temp file first, then save to storage
-    const tmpDir    = os.tmpdir()
     const tmpOut    = path.join(tmpDir, `mix_${randomUUID()}.mp3`)
 
     const filterComplex = duckEnabled

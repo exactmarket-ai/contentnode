@@ -34,7 +34,8 @@ export interface VideoCompositionResult {
 // ─── Shared render input ──────────────────────────────────────────────────────
 
 interface RenderInput {
-  bgPath:       string          // local filesystem path to background image
+  bgPath:       string          // local filesystem path to background image or video
+  bgIsVideo:    boolean         // true when bgPath is a video file (skip loop filter)
   text:         string          // main text content
   audioPath:    string | null   // local path to audio, or null
   audioUrl:     string | null   // public URL for cloud renderers
@@ -58,24 +59,28 @@ interface StructuredInput {
 }
 
 interface ResolvedInputs {
-  bgStorageKey:  string | null
-  bgUrl:         string | null
-  text:          string | null
-  audioKey:      string | null
+  bgStorageKey:   string | null
+  bgUrl:          string | null
+  videoKey:       string | null   // upstream video (character-animation, video-generation, etc.)
+  text:           string | null
+  audioKey:       string | null
   audioLocalPath: string | null
+  audioIsTTS:     boolean         // true when audio came from a Voice Output node (has transcript)
 }
 
 function resolveInputs(input: unknown): ResolvedInputs {
   let bgStorageKey:   string | null = null
   let bgUrl:          string | null = null
+  let videoKey:       string | null = null
   let text:           string | null = null
   let audioKey:       string | null = null
   let audioLocalPath: string | null = null
+  let audioIsTTS                    = false
 
   // Plain string — single source/text-input node connected (runner prefixes "## Label\n\n")
   if (typeof input === 'string') {
     const body = input.replace(/^##[^\n]*\n\n/, '').trim()
-    return { bgStorageKey: null, bgUrl: null, text: body || null, audioKey: null, audioLocalPath: null }
+    return { bgStorageKey: null, bgUrl: null, videoKey: null, text: body || null, audioKey: null, audioLocalPath: null, audioIsTTS: false }
   }
 
   const items: StructuredInput[] = []
@@ -100,14 +105,19 @@ function resolveInputs(input: unknown): ResolvedInputs {
     if (typeof o.storageKey === 'string') {
       if (o.type === 'audio' || typeof o.transcript === 'string') {
         audioKey = o.storageKey; audioLocalPath = (o.localPath as string) ?? null
+        audioIsTTS = typeof o.transcript === 'string'
+      } else if (o.type === 'video') {
+        videoKey = o.storageKey
       } else if (o.type === 'image') {
         bgStorageKey = o.storageKey
       } else if (typeof o.localPath === 'string' && (o.localPath as string).match(/\.(mp3|wav|m4a|ogg)$/i)) {
         audioKey = o.storageKey; audioLocalPath = o.localPath as string
+      } else if (typeof o.localPath === 'string' && (o.localPath as string).match(/\.(mp4|mov|webm)$/i)) {
+        videoKey = o.storageKey
       }
     }
     if (typeof o.url === 'string' && o.type === 'image') bgUrl = o.url
-    return { bgStorageKey, bgUrl, text, audioKey, audioLocalPath }
+    return { bgStorageKey, bgUrl, videoKey, text, audioKey, audioLocalPath, audioIsTTS }
   }
 
   for (const item of items) {
@@ -137,15 +147,29 @@ function resolveInputs(input: unknown): ResolvedInputs {
     }
     // Direct storageKey on content (video upload, resize, etc.)
     if (typeof c.storageKey === 'string') {
-      if (c.type === 'image' && !bgStorageKey) bgStorageKey = c.storageKey
-      else if (c.type === 'audio' || typeof c.transcript === 'string') {
-        if (!audioKey) { audioKey = c.storageKey; audioLocalPath = (c.localPath as string) ?? null }
-      } else if (!bgStorageKey) bgStorageKey = c.storageKey
+      if (c.type === 'video' && !videoKey) {
+        videoKey = c.storageKey
+      } else if (c.type === 'image' && !bgStorageKey) {
+        bgStorageKey = c.storageKey
+      } else if (c.type === 'audio' || typeof c.transcript === 'string') {
+        const isTTS = typeof c.transcript === 'string'
+        // Prefer non-TTS (background music) over TTS — when bgIsVideo the voiceover is
+        // already embedded in the video; mixing it again would create an echo.
+        if (!audioKey || (audioIsTTS && !isTTS)) {
+          audioKey       = c.storageKey
+          audioLocalPath = (c.localPath as string) ?? null
+          audioIsTTS     = isTTS
+        }
+      } else if (typeof c.localPath === 'string' && (c.localPath as string).match(/\.(mp4|mov|webm)$/i)) {
+        if (!videoKey) videoKey = c.storageKey
+      } else if (!bgStorageKey) {
+        bgStorageKey = c.storageKey
+      }
     }
     if (typeof c.url === 'string' && c.type === 'image' && !bgUrl) bgUrl = c.url
   }
 
-  return { bgStorageKey, bgUrl, text, audioKey, audioLocalPath }
+  return { bgStorageKey, bgUrl, videoKey, text, audioKey, audioLocalPath, audioIsTTS }
 }
 
 // ─── Hex helpers ──────────────────────────────────────────────────────────────
@@ -266,10 +290,93 @@ async function addTextWithSharp(
   fs.writeFileSync(imagePath, composited)
 }
 
+/**
+ * Create a transparent PNG with the text overlay at the given dimensions.
+ * Used as a fallback when ffmpeg lacks libfreetype (drawtext unavailable) and the
+ * background is a video — in that case addTextWithSharp can't be used directly.
+ * The caller overlays this PNG onto the video using ffmpeg's overlay filter.
+ */
+async function createTextOverlayPng(
+  pngPath:      string,
+  title:        string,
+  subtitle:     string,
+  overlayStyle: string,
+  brandColor:   string,
+  fontSize:     number,
+  w = 1280,
+  h = 720,
+): Promise<void> {
+  const FONT  = 'font-family="Arial, Helvetica, sans-serif"'
+  const BOLD  = `${FONT} font-weight="bold"`
+  const MID   = 'dominant-baseline="middle"'
+
+  function hexToRgba(hex: string, alpha: number): string {
+    const h = hex.replace('#', '')
+    const r = parseInt(h.slice(0, 2), 16)
+    const g = parseInt(h.slice(2, 4), 16)
+    const b = parseInt(h.slice(4, 6), 16)
+    return `rgba(${r},${g},${b},${alpha})`
+  }
+
+  let boxSvg = ''
+  let textSvg = ''
+
+  switch (overlayStyle) {
+    case 'lower_third': {
+      const vPad     = 14
+      const lineGap  = 6
+      const subFont  = subtitle ? Math.round(fontSize * 0.65) : 0
+      const contentH = subtitle ? fontSize + lineGap + subFont : fontSize
+      const barH     = contentH + vPad * 2
+      const boxColor = hexToRgba(brandColor, 0.8)
+      boxSvg  = `<rect x="0" y="${h - barH}" width="${w}" height="${barH}" fill="${boxColor}"/>`
+      if (subtitle) {
+        textSvg = `
+          <text x="20" y="${h - barH / 2 - fontSize / 2 - lineGap / 2}" ${MID} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>
+          <text x="20" y="${h - barH / 2 + subFont / 2 + lineGap / 2}" ${MID} font-size="${subFont}" fill="#dddddd" ${FONT}>${escXml(subtitle)}</text>
+        `
+      } else {
+        textSvg = `<text x="20" y="${h - barH / 2}" ${MID} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>`
+      }
+      break
+    }
+    case 'title_card': {
+      const barH     = fontSize + 60
+      const boxColor = hexToRgba(brandColor, 0.8)
+      boxSvg  = `<rect x="0" y="${(h - barH) / 2}" width="${w}" height="${barH}" fill="${boxColor}"/>`
+      textSvg = `<text x="${w / 2}" y="${h / 2}" ${MID} text-anchor="middle" font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>`
+      break
+    }
+    case 'pill_badge': {
+      const pad      = 12
+      const bh       = fontSize + pad * 2
+      const bw       = Math.max(title.length * (fontSize * 0.6), 120) + pad * 2
+      const boxColor = hexToRgba(brandColor, 0.8)
+      boxSvg  = `<rect x="${pad}" y="${pad}" width="${Math.round(bw)}" height="${bh}" rx="999" fill="${boxColor}"/>`
+      textSvg = `<text x="${pad * 2}" y="${pad + bh / 2}" ${MID} font-size="${fontSize}" fill="white" ${BOLD}>${escXml(title)}</text>`
+      break
+    }
+    case 'fullscreen':
+    default: {
+      const bigFont = Math.round(fontSize * 1.5)
+      textSvg = `
+        <text x="${w / 2}" y="${h / 2}" ${MID} text-anchor="middle" font-size="${bigFont}" fill="white" stroke="black" stroke-width="2" ${BOLD}>${escXml(title)}</text>
+        ${subtitle ? `<text x="${w / 2}" y="${h / 2 + bigFont}" ${MID} text-anchor="middle" font-size="${fontSize}" fill="#dddddd" ${FONT}>${escXml(subtitle)}</text>` : ''}
+      `
+    }
+  }
+
+  const svg = Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${boxSvg}${textSvg}</svg>`
+  )
+
+  await sharp(svg).png().toFile(pngPath)
+}
+
 // ─── Local ffmpeg renderer ────────────────────────────────────────────────────
 
-async function renderLocal(input: RenderInput): Promise<void> {
-  const { bgPath, text, audioPath, overlayStyle, brandColor, fontSize, duration, outputPath, outputFormat } = input
+async function renderLocal(input: RenderInput, tmpDir?: string): Promise<void> {
+  const { bgPath, bgIsVideo, text, audioPath, overlayStyle, brandColor, fontSize, duration, outputPath, outputFormat } = input
 
   // Split text into title + subtitle at first newline or mid-point
   const lines    = text.split('\n')
@@ -355,8 +462,11 @@ async function renderLocal(input: RenderInput): Promise<void> {
       vf = `drawtext=text='${esc(title)}':x=20:y=20:fontsize=${fontSize}:fontcolor=white:${FONT}`
   }
 
-  // Fade filter only makes sense for video — at t=0 it produces a black frame
-  const activeVf = outputFormat === 'image'
+  // Fade filter only makes sense for static-image-to-video.
+  // For bgIsVideo (character animation), it blacks out the first 0.5s while audio plays —
+  // creating a perceptual echo (voice heard before face is visible). Strip it.
+  // For image output (single frame) it also makes no sense — strip it there too.
+  const activeVf = (outputFormat === 'image' || bgIsVideo)
     ? vf.split(',').filter(f => !f.trim().startsWith('fade=')).join(',') || 'null'
     : vf
 
@@ -367,22 +477,40 @@ async function renderLocal(input: RenderInput): Promise<void> {
   const buildCmd = (filterStr: string): string => {
     if (outputFormat === 'image') {
       return [
-        'ffmpeg -y',
-        `-loop 1 -t 1 -i "${bgPath}"`,
+        'ffmpeg -y -loglevel error -nostats',
+        `-i "${bgPath}"`,
         `-vf "${filterStr}"`,
         '-map 0:v',
         '-frames:v 1 -f image2',
         `"${outputPath}"`,
       ].join(' ')
     }
+    // Video input: use directly — no loop filter needed, video already has motion
+    // Image input: use loop filter to hold the single decoded frame for the full duration
+    const vf = bgIsVideo ? filterStr : `loop=loop=-1:size=1:start=0,${filterStr}`
+
+    if (bgIsVideo) {
+      // Preserve D-ID lip-sync audio. Do NOT mix external audio here — use Audio Mix node after.
+      return [
+        'ffmpeg -y -loglevel error -nostats',
+        `-i "${bgPath}"`,
+        `-vf "${vf}"`,
+        '-map 0:v',
+        '-map 0:a:0?',        // first audio stream only; ? = skip silently if absent
+        '-c:v libx264 -preset fast -crf 18',
+        '-c:a copy',          // copy audio stream as-is — zero re-encoding drift
+        `"${outputPath}"`,
+      ].join(' ')
+    }
+
     return [
-      'ffmpeg -y',
-      `-loop 1 -t ${duration} -i "${bgPath}"`,
+      'ffmpeg -y -loglevel error -nostats',
+      `-i "${bgPath}"`,
       ...audioInputs.map(a => `-i "${a}"`),
-      `-vf "${filterStr}"`,
+      `-vf "${vf}"`,
       '-map 0:v',
-      ...audioInputs.map(() => '-map 1:a'),
-      ...audioInputs.map(() => '-shortest'),
+      ...audioInputs.map((_, i) => `-map ${i + 1}:a`),
+      '-shortest',
       '-c:v libx264 -preset fast -crf 23',
       audioInputs.length ? '-c:a aac -b:a 128k' : '',
       `-t ${duration}`,
@@ -390,8 +518,9 @@ async function renderLocal(input: RenderInput): Promise<void> {
     ].filter(Boolean).join(' ')
   }
 
+  const execOpts = { timeout: 120_000, maxBuffer: 50 * 1024 * 1024 } // 50 MB — ffmpeg progress output is verbose
   try {
-    await execAsync(buildCmd(activeVf), { timeout: 120_000 })
+    await execAsync(buildCmd(activeVf), execOpts)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // drawtext requires libfreetype — not compiled into all ffmpeg builds (e.g. macOS Homebrew default).
@@ -399,15 +528,34 @@ async function renderLocal(input: RenderInput): Promise<void> {
     if (activeVf.includes('drawtext') && (msg.includes('drawtext') || msg.includes('Filter not found'))) {
       console.warn('[video-composition] drawtext unavailable (ffmpeg lacks libfreetype) — using sharp SVG text fallback')
       const vfNoText = activeVf.split(',').filter(f => !f.trim().startsWith('drawtext=')).join(',')
-      await execAsync(buildCmd(vfNoText || 'null'), { timeout: 120_000 })
-      // For image output, composite the text on top using sharp (works without libfreetype)
+      await execAsync(buildCmd(vfNoText || 'null'), execOpts)
       if (outputFormat === 'image' && title) {
+        // Image: composite text directly onto the output JPEG using sharp
         await addTextWithSharp(outputPath, title, subtitle, overlayStyle, fontSize)
+      } else if (outputFormat === 'video' && bgIsVideo && title && tmpDir) {
+        // Video: generate a transparent PNG overlay with the text, then composite via ffmpeg
+        const overlayPng  = path.join(tmpDir, `vc_txt_${randomUUID()}.png`)
+        const withTextTmp = path.join(tmpDir, `vc_txt2_${randomUUID()}.mp4`)
+        await createTextOverlayPng(overlayPng, title, subtitle, overlayStyle, brandColor, fontSize)
+        await execAsync([
+          'ffmpeg -y -loglevel error -nostats',
+          `-i "${outputPath}"`,
+          `-i "${overlayPng}"`,
+          // scale the PNG to match video dimensions, then overlay at top-left
+          `-filter_complex "[1:v]scale=iw:ih[txt];[0:v][txt]overlay=0:0"`,
+          '-map 0:a:0?',
+          '-c:v libx264 -preset fast -crf 18',
+          '-c:a copy',
+          `"${withTextTmp}"`,
+        ].join(' '), execOpts)
+        fs.renameSync(withTextTmp, outputPath)
+        try { fs.unlinkSync(overlayPng) } catch { /* ignore */ }
       }
     } else {
       throw err
     }
   }
+
 }
 
 // ─── Shotstack cloud renderer ─────────────────────────────────────────────────
@@ -579,16 +727,23 @@ export class VideoCompositionExecutor extends NodeExecutor {
     const configText    = (config.text as string)          ?? ''
     const configBgUrl   = (config.background_url as string) ?? ''
 
-    const { bgStorageKey, bgUrl, text: inputText, audioKey, audioLocalPath } = resolveInputs(input)
+    const { bgStorageKey, bgUrl, videoKey, text: inputText, audioKey, audioLocalPath, audioIsTTS } = resolveInputs(input)
     const text = inputText ?? configText
     if (!text) throw new Error('Video Composition: no text connected — connect a text/content node or set text in config')
 
-    // ── Resolve background image to a local file ───────────────────────────
     const tmpDir = os.tmpdir()
-    let bgPath:  string
 
-    if (configBgUrl && configBgUrl.startsWith('data:')) {
-      // Base64 data URI from config panel
+    // ── Resolve background — video takes priority over static image ────────
+    let bgPath: string
+    let bgIsVideo = false
+
+    if (videoKey) {
+      // Animated video input (character-animation, video-generation, etc.)
+      const buf = await downloadBuffer(videoKey)
+      bgPath = path.join(tmpDir, `vcbg_${randomUUID()}.mp4`)
+      fs.writeFileSync(bgPath, Buffer.from(buf))
+      bgIsVideo = true
+    } else if (configBgUrl && configBgUrl.startsWith('data:')) {
       const [, b64] = configBgUrl.split(',')
       bgPath = path.join(tmpDir, `vcbg_${randomUUID()}.jpg`)
       fs.writeFileSync(bgPath, Buffer.from(b64, 'base64'))
@@ -603,19 +758,24 @@ export class VideoCompositionExecutor extends NodeExecutor {
       bgPath = path.join(tmpDir, `vcbg_${randomUUID()}.jpg`)
       fs.writeFileSync(bgPath, Buffer.from(await res.arrayBuffer()))
     } else {
-      throw new Error('Video Composition: no background image — connect an Image Generation node or paste a URL in config')
+      throw new Error('Video Composition: no background — connect a Character Animation, Image Generation, or Video Generation node')
     }
 
     // ── Resolve audio ──────────────────────────────────────────────────────
+    // When the background is a video (D-ID/HeyGen), the voiceover is already embedded.
+    // Mixing TTS audio again would create an echo. Only resolve non-TTS audio (background music).
+    const resolvedAudioKey        = (bgIsVideo && audioIsTTS) ? null : audioKey
+    const resolvedAudioLocalPath  = resolvedAudioKey ? audioLocalPath : null
+
     let audioPath: string | null = null
-    if (audioKey) {
-      const resolvedLocal = audioLocalPath
-        ? path.join(process.env.UPLOAD_DIR ?? './uploads', audioLocalPath.replace(/^\/files\//, ''))
+    if (resolvedAudioKey) {
+      const localCheck = resolvedAudioLocalPath
+        ? path.join(process.env.UPLOAD_DIR ?? './uploads', resolvedAudioLocalPath.replace(/^\/files\//, ''))
         : null
-      if (resolvedLocal && fs.existsSync(resolvedLocal)) {
-        audioPath = resolvedLocal
+      if (localCheck && fs.existsSync(localCheck)) {
+        audioPath = localCheck
       } else {
-        const buf = await downloadBuffer(audioKey)
+        const buf = await downloadBuffer(resolvedAudioKey)
         audioPath = path.join(tmpDir, `vcaud_${randomUUID()}.mp3`)
         fs.writeFileSync(audioPath, Buffer.from(buf))
       }
@@ -623,8 +783,8 @@ export class VideoCompositionExecutor extends NodeExecutor {
 
     // Build public audio URL for cloud renderer
     const apiBase  = (process.env.API_BASE_URL ?? '').replace(/\/$/, '')
-    const audioUrl = (audioLocalPath && apiBase && !apiBase.includes('localhost'))
-      ? `${apiBase}${audioLocalPath}`
+    const audioUrl = (resolvedAudioLocalPath && apiBase && !apiBase.includes('localhost'))
+      ? `${apiBase}${resolvedAudioLocalPath}`
       : null
 
     const outputExt = outputFormat === 'image' ? 'jpg' : 'mp4'
@@ -632,6 +792,7 @@ export class VideoCompositionExecutor extends NodeExecutor {
 
     const renderInput: RenderInput = {
       bgPath,
+      bgIsVideo,
       text,
       audioPath,
       audioUrl,
@@ -664,10 +825,10 @@ export class VideoCompositionExecutor extends NodeExecutor {
         console.warn(`[video-composition] Shotstack failed (${msg}), falling back to local ffmpeg`)
         actualMode = 'local'
         cloudUrl   = undefined
-        await renderLocal(renderInput)
+        await renderLocal(renderInput, tmpDir)
       }
     } else {
-      await renderLocal(renderInput)
+      await renderLocal(renderInput, tmpDir)
     }
 
     const videoBuffer = fs.readFileSync(outputTmp)

@@ -93,7 +93,7 @@ export class BrandContextExecutor extends NodeExecutor {
     let output = ''
 
     await withAgency(ctx.agencyId, async () => {
-      const [client, vertical, profile, builder] = await Promise.all([
+      const [client, vertical, profile, builder, attachments] = await Promise.all([
         prisma.client.findFirst({ where: { id: clientId, agencyId: ctx.agencyId }, select: { name: true } }),
         verticalId
           ? prisma.clientBrandVertical.findFirst({ where: { id: verticalId, clientId, agencyId: ctx.agencyId }, select: { name: true } })
@@ -110,28 +110,51 @@ export class BrandContextExecutor extends NodeExecutor {
               select: { dataJson: true },
             })
           : null,
+        // Brand documents uploaded to the Brand Builder
+        prisma.clientBrandAttachment.findMany({
+          where: {
+            clientId,
+            agencyId: ctx.agencyId,
+            ...(verticalId ? { verticalId } : {}),
+            extractionStatus: 'ready',
+          },
+          select: { filename: true, summary: true, extractedText: true },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
       ])
 
       if (!client) throw new Error(`Brand Context node: client ${clientId} not found`)
 
-      const profileData = (profile?.editedJson ?? profile?.extractedJson ?? null) as Record<string, unknown> | null
-      const builderData = (builder?.dataJson ?? null) as Record<string, unknown> | null
+      const profileData  = (profile?.editedJson ?? profile?.extractedJson ?? null) as Record<string, unknown> | null
+      const builderData  = (builder?.dataJson ?? null) as Record<string, unknown> | null
+      const hasDocuments = attachments.length > 0
 
-      if (!profileData && !builderData) {
+      if (!profileData && !builderData && !hasDocuments) {
         throw new Error(
           `Brand Context node: no brand data found for ${client.name}${vertical ? ` / ${vertical.name}` : ' / General'}. ` +
           `Add brand data in Client → Branding.`
         )
       }
 
-      // Merge: builder values take priority, profile fills gaps
+      // Merge structured fields: builder values take priority, profile fills gaps
       const merged: Record<string, unknown> = { ...(profileData ?? {}), ...(builderData ?? {}) }
 
-      const clientName  = client.name
+      const clientName   = client.name
       const verticalName = vertical?.name ?? 'General'
       const source = profileData && builderData ? 'merged' : profileData ? 'brand_profile' : 'brand_builder'
 
       output = formatBrandContext(clientName, verticalName, merged, source)
+
+      // Append brand document summaries / extracted text
+      if (hasDocuments) {
+        output += '\n\n--- BRAND DOCUMENTS ---'
+        for (const att of attachments) {
+          const content = att.summary ?? (att.extractedText ? att.extractedText.slice(0, 1000) : null)
+          if (content) output += `\n\n[${att.filename}]\n${content}`
+        }
+        output += '\n-----------------------'
+      }
     })
 
     return { output }

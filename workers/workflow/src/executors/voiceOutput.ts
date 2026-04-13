@@ -69,10 +69,13 @@ export class VoiceOutputNodeExecutor extends NodeExecutor {
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const provider  = (config.provider as string) ?? 'openai'
-    const rawVoice  = (config.voice as string) ?? 'echo'
+    const rawVoice  = (config.voice as string) ?? 'alloy'
     // Map legacy OpenAI voice names that were removed from the API to current equivalents
     const LEGACY_VOICE_MAP: Record<string, string> = { nova: 'echo', fable: 'alloy', onyx: 'shimmer' }
-    const voice     = LEGACY_VOICE_MAP[rawVoice] ?? rawVoice
+    const OPENAI_VOICES = new Set(['alloy', 'ash', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer'])
+    const mappedVoice = LEGACY_VOICE_MAP[rawVoice] ?? rawVoice
+    // If an ElevenLabs voice name was configured but provider is openai, fall back gracefully
+    const voice = (provider === 'openai' && !OPENAI_VOICES.has(mappedVoice)) ? 'alloy' : mappedVoice
     const speed     = Math.max(0.25, Math.min(4.0, (config.speed as number) ?? 1.0))
     const format    = ((config.format as string) ?? 'mp3') as 'mp3' | 'wav' | 'opus'
     const mergeMode = (config.merge_mode as string) ?? 'concatenate'
