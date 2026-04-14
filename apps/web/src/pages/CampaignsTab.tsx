@@ -154,6 +154,7 @@ interface RequiredFieldDef {
   label: string
   type: 'text' | 'textarea'
   placeholder: string
+  description?: string  // shown as helper text under the input
 }
 
 const REQUIRED_NODE_FIELDS: Record<string, { validation: 'all' | 'any'; hint: string; fields: RequiredFieldDef[] }> = {
@@ -162,46 +163,95 @@ const REQUIRED_NODE_FIELDS: Record<string, { validation: 'all' | 'any'; hint: st
   // pass through an empty string so Claude can still run using its prompt + client brain.
   'web-scrape': {
     validation: 'all',
-    hint: 'Required',
+    hint: 'Enter the page you want to pull content from',
     fields: [
-      { key: 'url', label: 'URL to Scrape', type: 'text', placeholder: 'https://example.com' },
+      {
+        key: 'url',
+        label: 'Page URL',
+        type: 'text',
+        placeholder: 'https://example.com/page',
+        description: 'The exact URL to scrape — must be publicly accessible',
+      },
     ],
   },
   'api-fetch': {
     validation: 'all',
-    hint: 'Required',
+    hint: 'Enter the API endpoint to call',
     fields: [
-      { key: 'url', label: 'API Endpoint URL', type: 'text', placeholder: 'https://api.example.com/data' },
+      {
+        key: 'url',
+        label: 'API Endpoint URL',
+        type: 'text',
+        placeholder: 'https://api.example.com/data',
+        description: 'The full URL of the API endpoint — must return JSON or plain text',
+      },
     ],
   },
   // ── Intelligence nodes ──────────────────────────────────────────────────────
   'seo-intent': {
     validation: 'any',
-    hint: 'Fill in at least one of these',
+    hint: 'Fill in at least one — both gives better results',
     fields: [
-      { key: 'topic',        label: 'Topic',         type: 'text',     placeholder: 'e.g. manufacturing automation software' },
-      { key: 'seedKeywords', label: 'Seed Keywords',  type: 'textarea', placeholder: 'One per line…\nmanufacturing lead gen\nindustrial CRM' },
+      {
+        key: 'topic',
+        label: 'Topic or Industry',
+        type: 'text',
+        placeholder: 'e.g. B2B project management software',
+        description: 'A broad topic used to generate keyword ideas — the more specific, the better',
+      },
+      {
+        key: 'seedKeywords',
+        label: 'Seed Keywords',
+        type: 'textarea',
+        placeholder: 'project management software\nteam task tracking\nwork management tool',
+        description: 'Your starting keywords, one per line — the tool expands these into 40+ variations with funnel-stage intent labels',
+      },
     ],
   },
   'deep-web-scrape': {
     validation: 'all',
-    hint: 'Required',
+    hint: 'Enter the website(s) to crawl',
     fields: [
-      { key: 'seedUrls', label: 'Seed URLs', type: 'textarea', placeholder: 'https://example.com\nhttps://…' },
+      {
+        key: 'seedUrls',
+        label: 'Website URLs to Crawl',
+        type: 'textarea',
+        placeholder: 'https://competitor.com\nhttps://industry-publication.com',
+        description: 'One URL per line — the crawler starts here and follows links across the site to gather research. Use competitor homepages or industry publication URLs.',
+      },
     ],
   },
   'review-miner': {
     validation: 'all',
-    hint: 'Required',
+    hint: 'Needed to find the right Trustpilot reviews',
     fields: [
-      { key: 'companySlug', label: 'Company Name / Slug', type: 'text', placeholder: 'acme-corp' },
+      {
+        key: 'companyName',
+        label: 'Company Name',
+        type: 'text',
+        placeholder: 'e.g. Acme Corp',
+        description: 'The company whose reviews you want to mine — used to frame the competitive brief',
+      },
+      {
+        key: 'companySlug',
+        label: 'Trustpilot Slug',
+        type: 'text',
+        placeholder: 'acme-corp',
+        description: 'The last part of the Trustpilot URL — e.g. for trustpilot.com/review/acme-corp enter acme-corp',
+      },
     ],
   },
   'audience-signal': {
     validation: 'all',
-    hint: 'Required',
+    hint: 'Needed to search Reddit for audience signals',
     fields: [
-      { key: 'searchTerms', label: 'Reddit Search Terms', type: 'textarea', placeholder: 'One per line…' },
+      {
+        key: 'searchTerms',
+        label: 'Reddit Search Terms',
+        type: 'textarea',
+        placeholder: 'best CRM for small business\nCRM vs spreadsheets\nHubSpot alternatives',
+        description: 'What would your buyers type into Reddit? One term per line — these surface real pain points, questions, and buyer language from your target audience',
+      },
     ],
   },
 }
@@ -281,13 +331,17 @@ function PreflightDialog({
                   const req = REQUIRED_NODE_FIELDS[n.subtype]!
                   return (
                     <div key={n.nodeId}>
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                        {n.nodeLabel} · <span className="normal-case">{req.hint}</span>
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+                        {n.nodeLabel}
                       </p>
-                      <div className="space-y-2">
+                      <p className="text-[11px] text-muted-foreground mb-2">{req.hint}</p>
+                      <div className="space-y-3">
                         {req.fields.map((f) => (
                           <div key={f.key}>
-                            <label className="text-xs text-muted-foreground mb-1 block">{f.label}</label>
+                            <label className="text-xs font-medium text-foreground mb-1 block">{f.label}</label>
+                            {f.description && (
+                              <p className="text-[11px] text-muted-foreground mb-1.5 leading-snug">{f.description}</p>
+                            )}
                             {f.type === 'textarea' ? (
                               <Textarea
                                 className="text-xs min-h-[60px] font-mono"
