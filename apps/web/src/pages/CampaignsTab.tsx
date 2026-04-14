@@ -6,6 +6,59 @@ import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { CampaignCreationModal } from '@/components/modals/CampaignCreationModal'
 
+// ─── Markdown renderer ───────────────────────────────────────────────────────
+
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>
+      : part
+  )
+}
+
+function BriefMarkdown({ text, className }: { text: string; className?: string }) {
+  const lines = text.split('\n')
+  const nodes: React.ReactNode[] = []
+  let listItems: string[] = []
+
+  function flushList() {
+    if (listItems.length === 0) return
+    nodes.push(
+      <ul key={`ul-${nodes.length}`} className="space-y-0.5 my-1.5 ml-1">
+        {listItems.map((item, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="mt-1.5 w-1 h-1 rounded-full bg-muted-foreground/60 shrink-0" />
+            <span>{renderInline(item)}</span>
+          </li>
+        ))}
+      </ul>
+    )
+    listItems = []
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.startsWith('### ')) {
+      flushList()
+      nodes.push(<h4 key={i} className="text-[11px] font-semibold text-foreground mt-3 mb-0.5">{line.slice(4)}</h4>)
+    } else if (line.startsWith('## ')) {
+      flushList()
+      nodes.push(<h3 key={i} className="text-xs font-semibold text-foreground mt-3 mb-1 border-b border-border/40 pb-0.5">{line.slice(3)}</h3>)
+    } else if (line.match(/^[-*] /)) {
+      listItems.push(line.slice(2))
+    } else if (line.trim() === '') {
+      flushList()
+    } else {
+      flushList()
+      nodes.push(<p key={i} className="text-[11px] leading-relaxed">{renderInline(line)}</p>)
+    }
+  }
+  flushList()
+
+  return <div className={cn('space-y-0.5', className)}>{nodes}</div>
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface WorkflowSummary {
@@ -124,6 +177,7 @@ function CampaignCard({
   const [briefText, setBriefText] = useState(campaign.brief ?? '')
   const [savingBrief, setSavingBrief] = useState(false)
   const [showOriginal, setShowOriginal] = useState(false)
+  const [briefEditing, setBriefEditing] = useState(false)
   const briefDirty = briefText !== (campaign.brief ?? '')
   const [bundleOpen, setBundleOpen] = useState(false)
   const [bundle, setBundle] = useState<BundleAsset[] | null>(null)
@@ -339,6 +393,15 @@ function CampaignCard({
                       {' · '}{new Date(campaign.briefEditedAt).toLocaleDateString()}
                     </span>
                   )}
+                  <button
+                    onClick={() => setBriefEditing((v) => !v)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                  >
+                    {briefEditing
+                      ? <><Icons.Eye className="w-3 h-3" />Preview</>
+                      : <><Icons.Pencil className="w-3 h-3" />Edit</>
+                    }
+                  </button>
                   {briefDirty && (
                     <button
                       onClick={handleSaveBrief}
@@ -358,32 +421,42 @@ function CampaignCard({
                 </div>
               </div>
 
-              {/* Compare view — side by side when showing original */}
+              {/* Content area */}
               {showOriginal && campaign.briefOriginal ? (
-                <div className="grid grid-cols-2 divide-x divide-border/60">
+                <div className="grid grid-cols-2 divide-x divide-border/60 max-h-80 overflow-y-auto">
                   <div className="p-3">
-                    <p className="text-[9px] text-violet-400 font-medium mb-1.5 uppercase tracking-wide">AI Draft</p>
-                    <div className="text-[11px] text-muted-foreground/70 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
-                      {campaign.briefOriginal}
-                    </div>
+                    <p className="text-[9px] text-violet-400 font-medium mb-2 uppercase tracking-wide">AI Draft</p>
+                    <BriefMarkdown text={campaign.briefOriginal} className="text-muted-foreground/70" />
                   </div>
                   <div className="p-3">
-                    <p className="text-[9px] text-emerald-400 font-medium mb-1.5 uppercase tracking-wide">Your Version</p>
-                    <textarea
-                      className="w-full text-[11px] text-muted-foreground leading-relaxed bg-transparent resize-none outline-none max-h-72 min-h-[8rem] overflow-y-auto"
-                      value={briefText}
-                      onChange={(e) => setBriefText(e.target.value)}
-                      spellCheck={false}
-                    />
+                    <p className="text-[9px] text-emerald-400 font-medium mb-2 uppercase tracking-wide">Your Version</p>
+                    {briefEditing ? (
+                      <textarea
+                        className="w-full text-[11px] text-muted-foreground leading-relaxed bg-transparent resize-none outline-none min-h-[8rem]"
+                        value={briefText}
+                        onChange={(e) => setBriefText(e.target.value)}
+                        autoFocus
+                        spellCheck={false}
+                      />
+                    ) : (
+                      <BriefMarkdown text={briefText} className="text-muted-foreground cursor-text" />
+                    )}
                   </div>
                 </div>
               ) : (
-                <textarea
-                  className="w-full text-xs text-muted-foreground leading-relaxed bg-transparent resize-none outline-none max-h-72 min-h-[8rem] overflow-y-auto p-3"
-                  value={briefText}
-                  onChange={(e) => setBriefText(e.target.value)}
-                  spellCheck={false}
-                />
+                <div className="p-3 max-h-80 overflow-y-auto">
+                  {briefEditing ? (
+                    <textarea
+                      className="w-full text-xs text-muted-foreground leading-relaxed bg-transparent resize-none outline-none min-h-[10rem] w-full"
+                      value={briefText}
+                      onChange={(e) => setBriefText(e.target.value)}
+                      autoFocus
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <BriefMarkdown text={briefText} className="text-muted-foreground" />
+                  )}
+                </div>
               )}
             </div>
           )}
