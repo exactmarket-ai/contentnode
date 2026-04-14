@@ -75,7 +75,12 @@ Respond with a JSON object (no markdown, no code fences) with exactly these fiel
 
     let reviewOutput: QualityReviewOutput
     try {
-      reviewOutput = JSON.parse(result.text) as QualityReviewOutput
+      // Strip markdown code fences the model sometimes adds despite instructions
+      let jsonText = result.text.trim()
+      const fenceMatch = jsonText.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/s)
+      if (fenceMatch) jsonText = fenceMatch[1].trim()
+
+      reviewOutput = JSON.parse(jsonText) as QualityReviewOutput
     } catch {
       reviewOutput = {
         score: 0,
