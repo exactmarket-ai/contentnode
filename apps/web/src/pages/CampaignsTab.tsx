@@ -83,6 +83,7 @@ interface CampaignWorkflowEntry {
     startedAt: string | null
     completedAt: string | null
     campaignId: string | null
+    errorMessage: string | null
   } | null
 }
 
@@ -95,12 +96,25 @@ interface Campaign {
   briefOriginal: string | null
   briefEditedBy: string | null
   briefEditedAt: string | null
+  context: string | null
   startDate: string | null
   endDate: string | null
   createdAt: string
   client: { id: string; name: string }
   workflows: CampaignWorkflowEntry[]
   _count: { runs: number }
+}
+
+interface BrainAttachment {
+  id: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  sourceUrl: string | null
+  extractionStatus: string
+  summaryStatus: string
+  summary: string | null
+  createdAt: string
 }
 
 interface BundleAsset {
@@ -161,6 +175,122 @@ function RunDot({ status }: { status?: string }) {
   )
 }
 
+// ─── Brain attachment row ─────────────────────────────────────────────────────
+
+function BrainAttachmentRow({
+  attachment: a,
+  onDelete,
+  onSummaryEdit,
+}: {
+  attachment: BrainAttachment
+  onDelete: () => void
+  onSummaryEdit: (summary: string) => void
+}) {
+  const [editingSummary, setEditingSummary] = useState(false)
+  const [summaryDraft, setSummaryDraft] = useState(a.summary ?? '')
+  const [summaryExpanded, setSummaryExpanded] = useState(false)
+
+  const isProcessing =
+    a.extractionStatus === 'processing' || a.extractionStatus === 'pending' ||
+    a.summaryStatus === 'processing' || a.summaryStatus === 'pending'
+  const hasFailed = a.extractionStatus === 'failed' || a.summaryStatus === 'failed'
+
+  const displayName = a.sourceUrl
+    ? (() => {
+        try {
+          const u = new URL(a.sourceUrl)
+          const path = u.pathname.length > 30 ? u.pathname.slice(0, 30) + '…' : u.pathname
+          return u.hostname + path
+        } catch { return a.sourceUrl.slice(0, 60) }
+      })()
+    : a.filename
+
+  function handleSave() {
+    onSummaryEdit(summaryDraft)
+    setEditingSummary(false)
+  }
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/40 p-2.5 space-y-2">
+      {/* Row header */}
+      <div className="flex items-center gap-2">
+        {a.sourceUrl
+          ? <Icons.Link className="w-3 h-3 text-muted-foreground shrink-0" />
+          : <Icons.File className="w-3 h-3 text-muted-foreground shrink-0" />
+        }
+        <span className="flex-1 text-xs text-foreground/80 truncate min-w-0">{displayName}</span>
+
+        {isProcessing ? (
+          <span className="flex items-center gap-1 text-[9px] text-blue-400 shrink-0">
+            <Icons.Loader2 className="w-3 h-3 animate-spin" />
+            Processing
+          </span>
+        ) : hasFailed ? (
+          <span className="text-[9px] text-red-400 shrink-0">Failed</span>
+        ) : (
+          <span className="text-[9px] text-emerald-400 shrink-0">Ready</span>
+        )}
+
+        <button
+          onClick={onDelete}
+          className="text-muted-foreground/40 hover:text-red-400 transition-colors ml-1 shrink-0"
+        >
+          <Icons.Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Summary */}
+      {(a.summary || a.summaryStatus === 'ready') && (
+        <div className="space-y-1 pl-5">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground/50 font-medium">Summary</span>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (!editingSummary) { setSummaryDraft(a.summary ?? ''); setEditingSummary(true) }
+                  else handleSave()
+                }}
+                className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+              >
+                {editingSummary
+                  ? <><Icons.Check className="w-3 h-3" />Save</>
+                  : <><Icons.Pencil className="w-3 h-3" />Edit</>
+                }
+              </button>
+              {!editingSummary && a.summary && (
+                <button
+                  onClick={() => setSummaryExpanded((v) => !v)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {summaryExpanded
+                    ? <Icons.ChevronUp className="w-3 h-3" />
+                    : <Icons.ChevronDown className="w-3 h-3" />
+                  }
+                </button>
+              )}
+            </div>
+          </div>
+          {editingSummary ? (
+            <textarea
+              className="w-full text-[11px] text-muted-foreground leading-relaxed bg-background border border-border/60 rounded p-2 resize-none outline-none min-h-[4rem] focus:border-violet-500/50 transition-colors"
+              value={summaryDraft}
+              onChange={(e) => setSummaryDraft(e.target.value)}
+              autoFocus
+              spellCheck={false}
+            />
+          ) : a.summary ? (
+            <p className={cn('text-[11px] text-muted-foreground/70 leading-relaxed', !summaryExpanded && 'line-clamp-2')}>
+              {a.summary}
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground/40 italic">Summarising…</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Campaign card ────────────────────────────────────────────────────────────
 
 function CampaignCard({
@@ -183,6 +313,19 @@ function CampaignCard({
   const [bundle, setBundle] = useState<BundleAsset[] | null>(null)
   const [loadingBundle, setLoadingBundle] = useState(false)
   const [runResults, setRunResults] = useState<Array<{ workflowName: string; runId: string }> | null>(null)
+
+  // Brain panel state
+  const [brainOpen, setBrainOpen] = useState(false)
+  const [brainAttachments, setBrainAttachments] = useState<BrainAttachment[]>([])
+  const [loadingBrain, setLoadingBrain] = useState(false)
+  const [brainContext, setBrainContext] = useState(campaign.context ?? '')
+  const brainContextDirty = brainContext !== (campaign.context ?? '')
+  const [savingBrainContext, setSavingBrainContext] = useState(false)
+  const [brainContextEditing, setBrainContextEditing] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
+  const [addingUrl, setAddingUrl] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const brainPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Live polling
   const [liveWorkflows, setLiveWorkflows] = useState(campaign.workflows)
@@ -285,6 +428,115 @@ function CampaignCard({
     } finally {
       setLoadingBundle(false)
     }
+  }
+
+  async function loadBrainAttachments() {
+    const res = await apiFetch(`/api/v1/campaigns/${campaign.id}/brain/attachments`)
+    const { data } = await res.json()
+    setBrainAttachments(data ?? [])
+    return data as BrainAttachment[]
+  }
+
+  async function handleOpenBrain() {
+    setBrainOpen(true)
+    setLoadingBrain(true)
+    try {
+      await loadBrainAttachments()
+    } finally {
+      setLoadingBrain(false)
+    }
+  }
+
+  // Poll while any attachment is still processing
+  useEffect(() => {
+    if (!brainOpen) { if (brainPollRef.current) clearInterval(brainPollRef.current); return }
+    const hasProcessing = brainAttachments.some(
+      (a) => a.extractionStatus === 'processing' || a.extractionStatus === 'pending' ||
+             a.summaryStatus === 'processing' || a.summaryStatus === 'pending'
+    )
+    if (!hasProcessing) { if (brainPollRef.current) clearInterval(brainPollRef.current); brainPollRef.current = null; return }
+    if (brainPollRef.current) return // already polling
+    brainPollRef.current = setInterval(async () => {
+      try {
+        const fresh = await loadBrainAttachments()
+        // Refresh campaign context if any just became ready
+        if (fresh.some((a) => a.summaryStatus === 'ready')) {
+          const res = await apiFetch(`/api/v1/campaigns/${campaign.id}`)
+          const { data } = await res.json()
+          if (data?.context && data.context !== brainContext) setBrainContext(data.context)
+        }
+        const stillProcessing = fresh.some(
+          (a) => a.extractionStatus === 'processing' || a.extractionStatus === 'pending' ||
+                 a.summaryStatus === 'processing' || a.summaryStatus === 'pending'
+        )
+        if (!stillProcessing) { clearInterval(brainPollRef.current!); brainPollRef.current = null }
+      } catch {}
+    }, 4000)
+    return () => { if (brainPollRef.current) clearInterval(brainPollRef.current) }
+  }, [brainOpen, brainAttachments]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleAddUrl() {
+    if (!urlInput.trim()) return
+    setAddingUrl(true)
+    try {
+      const res = await apiFetch(`/api/v1/campaigns/${campaign.id}/brain/attachments/from-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      })
+      if (res.ok) {
+        setUrlInput('')
+        await loadBrainAttachments()
+      }
+    } finally {
+      setAddingUrl(false)
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingFile(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await apiFetch(`/api/v1/campaigns/${campaign.id}/brain/attachments`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (res.ok) await loadBrainAttachments()
+    } finally {
+      setUploadingFile(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleDeleteAttachment(aid: string) {
+    await apiFetch(`/api/v1/campaigns/${campaign.id}/brain/attachments/${aid}`, { method: 'DELETE' })
+    setBrainAttachments((prev) => prev.filter((a) => a.id !== aid))
+  }
+
+  async function handleSaveBrainContext() {
+    setSavingBrainContext(true)
+    try {
+      await apiFetch(`/api/v1/campaigns/${campaign.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: brainContext }),
+      })
+      onRefresh()
+    } finally {
+      setSavingBrainContext(false)
+    }
+  }
+
+  async function handleSummaryEdit(aid: string, summary: string) {
+    await apiFetch(`/api/v1/campaigns/${campaign.id}/brain/attachments/${aid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ summary }),
+    })
+    setBrainAttachments((prev) => prev.map((a) => a.id === aid ? { ...a, summary } : a))
   }
 
   async function handleDelete() {
@@ -411,16 +663,23 @@ function CampaignCard({
                   {failedWorkflows.length} workflow{failedWorkflows.length > 1 ? 's' : ''} failed
                 </p>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {failedWorkflows.map((cw) => (
-                  <div key={cw.id} className="flex items-center gap-2">
-                    <span className="text-[11px] text-red-200/80">{cw.workflow.name}</span>
-                    <a
-                      href={`/workflows/${cw.workflowId}`}
-                      className="text-[10px] text-red-400/70 hover:text-red-300 underline underline-offset-2"
-                    >
-                      Open workflow →
-                    </a>
+                  <div key={cw.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-red-200/80">{cw.workflow.name}</span>
+                      <a
+                        href={`/workflows/${cw.workflowId}`}
+                        className="text-[10px] text-red-400/70 hover:text-red-300 underline underline-offset-2"
+                      >
+                        Open workflow →
+                      </a>
+                    </div>
+                    {cw.latestRun?.errorMessage && (
+                      <p className="text-[10px] text-red-300/70 bg-red-950/40 border border-red-800/40 rounded px-2 py-1 font-mono break-all">
+                        {cw.latestRun.errorMessage}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -549,6 +808,126 @@ function CampaignCard({
             </div>
           )}
 
+          {/* Brain panel */}
+          {brainOpen && (
+            <div className="mx-4 mb-3 rounded-lg bg-muted/20 border border-border overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60">
+                <Icons.Brain className="w-3.5 h-3.5 text-violet-400" />
+                <span className="text-xs font-medium">Campaign Brain</span>
+                <span className="text-[10px] text-muted-foreground/60">Docs and URLs that sharpen every workflow in this campaign</span>
+                <button onClick={() => setBrainOpen(false)} className="ml-auto text-muted-foreground hover:text-foreground">
+                  <Icons.X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="p-3 space-y-3">
+                {/* Add sources row */}
+                <div className="flex gap-2">
+                  {/* URL input */}
+                  <div className="flex flex-1 items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1">
+                    <Icons.Link className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <input
+                      className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
+                      placeholder="Paste a URL to fetch…"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') void handleAddUrl() }}
+                    />
+                    <button
+                      onClick={() => void handleAddUrl()}
+                      disabled={addingUrl || !urlInput.trim()}
+                      className="shrink-0 text-[10px] text-violet-400 hover:text-violet-300 disabled:opacity-40 transition-colors"
+                    >
+                      {addingUrl ? <Icons.Loader2 className="w-3 h-3 animate-spin" /> : 'Fetch'}
+                    </button>
+                  </div>
+                  {/* File upload */}
+                  <label className={cn(
+                    'flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs cursor-pointer hover:bg-muted/30 transition-colors',
+                    uploadingFile && 'opacity-50 pointer-events-none'
+                  )}>
+                    {uploadingFile
+                      ? <Icons.Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                      : <Icons.Paperclip className="w-3 h-3 text-muted-foreground" />
+                    }
+                    <span className="text-muted-foreground">Upload file</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.docx,.txt,.md,.csv,.json,.html"
+                      onChange={handleFileUpload}
+                    />
+                  </label>
+                </div>
+                <p className="text-[10px] text-muted-foreground/50">Accepts PDF, DOCX, TXT, MD, CSV, JSON, HTML</p>
+
+                {/* Attachment list */}
+                {loadingBrain ? (
+                  <div className="flex items-center gap-2 py-2">
+                    <Icons.Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Loading…</span>
+                  </div>
+                ) : brainAttachments.length > 0 ? (
+                  <div className="space-y-2">
+                    {brainAttachments.map((a) => (
+                      <BrainAttachmentRow
+                        key={a.id}
+                        attachment={a}
+                        onDelete={() => void handleDeleteAttachment(a.id)}
+                        onSummaryEdit={(s) => void handleSummaryEdit(a.id, s)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground/60 italic py-1">No sources added yet — upload a file or fetch a URL to start building campaign intelligence.</p>
+                )}
+
+                {/* Synthesised context (user-editable) */}
+                {(brainContext || brainAttachments.some((a) => a.summaryStatus === 'ready')) && (
+                  <div className="border-t border-border/50 pt-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-foreground">Synthesised Context</span>
+                      <span className="text-[10px] text-muted-foreground/60">Claude's combined read — used in brief generation and runs</span>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button
+                          onClick={() => setBrainContextEditing((v) => !v)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                        >
+                          {brainContextEditing ? <><Icons.Eye className="w-3 h-3" />Preview</> : <><Icons.Pencil className="w-3 h-3" />Edit</>}
+                        </button>
+                        {brainContextDirty && (
+                          <button
+                            onClick={() => void handleSaveBrainContext()}
+                            disabled={savingBrainContext}
+                            className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 disabled:opacity-50 transition-colors"
+                          >
+                            {savingBrainContext ? <Icons.Loader2 className="w-3 h-3 animate-spin" /> : <Icons.Check className="w-3 h-3" />}
+                            Save
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-background border border-border/60 p-3 max-h-64 overflow-y-auto">
+                      {brainContextEditing ? (
+                        <textarea
+                          className="w-full text-xs text-muted-foreground leading-relaxed bg-transparent resize-none outline-none min-h-[8rem]"
+                          value={brainContext}
+                          onChange={(e) => setBrainContext(e.target.value)}
+                          autoFocus
+                          spellCheck={false}
+                        />
+                      ) : brainContext ? (
+                        <BriefMarkdown text={brainContext} className="text-muted-foreground" />
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground/50 italic">Context will appear here once Claude processes your sources.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Output bundle */}
           {bundleOpen && (
             <div className="mx-4 mb-3 p-3 rounded-lg bg-muted/20 border border-border space-y-2">
@@ -588,28 +967,9 @@ function CampaignCard({
 
           {/* Action bar */}
           <div className="flex items-center gap-2 px-4 py-3 border-t border-border bg-muted/10">
+            {/* Generate Brief — must come first */}
             <Button
-              size="sm"
-              className="h-7 text-xs gap-1.5"
-              onClick={handleRunAll}
-              disabled={running || polling || liveWorkflows.length === 0}
-            >
-              {running
-                ? <Icons.Loader2 className="w-3 h-3 animate-spin" />
-                : <Icons.Play className="w-3 h-3" />
-              }
-              Run All
-            </Button>
-
-            {polling && (
-              <span className="flex items-center gap-1.5 text-[10px] text-blue-400">
-                <Icons.Loader2 className="w-3 h-3 animate-spin" />
-                Checking status…
-              </span>
-            )}
-
-            <Button
-              variant="outline"
+              variant={briefText ? 'outline' : 'default'}
               size="sm"
               className="h-7 text-xs gap-1.5"
               onClick={briefText && !briefOpen ? () => setBriefOpen(true) : handleGenerateBrief}
@@ -622,10 +982,49 @@ function CampaignCard({
               {briefText ? (briefOpen ? 'Brief' : 'View Brief') : 'Generate Brief'}
             </Button>
 
+            {/* Run All — locked until brief exists */}
+            <Button
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={handleRunAll}
+              disabled={running || polling || liveWorkflows.length === 0 || !briefText}
+              title={!briefText ? 'Generate a brief first before running' : undefined}
+            >
+              {running
+                ? <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                : <Icons.Play className="w-3 h-3" />
+              }
+              Run All
+            </Button>
+
+            {!briefText && !generatingBrief && (
+              <span className="text-[10px] text-muted-foreground/60 italic">← generate a brief first</span>
+            )}
+
+            {polling && (
+              <span className="flex items-center gap-1.5 text-[10px] text-blue-400">
+                <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                Checking status…
+              </span>
+            )}
+
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs gap-1.5"
+              className={cn(
+                'h-7 text-xs gap-1.5',
+                brainOpen && 'border-violet-500/50 text-violet-400 bg-violet-950/20'
+              )}
+              onClick={() => { if (brainOpen) { setBrainOpen(false) } else { void handleOpenBrain() } }}
+            >
+              <Icons.Brain className="w-3 h-3" />
+              Brain
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1.5 ml-auto"
               onClick={handleLoadBundle}
               disabled={loadingBundle}
             >
@@ -634,7 +1033,7 @@ function CampaignCard({
             </Button>
 
             <button
-              className="ml-auto text-muted-foreground hover:text-red-400 transition-colors"
+              className="text-muted-foreground hover:text-red-400 transition-colors"
               onClick={handleDelete}
             >
               <Icons.Trash2 className="w-3.5 h-3.5" />

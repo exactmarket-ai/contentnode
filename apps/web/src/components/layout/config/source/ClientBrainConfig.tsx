@@ -157,7 +157,8 @@ export function ClientBrainConfig({
       apiFetch(`/api/v1/clients/${clientId}/verticals`).then((r) => r.json()),
     ]).then(([client, { data }]) => {
       if (client?.data?.name) { setClientName(client.data.name); onChange('clientName', client.data.name) }
-      setVerticals(data ?? [])
+      const sorted = [...(data ?? [])].sort((a: Vertical, b: Vertical) => a.name.localeCompare(b.name))
+      setVerticals(sorted)
     }).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
@@ -240,28 +241,32 @@ export function ClientBrainConfig({
           <label className="mb-1.5 block text-xs font-semibold text-foreground">
             Vertical {needsVertical && <span className="text-orange-500">*</span>}
           </label>
-          {verticals.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">No verticals assigned to this client.</p>
-          ) : (
-            <div className="space-y-1">
-              {verticals.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => selectVertical(v)}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
-                    verticalId === v.id ? 'border-orange-400 bg-orange-50/50 text-orange-700' : 'border-border hover:bg-muted/30',
-                  )}
-                >
-                  {verticalId === v.id && <span className="text-orange-500">✓</span>}
-                  <span className="flex-1">{v.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {needsVertical && !verticalId && (
-            <p className="mt-1.5 text-[10px] text-amber-600">Select a vertical — required for GTM and Demand Gen vertical sections.</p>
-          )}
+          <div className="space-y-1">
+            {/* Company (general / no vertical) — always first */}
+            <button
+              onClick={() => { onChange('verticalId', ''); onChange('verticalName', '') }}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                !verticalId ? 'border-orange-400 bg-orange-50/50 text-orange-700' : 'border-border hover:bg-muted/30',
+              )}
+            >
+              {!verticalId && <span className="text-orange-500">✓</span>}
+              <span className="flex-1">Company</span>
+            </button>
+            {verticals.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => selectVertical(v)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                  verticalId === v.id ? 'border-orange-400 bg-orange-50/50 text-orange-700' : 'border-border hover:bg-muted/30',
+                )}
+              >
+                {verticalId === v.id && <span className="text-orange-500">✓</span>}
+                <span className="flex-1">{v.name}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

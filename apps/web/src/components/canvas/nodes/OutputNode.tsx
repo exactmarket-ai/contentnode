@@ -99,6 +99,7 @@ function DisplayInlineOutput({ id, text, accentColor }: { id: string; text: stri
 
 export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
+  const finalOutput = useWorkflowStore((s) => s.finalOutput)
   const edges = useWorkflowStore((s) => s.edges)
   const nodes = useWorkflowStore((s) => s.nodes)
   const updateNodeData = useWorkflowStore((s) => s.updateNodeData)
@@ -322,8 +323,9 @@ export const OutputNode = memo(({ id, data, selected }: NodeProps) => {
 
         {/* Description / inline output (non-generation) */}
         {!isGeneration && (() => {
-          if (subtype === 'display' && isPassed) {
-            const rawOut = nodeStatuses[id]?.output
+          if ((subtype === 'display' || subtype === 'content-output') && isPassed) {
+            // Try node-specific output first, fall back to workflow-level finalOutput
+            const rawOut = nodeStatuses[id]?.output ?? finalOutput
             const text = typeof rawOut === 'string' ? rawOut
               : typeof rawOut === 'object' && rawOut !== null
                 ? ((rawOut as Record<string,unknown>).content as string | undefined)

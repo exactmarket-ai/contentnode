@@ -246,12 +246,11 @@ export function CampaignCreationModal({
       .then((r) => r.json())
       .then(({ data }) => {
         const verts = (data ?? []) as Array<{ id: string; name: string }>
-        setVerticals(verts)
-        // Auto-select the first vertical if only one exists
-        if (verts.length === 1) {
-          setSelectedVerticalId(verts[0].id)
-          setSelectedVerticalName(verts[0].name)
-        }
+        // Sort alphabetically; "Company" sentinel is prepended separately
+        setVerticals([...verts].sort((a, b) => a.name.localeCompare(b.name)))
+        // Default to Company (general / no vertical)
+        setSelectedVerticalId('__company__')
+        setSelectedVerticalName('Company')
       })
       .catch(() => {})
   }, [clientId])
@@ -296,9 +295,12 @@ export function CampaignCreationModal({
       const slotSetup = setupValues[slotIndex] ?? {}
       const patchedNodes = tpl.nodes.map((node) => {
         const nodeOverrides = slotSetup[node.id] ?? {}
-        // Inject vertical into all client_brain nodes (required for GTM/DG vert sections)
-        const verticalOverrides = node.type === 'client_brain' && selectedVerticalId
-          ? { verticalId: selectedVerticalId, verticalName: selectedVerticalName }
+        // Inject vertical into all client_brain nodes
+        // __company__ sentinel = company-wide (no vertical); pass empty strings so executor skips vert sections
+        const resolvedVertId = selectedVerticalId === '__company__' ? '' : selectedVerticalId
+        const resolvedVertName = selectedVerticalId === '__company__' ? '' : selectedVerticalName
+        const verticalOverrides = node.type === 'client_brain'
+          ? { verticalId: resolvedVertId, verticalName: resolvedVertName }
           : {}
         const merged = { ...nodeOverrides, ...verticalOverrides }
         if (Object.keys(merged).length === 0) return node
@@ -485,19 +487,23 @@ export function CampaignCreationModal({
                     </div>
                   ) : (
                     <Select
-                      value={selectedVerticalId || '__none__'}
+                      value={selectedVerticalId || '__company__'}
                       onValueChange={(v) => {
-                        if (v === '__none__') { setSelectedVerticalId(''); setSelectedVerticalName(''); return }
+                        if (v === '__company__') {
+                          setSelectedVerticalId('__company__')
+                          setSelectedVerticalName('Company')
+                          return
+                        }
                         const found = verticals.find((vt) => vt.id === v)
                         setSelectedVerticalId(v)
                         setSelectedVerticalName(found?.name ?? '')
                       }}
                     >
                       <SelectTrigger className="text-xs">
-                        <SelectValue placeholder="Select a vertical…" />
+                        <SelectValue placeholder="Company" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">Select a vertical…</SelectItem>
+                        <SelectItem value="__company__">Company</SelectItem>
                         {verticals.map((vt) => (
                           <SelectItem key={vt.id} value={vt.id}>{vt.name}</SelectItem>
                         ))}
@@ -505,7 +511,9 @@ export function CampaignCreationModal({
                     </Select>
                   )}
                   <p className="text-[10px] text-muted-foreground/60">
-                    All Client Brain nodes will use this vertical to pull GTM and Demand Gen context.
+                    {selectedVerticalId === '__company__'
+                      ? 'Company-wide context only — no vertical-specific GTM or Demand Gen sections.'
+                      : 'All Client Brain nodes will use this vertical to pull GTM and Demand Gen context.'}
                   </p>
                 </div>
               )}
@@ -693,8 +701,8 @@ export function CampaignCreationModal({
             <Button
               size="sm"
               onClick={handleCreate}
-              disabled={saving || !name.trim() || (selectedTemplate?.requiresVertical === true && verticals.length > 0 && !selectedVerticalId)}
-              title={selectedTemplate?.requiresVertical && !selectedVerticalId && verticals.length > 0 ? 'Select a brand vertical to continue' : undefined}
+              disabled={saving || !name.trim()}
+              title={undefined}
             >
               {saving
                 ? <Icons.Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />

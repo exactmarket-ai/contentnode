@@ -1299,15 +1299,17 @@ model Campaign {
   briefOriginal String?  @db.Text @map("brief_original")
   briefEditedBy String?  @map("brief_edited_by")
   briefEditedAt DateTime? @map("brief_edited_at")
+  context       String?  @db.Text  // Campaign-specific brain context (synthesized, user-editable)
   startDate DateTime? @map("start_date")
   endDate   DateTime? @map("end_date")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  agency    Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  workflows CampaignWorkflow[]
-  runs      WorkflowRun[]
+  agency      Agency                    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client      Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workflows   CampaignWorkflow[]
+  runs        WorkflowRun[]
+  brainAttachments CampaignBrainAttachment[]
 
   @@index([agencyId])
   @@index([clientId])
@@ -1331,4 +1333,31 @@ model CampaignWorkflow {
   @@unique([campaignId, workflowId])
   @@index([campaignId])
   @@map("campaign_workflows")
+}
+
+// ─────────────────────────────────────────────
+// CampaignBrainAttachment — per-file brain docs for a campaign
+// ─────────────────────────────────────────────
+model CampaignBrainAttachment {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  campaignId String   @map("campaign_id")
+  filename   String
+  storageKey String?  @map("storage_key")   // null for URL-only sources
+  sourceUrl  String?  @map("source_url")
+  mimeType   String   @default("") @map("mime_type")
+  sizeBytes  Int      @default(0) @map("size_bytes")
+  // pending | processing | ready | failed
+  extractionStatus String @default("pending") @map("extraction_status")
+  extractedText    String? @db.Text @map("extracted_text")
+  // pending | processing | ready | failed
+  summaryStatus    String  @default("pending") @map("summary_status")
+  summary          String? @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([agencyId])
+  @@map("campaign_brain_attachments")
 }

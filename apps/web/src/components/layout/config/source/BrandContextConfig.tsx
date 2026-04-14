@@ -48,7 +48,7 @@ export function BrandContextConfig({
   useEffect(() => {
     if (!clientId) { setVerticals([]); return }
     apiFetch(`/api/v1/clients/${clientId}/brand-verticals`).then((r) => r.json()).then(({ data }) => {
-      setVerticals((data ?? []) as BrandVertical[])
+      setVerticals([...(data ?? [])].sort((a: BrandVertical, b: BrandVertical) => a.name.localeCompare(b.name)))
     }).catch(() => {})
   }, [clientId])
 
@@ -78,7 +78,7 @@ export function BrandContextConfig({
   }
 
   const selectedClientName = clients.find((c) => c.id === clientId)?.name ?? ''
-  const selectedVerticalName = verticals.find((v) => v.id === verticalId)?.name ?? 'General'
+  const selectedVerticalName = verticals.find((v) => v.id === verticalId)?.name ?? 'Company'
 
   return (
     <div className="space-y-5 p-4">
@@ -116,13 +116,13 @@ export function BrandContextConfig({
             onChange={(e) => handleVerticalChange(e.target.value)}
             className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
           >
-            <option value="">General</option>
+            <option value="">Company</option>
             {verticals.map((v) => (
               <option key={v.id} value={v.id}>{v.name}</option>
             ))}
           </select>
           {verticals.length === 0 && (
-            <p className="mt-1 text-[10px] text-muted-foreground">No brand verticals — only General is available.</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">No brand verticals — only Company (general) is available.</p>
           )}
         </div>
       )}

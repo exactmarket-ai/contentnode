@@ -1,9 +1,12 @@
+import { extname } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { auditService } from '@contentnode/database'
-import { getWorkflowRunsQueue } from '../lib/queues.js'
+import { uploadStream, deleteObject } from '@contentnode/storage'
+import { getWorkflowRunsQueue, getCampaignBrainProcessQueue } from '../lib/queues.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod schemas
@@ -22,6 +25,7 @@ const updateCampaignBody = z.object({
   goal: z.enum(['lead_gen', 'nurture', 'awareness', 'retention', 'custom']).optional(),
   status: z.enum(['planning', 'active', 'archived']).optional(),
   brief: z.string().optional(),
+  context: z.string().optional(),
   startDate: z.string().min(1).nullable().optional(),
   endDate: z.string().min(1).nullable().optional(),
 })
@@ -108,6 +112,7 @@ export async function campaignRoutes(app: FastifyInstance) {
           select: {
             id: true, workflowId: true, status: true,
             startedAt: true, completedAt: true, campaignId: true,
+            errorMessage: true,
           },
         }).then((runs) => {
           // Keep only the most recent run per workflow
@@ -177,7 +182,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     const existing = await prisma.campaign.findFirst({ where: { id: req.params.id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Campaign not found' })
 
-    const { name, goal, status, brief, startDate, endDate } = parsed.data
+    const { name, goal, status, brief, context, startDate, endDate } = parsed.data
     const campaign = await prisma.campaign.update({
       where: { id: req.params.id },
       data: {
@@ -189,6 +194,7 @@ export async function campaignRoutes(app: FastifyInstance) {
           briefEditedBy: req.auth.userId,
           briefEditedAt: new Date(),
         } : {}),
+        ...(context !== undefined ? { context } : {}),
         ...(startDate !== undefined ? { startDate: startDate ? new Date(startDate) : null } : {}),
         ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
       },
@@ -391,6 +397,8 @@ export async function campaignRoutes(app: FastifyInstance) {
       if (messaging) contextParts.push(`Messaging Framework:\n${JSON.stringify(messaging, null, 2)}`)
       if (icp) contextParts.push(`ICP Definition:\n${JSON.stringify(icp, null, 2)}`)
     }
+    // Campaign-specific brain context takes precedence — listed last so it's freshest in the LLM's context window
+    if (campaign.context) contextParts.push(`Campaign-Specific Context (use this to sharpen and focus the brief):\n${campaign.context}`)
 
     const prompt = `You are a senior demand generation strategist writing a Campaign Brief for a marketing agency.
 
@@ -517,5 +525,123 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
         totalCount: bundle.length,
       },
     })
+  })
+
+  // ── Campaign Brain: list attachments ────────────────────────────────────────
+  app.get<{ Params: { id: string } }>('/:id/brain/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, agencyId } })
+    if (!campaign) return reply.code(404).send({ error: 'Campaign not found' })
+
+    const attachments = await prisma.campaignBrainAttachment.findMany({
+      where: { campaignId: req.params.id, agencyId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true,
+        sourceUrl: true, extractionStatus: true, summaryStatus: true,
+        summary: true, createdAt: true,
+      },
+    })
+    return reply.send({ data: attachments })
+  })
+
+  // ── Campaign Brain: upload file ──────────────────────────────────────────────
+  const ALLOWED_BRAIN_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+
+  app.post<{ Params: { id: string } }>('/:id/brain/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, agencyId } })
+    if (!campaign) return reply.code(404).send({ error: 'Campaign not found' })
+
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const { filename, file, mimetype } = data
+    const ext = extname(filename).toLowerCase()
+    if (!ALLOWED_BRAIN_EXTS.has(ext)) {
+      return reply.code(400).send({ error: `File type not supported. Allowed: ${[...ALLOWED_BRAIN_EXTS].join(', ')}` })
+    }
+
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storageKey = `campaign-brain/${agencyId}/${campaign.id}/${randomUUID()}-${safeName}`
+
+    try {
+      await uploadStream(storageKey, file, mimetype)
+    } catch (err) {
+      app.log.error(err, 'Failed to store campaign brain attachment')
+      return reply.code(500).send({ error: 'Failed to store file' })
+    }
+
+    const sizeBytes = (file as unknown as { bytesRead?: number }).bytesRead ?? 0
+
+    const attachment = await prisma.campaignBrainAttachment.create({
+      data: { agencyId, campaignId: campaign.id, filename, storageKey, mimeType: mimetype, sizeBytes },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, extractionStatus: true, summaryStatus: true, summary: true, createdAt: true },
+    })
+
+    await getCampaignBrainProcessQueue().add('process', {
+      agencyId,
+      attachmentId: attachment.id,
+      campaignId: campaign.id,
+    }, { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } })
+
+    return reply.code(201).send({ data: attachment })
+  })
+
+  // ── Campaign Brain: add URL source ──────────────────────────────────────────
+  app.post<{ Params: { id: string } }>('/:id/brain/attachments/from-url', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { url } = req.body as { url?: string }
+    if (!url?.startsWith('http')) return reply.code(400).send({ error: 'Valid URL required' })
+
+    const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, agencyId } })
+    if (!campaign) return reply.code(404).send({ error: 'Campaign not found' })
+
+    const attachment = await prisma.campaignBrainAttachment.create({
+      data: {
+        agencyId,
+        campaignId: campaign.id,
+        filename: url,
+        sourceUrl: url,
+        mimeType: 'text/html',
+      },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, extractionStatus: true, summaryStatus: true, summary: true, createdAt: true, sourceUrl: true },
+    })
+
+    await getCampaignBrainProcessQueue().add('process', {
+      agencyId,
+      attachmentId: attachment.id,
+      campaignId: campaign.id,
+      url,
+    }, { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } })
+
+    return reply.code(201).send({ data: attachment })
+  })
+
+  // ── Campaign Brain: update summary (user edit) ───────────────────────────────
+  app.patch<{ Params: { id: string; aid: string } }>('/:id/brain/attachments/:aid', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { summary } = req.body as { summary?: string }
+    const updated = await prisma.campaignBrainAttachment.updateMany({
+      where: { id: req.params.aid, campaignId: req.params.id, agencyId },
+      data: { ...(summary !== undefined ? { summary } : {}) },
+    })
+    if (updated.count === 0) return reply.code(404).send({ error: 'Attachment not found' })
+    return reply.send({ data: { updated: true } })
+  })
+
+  // ── Campaign Brain: delete attachment ───────────────────────────────────────
+  app.delete<{ Params: { id: string; aid: string } }>('/:id/brain/attachments/:aid', async (req, reply) => {
+    const { agencyId } = req.auth
+    const attachment = await prisma.campaignBrainAttachment.findFirst({
+      where: { id: req.params.aid, campaignId: req.params.id, agencyId },
+    })
+    if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+
+    if (attachment.storageKey) {
+      try { await deleteObject(attachment.storageKey) } catch {}
+    }
+    await prisma.campaignBrainAttachment.delete({ where: { id: attachment.id } })
+    return reply.send({ data: { deleted: true } })
   })
 }

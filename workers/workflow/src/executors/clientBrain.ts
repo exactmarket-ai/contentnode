@@ -114,23 +114,22 @@ export class ClientBrainExecutor extends NodeExecutor {
 
     if (!ctx.clientId) throw new Error('Client Brain node: no client is associated with this workflow')
 
-    const needsVertical = gtmSections.length > 0 || dgVertSections.length > 0
-    if (needsVertical && !verticalId) {
-      throw new Error('Client Brain node: a vertical is required when GTM or Demand Gen vertical sections are selected')
-    }
+    // If no vertical is configured, skip vertical-dependent sections gracefully rather than failing.
+    // The node will still emit brand profile + DG base sections if those are selected.
+    const resolvedVerticalId = verticalId || null
 
     const parts: string[] = []
 
     await withAgency(ctx.agencyId, async () => {
       const [client, vertical] = await Promise.all([
         prisma.client.findFirst({ where: { id: ctx.clientId!, agencyId: ctx.agencyId }, select: { name: true } }),
-        verticalId
-          ? prisma.vertical.findFirst({ where: { id: verticalId, agencyId: ctx.agencyId }, select: { name: true } })
+        resolvedVerticalId
+          ? prisma.vertical.findFirst({ where: { id: resolvedVerticalId, agencyId: ctx.agencyId }, select: { name: true } })
           : Promise.resolve(null),
       ])
 
       const clientName = client?.name ?? ctx.clientId!
-      const verticalName = vertical?.name ?? verticalId ?? ''
+      const verticalName = vertical?.name ?? resolvedVerticalId ?? ''
 
       parts.push([
         `# Client Brain Context`,
@@ -139,9 +138,9 @@ export class ClientBrainExecutor extends NodeExecutor {
       ].filter(Boolean).join('\n'))
 
       // ── GTM Framework sections ──
-      if (gtmSections.length > 0) {
+      if (gtmSections.length > 0 && resolvedVerticalId) {
         const fw = await prisma.clientFramework.findFirst({
-          where: { clientId: ctx.clientId!, verticalId: verticalId!, agencyId: ctx.agencyId },
+          where: { clientId: ctx.clientId!, verticalId: resolvedVerticalId, agencyId: ctx.agencyId },
           select: { data: true },
         })
         if (fw) {
@@ -174,9 +173,9 @@ export class ClientBrainExecutor extends NodeExecutor {
       }
 
       // ── Demand Gen vertical sections ──
-      if (dgVertSections.length > 0 && verticalId) {
+      if (dgVertSections.length > 0 && resolvedVerticalId) {
         const dg = await prisma.clientDemandGen.findUnique({
-          where: { clientId_verticalId: { clientId: ctx.clientId!, verticalId } },
+          where: { clientId_verticalId: { clientId: ctx.clientId!, verticalId: resolvedVerticalId } },
           select: { data: true },
         })
         if (dg) {

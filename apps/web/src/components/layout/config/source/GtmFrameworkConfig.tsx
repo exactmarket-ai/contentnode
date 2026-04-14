@@ -56,7 +56,7 @@ export function GtmFrameworkConfig({
       apiFetch(`/api/v1/clients/${clientId}/verticals`).then((r) => r.json()),
     ]).then(([client, { data }]) => {
       if (client?.data?.name) onChange('clientName', client.data.name)
-      setVerticals(data ?? [])
+      setVerticals([...(data ?? [])].sort((a: Vertical, b: Vertical) => a.name.localeCompare(b.name)))
     }).catch(() => {})
   }, [clientId])
 
@@ -137,26 +137,36 @@ export function GtmFrameworkConfig({
                 No verticals found.{isLead ? ' Use the button above to add one.' : ' Add verticals in the client\'s Structure tab.'}
               </p>
             )}
-            {verticals.length > 0 && (
-              <div className="space-y-1">
-                {verticals.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => selectVertical(v)}
-                    className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
-                    style={verticalId === v.id
-                      ? { borderColor: '#185fa5', backgroundColor: '#f0f6fd', color: '#0c447c' }
-                      : { borderColor: 'hsl(var(--border))' }
-                    }
-                  >
-                    {verticalId === v.id && (
-                      <span style={{ color: '#185fa5' }}>✓</span>
-                    )}
-                    <span className="flex-1">{v.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="space-y-1">
+              {/* Company (general / no vertical) — always first */}
+              <button
+                onClick={() => { onChange('verticalId', ''); onChange('verticalName', '') }}
+                className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+                style={!verticalId
+                  ? { borderColor: '#185fa5', backgroundColor: '#f0f6fd', color: '#0c447c' }
+                  : { borderColor: 'hsl(var(--border))' }
+                }
+              >
+                {!verticalId && <span style={{ color: '#185fa5' }}>✓</span>}
+                <span className="flex-1">Company</span>
+              </button>
+              {verticals.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => selectVertical(v)}
+                  className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+                  style={verticalId === v.id
+                    ? { borderColor: '#185fa5', backgroundColor: '#f0f6fd', color: '#0c447c' }
+                    : { borderColor: 'hsl(var(--border))' }
+                  }
+                >
+                  {verticalId === v.id && (
+                    <span style={{ color: '#185fa5' }}>✓</span>
+                  )}
+                  <span className="flex-1">{v.name}</span>
+                </button>
+              ))}
+            </div>
             {adding && (
               <div className="mt-1 space-y-1.5">
                 <input

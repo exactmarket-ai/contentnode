@@ -14,6 +14,7 @@ export const QUEUE_SCHEDULE_CHECKER = 'schedule-checker'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
+export const QUEUE_CAMPAIGN_BRAIN_PROCESS = 'campaign-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +81,13 @@ export interface BrandAttachmentProcessJobData {
   clientId: string
   verticalId: string | null
   url?: string // if set, scrape this URL instead of downloading from storage
+}
+
+export interface CampaignBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  campaignId: string
+  url?: string // set when processing a URL source
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

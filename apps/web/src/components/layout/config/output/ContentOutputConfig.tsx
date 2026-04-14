@@ -234,12 +234,18 @@ export function DisplayNodeOutput({
   const finalOutput = useWorkflowStore((s) => s.finalOutput)
   const [copied, setCopied] = useState(false)
 
-  const raw = nodeRunStatus?.output ?? finalOutput
-  const output = raw as Record<string, unknown> | string | undefined
-  const content = typeof output === 'string' ? output
-    : typeof output === 'object' && output !== null
-      ? (output.content as string | undefined) ?? (output.text as string | undefined) ?? JSON.stringify(output, null, 2)
-    : null
+  function extractContent(raw: unknown): string | null {
+    if (typeof raw === 'string') return raw || null
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>
+      if (typeof obj.content === 'string') return obj.content || null
+      if (typeof obj.text   === 'string') return obj.text   || null
+      return JSON.stringify(obj, null, 2)
+    }
+    return null
+  }
+  // Try node-specific output, then fall back to workflow-level finalOutput
+  const content = extractContent(nodeRunStatus?.output) ?? extractContent(finalOutput)
 
   const handleCopy = () => {
     if (!content) return
