@@ -193,6 +193,7 @@ function CampaignCard({
   const [liveWorkflows, setLiveWorkflows] = useState(campaign.workflows)
   const [polling, setPolling] = useState(false)
   const [pollCount, setPollCount] = useState(0)
+  const [runError, setRunError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Sync live workflows when campaign prop updates (e.g. on full refresh)
@@ -233,9 +234,15 @@ function CampaignCard({
 
   async function handleRunAll() {
     setRunning(true)
+    setRunError(null)
     try {
       const res = await apiFetch(`/api/v1/campaigns/${campaign.id}/run`, { method: 'POST' })
-      const { data } = await res.json()
+      const json = await res.json()
+      if (!res.ok) {
+        setRunError(json?.error ?? `Server error ${res.status}`)
+        return
+      }
+      const { data } = json
       // Immediately apply pending status to each workflow so the user sees instant feedback,
       // without waiting for the first poll.
       const runMap: Record<string, string> = {}
@@ -253,8 +260,8 @@ function CampaignCard({
       setPollCount(0)
       setPolling(true)
       onRefresh()
-    } catch {
-      // error handled gracefully
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : 'Failed to start runs')
     } finally {
       setRunning(false)
     }
@@ -406,6 +413,20 @@ function CampaignCard({
               ))
             )}
           </div>
+
+          {/* Run error banner */}
+          {runError && (
+            <div className="mx-4 mb-3 p-3 rounded-lg bg-red-950/30 border border-red-700/40 flex items-start gap-2.5">
+              <Icons.XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-red-300 font-medium">Failed to start runs</p>
+                <p className="text-[11px] text-red-200/70 mt-0.5">{runError}</p>
+              </div>
+              <button onClick={() => setRunError(null)} className="text-red-400/60 hover:text-red-400 shrink-0">
+                <Icons.X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
 
           {/* Worker stuck warning */}
           {workerStuck && (

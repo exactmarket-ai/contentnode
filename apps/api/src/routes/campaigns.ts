@@ -315,13 +315,16 @@ export async function campaignRoutes(app: FastifyInstance) {
     const queue = getWorkflowRunsQueue()
     const createdRuns: Array<{ workflowId: string; workflowName: string; runId: string; role: string | null }> = []
 
+    // Only store triggeredBy if the userId maps to a real User row (Clerk-only users have no DB record)
+    const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
+
     // Create and enqueue all runs in campaign order (parallel execution)
     for (const cw of runnable) {
       const run = await prisma.workflowRun.create({
         data: {
           workflowId: cw.workflowId,
           agencyId,
-          triggeredBy: userId,
+          triggeredBy: userExists ? userId : null,
           campaignId: campaign.id,
           status: 'pending',
           input: {} as never,
