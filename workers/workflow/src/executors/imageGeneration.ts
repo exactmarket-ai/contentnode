@@ -134,8 +134,10 @@ function extractTextFromInput(input: unknown): string {
       if (typeof content === 'object' && content !== null && (content as Record<string, unknown>).assets) continue
       if (typeof content === 'string') parts.push(content)
       else if (typeof content === 'object') {
-        const text = (content as Record<string, unknown>).text
-        if (typeof text === 'string') parts.push(text)
+        const c = content as Record<string, unknown>
+        // ImagePromptOutput from upstream image-prompt-builder
+        if (typeof c.positivePrompt === 'string') parts.push(c.positivePrompt)
+        else if (typeof c.text === 'string') parts.push(c.text)
         else parts.push(JSON.stringify(content))
       }
     }
@@ -145,8 +147,56 @@ function extractTextFromInput(input: unknown): string {
   return JSON.stringify(obj)
 }
 
+/** Return true when v looks like a full ImagePromptOutput from image-prompt-builder. */
+function isImagePromptOutput(v: unknown): v is ImagePromptOutput {
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    typeof (v as Record<string, unknown>).positivePrompt === 'string'
+  )
+}
+
+/** Find a structured ImagePromptOutput in the input — either directly or inside the runner's inputs[] wrapper. */
+function findStructuredPrompt(input: unknown): ImagePromptOutput | null {
+  if (isImagePromptOutput(input)) return input
+  if (input && typeof input === 'object') {
+    const obj = input as Record<string, unknown>
+    if (Array.isArray(obj.inputs)) {
+      for (const item of obj.inputs as Record<string, unknown>[]) {
+        if (isImagePromptOutput(item.content)) return item.content as ImagePromptOutput
+      }
+    }
+  }
+  return null
+}
+
 async function extractPrompt(input: unknown, referenceImages: ImageInput[]): Promise<ImagePromptOutput> {
   const hasRefs = referenceImages.length > 0
+
+  // If upstream is an image-prompt-builder, use its full structured output
+  // (preserves negativePrompt, aspectRatio, styleTag, modelPreference).
+  const structured = findStructuredPrompt(input)
+  if (structured) {
+    if (!hasRefs) return structured
+    // With reference images: describe them and prepend to the positive prompt
+    const result = await callModel(
+      {
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5-20251001',
+        api_key_ref: '',
+        system_prompt: 'Describe the key visual subjects in the provided image(s) in one concise sentence. No extra commentary.',
+        temperature: 0.3,
+        max_tokens: 150,
+      },
+      'Describe what you see.',
+      referenceImages,
+    )
+    const description = result.text.trim()
+    return {
+      ...structured,
+      positivePrompt: description ? `${description}. ${structured.positivePrompt}` : structured.positivePrompt,
+    }
+  }
 
   // Always use the user's text as-is — never rewrite or expand it automatically.
   // If reference images are present, ask Claude only to describe them so they can
@@ -560,7 +610,21 @@ export class ImageGenerationExecutor extends NodeExecutor {
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as ImageGenerationConfig
-    const provider: Provider = cfg.provider ?? 'dalle3'
+
+    // Normalize provider aliases — nodePILOT and node configs may use 'dall-e-3', 'openai', etc.
+    const PROVIDER_ALIASES: Record<string, Provider> = {
+      'dall-e-3':            'dalle3',
+      'dall-e-2':            'dalle3',
+      'dalle-3':             'dalle3',
+      'openai':              'dalle3',
+      'stable-diffusion':    'stability',
+      'stable-diffusion-xl': 'stability',
+      'sdxl':                'stability',
+      'flux':                'fal',
+      'flux-dev':            'fal',
+    }
+    const rawProvider = (cfg.provider ?? 'dalle3') as string
+    const provider: Provider = (PROVIDER_ALIASES[rawProvider] ?? rawProvider) as Provider
     const isOnline = !OFFLINE_IMAGE_PROVIDERS.has(provider)
     const svc = IMAGE_SERVICE_MAP[provider] ?? { costProvider: provider, model: provider, displayService: provider }
     const startMs = Date.now()
