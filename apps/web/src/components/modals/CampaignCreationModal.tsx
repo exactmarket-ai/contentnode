@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { WORKFLOW_TEMPLATES } from '@/lib/workflowTemplates'
 
 // ─── Campaign templates ───────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ interface TemplateSlot {
   label: string
   keywords: string[]
   description: string
+  workflowTemplateId?: string  // ID from WORKFLOW_TEMPLATES to auto-create if no match
 }
 
 interface CampaignTemplate {
@@ -41,10 +43,10 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     bgActive: 'bg-emerald-950/30',
     produces: ['Lead magnet', '5-email sequence', 'Landing pages', 'LinkedIn messages'],
     slots: [
-      { role: 'lead_magnet',   label: 'Lead Magnet',       keywords: ['lead magnet', 'magnet'],                      description: 'Gated asset from your ICP and value prop' },
-      { role: 'email_nurture', label: 'Email Nurture',     keywords: ['email', 'nurture'],                            description: '5-email sequence for new leads' },
-      { role: 'landing_page',  label: 'Landing Page',      keywords: ['landing', 'seo', 'page'],                      description: 'Conversion pages per target query' },
-      { role: 'outreach',      label: 'LinkedIn Outreach', keywords: ['linkedin', 'outreach', 'message'],             description: 'Personalised message variants' },
+      { role: 'lead_magnet',   label: 'Lead Magnet',       keywords: ['lead magnet', 'magnet'],            description: 'Gated asset from your ICP and value prop',  workflowTemplateId: 'dg-lead-magnet' },
+      { role: 'email_nurture', label: 'Email Nurture',     keywords: ['email', 'nurture'],                  description: '5-email sequence for new leads',             workflowTemplateId: 'dg-email-nurture' },
+      { role: 'landing_page',  label: 'Landing Page',      keywords: ['landing', 'seo', 'page'],            description: 'Conversion pages per target query',          workflowTemplateId: 'dg-seo-landing' },
+      { role: 'outreach',      label: 'LinkedIn Outreach', keywords: ['linkedin', 'outreach', 'message'],   description: 'Personalised message variants',              workflowTemplateId: 'dg-linkedin-outreach' },
     ],
   },
   {
@@ -59,7 +61,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     produces: ['Ad variations', 'Landing pages'],
     slots: [
       { role: 'ad_copy',      label: 'Ad Copy',      keywords: ['ad', 'copy', 'ads', 'adcopy'],  description: 'Multi-channel ad variations' },
-      { role: 'landing_page', label: 'Landing Page', keywords: ['landing', 'page'],               description: 'Matching pages per ad set' },
+      { role: 'landing_page', label: 'Landing Page', keywords: ['landing', 'page'],               description: 'Matching pages per ad set',  workflowTemplateId: 'dg-seo-landing' },
     ],
   },
   {
@@ -73,7 +75,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     bgActive: 'bg-pink-950/30',
     produces: ['5-email nurture sequence'],
     slots: [
-      { role: 'email_nurture', label: 'Email Nurture', keywords: ['email', 'nurture'], description: 'Sequence targeting existing leads' },
+      { role: 'email_nurture', label: 'Email Nurture', keywords: ['email', 'nurture'], description: 'Sequence targeting existing leads', workflowTemplateId: 'dg-email-nurture' },
     ],
   },
   {
@@ -87,9 +89,9 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     bgActive: 'bg-violet-950/30',
     produces: ['Competitive battlecard', 'SEO content map', 'Audience brief'],
     slots: [
-      { role: 'research', label: 'Competitive Research', keywords: ['competitive', 'review', 'scrape', 'web', 'miner', 'intel'], description: 'Deep web + review mining' },
-      { role: 'research', label: 'SEO Research',         keywords: ['seo', 'keyword', 'intent', 'content strategy'],             description: 'Keyword intent mapping' },
-      { role: 'research', label: 'Audience Research',    keywords: ['audience', 'signal', 'reddit', 'market signal'],            description: 'Reddit + social signals' },
+      { role: 'research', label: 'Competitive Research', keywords: ['competitive', 'review', 'scrape', 'web', 'miner', 'intel'], description: 'Deep web + review mining',  workflowTemplateId: 'intel-competitive' },
+      { role: 'research', label: 'SEO Research',         keywords: ['seo', 'keyword', 'intent', 'content strategy'],             description: 'Keyword intent mapping',     workflowTemplateId: 'intel-seo-content-strategy' },
+      { role: 'research', label: 'Audience Research',    keywords: ['audience', 'signal', 'reddit', 'market signal'],            description: 'Reddit + social signals',    workflowTemplateId: 'intel-market-signal-brief' },
     ],
   },
   {
@@ -152,6 +154,7 @@ export function CampaignCreationModal({
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [slotAssignments, setSlotAssignments] = useState<Record<number, string>>({})
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<string[]>(preselectedWorkflowIds)
+  const [creatingSlots, setCreatingSlots] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     apiFetch(`/api/v1/workflows?clientId=${clientId}`)
@@ -180,6 +183,37 @@ export function CampaignCreationModal({
     })
     setSlotAssignments(assignments)
     setStep(2)
+  }
+
+  async function createWorkflowFromTemplate(slotIndex: number, workflowTemplateId: string) {
+    const tpl = WORKFLOW_TEMPLATES.find((t) => t.id === workflowTemplateId)
+    if (!tpl) return
+    setCreatingSlots((prev) => ({ ...prev, [slotIndex]: true }))
+    try {
+      // 1. Create the workflow record
+      const wRes = await apiFetch('/api/v1/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: tpl.name, clientId, connectivityMode: 'online', description: tpl.description }),
+      })
+      const { data: wf } = await wRes.json()
+      if (!wRes.ok || !wf?.id) throw new Error('Failed to create workflow')
+
+      // 2. Apply template nodes + edges via the graph endpoint
+      await apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodes: tpl.nodes, edges: tpl.edges }),
+      })
+
+      // 3. Add new workflow to local list and assign to slot
+      setWorkflows((prev) => [...prev, { id: wf.id, name: wf.name, status: wf.status, connectivityMode: wf.connectivityMode }])
+      setSlotAssignments((prev) => ({ ...prev, [slotIndex]: wf.id }))
+    } catch {
+      // non-fatal — slot stays unassigned
+    } finally {
+      setCreatingSlots((prev) => ({ ...prev, [slotIndex]: false }))
+    }
   }
 
   function toggleWorkflow(id: string) {
@@ -329,28 +363,67 @@ export function CampaignCreationModal({
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Assign Workflows</Label>
                   <div className="space-y-2">
-                    {selectedTemplate.slots.map((slot, i) => (
-                      <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/10">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">{slot.label}</p>
-                          <p className="text-[10px] text-muted-foreground">{slot.description}</p>
+                    {selectedTemplate.slots.map((slot, i) => {
+                      const isCreating = creatingSlots[i]
+                      const assigned = slotAssignments[i]
+                      const assignedWorkflow = workflows.find((w) => w.id === assigned)
+                      return (
+                        <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/10">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium">{slot.label}</p>
+                            <p className="text-[10px] text-muted-foreground">{slot.description}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isCreating ? (
+                              <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground w-40">
+                                <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                                Creating…
+                              </span>
+                            ) : (
+                              <>
+                                <Select
+                                  value={assigned ?? '__none__'}
+                                  onValueChange={(v) => setSlotAssignments((prev) => ({ ...prev, [i]: v }))}
+                                >
+                                  <SelectTrigger className="w-36 h-7 text-xs">
+                                    <SelectValue placeholder="Skip slot" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Skip slot</SelectItem>
+                                    {workflows.map((wf) => (
+                                      <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {slot.workflowTemplateId && (!assigned || assigned === '__none__') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => createWorkflowFromTemplate(i, slot.workflowTemplateId!)}
+                                    className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 border border-emerald-800/50 rounded px-1.5 py-1 transition-colors whitespace-nowrap"
+                                    title={`Create ${slot.label} workflow from template`}
+                                  >
+                                    <Icons.Plus className="w-3 h-3" />
+                                    Create
+                                  </button>
+                                )}
+                                {assigned && assigned !== '__none__' && assignedWorkflow && (
+                                  <a
+                                    href={`/workflows/${assigned}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                    title="Open workflow"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Icons.ExternalLink className="w-3 h-3" />
+                                  </a>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <Select
-                          value={slotAssignments[i] ?? ''}
-                          onValueChange={(v) => setSlotAssignments((prev) => ({ ...prev, [i]: v }))}
-                        >
-                          <SelectTrigger className="w-40 h-7 text-xs shrink-0">
-                            <SelectValue placeholder="Skip slot" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">Skip slot</SelectItem>
-                            {workflows.map((wf) => (
-                              <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                   {workflows.length === 0 && (
                     <p className="text-[10px] text-muted-foreground">No workflows yet — you can assign them after creating the campaign.</p>
