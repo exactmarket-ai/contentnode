@@ -31,6 +31,10 @@ export interface WorkflowMeta {
   graphSaved?: boolean
   /** When true: nodes cannot be moved, added, deleted, or reconnected. Node configs remain editable. */
   isLocked?: boolean
+  /** True when this workflow is saved as an org-level template */
+  isTemplate?: boolean
+  templateCategory?: string | null
+  templateDescription?: string | null
 }
 
 export interface NodeRunStatus {

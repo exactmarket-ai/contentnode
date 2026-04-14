@@ -4,7 +4,7 @@ export interface WorkflowTemplate {
   id: string
   name: string
   description: string
-  category: 'blog' | 'social' | 'email' | 'seo' | 'general' | 'marketing'
+  category: 'blog' | 'social' | 'email' | 'seo' | 'general' | 'marketing' | 'demand_gen'
   icon: string
   nodes: Node[]
   edges: Edge[]
@@ -1222,6 +1222,458 @@ Lead with the primary emotion from the brief. Every character counts.`,
       { id: 'e-title-out',         source: 'vid-title-gen',   target: 'vid-title-out' },
       { id: 'e-desc-out',          source: 'vid-desc-gen',    target: 'vid-desc-out' },
       { id: 'e-frame-thumb',       source: 'vid-frame',       target: 'vid-thumb-dl' },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DEMAND GENERATION TEMPLATES
+  // These templates use the Client Brain source node to pull from the client's
+  // GTM Framework, Demand Gen brain, and Brand Profile automatically.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  {
+    id: 'dg-lead-magnet',
+    name: 'Lead Magnet Builder',
+    description: 'Pulls ICP, messaging, and offer data from the client brain to generate a complete downloadable lead magnet — guide, checklist, or template pack structured and ready for design.',
+    category: 'demand_gen',
+    icon: 'Gift',
+    nodes: [
+      {
+        id: 'dg-lm-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 80 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08', '16'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S2', 'S3'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'dg-lm-outline',
+        type: 'logic',
+        position: { x: 380, y: 80 },
+        data: {
+          label: 'Generate Outline',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Using the client brain context provided, create a detailed outline for a lead magnet that will attract and convert ideal prospects.
+
+The lead magnet should:
+- Address the #1 pain point of the ICP
+- Demonstrate clear, specific value (not generic tips)
+- Be completable in under 20 minutes
+- Lead naturally toward the core offer
+
+Output the outline as:
+1. Lead Magnet Title (clear, outcome-focused)
+2. Subtitle (who it's for + what they'll get)
+3. Format recommendation (guide / checklist / template / swipe file) with rationale
+4. 5-8 section headings with 2-3 bullet points under each
+5. CTA at the end (what they should do next)`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-lm-write',
+        type: 'logic',
+        position: { x: 680, y: 80 },
+        data: {
+          label: 'Write Full Content',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Using the outline above and the client brain context, write the complete lead magnet content.
+
+Requirements:
+- Write in the client's brand voice (use the Brand Profile if included)
+- Every section should be immediately actionable — no fluff
+- Include specific examples, stats, or frameworks where relevant
+- Use headers, short paragraphs, and bullet points for readability
+- End each section with a clear takeaway
+- Final CTA should be specific and low-friction
+
+Do not pad. If a section is complete in 3 paragraphs, stop at 3 paragraphs.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-lm-out',
+        type: 'output',
+        position: { x: 980, y: 80 },
+        data: {
+          label: 'Lead Magnet',
+          subtype: 'content-output',
+          config: {
+            subtype: 'content-output',
+            outputType: 'Blog Post',
+            targetWordCountMin: 1200,
+            targetWordCountMax: 2500,
+          },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-lm-brain-outline', source: 'dg-lm-brain',   target: 'dg-lm-outline' },
+      { id: 'e-lm-outline-write', source: 'dg-lm-outline', target: 'dg-lm-write' },
+      { id: 'e-lm-write-out',     source: 'dg-lm-write',   target: 'dg-lm-out' },
+    ],
+  },
+
+  {
+    id: 'dg-email-nurture',
+    name: 'Email Nurture Sequence',
+    description: 'Generates a 5-email nurture sequence from the client brain — each email has a specific job: deliver, walkthrough, objection handling, proof, and trial CTA.',
+    category: 'demand_gen',
+    icon: 'Mail',
+    nodes: [
+      {
+        id: 'dg-en-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 300 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['08', '10', '12'],
+            dgBaseSections: ['B2'],
+            dgVertSections: ['S2', 'S3'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'dg-en-e1',
+        type: 'logic',
+        position: { x: 380, y: 0 },
+        data: {
+          label: 'Email 1 — Deliver',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 1 of a 5-email nurture sequence.
+
+Job: Deliver the lead magnet and open a conversation.
+
+Structure:
+- Subject line (curiosity + specificity, under 50 chars)
+- Preview text (completes the subject line thought)
+- Body: Thank them for downloading, deliver the resource link, then ask ONE question: "What's the biggest bottleneck in your [relevant process] right now?" — keep the email under 150 words
+- Signature
+
+Tone: warm, direct, human. No corporate language.
+
+Use the client brain context to make the subject line and question specific to the ICP.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-en-e2',
+        type: 'logic',
+        position: { x: 380, y: 150 },
+        data: {
+          label: 'Email 2 — Walkthrough',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 2 of a 5-email nurture sequence. Send: Day 3.
+
+Job: Show the product in action. Make it real and visual.
+
+Structure:
+- Subject line (show don't tell — reference the outcome, not the feature)
+- Body: "Here's exactly how [client name] works for a [ICP role]..." — walk through one specific use case step by step. Reference a real workflow, real output, or real time-saving scenario based on the client brain context. Under 200 words.
+- CTA: Soft — "Does this match how your team works?"
+
+Keep it conversational. No bullet lists. Tell a mini-story.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-en-e3',
+        type: 'logic',
+        position: { x: 380, y: 300 },
+        data: {
+          label: 'Email 3 — Objections',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 3 of a 5-email nurture sequence. Send: Day 5.
+
+Job: Handle the most common objection head-on. Do not dance around it.
+
+Using the objection handling and competitive differentiation sections from the client brain, pick the #1 objection a prospect would have at this stage (usually: "We already use X" or "We don't have time to implement something new").
+
+Structure:
+- Subject line: name the objection directly ("You probably already use [competitor/tool]")
+- Body: Acknowledge the objection genuinely, then reframe — not with features, but with the outcome they're actually looking for. Under 180 words.
+- CTA: "Worth a 10-minute look?"`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-en-e4',
+        type: 'logic',
+        position: { x: 380, y: 450 },
+        data: {
+          label: 'Email 4 — Proof',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 4 of a 5-email nurture sequence. Send: Day 8.
+
+Job: Social proof. Make the result feel real and achievable.
+
+Using proof points, case studies, and customer quotes from the client brain, write a brief case study or before/after story. If no specific case study exists, build a realistic scenario using the ICP profile and offer details.
+
+Structure:
+- Subject line: lead with the result ("[Type of client] went from X to Y")
+- Body: Brief story — who they were, what they were dealing with, what changed, what it meant for them. 150-200 words.
+- Specific numbers wherever possible (time saved, leads generated, revenue impact)
+- CTA: "Want to see if this works for your situation?"`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-en-e5',
+        type: 'logic',
+        position: { x: 380, y: 600 },
+        data: {
+          label: 'Email 5 — CTA',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 5 of a 5-email nurture sequence. Send: Day 14.
+
+Job: Direct trial or demo CTA. This is the ask. Be clear.
+
+Structure:
+- Subject line: direct and low-pressure ("Quick question before I go quiet")
+- Body: Acknowledge they've been reading (briefly). Make the ask specific and easy — not "schedule a call" but a single low-friction action (start a trial, watch a 2-min Loom, answer one question). Under 120 words.
+- One CTA, linked, prominent
+- PS: Brief reason why now (limited spots, relevant timing, seasonal angle)
+
+Do not apologize. Do not hedge. This email should feel like it comes from a peer, not a salesperson.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-en-out',
+        type: 'output',
+        position: { x: 680, y: 300 },
+        data: {
+          label: 'Email Sequence',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Email' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-en-brain-e1', source: 'dg-en-brain', target: 'dg-en-e1' },
+      { id: 'e-en-brain-e2', source: 'dg-en-brain', target: 'dg-en-e2' },
+      { id: 'e-en-brain-e3', source: 'dg-en-brain', target: 'dg-en-e3' },
+      { id: 'e-en-brain-e4', source: 'dg-en-brain', target: 'dg-en-e4' },
+      { id: 'e-en-brain-e5', source: 'dg-en-brain', target: 'dg-en-e5' },
+      { id: 'e-en-e1-out',   source: 'dg-en-e1',   target: 'dg-en-out' },
+      { id: 'e-en-e2-out',   source: 'dg-en-e2',   target: 'dg-en-out' },
+      { id: 'e-en-e3-out',   source: 'dg-en-e3',   target: 'dg-en-out' },
+      { id: 'e-en-e4-out',   source: 'dg-en-e4',   target: 'dg-en-out' },
+      { id: 'e-en-e5-out',   source: 'dg-en-e5',   target: 'dg-en-out' },
+    ],
+  },
+
+  {
+    id: 'dg-seo-landing',
+    name: 'SEO Landing Page Copy',
+    description: 'Combines a target keyword with the client brain to generate conversion-focused landing page copy — headline, subheads, body, and CTA for one intent-based search query.',
+    category: 'demand_gen',
+    icon: 'Search',
+    nodes: [
+      {
+        id: 'dg-seo-keyword',
+        type: 'source',
+        position: { x: 80, y: 80 },
+        data: {
+          label: 'Target Keyword',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: '',
+            placeholder: 'Enter the target search query, e.g. "content workflow automation for agencies"',
+          },
+        },
+      },
+      {
+        id: 'dg-seo-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 230 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08', '12'],
+            dgBaseSections: [],
+            dgVertSections: ['S2', 'S3', 'S7'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'dg-seo-write',
+        type: 'logic',
+        position: { x: 400, y: 150 },
+        data: {
+          label: 'Write Landing Page Copy',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write conversion-focused landing page copy for the target keyword provided, using the client brain context.
+
+This is not a blog post. It is a page for people who are already frustrated and searching for a solution.
+
+Output the following sections in order:
+
+**H1 Headline:** Outcome-first. Under 10 words. Speaks to what they want, not what the product is.
+
+**H2 Subheadline:** 1-2 sentences expanding the headline. Who it's for + what changes.
+
+**Problem Statement (2-3 short paragraphs):** Name the specific pain clearly. Speak their internal monologue. Use language from the ICP and external intelligence sections.
+
+**Solution Bridge (1 paragraph):** Transition from problem to solution without pitching yet.
+
+**How It Works (3-5 bullet points):** Specific, outcome-oriented. Not features — results.
+
+**Social Proof Block:** 1-2 quotes or a brief stat. Pull from proof points if available.
+
+**CTA Section:** One clear action. Headline the CTA. Subtext handles objections.
+
+Target 700-900 words total. Do not pad.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-seo-out',
+        type: 'output',
+        position: { x: 720, y: 150 },
+        data: {
+          label: 'Landing Page Copy',
+          subtype: 'content-output',
+          config: {
+            subtype: 'content-output',
+            outputType: 'Landing Page',
+            targetWordCountMin: 700,
+            targetWordCountMax: 900,
+          },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-seo-kw-write',    source: 'dg-seo-keyword', target: 'dg-seo-write' },
+      { id: 'e-seo-brain-write', source: 'dg-seo-brain',   target: 'dg-seo-write' },
+      { id: 'e-seo-write-out',   source: 'dg-seo-write',   target: 'dg-seo-out' },
+    ],
+  },
+
+  {
+    id: 'dg-linkedin-outreach',
+    name: 'LinkedIn Outreach Messages',
+    description: 'Generates 10 LinkedIn outreach message variants from the client brain — personalized by ICP role and trigger event, short and conversion-focused.',
+    category: 'demand_gen',
+    icon: 'MessageSquare',
+    nodes: [
+      {
+        id: 'dg-li-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 120 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '07', '08'],
+            dgBaseSections: ['B2'],
+            dgVertSections: ['S3'],
+            includeBrand: false,
+          },
+        },
+      },
+      {
+        id: 'dg-li-write',
+        type: 'logic',
+        position: { x: 380, y: 120 },
+        data: {
+          label: 'Generate Outreach Messages',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Using the client brain context, generate 10 LinkedIn outreach message variants.
+
+Rules:
+- Every message must be under 75 words
+- One ask per message — no pitch decks, no case studies
+- Personalization hook in the first line (their role, their company size, a specific trigger)
+- The ask should be frictionless: a yes/no question, a Loom link, or "worth 10 minutes?"
+- Never say "I hope this finds you well" or any opener that sounds like a template
+- No exclamation marks
+
+Format each message as:
+---
+**Variant [N] — [Trigger/Context]**
+[Message body]
+---
+
+Vary the following across the 10 variants:
+- 3 different ICP roles (use segments from the brain)
+- 3 trigger angles (hiring, funding, new role, recent content, pain signal)
+- Mix of question-close and link-close
+- Tone: direct professional / warm peer / brief and curious`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-li-out',
+        type: 'output',
+        position: { x: 680, y: 120 },
+        data: {
+          label: 'Outreach Messages',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-li-brain-write', source: 'dg-li-brain', target: 'dg-li-write' },
+      { id: 'e-li-write-out',   source: 'dg-li-write', target: 'dg-li-out' },
     ],
   },
 ]

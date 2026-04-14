@@ -324,6 +324,7 @@ export function TopBar() {
   const navigate = useNavigate()
   const { isLead } = useCurrentUser()
   const [lockSaving, setLockSaving] = useState(false)
+  const [templateSaving, setTemplateSaving] = useState(false)
   const [batchModalOpen, setBatchModalOpen] = useState(false)
   const [batchToast, setBatchToast] = useState<string | null>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
@@ -405,6 +406,29 @@ export function TopBar() {
       console.error('[lock-workflow] failed:', err)
     } finally {
       setLockSaving(false)
+    }
+  }
+
+  const handleToggleTemplate = async () => {
+    const wf = useWorkflowStore.getState().workflow
+    if (!wf.id) return
+    const next = !wf.isTemplate
+    setTemplateSaving(true)
+    try {
+      await apiFetch(`/api/v1/workflows/${wf.id}/promote-template`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          isTemplate: next,
+          templateCategory: wf.templateCategory ?? 'general',
+          templateDescription: wf.templateDescription ?? wf.name,
+        }),
+      })
+      setWorkflow({ isTemplate: next })
+    } catch (err) {
+      console.error('[promote-template] failed:', err)
+    } finally {
+      setTemplateSaving(false)
     }
   }
 
@@ -581,6 +605,27 @@ export function TopBar() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Promote to template (admin only) */}
+      {workflow.id && isLead && (
+        <button
+          onClick={handleToggleTemplate}
+          disabled={templateSaving}
+          title={workflow.isTemplate ? 'Remove from org templates' : 'Save as org template — appears in New Workflow picker for all team members'}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+            workflow.isTemplate
+              ? 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100'
+              : 'border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+          )}
+        >
+          {templateSaving
+            ? <Icons.Loader2 className="h-3 w-3 animate-spin" />
+            : <Icons.Bookmark className="h-3 w-3" />
+          }
+          {workflow.isTemplate ? 'Template' : 'Save as Template'}
+        </button>
+      )}
 
       {/* Workflow lock */}
       {workflow.id && (
