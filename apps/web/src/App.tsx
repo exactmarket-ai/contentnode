@@ -99,6 +99,7 @@ const protectedChildren = [
   { path: 'access', element: <AccessPage /> },
   { path: 'settings', element: <SettingsPage /> },
   { path: 'profile', element: <UserProfilePage /> },
+  { path: 'review/:runId', element: <ReviewPage /> },
 ]
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -109,7 +110,6 @@ const router = createBrowserRouter([
   { path: '/portal', element: <PortalPage /> },
   { path: '/portal/review/:runId', element: <PortalReviewPage /> },
   { path: '/accept-invite', element: <AcceptInvitePage /> },
-  { path: '/review/:runId', element: <ReviewPage /> },
 
   // Landing + sign-in (public, only when Clerk is configured)
   ...(PUBLISHABLE_KEY

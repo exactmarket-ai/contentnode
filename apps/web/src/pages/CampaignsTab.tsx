@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, assetUrl } from '@/lib/api'
 import { CampaignCreationModal } from '@/components/modals/CampaignCreationModal'
 import { CampaignBrainPanel } from '@/components/modals/CampaignBrainModal'
 
@@ -729,7 +729,7 @@ function CampaignCard({
                       title="View image output"
                     >
                       <img
-                        src={cw.latestRun.firstImagePath}
+                        src={assetUrl(cw.latestRun.firstImagePath)}
                         alt="output preview"
                         className="w-full h-full object-cover"
                       />
