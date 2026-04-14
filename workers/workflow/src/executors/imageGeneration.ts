@@ -636,6 +636,14 @@ export class ImageGenerationExecutor extends NodeExecutor {
     const prompt = await extractPrompt(input, referenceImages)
     console.log(`[imageGeneration] prompt sent to ${provider}:`, JSON.stringify(prompt))
 
+    // Guard: if we still have no usable prompt, give the user a clear message
+    // rather than sending "null" or raw JSON to the image API.
+    if (!prompt.positivePrompt || prompt.positivePrompt === 'null' || prompt.positivePrompt.startsWith('{')) {
+      throw new Error(
+        'Image generation received no prompt text. Make sure the upstream node (AI Generate, Image Prompt Builder, or Text Input) is connected to this node and produced output before running.',
+      )
+    }
+
     let rawUrls: string[]
 
     try {

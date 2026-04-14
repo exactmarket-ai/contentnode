@@ -200,6 +200,8 @@ SUGGESTION BLOCK FORMAT (always at the very end of your message):
 </NODEPILOT_SUGGESTIONS>
 
 REQUIRED NODE CONNECTIONS — workflows will fail at runtime if these are missing:
+- image-prompt-builder → image-generation: ALWAYS connect image-prompt-builder directly to image-generation with an edge. The image-generation node WILL NOT receive a prompt unless this edge exists. Never place an image-prompt-builder node without an edge to an image-generation node in the same suggestion.
+- image-generation: every image-generation node MUST have at least one incoming edge (from image-prompt-builder, ai-generate, or text-input). A disconnected image-generation node will produce no output.
 - character-animation: provider MUST be "did" by default — D-ID animates any uploaded photo automatically. Only use "heygen" if the user has explicitly provided their HeyGen Avatar ID or Talking Photo ID. Never suggest "heygen" as a default — it requires pre-registration in their dashboard. Provider MUST be one of: "did", "heygen", "sadtalker" (exact strings)
 - character-animation: MUST have BOTH:
     1. An audio source on "audio" handle — connect voice-output, music-generation, or audio-mix.
