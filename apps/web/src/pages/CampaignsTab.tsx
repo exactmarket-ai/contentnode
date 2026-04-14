@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { CampaignCreationModal } from '@/components/modals/CampaignCreationModal'
@@ -144,6 +146,175 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   cancelled:  { label: 'Cancelled', color: 'text-muted-foreground' },
 }
 
+// ─── Preflight — required node fields ────────────────────────────────────────
+
+interface RequiredFieldDef {
+  key: string
+  label: string
+  type: 'text' | 'textarea'
+  placeholder: string
+}
+
+const REQUIRED_NODE_FIELDS: Record<string, { validation: 'all' | 'any'; hint: string; fields: RequiredFieldDef[] }> = {
+  'seo-intent': {
+    validation: 'any',
+    hint: 'Fill in at least one of these',
+    fields: [
+      { key: 'topic',        label: 'Topic',         type: 'text',     placeholder: 'e.g. manufacturing automation software' },
+      { key: 'seedKeywords', label: 'Seed Keywords',  type: 'textarea', placeholder: 'One per line…\nmanufacturing lead gen\nindustrial CRM' },
+    ],
+  },
+  'deep-web-scrape': {
+    validation: 'all',
+    hint: 'Required',
+    fields: [
+      { key: 'seedUrls', label: 'Seed URLs', type: 'textarea', placeholder: 'https://example.com\nhttps://…' },
+    ],
+  },
+  'review-miner': {
+    validation: 'all',
+    hint: 'Required',
+    fields: [
+      { key: 'companySlug', label: 'Company Name / Slug', type: 'text', placeholder: 'acme-corp' },
+    ],
+  },
+  'audience-signal': {
+    validation: 'all',
+    hint: 'Required',
+    fields: [
+      { key: 'searchTerms', label: 'Reddit Search Terms', type: 'textarea', placeholder: 'One per line…' },
+    ],
+  },
+}
+
+function isNodeConfigReady(subtype: string, config: Record<string, unknown>): boolean {
+  const req = REQUIRED_NODE_FIELDS[subtype]
+  if (!req) return true
+  const filled = req.fields.filter((f) => ((config[f.key] as string) ?? '').trim().length > 0)
+  return req.validation === 'any' ? filled.length > 0 : filled.length === req.fields.length
+}
+
+interface PreflightIssue {
+  workflowId: string
+  workflowName: string
+  nodes: Array<{ nodeId: string; nodeLabel: string; subtype: string }>
+}
+
+// ─── Preflight dialog ─────────────────────────────────────────────────────────
+
+function PreflightDialog({
+  issues,
+  values,
+  onChange,
+  onSaveAndRun,
+  onCancel,
+  saving,
+}: {
+  issues: PreflightIssue[]
+  values: Record<string, Record<string, Record<string, string>>>
+  onChange: (workflowId: string, nodeId: string, field: string, value: string) => void
+  onSaveAndRun: () => void
+  onCancel: () => void
+  saving: boolean
+}) {
+  // Check if all issues are resolved
+  const allReady = issues.every((issue) =>
+    issue.nodes.every((n) => {
+      const req = REQUIRED_NODE_FIELDS[n.subtype]
+      if (!req) return true
+      const nodeVals = values[issue.workflowId]?.[n.nodeId] ?? {}
+      const filled = req.fields.filter((f) => (nodeVals[f.key] ?? '').trim().length > 0)
+      return req.validation === 'any' ? filled.length > 0 : filled.length === req.fields.length
+    })
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="relative w-full max-w-lg bg-white border border-border rounded-xl shadow-2xl flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-border shrink-0">
+          <div className="p-1.5 rounded-lg bg-amber-100 shrink-0">
+            <Icons.Settings2 className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-semibold">Quick setup needed</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {issues.length === 1
+                ? `1 workflow needs a couple of fields filled in before it can run.`
+                : `${issues.length} workflows need a couple of fields filled in before they can run.`}
+            </p>
+          </div>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground shrink-0">
+            <Icons.X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Issues */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {issues.map((issue) => (
+            <div key={issue.workflowId}>
+              <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+                <Icons.GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                {issue.workflowName}
+              </p>
+              <div className="space-y-4 pl-5">
+                {issue.nodes.map((n) => {
+                  const req = REQUIRED_NODE_FIELDS[n.subtype]!
+                  return (
+                    <div key={n.nodeId}>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                        {n.nodeLabel} · <span className="normal-case">{req.hint}</span>
+                      </p>
+                      <div className="space-y-2">
+                        {req.fields.map((f) => (
+                          <div key={f.key}>
+                            <label className="text-xs text-muted-foreground mb-1 block">{f.label}</label>
+                            {f.type === 'textarea' ? (
+                              <Textarea
+                                className="text-xs min-h-[60px] font-mono"
+                                placeholder={f.placeholder}
+                                value={values[issue.workflowId]?.[n.nodeId]?.[f.key] ?? ''}
+                                onChange={(e) => onChange(issue.workflowId, n.nodeId, f.key, e.target.value)}
+                              />
+                            ) : (
+                              <Input
+                                className="text-xs"
+                                placeholder={f.placeholder}
+                                value={values[issue.workflowId]?.[n.nodeId]?.[f.key] ?? ''}
+                                onChange={(e) => onChange(issue.workflowId, n.nodeId, f.key, e.target.value)}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-border shrink-0">
+          <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">
+            Cancel
+          </button>
+          <Button
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            disabled={!allReady || saving}
+            onClick={onSaveAndRun}
+          >
+            {saving ? <Icons.Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icons.Play className="w-3.5 h-3.5" />}
+            {saving ? 'Saving…' : 'Save & Run'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Run status dot ───────────────────────────────────────────────────────────
 
 function RunDot({ status }: { status?: string }) {
@@ -194,6 +365,11 @@ function CampaignCard({
   const [polling, setPolling] = useState(false)
   const [pollCount, setPollCount] = useState(0)
   const [runError, setRunError] = useState<string | null>(null)
+  // Preflight
+  const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([])
+  const [preflightValues, setPreflightValues] = useState<Record<string, Record<string, Record<string, string>>>>({})
+  const [showPreflight, setShowPreflight] = useState(false)
+  const [savingPreflight, setSavingPreflight] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Sync live workflows when campaign prop updates (e.g. on full refresh)
@@ -232,38 +408,102 @@ function CampaignCard({
   const pendingWorkflows  = liveWorkflows.filter((cw) => cw.latestRun?.status === 'pending')
   const workerStuck = polling && pollCount >= 6 && pendingWorkflows.length === liveWorkflows.filter(cw => cw.latestRun).length && failedWorkflows.length === 0 && runningWorkflows === 0
 
+  async function doRunAll() {
+    const res = await apiFetch(`/api/v1/campaigns/${campaign.id}/run`, { method: 'POST' })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json?.error ?? `Server error ${res.status}`)
+    const runMap: Record<string, string> = {}
+    for (const r of (json.data?.runs ?? []) as Array<{ workflowId: string; runId: string }>) {
+      runMap[r.workflowId] = r.runId
+    }
+    setLiveWorkflows((prev) =>
+      prev.map((cw) =>
+        runMap[cw.workflowId]
+          ? { ...cw, latestRun: { id: runMap[cw.workflowId], status: 'pending', startedAt: null, completedAt: null, campaignId: campaign.id, errorMessage: null } }
+          : cw
+      )
+    )
+    setExpanded(true)
+    setPollCount(0)
+    setPolling(true)
+    onRefresh()
+  }
+
   async function handleRunAll() {
     setRunning(true)
     setRunError(null)
     try {
-      const res = await apiFetch(`/api/v1/campaigns/${campaign.id}/run`, { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) {
-        setRunError(json?.error ?? `Server error ${res.status}`)
+      // Preflight: fetch each workflow's nodes and check for required-but-empty fields
+      const issues: PreflightIssue[] = []
+      for (const cw of liveWorkflows) {
+        const r = await apiFetch(`/api/v1/workflows/${cw.workflowId}`)
+        if (!r.ok) continue
+        const { data: wf } = await r.json()
+        const badNodes: PreflightIssue['nodes'] = []
+        for (const node of (wf.nodes ?? []) as Array<{ id: string; label: string; config: Record<string, unknown> }>) {
+          const cfg = (node.config ?? {}) as Record<string, unknown>
+          const subtype = (cfg.subtype as string) ?? ''
+          if (REQUIRED_NODE_FIELDS[subtype] && !isNodeConfigReady(subtype, cfg)) {
+            badNodes.push({ nodeId: node.id, nodeLabel: node.label ?? subtype, subtype })
+          }
+        }
+        if (badNodes.length > 0) {
+          issues.push({ workflowId: cw.workflowId, workflowName: cw.workflow.name, nodes: badNodes })
+        }
+      }
+
+      if (issues.length > 0) {
+        // Initialise editable values from current (empty) config so fields start blank
+        const vals: Record<string, Record<string, Record<string, string>>> = {}
+        for (const issue of issues) {
+          vals[issue.workflowId] = {}
+          for (const n of issue.nodes) {
+            vals[issue.workflowId][n.nodeId] = {}
+            for (const f of REQUIRED_NODE_FIELDS[n.subtype]?.fields ?? []) {
+              vals[issue.workflowId][n.nodeId][f.key] = ''
+            }
+          }
+        }
+        setPreflightIssues(issues)
+        setPreflightValues(vals)
+        setShowPreflight(true)
         return
       }
-      const { data } = json
-      // Immediately apply pending status to each workflow so the user sees instant feedback,
-      // without waiting for the first poll.
-      const runMap: Record<string, string> = {}
-      for (const r of (data.runs ?? []) as Array<{ workflowId: string; runId: string }>) {
-        runMap[r.workflowId] = r.runId
-      }
-      setLiveWorkflows((prev) =>
-        prev.map((cw) =>
-          runMap[cw.workflowId]
-            ? { ...cw, latestRun: { id: runMap[cw.workflowId], status: 'pending', startedAt: null, completedAt: null, campaignId: campaign.id, errorMessage: null } }
-            : cw
-        )
-      )
-      setExpanded(true)
-      setPollCount(0)
-      setPolling(true)
-      onRefresh()
+
+      await doRunAll()
     } catch (err) {
       setRunError(err instanceof Error ? err.message : 'Failed to start runs')
     } finally {
       setRunning(false)
+    }
+  }
+
+  async function handleSaveAndRun() {
+    setSavingPreflight(true)
+    try {
+      // Save each modified node config via targeted PATCH
+      for (const issue of preflightIssues) {
+        for (const n of issue.nodes) {
+          const nodeVals = preflightValues[issue.workflowId]?.[n.nodeId] ?? {}
+          const nonEmpty = Object.fromEntries(
+            Object.entries(nodeVals).filter(([, v]) => v.trim().length > 0)
+          )
+          if (Object.keys(nonEmpty).length === 0) continue
+          await apiFetch(`/api/v1/workflows/${issue.workflowId}/nodes/${n.nodeId}/config`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nonEmpty),
+          })
+        }
+      }
+      setShowPreflight(false)
+      setPreflightIssues([])
+      await doRunAll()
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : 'Failed to save configuration')
+      setShowPreflight(false)
+    } finally {
+      setSavingPreflight(false)
     }
   }
 
@@ -642,6 +882,26 @@ function CampaignCard({
                 <p className="text-xs text-muted-foreground">No completed runs found.</p>
               )}
             </div>
+          )}
+
+          {/* Preflight setup dialog */}
+          {showPreflight && (
+            <PreflightDialog
+              issues={preflightIssues}
+              values={preflightValues}
+              onChange={(wfId, nodeId, field, value) =>
+                setPreflightValues((prev) => ({
+                  ...prev,
+                  [wfId]: {
+                    ...prev[wfId],
+                    [nodeId]: { ...prev[wfId]?.[nodeId], [field]: value },
+                  },
+                }))
+              }
+              onSaveAndRun={handleSaveAndRun}
+              onCancel={() => setShowPreflight(false)}
+              saving={savingPreflight}
+            />
           )}
 
           {/* Brain panel */}

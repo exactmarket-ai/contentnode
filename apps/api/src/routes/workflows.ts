@@ -156,6 +156,23 @@ export async function workflowRoutes(app: FastifyInstance) {
     return reply.send({ data: workflow })
   })
 
+  // ── PATCH /:id/nodes/:nodeId/config — update a single node's config fields ─
+  app.patch<{ Params: { id: string; nodeId: string } }>('/:id/nodes/:nodeId/config', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: workflowId, nodeId } = req.params
+    const updates = (req.body ?? {}) as Record<string, unknown>
+
+    const node = await prisma.node.findFirst({
+      where: { id: nodeId, workflowId, workflow: { agencyId } },
+      select: { id: true, config: true },
+    })
+    if (!node) return reply.code(404).send({ error: 'Node not found' })
+
+    const merged = { ...(node.config as Record<string, unknown> ?? {}), ...updates }
+    await prisma.node.update({ where: { id: nodeId }, data: { config: merged } })
+    return reply.send({ data: { id: nodeId, config: merged } })
+  })
+
   // ── PUT /:id/graph — save nodes + edges from canvas ──────────────────────
   app.put<{ Params: { id: string } }>('/:id/graph', async (req, reply) => {
     const { agencyId } = req.auth
