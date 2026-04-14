@@ -8,6 +8,7 @@ import { FieldGroup, modelLabel, defaultModelForProvider, modelsForProvider } fr
 import { PromptPickerModal, type PromptTemplate } from '@/components/modals/PromptPickerModal'
 import { apiFetch } from '@/lib/api'
 import { useWorkflowStore } from '@/store/workflowStore'
+import { stripMarkdown } from '@/lib/utils'
 
 const LOGIC_TASK_TYPES = [
   { value: 'expand',              label: 'Expand' },
@@ -325,7 +326,7 @@ export function AiGenerateConfig({
                   <button
                     className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700"
                     onClick={() => {
-                      navigator.clipboard.writeText(outputText)
+                      navigator.clipboard.writeText(stripMarkdown(outputText))
                       setCopied(true)
                       setTimeout(() => setCopied(false), 2000)
                     }}

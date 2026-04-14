@@ -1,4 +1,5 @@
 import { memo, useState } from 'react'
+import { stripMarkdown } from '@/lib/utils'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -71,7 +72,7 @@ function DisplayInlineOutput({ id, text, accentColor }: { id: string; text: stri
   const [copied, setCopied] = useState(false)
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
-    navigator.clipboard.writeText(text)
+    navigator.clipboard.writeText(stripMarkdown(text))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { cn, stripMarkdown } from '@/lib/utils'
 import { downloadDocx } from '@/lib/downloadDocx'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { FieldGroup } from '../shared'
@@ -249,7 +249,7 @@ export function DisplayNodeOutput({
 
   const handleCopy = () => {
     if (!content) return
-    navigator.clipboard.writeText(content)
+    navigator.clipboard.writeText(stripMarkdown(content))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

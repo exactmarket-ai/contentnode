@@ -3,6 +3,7 @@ import * as Icons from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { downloadDocx } from '@/lib/downloadDocx'
+import { stripMarkdown } from '@/lib/utils'
 import { FieldGroup } from '../shared'
 
 export function FileExportOutput({
@@ -69,7 +70,7 @@ export function FileExportOutput({
           Download .{format}
         </button>
         <button
-          onClick={() => { navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+          onClick={() => { navigator.clipboard.writeText(stripMarkdown(content)); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
           className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           {copied ? <Icons.Check className="h-3 w-3" /> : <Icons.Copy className="h-3 w-3" />}

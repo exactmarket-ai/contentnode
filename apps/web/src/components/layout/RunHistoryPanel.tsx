@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { apiFetch } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, stripMarkdown } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ function RunCard({ run, index, total }: { run: RunRecord; index: number; total: 
 
   const handleCopy = () => {
     if (!content) return
-    navigator.clipboard.writeText(content)
+    navigator.clipboard.writeText(stripMarkdown(content))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

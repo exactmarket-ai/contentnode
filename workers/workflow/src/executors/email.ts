@@ -17,8 +17,30 @@ function interpolate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
 }
 
-function textToHtml(text: string): string {
+function stripMarkdown(text: string): string {
   return text
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/___(.+?)___/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/^>\s*/gm, '')
+    .replace(/^---+$/gm, '')
+    .replace(/^===+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function textToHtml(text: string): string {
+  return stripMarkdown(text)
     .split(/\n\n+/)
     .map((p) => `<p>${p.replace(/\n/g, '<br />')}</p>`)
     .join('\n')
@@ -145,20 +167,21 @@ export class EmailNodeExecutor extends NodeExecutor {
     if (!apiKey) throw new Error(`Email node: API key env var "${apiKeyRef}" is not set`)
 
     const content = extractText(input)
+    const cleanContent = stripMarkdown(content)
     const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail
     const to = toRaw.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean)
-    const subject = interpolate(subjectTemplate, { content: content.slice(0, 60) })
+    const subject = interpolate(subjectTemplate, { content: cleanContent.slice(0, 60) })
     const html = textToHtml(content)
 
     console.log(`[email] sending via ${provider} to ${to.join(', ')}, subject: "${subject}"`)
 
     if (provider === 'resend') {
-      await sendViaResend({ apiKey, from, to, subject, text: content, html })
+      await sendViaResend({ apiKey, from, to, subject, text: cleanContent, html })
     } else if (provider === 'sendgrid') {
-      await sendViaSendGrid({ apiKey, from, to, subject, text: content, html })
+      await sendViaSendGrid({ apiKey, from, to, subject, text: cleanContent, html })
     } else if (provider === 'mailgun') {
       if (!mailgunDomain) throw new Error('Email node: Mailgun domain is required')
-      await sendViaMailgun({ apiKey, domain: mailgunDomain, from, to, subject, text: content, html })
+      await sendViaMailgun({ apiKey, domain: mailgunDomain, from, to, subject, text: cleanContent, html })
     } else {
       throw new Error(`Email node: unknown provider "${provider}"`)
     }

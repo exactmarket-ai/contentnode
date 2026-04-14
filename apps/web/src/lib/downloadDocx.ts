@@ -3,6 +3,7 @@ import {
   AlignmentType, BorderStyle, Table, TableRow, TableCell,
   WidthType, ShadingType,
 } from 'docx'
+import { stripMarkdown } from './utils'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -280,7 +281,7 @@ export async function downloadCompanyProfileDocx(profile: CompanyProfile, client
 // ── Plain text export (TXT) ───────────────────────────────────────────────────
 
 export function downloadTxt(text: string, filename: string) {
-  const blob = new Blob([text], { type: 'text/plain' })
+  const blob = new Blob([stripMarkdown(text)], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -293,6 +294,59 @@ export function downloadTxt(text: string, filename: string) {
 
 interface DeliverableOutput { label: string; content: string }
 
+/** Convert a markdown line to TextRun children, stripping inline bold/italic. */
+function inlineRuns(line: string): TextRun[] {
+  // Split on **bold**, *italic*, and plain segments
+  const parts: TextRun[] = []
+  const re = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|_([^_]+)_)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(line)) !== null) {
+    if (m.index > last) parts.push(new TextRun(line.slice(last, m.index)))
+    if (m[2]) parts.push(new TextRun({ text: m[2], bold: true, italics: true }))
+    else if (m[3]) parts.push(new TextRun({ text: m[3], bold: true }))
+    else if (m[4]) parts.push(new TextRun({ text: m[4], italics: true }))
+    else if (m[5]) parts.push(new TextRun({ text: m[5], bold: true }))
+    else if (m[6]) parts.push(new TextRun({ text: m[6], italics: true }))
+    last = m.index + m[0].length
+  }
+  if (last < line.length) parts.push(new TextRun(line.slice(last)))
+  return parts.length > 0 ? parts : [new TextRun(line)]
+}
+
+/** Parse a markdown content string into DOCX Paragraph nodes. */
+function markdownToDocxParagraphs(content: string): Paragraph[] {
+  const paras: Paragraph[] = []
+  const lines = content.split('\n')
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    const h1 = line.match(/^#\s+(.+)/)
+    const h2 = line.match(/^##\s+(.+)/)
+    const h3 = line.match(/^###\s+(.+)/)
+    const bullet = line.match(/^[-*+]\s+(.+)/)
+    const hr = line.match(/^---+$/)
+
+    if (h3 && !h2) {
+      paras.push(new Paragraph({ text: h3[1], heading: HeadingLevel.HEADING_3, spacing: { before: 160, after: 60 } }))
+    } else if (h2 && !line.match(/^###/)) {
+      paras.push(new Paragraph({ text: line.replace(/^##\s+/, ''), heading: HeadingLevel.HEADING_2, spacing: { before: 240, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC' } } }))
+    } else if (h1 && !line.match(/^##/)) {
+      paras.push(new Paragraph({ text: line.replace(/^#\s+/, ''), heading: HeadingLevel.HEADING_1, spacing: { before: 320, after: 120 } }))
+    } else if (bullet) {
+      paras.push(new Paragraph({ children: inlineRuns(bullet[1]), bullet: { level: 0 }, spacing: { after: 60 } }))
+    } else if (hr) {
+      paras.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC' } }, spacing: { after: 120 } }))
+    } else if (line.trim() === '') {
+      paras.push(new Paragraph({ spacing: { after: 80 } }))
+    } else {
+      paras.push(new Paragraph({ children: inlineRuns(line), spacing: { after: 120 } }))
+    }
+    i++
+  }
+  return paras
+}
+
 export async function downloadDeliverableDocx(outputs: DeliverableOutput[], title: string) {
   const children: Paragraph[] = [
     heading1(title),
@@ -304,20 +358,7 @@ export async function downloadDeliverableDocx(outputs: DeliverableOutput[], titl
 
   outputs.forEach(({ label, content }, i) => {
     if (outputs.length > 1) children.push(heading2(label))
-    const blocks = content.split(/\n{2,}/)
-    blocks.forEach((block) => {
-      const lines = block.split('\n')
-      children.push(
-        new Paragraph({
-          children: lines.flatMap((line, idx) =>
-            idx < lines.length - 1
-              ? [new TextRun(line), new TextRun({ text: '', break: 1 })]
-              : [new TextRun(line)],
-          ),
-          spacing: { after: 160 },
-        })
-      )
-    })
+    children.push(...markdownToDocxParagraphs(content))
     if (i < outputs.length - 1) children.push(spacer())
   })
 
@@ -343,19 +384,7 @@ export async function downloadDeliverableDocx(outputs: DeliverableOutput[], titl
 // ── Plain text fallback ───────────────────────────────────────────────────────
 
 export async function downloadDocx(text: string, filename: string) {
-  const paragraphs = text.split(/\n{2,}/).flatMap((block) => {
-    const lines = block.split('\n')
-    return [
-      new Paragraph({
-        children: lines.flatMap((line, i) =>
-          i < lines.length - 1
-            ? [new TextRun(line), new TextRun({ text: '', break: 1 })]
-            : [new TextRun(line)],
-        ),
-      }),
-      new Paragraph({}),
-    ]
-  })
+  const paragraphs = markdownToDocxParagraphs(text)
   const doc = new Document({ sections: [{ children: paragraphs }] })
   const blob = await Packer.toBlob(doc)
   const url = URL.createObjectURL(blob)
