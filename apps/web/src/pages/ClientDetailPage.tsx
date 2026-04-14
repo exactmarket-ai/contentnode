@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { apiFetch, assetUrl } from '@/lib/api'
 import { downloadBrandProfileDocx, downloadCompanyProfileDocx } from '@/lib/downloadDocx'
 import { ClientBillingReportsTab } from './ClientBillingReportsTab'
+import { ClientDemandGenTab } from './ClientDemandGenTab'
 import { ClientFrameworkTab } from './ClientFrameworkTab'
 import { ClientBrandingTab } from './ClientBrandingTab'
 import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
@@ -4784,7 +4785,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'deliverables', 'library', 'framework', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4864,6 +4865,7 @@ export function ClientDetailPage() {
     deliverables:  'Deliverables',
     library:       'Library',
     framework:     'GTM Framework',
+    demandgen:     'Demand Gen',
     branding:      'Branding',
     stakeholders:  'Contacts',
     access:        'Access',
@@ -4990,6 +4992,8 @@ export function ClientDetailPage() {
       {/* Tab content */}
       {activeTab === 'framework'
         ? <div className="flex-1 overflow-hidden"><ClientFrameworkTab clientId={client.id} clientName={client.name} /></div>
+        : activeTab === 'demandgen'
+        ? <div className="flex-1 overflow-hidden"><ClientDemandGenTab clientId={client.id} /></div>
         : activeTab === 'branding'
         ? <div className="flex-1 overflow-hidden"><ClientBrandingTab clientId={client.id} clientName={client.name} /></div>
         : <div className="flex-1 overflow-auto p-6">

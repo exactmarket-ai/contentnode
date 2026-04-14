@@ -2181,6 +2181,35 @@ Use empty string "" or empty array [] for any field not found. Never invent info
     return reply.send({ data: fw?.data ?? null })
   })
 
+  // ── GET /:id/demand-gen — return demand gen data for a client
+  app.get<{ Params: { id: string } }>('/:id/demand-gen', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const record = await prisma.clientDemandGen.findUnique({ where: { clientId: req.params.id } })
+    return reply.send({ data: record?.data ?? null })
+  })
+
+  // ── PUT /:id/demand-gen — upsert demand gen data for a client
+  app.put<{ Params: { id: string } }>('/:id/demand-gen', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const body = req.body as Record<string, unknown>
+    if (!body || typeof body !== 'object') return reply.code(400).send({ error: 'Invalid body' })
+
+    const record = await prisma.clientDemandGen.upsert({
+      where: { clientId: req.params.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      create: { agencyId, clientId: req.params.id, data: body as any },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      update: { data: body as any },
+    })
+    return reply.send({ data: record.data })
+  })
+
   // ── PUT /:id/framework/:verticalId — upsert GTM framework for client+vertical
   app.put<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId', async (req, reply) => {
     const { agencyId } = req.auth
