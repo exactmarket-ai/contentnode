@@ -106,6 +106,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     defaultConfig: { subtype: 'workflow-output', fallbackToLatest: true },
   },
   {
+    type: 'client_brain', subtype: 'client-brain',
+    label: 'Client Brain', description: 'Pull any combination of GTM, Demand Gen, and Brand sections into a workflow — the foundational context node',
+    category: 'source', icon: 'Brain',
+    defaultConfig: { subtype: 'client-brain', verticalId: '', verticalName: '', clientName: '', gtmSections: ['02','08'], dgBaseSections: ['B1','B2'], dgVertSections: ['S2','S3'], includeBrand: true },
+  },
+  {
     type: 'gtm_framework', subtype: 'gtm-framework',
     label: 'GTM Framework', description: 'Inject selected GTM framework sections as workflow context',
     category: 'source', icon: 'Target',

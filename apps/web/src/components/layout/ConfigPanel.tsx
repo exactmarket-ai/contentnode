@@ -22,6 +22,7 @@ import { InstructionTranslatorConfig } from './config/source/InstructionTranslat
 import { WorkflowOutputConfig } from './config/source/WorkflowOutputConfig'
 import { GtmFrameworkConfig } from './config/source/GtmFrameworkConfig'
 import { BrandContextConfig } from './config/source/BrandContextConfig'
+import { ClientBrainConfig } from './config/source/ClientBrainConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -86,6 +87,8 @@ function NodeConfigForm({
       return <GtmFrameworkConfig config={config} onChange={onChange} />
     case 'brand_context':
       return <BrandContextConfig config={config} onChange={onChange} />
+    case 'client_brain':
+      return <ClientBrainConfig config={config} onChange={onChange} />
     case 'source':
       if (subtype === 'transcription')
         return <TranscriptionConfig config={config} onChange={onChange} />
@@ -256,6 +259,7 @@ export function ConfigPanel() {
     output: 'text-purple-400',
     insight: 'text-yellow-400',
     gtm_framework: 'text-blue-500',
+    client_brain:  'text-orange-500',
   }
   const colorClass = CATEGORY_COLOR[nodeType] ?? 'text-foreground'
 

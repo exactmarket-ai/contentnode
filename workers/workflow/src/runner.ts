@@ -28,6 +28,7 @@ import { MediaDownloadExecutor } from './executors/mediaDownload.js'
 import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
 import { GtmFrameworkExecutor } from './executors/gtmFramework.js'
 import { BrandContextExecutor } from './executors/brandContext.js'
+import { ClientBrainExecutor } from './executors/clientBrain.js'
 import { VoiceOutputNodeExecutor } from './executors/voiceOutput.js'
 import { MusicGenerationNodeExecutor } from './executors/musicGeneration.js'
 import { AudioMixNodeExecutor } from './executors/audioMix.js'
@@ -103,6 +104,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   insight:                     InsightNodeExecutor,
   gtm_framework:               GtmFrameworkExecutor,
   brand_context:               BrandContextExecutor,
+  client_brain:                ClientBrainExecutor,
   'logic:human-review':        HumanReviewNodeExecutor,
   'logic:translate':           TranslationNodeExecutor,
   'logic:quality-review':      QualityReviewNodeExecutor,
