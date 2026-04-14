@@ -184,7 +184,11 @@ export async function campaignRoutes(app: FastifyInstance) {
         ...(name !== undefined ? { name } : {}),
         ...(goal !== undefined ? { goal } : {}),
         ...(status !== undefined ? { status } : {}),
-        ...(brief !== undefined ? { brief } : {}),
+        ...(brief !== undefined ? {
+          brief,
+          briefEditedBy: req.auth.userId,
+          briefEditedAt: new Date(),
+        } : {}),
         ...(startDate !== undefined ? { startDate: startDate ? new Date(startDate) : null } : {}),
         ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
       },
@@ -432,10 +436,10 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
       prompt,
     )
 
-    // Save brief to campaign
+    // Save brief to campaign — always snapshot the AI-generated original
     const updated = await prisma.campaign.update({
       where: { id: campaign.id },
-      data: { brief: result.text },
+      data: { brief: result.text, briefOriginal: result.text },
     })
 
     return reply.send({ data: { brief: updated.brief } })

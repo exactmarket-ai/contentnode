@@ -39,6 +39,9 @@ interface Campaign {
   goal: string
   status: string
   brief: string | null
+  briefOriginal: string | null
+  briefEditedBy: string | null
+  briefEditedAt: string | null
   startDate: string | null
   endDate: string | null
   createdAt: string
@@ -120,6 +123,7 @@ function CampaignCard({
   const [briefOpen, setBriefOpen] = useState(false)
   const [briefText, setBriefText] = useState(campaign.brief ?? '')
   const [savingBrief, setSavingBrief] = useState(false)
+  const [showOriginal, setShowOriginal] = useState(false)
   const briefDirty = briefText !== (campaign.brief ?? '')
   const [bundleOpen, setBundleOpen] = useState(false)
   const [bundle, setBundle] = useState<BundleAsset[] | null>(null)
@@ -305,10 +309,36 @@ function CampaignCard({
 
           {/* Brief */}
           {briefOpen && briefText && (
-            <div className="mx-4 mb-3 p-3 rounded-lg bg-muted/20 border border-border">
-              <div className="flex items-center justify-between mb-2">
+            <div className="mx-4 mb-3 rounded-lg bg-muted/20 border border-border overflow-hidden">
+              {/* Brief header */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60">
                 <span className="text-xs font-medium">Campaign Brief</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 ml-auto">
+                  {campaign.briefOriginal && campaign.briefOriginal !== campaign.brief && (
+                    <button
+                      onClick={() => setShowOriginal((v) => !v)}
+                      className={cn(
+                        'text-[10px] px-2 py-0.5 rounded-full border transition-colors',
+                        showOriginal
+                          ? 'border-violet-500/50 text-violet-400 bg-violet-950/30'
+                          : 'border-border text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {showOriginal ? 'Hide AI draft' : 'Compare AI draft'}
+                    </button>
+                  )}
+                  {campaign.briefEditedBy && campaign.briefEditedAt && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Edited by{' '}
+                      <button
+                        onClick={() => setShowOriginal((v) => !v)}
+                        className="text-foreground/70 hover:text-foreground underline underline-offset-2 transition-colors"
+                      >
+                        {campaign.briefEditedBy.slice(0, 8)}
+                      </button>
+                      {' · '}{new Date(campaign.briefEditedAt).toLocaleDateString()}
+                    </span>
+                  )}
                   {briefDirty && (
                     <button
                       onClick={handleSaveBrief}
@@ -327,12 +357,34 @@ function CampaignCard({
                   </button>
                 </div>
               </div>
-              <textarea
-                className="w-full text-xs text-muted-foreground leading-relaxed bg-transparent resize-none outline-none max-h-72 min-h-[8rem] overflow-y-auto"
-                value={briefText}
-                onChange={(e) => setBriefText(e.target.value)}
-                spellCheck={false}
-              />
+
+              {/* Compare view — side by side when showing original */}
+              {showOriginal && campaign.briefOriginal ? (
+                <div className="grid grid-cols-2 divide-x divide-border/60">
+                  <div className="p-3">
+                    <p className="text-[9px] text-violet-400 font-medium mb-1.5 uppercase tracking-wide">AI Draft</p>
+                    <div className="text-[11px] text-muted-foreground/70 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+                      {campaign.briefOriginal}
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <p className="text-[9px] text-emerald-400 font-medium mb-1.5 uppercase tracking-wide">Your Version</p>
+                    <textarea
+                      className="w-full text-[11px] text-muted-foreground leading-relaxed bg-transparent resize-none outline-none max-h-72 min-h-[8rem] overflow-y-auto"
+                      value={briefText}
+                      onChange={(e) => setBriefText(e.target.value)}
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <textarea
+                  className="w-full text-xs text-muted-foreground leading-relaxed bg-transparent resize-none outline-none max-h-72 min-h-[8rem] overflow-y-auto p-3"
+                  value={briefText}
+                  onChange={(e) => setBriefText(e.target.value)}
+                  spellCheck={false}
+                />
+              )}
             </div>
           )}
 

@@ -1295,7 +1295,10 @@ model Campaign {
   goal      String   @default("lead_gen")
   // planning | active | archived
   status    String   @default("planning")
-  brief     String?  @db.Text
+  brief         String?  @db.Text
+  briefOriginal String?  @db.Text @map("brief_original")
+  briefEditedBy String?  @map("brief_edited_by")
+  briefEditedAt DateTime? @map("brief_edited_at")
   startDate DateTime? @map("start_date")
   endDate   DateTime? @map("end_date")
   createdAt DateTime @default(now()) @map("created_at")
