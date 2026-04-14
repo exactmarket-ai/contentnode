@@ -118,7 +118,7 @@ export function CampaignCreationModal({
             <Label className="text-xs text-muted-foreground">Campaign Name</Label>
             <Input
               placeholder="Q2 Lead Gen Push"
-              className="text-sm"
+              className="text-sm placeholder:text-muted-foreground/40"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus

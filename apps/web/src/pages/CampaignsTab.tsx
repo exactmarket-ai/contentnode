@@ -119,6 +119,8 @@ function CampaignCard({
   const [generatingBrief, setGeneratingBrief] = useState(false)
   const [briefOpen, setBriefOpen] = useState(false)
   const [briefText, setBriefText] = useState(campaign.brief ?? '')
+  const [savingBrief, setSavingBrief] = useState(false)
+  const briefDirty = briefText !== (campaign.brief ?? '')
   const [bundleOpen, setBundleOpen] = useState(false)
   const [bundle, setBundle] = useState<BundleAsset[] | null>(null)
   const [loadingBundle, setLoadingBundle] = useState(false)
@@ -157,6 +159,22 @@ function CampaignCard({
       // error handled gracefully
     } finally {
       setGeneratingBrief(false)
+    }
+  }
+
+  async function handleSaveBrief() {
+    setSavingBrief(true)
+    try {
+      await apiFetch(`/api/v1/campaigns/${campaign.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brief: briefText }),
+      })
+      onRefresh()
+    } catch {
+      // error handled gracefully
+    } finally {
+      setSavingBrief(false)
     }
   }
 
@@ -290,13 +308,31 @@ function CampaignCard({
             <div className="mx-4 mb-3 p-3 rounded-lg bg-muted/20 border border-border">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium">Campaign Brief</span>
-                <button onClick={() => setBriefOpen(false)} className="text-muted-foreground hover:text-foreground">
-                  <Icons.X className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {briefDirty && (
+                    <button
+                      onClick={handleSaveBrief}
+                      disabled={savingBrief}
+                      className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 disabled:opacity-50 transition-colors"
+                    >
+                      {savingBrief
+                        ? <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                        : <Icons.Check className="w-3 h-3" />
+                      }
+                      Save
+                    </button>
+                  )}
+                  <button onClick={() => setBriefOpen(false)} className="text-muted-foreground hover:text-foreground">
+                    <Icons.X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
-                {briefText}
-              </div>
+              <textarea
+                className="w-full text-xs text-muted-foreground leading-relaxed bg-transparent resize-none outline-none max-h-72 min-h-[8rem] overflow-y-auto"
+                value={briefText}
+                onChange={(e) => setBriefText(e.target.value)}
+                spellCheck={false}
+              />
             </div>
           )}
 
