@@ -42,6 +42,7 @@ model Agency {
   divisions          Division[]
   jobs               Job[]
   clientDemandGen      ClientDemandGen[]
+  clientDemandGenBase  ClientDemandGenBase[]
   clientFrameworks   ClientFramework[]
   clientVerticals    ClientVertical[]
   verticals          Vertical[]
@@ -106,6 +107,7 @@ model Client {
   companyProfiles CompanyProfile[]
   divisions    Division[]
   demandGen       ClientDemandGen[]
+  demandGenBase   ClientDemandGenBase?
   frameworks      ClientFramework[]
   clientVerticals ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
@@ -180,6 +182,25 @@ model ClientDemandGen {
   @@unique([clientId, verticalId])
   @@index([agencyId])
   @@map("client_demand_gen")
+}
+
+// ─────────────────────────────────────────────
+// ClientDemandGenBase — company-wide demand gen context
+// ─────────────────────────────────────────────
+model ClientDemandGenBase {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  clientId  String   @map("client_id")
+  data      Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId])
+  @@index([agencyId])
+  @@map("client_demand_gen_base")
 }
 
 // ─────────────────────────────────────────────

@@ -487,46 +487,253 @@ function S7({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
-// ── Intake section (files + URL) ──────────────────────────────────────────────
+// ── Intake: helpers ───────────────────────────────────────────────────────────
+
+function dgFileIcon(mime: string): string {
+  if (mime.startsWith('audio/') || mime.includes('mp3') || mime.includes('wav')) return '🎙️'
+  if (mime.startsWith('video/') || mime.includes('mp4')) return '🎬'
+  if (mime.includes('pdf')) return '📄'
+  if (mime.includes('word') || mime.includes('docx')) return '📝'
+  if (mime.includes('spreadsheet') || mime.includes('csv')) return '📊'
+  if (mime.includes('html') || mime.includes('text/plain')) return '🌐'
+  return '📎'
+}
+
+function dgFormatBytes(b: number): string {
+  if (b === 0) return '—'
+  if (b < 1024) return `${b} B`
+  if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`
+  return `${(b / 1048576).toFixed(1)} MB`
+}
+
+interface DgAttachment {
+  id: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  createdAt: string
+  summaryStatus: string
+  summary: string | null
+}
+
+// ── Intake: attachment row ────────────────────────────────────────────────────
+
+function DgAttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpdated }: {
+  attachment: DgAttachment
+  base: string
+  deletingId: string | null
+  onDelete: (a: DgAttachment) => void
+  onSummaryUpdated: (id: string, summary: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState(a.summary ?? '')
+  const [saving, setSaving] = useState(false)
+  const [showText, setShowText] = useState(false)
+  const [rawText, setRawText] = useState<string | null>(null)
+  const [loadingText, setLoadingText] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await apiFetch(`${base}/${a.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ summary: editValue }),
+      })
+      if (res.ok) { onSummaryUpdated(a.id, editValue); setEditing(false) }
+    } catch { /* ignore */ } finally { setSaving(false) }
+  }
+
+  const handleViewText = async () => {
+    if (rawText !== null) { setShowText(true); return }
+    setLoadingText(true)
+    try {
+      const res = await apiFetch(`${base}/${a.id}/text`)
+      if (res.ok) { const { data } = await res.json(); setRawText(data.text ?? '') }
+    } catch { /* ignore */ } finally { setLoadingText(false); setShowText(true) }
+  }
+
+  const statusBadge = () => {
+    if (a.summaryStatus === 'processing' || a.summaryStatus === 'pending') {
+      return <span className="flex items-center gap-1 text-[10px] text-orange-500"><span className="h-2.5 w-2.5 animate-spin rounded-full border border-orange-400 border-t-transparent" />Processing…</span>
+    }
+    if (a.summaryStatus === 'ready') return <span className="text-[10px] font-medium text-green-600">✓ Interpreted</span>
+    if (a.summaryStatus === 'failed') return <span className="text-[10px] text-red-500">Failed</span>
+    return null
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Row header */}
+      <div
+        className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-muted/20 transition-colors"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="text-[11px] text-muted-foreground shrink-0 w-3">{expanded ? '▼' : '▶'}</span>
+        <span className="text-lg shrink-0">{dgFileIcon(a.mimeType)}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{a.filename}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-muted-foreground">{dgFormatBytes(a.sizeBytes)} · {new Date(a.createdAt).toLocaleDateString()}</p>
+            {statusBadge()}
+          </div>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(a) }}
+          disabled={deletingId === a.id}
+          className="shrink-0 rounded p-1 text-muted-foreground hover:text-red-500 disabled:opacity-40"
+          title="Delete"
+        >
+          {deletingId === a.id
+            ? <span className="h-3.5 w-3.5 block animate-spin rounded-full border-2 border-current border-t-transparent" />
+            : <Icons.Trash2 className="h-3.5 w-3.5" />
+          }
+        </button>
+      </div>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="border-t border-border px-4 pb-4 pt-3">
+          {(a.summaryStatus === 'pending' || a.summaryStatus === 'processing') && (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" />
+              Claude is reading and interpreting this file…
+            </div>
+          )}
+          {a.summaryStatus === 'failed' && (
+            <p className="py-2 text-sm text-red-500">Could not extract readable content from this file.</p>
+          )}
+          {a.summaryStatus === 'ready' && (
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Demand Gen Interpretation</p>
+                {!editing && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleViewText}
+                      disabled={loadingText}
+                      className="text-[10px] text-muted-foreground underline hover:text-foreground"
+                    >
+                      {loadingText ? 'Loading…' : 'View original text'}
+                    </button>
+                    <button
+                      onClick={() => { setEditValue(a.summary ?? ''); setEditing(true) }}
+                      className="text-[10px] text-orange-500 underline hover:text-orange-700"
+                    >Edit</button>
+                  </div>
+                )}
+              </div>
+              {editing ? (
+                <div>
+                  <textarea
+                    className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-orange-400"
+                    rows={12}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                  />
+                  <div className="mt-2 flex items-center gap-2">
+                    <button onClick={handleSave} disabled={saving} className="rounded bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 disabled:opacity-50">
+                      {saving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button onClick={() => { setEditing(false); setEditValue(a.summary ?? '') }} className="rounded px-3 py-1 text-xs text-muted-foreground hover:text-foreground">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md bg-muted/30 px-3 py-2">
+                  {a.summary
+                    ? <p className="text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap">{a.summary}</p>
+                    : <p className="text-[11px] italic text-muted-foreground">No interpretation yet</p>
+                  }
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Raw text modal */}
+      {showText && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)' }} onClick={() => setShowText(false)}>
+          <div className="flex flex-col w-full max-w-2xl max-h-[80vh] rounded-xl shadow-2xl overflow-hidden" style={{ border: '1px solid #e5e7eb' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex shrink-0 items-center justify-between rounded-t-xl px-5 py-4" style={{ backgroundColor: '#ea580c' }}>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-widest text-white/70">Original Extracted Text</p>
+                <p className="mt-0.5 truncate text-sm font-semibold text-white">{a.filename}</p>
+              </div>
+              <button onClick={() => setShowText(false)} className="ml-4 shrink-0 rounded p-1 text-white/70 hover:text-white">✕</button>
+            </div>
+            <div className="overflow-auto p-6" style={{ backgroundColor: '#ffffff' }}>
+              {rawText
+                ? <pre className="whitespace-pre-wrap text-[11px] leading-relaxed font-mono" style={{ color: '#374151' }}>{rawText}</pre>
+                : <p className="text-sm italic" style={{ color: '#6b7280' }}>No extracted text available for this file.</p>
+              }
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Intake section ────────────────────────────────────────────────────────────
 
 function IntakeSection({ clientId }: { clientId: string }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const [uploadingCount, setUploadingCount] = useState(0)
+  const uploading = uploadingCount > 0
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [urlValue, setUrlValue] = useState('')
   const [urlSubmitting, setUrlSubmitting] = useState(false)
-  const [attachments, setAttachments] = useState<{ id: string; filename: string; extractionStatus: string }[]>([])
+  const [attachments, setAttachments] = useState<DgAttachment[]>([])
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  const base = `/api/v1/clients/${clientId}/brand-profile/attachments`
+
+  const fetchAttachments = useCallback(() => {
+    return apiFetch(base).then((r) => r.json()).then(({ data }) => setAttachments(data ?? [])).catch(() => {})
+  }, [base])
+
+  useEffect(() => { fetchAttachments() }, [fetchAttachments])
+
+  // Poll while any attachment is still processing
   useEffect(() => {
-    apiFetch(`/api/v1/clients/${clientId}/brand-profile/attachments`)
-      .then((r) => r.json())
-      .then(({ data }) => setAttachments(data ?? []))
-      .catch(() => {})
-  }, [clientId])
+    const hasInProgress = attachments.some((a) => a.summaryStatus === 'pending' || a.summaryStatus === 'processing')
+    if (!hasInProgress) return
+    const t = setTimeout(() => fetchAttachments(), 4000)
+    return () => clearTimeout(t)
+  }, [attachments, fetchAttachments])
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return
-    setUploading(true)
-    setUploadError(null)
-    for (const file of Array.from(files)) {
-      const fd = new FormData()
-      fd.append('file', file)
-      try {
-        const res = await apiFetch(`/api/v1/clients/${clientId}/brand-profile/attachments`, { method: 'POST', body: fd })
-        if (res.ok) {
-          const { data } = await res.json()
-          setAttachments((prev) => [data, ...prev])
-        } else {
-          const { error } = await res.json().catch(() => ({ error: 'Upload failed' }))
-          setUploadError(error ?? 'Upload failed')
-        }
-      } catch {
-        setUploadError('Upload failed')
+  const uploadFile = async (file: File) => {
+    setUploadingCount((n) => n + 1)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await apiFetch(base, { method: 'POST', body: form })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setUploadError((body as { error?: string }).error ?? 'Upload failed')
+        setTimeout(() => setUploadError(null), 8000)
+        return
       }
+      const { data } = await res.json()
+      setAttachments((prev) => [data, ...prev])
+      setUploadError(null)
+    } catch {
+      setUploadError('Network error — upload failed')
+      setTimeout(() => setUploadError(null), 8000)
+    } finally {
+      setUploadingCount((n) => n - 1)
     }
-    setUploading(false)
+  }
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return
+    Array.from(files).forEach(uploadFile)
   }
 
   const handleUrl = async () => {
@@ -534,7 +741,7 @@ function IntakeSection({ clientId }: { clientId: string }) {
     setUrlSubmitting(true)
     setUploadError(null)
     try {
-      const res = await apiFetch(`/api/v1/clients/${clientId}/brand-profile/attachments`, {
+      const res = await apiFetch(`${base}/from-url`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ url: urlValue.trim() }),
@@ -547,15 +754,24 @@ function IntakeSection({ clientId }: { clientId: string }) {
       } else {
         const { error } = await res.json().catch(() => ({ error: 'Failed to add URL' }))
         setUploadError(error ?? 'Failed to add URL')
+        setTimeout(() => setUploadError(null), 8000)
       }
     } catch {
-      setUploadError('Failed to add URL')
+      setUploadError('Network error')
     }
     setUrlSubmitting(false)
   }
 
-  const processing = attachments.filter((a) => a.extractionStatus === 'pending' || a.extractionStatus === 'processing').length
-  const ready = attachments.filter((a) => a.extractionStatus === 'ready').length
+  const handleDelete = async (a: DgAttachment) => {
+    if (!confirm(`Delete "${a.filename}"?`)) return
+    setDeletingId(a.id)
+    try {
+      await apiFetch(`${base}/${a.id}`, { method: 'DELETE' })
+      setAttachments((prev) => prev.filter((x) => x.id !== a.id))
+    } catch { /* ignore */ } finally { setDeletingId(null) }
+  }
+
+  const ready = attachments.filter((a) => a.summaryStatus === 'ready').length
 
   return (
     <div>
@@ -563,7 +779,7 @@ function IntakeSection({ clientId }: { clientId: string }) {
         <div>
           <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-orange-500">Intake</div>
           <h2 className="text-xl font-bold text-foreground">Feed the Brain</h2>
-          <p className="mt-1 text-[11px] text-muted-foreground">Upload files, paste notes, or add URLs. Claude reads everything and populates the sections below.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Upload files, add URLs, or paste notes. Claude reads everything and uses it to inform all sections below.</p>
         </div>
         {ready > 0 && (
           <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
@@ -586,7 +802,7 @@ function IntakeSection({ clientId }: { clientId: string }) {
         <input ref={inputRef} type="file" multiple className="hidden" accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,.mp4,.mov,.mp3,.m4a,.wav,.webm" onChange={(e) => handleFiles(e.target.files)} />
         {uploading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Icons.Loader2 className="h-4 w-4 animate-spin" />
+            <Icons.Loader2 className="h-4 w-4 animate-spin text-orange-500" />
             Uploading…
           </div>
         ) : (
@@ -598,7 +814,7 @@ function IntakeSection({ clientId }: { clientId: string }) {
         )}
       </div>
 
-      {/* URL input toggle */}
+      {/* URL input */}
       <button
         onClick={() => setShowUrlInput((v) => !v)}
         className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
@@ -606,7 +822,6 @@ function IntakeSection({ clientId }: { clientId: string }) {
         <Icons.Link className="h-3 w-3" />
         Add URL
       </button>
-
       {showUrlInput && (
         <div className="mt-2 flex gap-2">
           <input
@@ -626,37 +841,224 @@ function IntakeSection({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {uploadError && (
-        <p className="mt-2 text-[11px] text-red-500">{uploadError}</p>
-      )}
+      {uploadError && <p className="mt-2 text-[11px] text-red-500">{uploadError}</p>}
 
-      {/* File list */}
-      {attachments.length > 0 && (
-        <div className="mt-4 space-y-1.5">
+      {/* Attachment list */}
+      {attachments.length > 0 ? (
+        <div className="mt-4 space-y-2">
           {attachments.map((a) => (
-            <div key={a.id} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-              <Icons.FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-              <span className="flex-1 truncate text-xs text-foreground">{a.filename}</span>
-              {(a.extractionStatus === 'pending' || a.extractionStatus === 'processing') && (
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" /> Reading…
-                </span>
-              )}
-              {a.extractionStatus === 'ready' && (
-                <span className="text-[10px] text-green-600">✓ Ready</span>
-              )}
-            </div>
+            <DgAttachmentRow
+              key={a.id}
+              attachment={a}
+              base={base}
+              deletingId={deletingId}
+              onDelete={handleDelete}
+              onSummaryUpdated={(id, summary) => setAttachments((prev) => prev.map((x) => x.id === id ? { ...x, summary } : x))}
+            />
           ))}
-          {processing > 0 && (
-            <p className="text-[10px] text-muted-foreground">{processing} file{processing !== 1 ? 's' : ''} being processed — sections will update when complete</p>
-          )}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center">
+          <p className="text-sm text-muted-foreground">No files yet</p>
+          <p className="mt-1 text-[11px] text-muted-foreground/70">Uploaded files will be interpreted by Claude and feed all demand gen sections</p>
         </div>
       )}
     </div>
   )
 }
 
+// ── Base layer default data ───────────────────────────────────────────────────
+
+function defaultDemandGenBase() {
+  return {
+    // B1 — Revenue & Growth Goals (company-wide)
+    b1: {
+      fundingStage: '',
+      runway: '',
+      goals: [{ id: uid(), period: '', revenueTarget: '', newClientsTarget: '', avgDealSize: '', growthInitiative: '', timeline: '' }],
+    },
+    // B2 — Sales Process & CRM (company-wide)
+    b2: {
+      salesMethod: '',
+      crm: '',
+      avgSalesCycle: '',
+      leadQualification: '',
+      followUpProcess: '',
+      stages: [{ id: uid(), stage: '', owner: '', avgTime: '', notes: '' }],
+    },
+    // B3 — Marketing Budget & Resources (company-wide)
+    b3: {
+      totalBudget: '',
+      budgetFrequency: '',
+      internalTeam: '',
+      agencies: [{ id: uid(), name: '', role: '', retainer: '' }],
+      tools: [{ id: uid(), tool: '', purpose: '' }],
+    },
+  }
+}
+
+type DemandGenBaseData = ReturnType<typeof defaultDemandGenBase>
+
+// ── Base section components ───────────────────────────────────────────────────
+
+function SB1({ base, setBase }: { base: DemandGenBaseData; setBase: (fn: (d: DemandGenBaseData) => void) => void }) {
+  const { b1 } = base
+  return (
+    <div>
+      <SectionHeader num="B1" title="Revenue & Growth Goals" subtitle="Company-wide targets that inform every vertical's demand gen strategy." />
+
+      <div className="mb-5 grid grid-cols-2 gap-4">
+        <DgField label="Funding Stage">
+          <DgInput value={b1.fundingStage} onChange={(v) => setBase((d) => { d.b1.fundingStage = v })} placeholder="e.g. Bootstrapped, Seed, Series A" />
+        </DgField>
+        <DgField label="Runway / Resources">
+          <DgInput value={b1.runway} onChange={(v) => setBase((d) => { d.b1.runway = v })} placeholder="e.g. 18 months, profitable, PE-backed" />
+        </DgField>
+      </div>
+
+      <h3 className="mb-3 text-sm font-semibold text-foreground">Growth Targets</h3>
+      {b1.goals.map((g, i) => (
+        <DgCard key={g.id} onRemove={() => setBase((d) => { d.b1.goals = d.b1.goals.filter((_, j) => j !== i) })} canRemove={b1.goals.length > 1}>
+          <div className="grid grid-cols-2 gap-3">
+            <DgField label="Period">
+              <DgInput value={g.period} onChange={(v) => setBase((d) => { d.b1.goals[i].period = v })} placeholder="e.g. FY2026, Q1 2026" />
+            </DgField>
+            <DgField label="Revenue Target">
+              <DgInput value={g.revenueTarget} onChange={(v) => setBase((d) => { d.b1.goals[i].revenueTarget = v })} placeholder="e.g. $2M ARR" />
+            </DgField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <DgField label="New Clients Target">
+              <DgInput value={g.newClientsTarget} onChange={(v) => setBase((d) => { d.b1.goals[i].newClientsTarget = v })} placeholder="e.g. 40 new clients" />
+            </DgField>
+            <DgField label="Avg Deal Size">
+              <DgInput value={g.avgDealSize} onChange={(v) => setBase((d) => { d.b1.goals[i].avgDealSize = v })} placeholder="e.g. $5,000 / month" />
+            </DgField>
+          </div>
+          <DgField label="Key Growth Initiative">
+            <DgInput value={g.growthInitiative} onChange={(v) => setBase((d) => { d.b1.goals[i].growthInitiative = v })} placeholder="e.g. Launch enterprise tier, expand to US market" />
+          </DgField>
+          <DgField label="Timeline">
+            <DgInput value={g.timeline} onChange={(v) => setBase((d) => { d.b1.goals[i].timeline = v })} placeholder="e.g. 12 months, by end of Q2" />
+          </DgField>
+        </DgCard>
+      ))}
+      <AddButton label="Add goal period" onClick={() => setBase((d) => { d.b1.goals.push({ id: uid(), period: '', revenueTarget: '', newClientsTarget: '', avgDealSize: '', growthInitiative: '', timeline: '' }) })} />
+    </div>
+  )
+}
+
+function SB2({ base, setBase }: { base: DemandGenBaseData; setBase: (fn: (d: DemandGenBaseData) => void) => void }) {
+  const { b2 } = base
+  return (
+    <div>
+      <SectionHeader num="B2" title="Sales Process & CRM" subtitle="How leads become clients — the operational reality that demand gen must feed into." />
+
+      <div className="mb-5 grid grid-cols-2 gap-4">
+        <DgField label="Sales Methodology">
+          <DgInput value={b2.salesMethod} onChange={(v) => setBase((d) => { d.b2.salesMethod = v })} placeholder="e.g. Consultative, SPIN, Challenger" />
+        </DgField>
+        <DgField label="CRM">
+          <DgInput value={b2.crm} onChange={(v) => setBase((d) => { d.b2.crm = v })} placeholder="e.g. HubSpot, Salesforce, GoHighLevel" />
+        </DgField>
+      </div>
+      <div className="mb-5 grid grid-cols-2 gap-4">
+        <DgField label="Avg Sales Cycle">
+          <DgInput value={b2.avgSalesCycle} onChange={(v) => setBase((d) => { d.b2.avgSalesCycle = v })} placeholder="e.g. 2 weeks, 3 months" />
+        </DgField>
+        <DgField label="Lead Qualification Criteria">
+          <DgInput value={b2.leadQualification} onChange={(v) => setBase((d) => { d.b2.leadQualification = v })} placeholder="e.g. MQL score ≥ 50, budget confirmed" />
+        </DgField>
+      </div>
+      <DgField label="Follow-Up Process">
+        <DgTextarea value={b2.followUpProcess} onChange={(v) => setBase((d) => { d.b2.followUpProcess = v })} placeholder="Describe the follow-up sequence after a lead engages…" rows={3} />
+      </DgField>
+
+      <h3 className="mb-3 mt-6 text-sm font-semibold text-foreground">Sales Stages</h3>
+      {b2.stages.map((s, i) => (
+        <DgCard key={s.id} onRemove={() => setBase((d) => { d.b2.stages = d.b2.stages.filter((_, j) => j !== i) })} canRemove={b2.stages.length > 1}>
+          <div className="grid grid-cols-3 gap-3">
+            <DgField label="Stage Name">
+              <DgInput value={s.stage} onChange={(v) => setBase((d) => { d.b2.stages[i].stage = v })} placeholder="e.g. Discovery" />
+            </DgField>
+            <DgField label="Owner">
+              <DgInput value={s.owner} onChange={(v) => setBase((d) => { d.b2.stages[i].owner = v })} placeholder="e.g. SDR, AE" />
+            </DgField>
+            <DgField label="Avg Time">
+              <DgInput value={s.avgTime} onChange={(v) => setBase((d) => { d.b2.stages[i].avgTime = v })} placeholder="e.g. 3 days" />
+            </DgField>
+          </div>
+          <DgField label="Notes">
+            <DgInput value={s.notes} onChange={(v) => setBase((d) => { d.b2.stages[i].notes = v })} placeholder="What happens in this stage?" />
+          </DgField>
+        </DgCard>
+      ))}
+      <AddButton label="Add stage" onClick={() => setBase((d) => { d.b2.stages.push({ id: uid(), stage: '', owner: '', avgTime: '', notes: '' }) })} />
+    </div>
+  )
+}
+
+function SB3({ base, setBase }: { base: DemandGenBaseData; setBase: (fn: (d: DemandGenBaseData) => void) => void }) {
+  const { b3 } = base
+  return (
+    <div>
+      <SectionHeader num="B3" title="Marketing Budget & Resources" subtitle="Total capacity available across all verticals and channels." />
+
+      <div className="mb-5 grid grid-cols-2 gap-4">
+        <DgField label="Total Marketing Budget">
+          <DgInput value={b3.totalBudget} onChange={(v) => setBase((d) => { d.b3.totalBudget = v })} placeholder="e.g. $15,000/month" />
+        </DgField>
+        <DgField label="Budget Frequency">
+          <DgInput value={b3.budgetFrequency} onChange={(v) => setBase((d) => { d.b3.budgetFrequency = v })} placeholder="Monthly / Quarterly / Annual" />
+        </DgField>
+      </div>
+      <DgField label="Internal Marketing Team">
+        <DgTextarea value={b3.internalTeam} onChange={(v) => setBase((d) => { d.b3.internalTeam = v })} placeholder="Describe the internal team — headcount, roles, capacity…" rows={2} />
+      </DgField>
+
+      <h3 className="mb-3 mt-6 text-sm font-semibold text-foreground">Agencies & Partners</h3>
+      {b3.agencies.map((a, i) => (
+        <DgCard key={a.id} onRemove={() => setBase((d) => { d.b3.agencies = d.b3.agencies.filter((_, j) => j !== i) })} canRemove={b3.agencies.length > 1}>
+          <div className="grid grid-cols-3 gap-3">
+            <DgField label="Agency / Partner">
+              <DgInput value={a.name} onChange={(v) => setBase((d) => { d.b3.agencies[i].name = v })} placeholder="e.g. ContentNode Agency" />
+            </DgField>
+            <DgField label="Role / Scope">
+              <DgInput value={a.role} onChange={(v) => setBase((d) => { d.b3.agencies[i].role = v })} placeholder="e.g. SEO, Paid, Full-service" />
+            </DgField>
+            <DgField label="Monthly Retainer">
+              <DgInput value={a.retainer} onChange={(v) => setBase((d) => { d.b3.agencies[i].retainer = v })} placeholder="e.g. $4,000/mo" />
+            </DgField>
+          </div>
+        </DgCard>
+      ))}
+      <AddButton label="Add agency / partner" onClick={() => setBase((d) => { d.b3.agencies.push({ id: uid(), name: '', role: '', retainer: '' }) })} />
+
+      <h3 className="mb-3 mt-6 text-sm font-semibold text-foreground">Marketing Tech Stack</h3>
+      {b3.tools.map((t, i) => (
+        <DgCard key={t.id} onRemove={() => setBase((d) => { d.b3.tools = d.b3.tools.filter((_, j) => j !== i) })} canRemove={b3.tools.length > 1}>
+          <div className="grid grid-cols-2 gap-3">
+            <DgField label="Tool / Platform">
+              <DgInput value={t.tool} onChange={(v) => setBase((d) => { d.b3.tools[i].tool = v })} placeholder="e.g. HubSpot, Apollo, Canva" />
+            </DgField>
+            <DgField label="Purpose">
+              <DgInput value={t.purpose} onChange={(v) => setBase((d) => { d.b3.tools[i].purpose = v })} placeholder="e.g. Email automation, Prospecting" />
+            </DgField>
+          </div>
+        </DgCard>
+      ))}
+      <AddButton label="Add tool" onClick={() => setBase((d) => { d.b3.tools.push({ id: uid(), tool: '', purpose: '' }) })} />
+    </div>
+  )
+}
+
 // ── Nav sidebar ───────────────────────────────────────────────────────────────
+
+const BASE_SECTIONS_NAV = [
+  { num: 'B1', short: 'Revenue & Goals' },
+  { num: 'B2', short: 'Sales Process' },
+  { num: 'B3', short: 'Budget & Resources' },
+]
 
 const SECTIONS_NAV = [
   { num: '00', short: 'Feed the Brain' },
@@ -733,11 +1135,20 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
   const [verticalsLoading, setVerticalsLoading] = useState(true)
+
+  // Per-vertical state
   const [dg, setDgRaw] = useState<DemandGenData | null>(null)
-  const [activeSection, setActiveSection] = useState('01')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestDgRef = useRef<DemandGenData | null>(null)
+
+  // Company-wide base state
+  const [dgBase, setDgBaseRaw] = useState<DemandGenBaseData | null>(null)
+  const [baseSaveStatus, setBaseSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const baseSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestBaseRef = useRef<DemandGenBaseData | null>(null)
+
+  const [activeSection, setActiveSection] = useState('B1')
 
   // Load verticals assigned to this client
   useEffect(() => {
@@ -752,7 +1163,23 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
       .finally(() => setVerticalsLoading(false))
   }, [clientId])
 
-  // Load demand gen data when vertical selected
+  // Load company-wide base data on mount
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${clientId}/demand-gen/base`)
+      .then((r) => r.json())
+      .then(({ data }) => {
+        const loaded = data ? { ...defaultDemandGenBase(), ...(data as Partial<DemandGenBaseData>) } : defaultDemandGenBase()
+        setDgBaseRaw(loaded)
+        latestBaseRef.current = loaded
+      })
+      .catch(() => {
+        const def = defaultDemandGenBase()
+        setDgBaseRaw(def)
+        latestBaseRef.current = def
+      })
+  }, [clientId])
+
+  // Load per-vertical demand gen data when vertical selected
   useEffect(() => {
     if (!selectedVertical) { setDgRaw(null); return }
     setDgRaw(null)
@@ -770,7 +1197,7 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
       })
   }, [clientId, selectedVertical])
 
-  // Auto-save (debounced 1.5s)
+  // Auto-save vertical data (debounced 1.5s)
   const scheduleSave = useCallback(() => {
     if (!selectedVertical) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -791,10 +1218,29 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
     }, 1500)
   }, [clientId, selectedVertical])
 
+  // Auto-save base data (debounced 1.5s)
+  const scheduleBaseSave = useCallback(() => {
+    if (baseSaveTimer.current) clearTimeout(baseSaveTimer.current)
+    setBaseSaveStatus('saving')
+    baseSaveTimer.current = setTimeout(async () => {
+      if (!latestBaseRef.current) return
+      try {
+        await apiFetch(`/api/v1/clients/${clientId}/demand-gen/base`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(latestBaseRef.current),
+        })
+        setBaseSaveStatus('saved')
+        setTimeout(() => setBaseSaveStatus('idle'), 2000)
+      } catch {
+        setBaseSaveStatus('error')
+      }
+    }, 1500)
+  }, [clientId])
+
   const set = useCallback((fn: (d: DemandGenData) => void) => {
     setDgRaw((prev) => {
       if (!prev) return prev
-      // Deep clone via JSON for simplicity — demand gen data is small
       const next = JSON.parse(JSON.stringify(prev)) as DemandGenData
       fn(next)
       latestDgRef.current = next
@@ -803,12 +1249,31 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
     })
   }, [scheduleSave])
 
+  const setBase = useCallback((fn: (d: DemandGenBaseData) => void) => {
+    setDgBaseRaw((prev) => {
+      if (!prev) return prev
+      const next = JSON.parse(JSON.stringify(prev)) as DemandGenBaseData
+      fn(next)
+      latestBaseRef.current = next
+      scheduleBaseSave()
+      return next
+    })
+  }, [scheduleBaseSave])
+
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const scrollTo = (num: string) => {
     setActiveSection(num)
     sectionRefs.current[num]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  // Determine which save status to show — prefer saving/error over idle
+  const activeSaveStatus = (() => {
+    if (saveStatus === 'saving' || baseSaveStatus === 'saving') return 'saving'
+    if (saveStatus === 'error' || baseSaveStatus === 'error') return 'error'
+    if (saveStatus === 'saved' || baseSaveStatus === 'saved') return 'saved'
+    return 'idle'
+  })()
 
   if (verticalsLoading) {
     return (
@@ -822,14 +1287,43 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
     <div className="flex h-full min-h-0">
       {/* Left nav */}
       <div className="w-56 shrink-0 border-r border-border bg-muted/20 flex flex-col">
-        <div className="px-4 py-4 border-b border-border space-y-3">
+        <div className="px-4 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Icons.TrendingUp className="h-4 w-4 text-orange-500" />
             <span className="text-sm font-semibold text-foreground">Demand Gen</span>
           </div>
-          <VerticalSelector verticals={verticals} selected={selectedVertical} onSelect={setSelectedVertical} />
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
+          {/* Company-wide group */}
+          <div className="px-4 pt-2 pb-1">
+            <span className="text-[9px] font-extrabold uppercase tracking-widest text-muted-foreground/50">Company-Wide</span>
+          </div>
+          {BASE_SECTIONS_NAV.map((s) => (
+            <button
+              key={s.num}
+              onClick={() => scrollTo(s.num)}
+              className={cn(
+                'flex w-full items-center gap-2 px-4 py-2 text-left text-xs transition-colors',
+                activeSection === s.num
+                  ? 'bg-orange-50 text-orange-700 font-medium'
+                  : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+              )}
+            >
+              <span className={cn('text-[10px] font-bold', activeSection === s.num ? 'text-orange-400' : 'text-muted-foreground/50')}>
+                {s.num}
+              </span>
+              {s.short}
+            </button>
+          ))}
+
+          {/* Divider + vertical-specific group */}
+          <div className="mx-4 my-3 border-t border-border" />
+          <div className="px-4 pb-1 flex items-center justify-between">
+            <span className="text-[9px] font-extrabold uppercase tracking-widest text-muted-foreground/50">Vertical-Specific</span>
+          </div>
+          <div className="px-3 pb-2">
+            <VerticalSelector verticals={verticals} selected={selectedVertical} onSelect={setSelectedVertical} />
+          </div>
           {SECTIONS_NAV.map((s) => (
             <button
               key={s.num}
@@ -851,17 +1345,17 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
 
         {/* Save status */}
         <div className="border-t border-border px-4 py-3">
-          {saveStatus === 'saving' && (
+          {activeSaveStatus === 'saving' && (
             <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Icons.Loader2 className="h-3 w-3 animate-spin" /> Saving…
             </span>
           )}
-          {saveStatus === 'saved' && (
+          {activeSaveStatus === 'saved' && (
             <span className="flex items-center gap-1.5 text-[11px] text-green-600">
               <Icons.Check className="h-3 w-3" /> Saved
             </span>
           )}
-          {saveStatus === 'error' && (
+          {activeSaveStatus === 'error' && (
             <span className="flex items-center gap-1.5 text-[11px] text-red-500">
               <Icons.AlertCircle className="h-3 w-3" /> Save failed
             </span>
@@ -871,38 +1365,67 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {!selectedVertical ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center space-y-2">
-              <Icons.TrendingUp className="h-8 w-8 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Select a vertical to view or edit Demand Gen data</p>
+        <div className="mx-auto max-w-3xl px-8 py-8 space-y-16">
+
+          {/* ── Company-wide base sections (always shown) ── */}
+          {dgBase ? (
+            <>
+              {([
+                ['B1', <SB1 base={dgBase} setBase={setBase} />],
+                ['B2', <SB2 base={dgBase} setBase={setBase} />],
+                ['B3', <SB3 base={dgBase} setBase={setBase} />],
+              ] as [string, React.ReactNode][]).map(([num, content]) => (
+                <div key={num} ref={(el) => { sectionRefs.current[num] = el }}>
+                  {content}
+                </div>
+              ))}
+            </>
+          ) : (
+            <div className="flex h-32 items-center justify-center">
+              <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {/* ── Divider before vertical sections ── */}
+          <div className="relative flex items-center py-2">
+            <div className="flex-1 border-t border-border" />
+            <span className="mx-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/40">Vertical-Specific</span>
+            <div className="flex-1 border-t border-border" />
+          </div>
+
+          {/* ── Per-vertical sections ── */}
+          {!selectedVertical ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+              <Icons.TrendingUp className="h-8 w-8 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Select a vertical from the left panel to view or edit vertical-specific Demand Gen data</p>
               {verticals.length === 0 && (
                 <p className="text-xs text-muted-foreground/60">No verticals assigned — go to Structure tab to add one</p>
               )}
             </div>
-          </div>
-        ) : !dg ? (
-          <div className="flex h-64 items-center justify-center">
-            <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-        <div className="mx-auto max-w-3xl px-8 py-8 space-y-16">
-          {([
-            ['00', <IntakeSection clientId={clientId} />],
-            ['01', <S1 dg={dg} set={set} />],
-            ['02', <S2 dg={dg} set={set} />],
-            ['03', <S3 dg={dg} set={set} />],
-            ['04', <S4 dg={dg} set={set} />],
-            ['05', <S5 dg={dg} set={set} />],
-            ['06', <S6 dg={dg} set={set} />],
-            ['07', <S7 dg={dg} set={set} />],
-          ] as [string, React.ReactNode][]).map(([num, content]) => (
-            <div key={num} ref={(el) => { sectionRefs.current[num] = el }}>
-              {content}
+          ) : !dg ? (
+            <div className="flex h-32 items-center justify-center">
+              <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ))}
+          ) : (
+            <>
+              {([
+                ['00', <IntakeSection clientId={clientId} />],
+                ['01', <S1 dg={dg} set={set} />],
+                ['02', <S2 dg={dg} set={set} />],
+                ['03', <S3 dg={dg} set={set} />],
+                ['04', <S4 dg={dg} set={set} />],
+                ['05', <S5 dg={dg} set={set} />],
+                ['06', <S6 dg={dg} set={set} />],
+                ['07', <S7 dg={dg} set={set} />],
+              ] as [string, React.ReactNode][]).map(([num, content]) => (
+                <div key={num} ref={(el) => { sectionRefs.current[num] = el }}>
+                  {content}
+                </div>
+              ))}
+            </>
+          )}
+
         </div>
-        )}
       </div>
     </div>
   )
