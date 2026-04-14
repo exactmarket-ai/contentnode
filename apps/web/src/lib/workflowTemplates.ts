@@ -1553,9 +1553,11 @@ Do not apologize. Do not hedge. This email should feel like it comes from a peer
           config: {
             subtype: 'ai-generate',
             taskType: 'Generate',
-            prompt: `Write conversion-focused landing page copy for the target keyword provided, using the client brain context.
+            prompt: `Write conversion-focused landing page copy targeting the keyword or search query provided in the input, using the client brain context.
 
 This is not a blog post. It is a page for people who are already frustrated and searching for a solution.
+
+Begin directly with the H1 Headline — do not add any preamble, meta-notes, or "Target Keyword:" header. The copy itself is the output.
 
 Output the following sections in order:
 
