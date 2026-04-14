@@ -355,7 +355,7 @@ function NodesPalette() {
 
 // ─── CollapsedToolbar ─────────────────────────────────────────────────────────
 
-function CollapsedToolbar({ onExpand: _onExpand }: { onExpand: () => void }) {
+function CollapsedToolbar({ onExpand, onShowInsights }: { onExpand: () => void; onShowInsights: () => void }) {
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
   const canvasTool = useWorkflowStore((s) => s.canvasTool)
   const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
@@ -379,7 +379,7 @@ function CollapsedToolbar({ onExpand: _onExpand }: { onExpand: () => void }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [openCat])
 
-  const categories: NodeCategory[] = ['source', 'logic', 'output', 'media']
+  const categories: NodeCategory[] = ['source', 'logic', 'media', 'output']
 
   return (
     <div ref={toolbarRef} className="relative flex h-full flex-col items-center py-2 gap-1">
@@ -441,6 +441,7 @@ function CollapsedToolbar({ onExpand: _onExpand }: { onExpand: () => void }) {
       {/* Insights button */}
       <button
         title="Insights"
+        onClick={onShowInsights}
         className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-yellow-500"
       >
         <Icons.Lightbulb className="h-4 w-4" />
@@ -521,7 +522,7 @@ export function NodePalette() {
         >
           <Icons.ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
         </button>
-        <CollapsedToolbar onExpand={() => setCollapsed(false)} />
+        <CollapsedToolbar onExpand={() => setCollapsed(false)} onShowInsights={() => { setCollapsed(false); setTab('insights') }} />
       </div>
     )
   }

@@ -266,6 +266,13 @@ async function generateDalle3(
   const size = dalleSize(cfg.aspect_ratio ?? prompt.aspectRatio ?? '1:1')
   const n = Math.min(cfg.num_outputs ?? 1, 4)
 
+  // DALL-E 3 max prompt length is 4000 chars — truncate at a word boundary if needed
+  const DALLE3_MAX = 4000
+  const rawPrompt = prompt.positivePrompt
+  const safePrompt = rawPrompt.length > DALLE3_MAX
+    ? rawPrompt.slice(0, DALLE3_MAX).replace(/\s+\S*$/, '')
+    : rawPrompt
+
   // DALL-E 3 only supports n=1 per request — batch if needed
   const urls: string[] = []
   for (let i = 0; i < n; i++) {
@@ -274,7 +281,7 @@ async function generateDalle3(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: 'dall-e-3',
-        prompt: prompt.positivePrompt,
+        prompt: safePrompt,
         n: 1,
         size,
         quality,
