@@ -126,6 +126,7 @@ export function WorkflowEditor() {
           defaultAssigneeId: (data.defaultAssigneeId as string | null) ?? null,
           defaultAssigneeName: defaultAssignee?.name ?? null,
           graphSaved: true,
+          isLocked: (data.isLocked as boolean) ?? false,
         })
         useWorkflowStore.setState({ graphDirty: false })
         // Use internal React Flow method to set nodes/edges directly

@@ -361,6 +361,7 @@ model Workflow {
   isTemplate       Boolean   @default(false) @map("is_template")
   templateCategory String?   @map("template_category")
   templateDescription String? @map("template_description")
+  isLocked         Boolean   @default(false) @map("is_locked")
   defaultAssigneeId String?   @map("default_assignee_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")

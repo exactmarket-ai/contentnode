@@ -22,6 +22,7 @@ const updateWorkflowBody = z.object({
   description: z.string().optional(),
   status: z.enum(['draft', 'active', 'archived']).optional(),
   defaultAssigneeId: z.string().nullable().optional(),
+  isLocked: z.boolean().optional(),
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,6 +144,7 @@ export async function workflowRoutes(app: FastifyInstance) {
         ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
         ...(parsed.data.status ? { status: parsed.data.status } : {}),
         ...(parsed.data.defaultAssigneeId !== undefined ? { defaultAssigneeId: parsed.data.defaultAssigneeId } : {}),
+        ...(parsed.data.isLocked !== undefined ? { isLocked: parsed.data.isLocked } : {}),
       },
       include: {
         client: { select: { id: true, name: true, slug: true } },

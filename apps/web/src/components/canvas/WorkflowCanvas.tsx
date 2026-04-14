@@ -56,6 +56,7 @@ export function WorkflowCanvas() {
   } = useWorkflowStore()
   const canvasTool = useWorkflowStore((s) => s.canvasTool)
   const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
+  const isLocked = useWorkflowStore((s) => s.workflow.isLocked ?? false)
 
   // Keyboard shortcuts: V = select, H = hand
   useEffect(() => {
@@ -97,12 +98,14 @@ export function WorkflowCanvas() {
 
   // Drag-and-drop from palette
   const onDragOver = useCallback((e: React.DragEvent) => {
+    if (isLocked) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-  }, [])
+  }, [isLocked])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    if (isLocked) return
     if (!rfInstanceRef.current) return
 
     const position = rfInstanceRef.current.screenToFlowPosition({
@@ -216,8 +219,11 @@ export function WorkflowCanvas() {
         maxZoom={2}
         fitView
         fitViewOptions={{ padding: 0.2 }}
-        deleteKeyCode="Backspace"
-        selectionOnDrag={canvasTool === 'select'}
+        deleteKeyCode={isLocked ? null : 'Backspace'}
+        nodesDraggable={!isLocked}
+        nodesConnectable={!isLocked}
+        edgesUpdatable={!isLocked}
+        selectionOnDrag={!isLocked && canvasTool === 'select'}
         panOnDrag={canvasTool === 'hand'}
         panActivationKeyCode={canvasTool === 'select' ? 'Space' : null}
         selectionKeyCode={null}

@@ -29,6 +29,8 @@ export interface WorkflowMeta {
   autoCreated?: boolean
   /** True once the graph has been explicitly saved (PUT /graph). False for brand-new unsaved workflows. */
   graphSaved?: boolean
+  /** When true: nodes cannot be moved, added, deleted, or reconnected. Node configs remain editable. */
+  isLocked?: boolean
 }
 
 export interface NodeRunStatus {

@@ -12,6 +12,7 @@ import {
 import { BatchRunModal } from '@/components/modals/BatchRunModal'
 import { ScheduleModal } from '@/components/modals/ScheduleModal'
 import { triggerRun } from '@/lib/runWorkflow'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 const ANTHROPIC_MODELS = [
   { value: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
@@ -321,6 +322,8 @@ function RunFailedBanner({ error }: { error: string | null }) {
 export function TopBar() {
   const { workflow, setWorkflowName, setWorkflow, runStatus, runError, hasBeenRun, activeRunId } = useWorkflowStore()
   const navigate = useNavigate()
+  const { isLead } = useCurrentUser()
+  const [lockSaving, setLockSaving] = useState(false)
   const [batchModalOpen, setBatchModalOpen] = useState(false)
   const [batchToast, setBatchToast] = useState<string | null>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
@@ -383,6 +386,25 @@ export function TopBar() {
       } catch (err) {
         console.error('[save-name] failed:', err)
       }
+    }
+  }
+
+  const handleToggleLock = async () => {
+    const wf = useWorkflowStore.getState().workflow
+    if (!wf.id) return
+    const next = !wf.isLocked
+    setLockSaving(true)
+    try {
+      await apiFetch(`/api/v1/workflows/${wf.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ isLocked: next }),
+      })
+      setWorkflow({ isLocked: next })
+    } catch (err) {
+      console.error('[lock-workflow] failed:', err)
+    } finally {
+      setLockSaving(false)
     }
   }
 
@@ -559,6 +581,36 @@ export function TopBar() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Workflow lock */}
+      {workflow.id && (
+        isLead ? (
+          <button
+            onClick={handleToggleLock}
+            disabled={lockSaving}
+            title={workflow.isLocked ? 'Workflow is locked — click to unlock (admin only)' : 'Lock workflow structure (users can still edit node settings)'}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+              workflow.isLocked
+                ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                : 'border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+            )}
+          >
+            {lockSaving
+              ? <Icons.Loader2 className="h-3 w-3 animate-spin" />
+              : workflow.isLocked
+                ? <Icons.Lock className="h-3 w-3" />
+                : <Icons.LockOpen className="h-3 w-3" />
+            }
+            {workflow.isLocked ? 'Locked' : 'Lock'}
+          </button>
+        ) : workflow.isLocked ? (
+          <span className="flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+            <Icons.Lock className="h-3 w-3" />
+            Locked
+          </span>
+        ) : null
+      )}
 
       {/* Spacer */}
       <div className="flex-1" />
