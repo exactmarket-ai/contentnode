@@ -84,10 +84,15 @@ export async function downloadAsset(url: string, filename: string): Promise<void
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = await getToken()
+  const callerHeaders = (init.headers ?? {}) as Record<string, string>
+  const callerHasContentType = Object.keys(callerHeaders).some((k) => k.toLowerCase() === 'content-type')
   const headers: Record<string, string> = {
-    // Only set Content-Type for requests that actually have a body
-    ...(init.body == null || init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(init.headers as Record<string, string> | undefined),
+    // Auto-set Content-Type for JSON bodies — but only if the caller hasn't already set it,
+    // to avoid duplicate headers (Headers API joins dupes with ', ' which breaks content-type negotiation)
+    ...(!callerHasContentType && init.body != null && !(init.body instanceof FormData)
+      ? { 'Content-Type': 'application/json' }
+      : {}),
+    ...callerHeaders,
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`

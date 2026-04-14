@@ -65,7 +65,6 @@ function AttachmentRow({
     try {
       const res = await apiFetch(`/api/v1/campaigns/${campaignId}/brain/attachments/${a.id}`, {
         method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ summary: editValue }),
       })
       if (res.ok) {
@@ -84,7 +83,6 @@ function AttachmentRow({
       const next = !a.campaignScopedOnly
       const res = await apiFetch(`/api/v1/campaigns/${campaignId}/brain/attachments/${a.id}`, {
         method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ campaignScopedOnly: next }),
       })
       if (res.ok) {
@@ -383,7 +381,6 @@ export function CampaignBrainPanel({
     try {
       const res = await apiFetch(`${base}/from-url`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ url: trimmed }),
       })
       if (!res.ok) {
@@ -411,7 +408,6 @@ export function CampaignBrainPanel({
     try {
       await apiFetch(`/api/v1/campaigns/${campaignId}`, {
         method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ context }),
       })
       onContextSaved(context)
