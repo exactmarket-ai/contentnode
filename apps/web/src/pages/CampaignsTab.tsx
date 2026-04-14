@@ -157,6 +157,29 @@ interface RequiredFieldDef {
 }
 
 const REQUIRED_NODE_FIELDS: Record<string, { validation: 'all' | 'any'; hint: string; fields: RequiredFieldDef[] }> = {
+  // ── Source nodes ────────────────────────────────────────────────────────────
+  'text-input': {
+    validation: 'any',
+    hint: 'This node needs text content before it can run',
+    fields: [
+      { key: 'text', label: 'Content', type: 'textarea', placeholder: 'Enter the text this node should provide to downstream nodes…' },
+    ],
+  },
+  'web-scrape': {
+    validation: 'all',
+    hint: 'Required',
+    fields: [
+      { key: 'url', label: 'URL to Scrape', type: 'text', placeholder: 'https://example.com' },
+    ],
+  },
+  'api-fetch': {
+    validation: 'all',
+    hint: 'Required',
+    fields: [
+      { key: 'url', label: 'API Endpoint URL', type: 'text', placeholder: 'https://api.example.com/data' },
+    ],
+  },
+  // ── Intelligence nodes ──────────────────────────────────────────────────────
   'seo-intent': {
     validation: 'any',
     hint: 'Fill in at least one of these',
@@ -189,6 +212,16 @@ const REQUIRED_NODE_FIELDS: Record<string, { validation: 'all' | 'any'; hint: st
 }
 
 function isNodeConfigReady(subtype: string, config: Record<string, unknown>): boolean {
+  // text-input: satisfied by any non-empty text field OR attached files/library refs
+  if (subtype === 'text-input') {
+    return (
+      ((config.inlineText as string) ?? '').trim().length > 0 ||
+      ((config.text as string) ?? '').trim().length > 0 ||
+      ((config.pasted_text as string) ?? '').trim().length > 0 ||
+      ((config.library_refs as unknown[]) ?? []).length > 0 ||
+      ((config.uploaded_files as unknown[]) ?? []).length > 0
+    )
+  }
   const req = REQUIRED_NODE_FIELDS[subtype]
   if (!req) return true
   const filled = req.fields.filter((f) => ((config[f.key] as string) ?? '').trim().length > 0)
