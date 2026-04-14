@@ -12,7 +12,7 @@ const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: st
 ]
 
 export function ReviewsAndRunsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('reviews')
+  const [activeTab, setActiveTab] = useState<Tab>('runs')
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

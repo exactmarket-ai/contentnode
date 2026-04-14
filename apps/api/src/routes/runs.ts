@@ -650,6 +650,7 @@ export async function runRoutes(app: FastifyInstance) {
         triggerType: true,
         batchId: true,
         batchIndex: true,
+        campaignId: true,
         reviewStatus: true,
         reviewerIds: true,
         divisionId: true,
@@ -664,6 +665,7 @@ export async function runRoutes(app: FastifyInstance) {
         assignee: { select: { id: true, name: true, avatarStorageKey: true } },
         division: { select: { id: true, name: true } },
         job: { select: { id: true, name: true, budgetCents: true } },
+        campaign: { select: { id: true, name: true } },
         workflow: {
           select: {
             id: true,
@@ -744,6 +746,8 @@ export async function runRoutes(app: FastifyInstance) {
         triggerType: r.triggerType ?? null,
         batchId: r.batchId ?? null,
         batchIndex: r.batchIndex ?? null,
+        campaignId: r.campaignId ?? null,
+        campaignName: r.campaign?.name ?? null,
         reviewStatus: r.reviewStatus,
         reviewerIds: r.reviewerIds,
         editedContent: r.editedContent ?? null,

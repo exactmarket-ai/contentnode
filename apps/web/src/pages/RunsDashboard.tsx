@@ -26,6 +26,8 @@ interface Run {
   finalOutput: unknown
   batchId: string | null
   batchIndex: number | null
+  campaignId: string | null
+  campaignName: string | null
   reviewStatus: string
 }
 
@@ -364,6 +366,76 @@ function BatchGroup({
   )
 }
 
+// ── Campaign group ────────────────────────────────────────────────────────────
+
+function CampaignGroup({
+  campaignId, campaignName, runs, expanded, onToggle, onCancel, onRerun, cancelling, rerunning,
+}: {
+  campaignId: string
+  campaignName: string | null
+  runs: Run[]
+  expanded: boolean
+  onToggle: () => void
+  onCancel: (id: string) => void
+  onRerun: (id: string) => void
+  cancelling: string | null
+  rerunning: string | null
+}) {
+  const completedCount = runs.filter((r) => r.status === 'completed').length
+  const runningCount = runs.filter((r) => ['running', 'pending'].includes(r.status)).length
+  const failedCount = runs.filter((r) => r.status === 'failed').length
+  const summaryStatus = batchSummaryStatus(runs)
+
+  const parts: string[] = []
+  if (runningCount > 0) parts.push(`${runningCount} running`)
+  if (completedCount > 0) parts.push(`${completedCount} done`)
+  if (failedCount > 0) parts.push(`${failedCount} failed`)
+  const summary = parts.join(', ')
+
+  return (
+    <div className="border-b border-border last:border-0">
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center gap-4 px-5 py-3 text-left hover:bg-muted/20 transition-colors bg-emerald-950/10"
+      >
+        <div className="w-36 shrink-0">
+          <StatusBadge status={summaryStatus} />
+        </div>
+        <div className="min-w-0 flex-1 flex items-center gap-2">
+          <Icons.Layers className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+          <span className="text-sm font-medium truncate">
+            {campaignName ?? 'Campaign'}
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-900/40 text-emerald-400 border border-emerald-800/50 shrink-0">
+            campaign · {runs.length} workflow{runs.length !== 1 ? 's' : ''}
+          </span>
+          {summary && <span className="text-xs text-muted-foreground truncate">· {summary}</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Icons.ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border/40 pl-6">
+          {runs.map((run) => (
+            <RunRow
+              key={run.id}
+              run={run}
+              expanded={false}
+              onToggle={() => {}}
+              onCancel={onCancel}
+              onRerun={onRerun}
+              cancelling={cancelling}
+              rerunning={rerunning}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Status tabs ───────────────────────────────────────────────────────────────
 
 const STATUS_TABS = [
@@ -387,6 +459,7 @@ export function RunsDashboard() {
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set())
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [rerunning, setRerunning] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -590,15 +663,20 @@ export function RunsDashboard() {
             </div>
 
             {(() => {
-              // Group runs by batchId; standalone runs (no batchId) render normally
+              // Group runs by batchId or campaignId; standalone runs render normally
               const batchMap = new Map<string, Run[]>()
+              const campaignMap = new Map<string, Run[]>()
               const renderedBatches = new Set<string>()
+              const renderedCampaigns = new Set<string>()
               const rows: React.ReactNode[] = []
 
               for (const run of filteredRuns) {
                 if (run.batchId) {
                   if (!batchMap.has(run.batchId)) batchMap.set(run.batchId, [])
                   batchMap.get(run.batchId)!.push(run)
+                } else if (run.campaignId) {
+                  if (!campaignMap.has(run.campaignId)) campaignMap.set(run.campaignId, [])
+                  campaignMap.get(run.campaignId)!.push(run)
                 }
               }
 
@@ -620,6 +698,31 @@ export function RunsDashboard() {
                           const next = new Set(prev)
                           if (next.has(run.batchId!)) next.delete(run.batchId!)
                           else next.add(run.batchId!)
+                          return next
+                        })
+                      }
+                      onCancel={handleCancel}
+                      onRerun={handleRerun}
+                      cancelling={cancelling}
+                      rerunning={rerunning}
+                    />,
+                  )
+                } else if (run.campaignId) {
+                  if (renderedCampaigns.has(run.campaignId)) continue
+                  renderedCampaigns.add(run.campaignId)
+                  const campaignRuns = campaignMap.get(run.campaignId) ?? []
+                  rows.push(
+                    <CampaignGroup
+                      key={`campaign-${run.campaignId}`}
+                      campaignId={run.campaignId}
+                      campaignName={run.campaignName}
+                      runs={campaignRuns}
+                      expanded={expandedCampaigns.has(run.campaignId)}
+                      onToggle={() =>
+                        setExpandedCampaigns((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(run.campaignId!)) next.delete(run.campaignId!)
+                          else next.add(run.campaignId!)
                           return next
                         })
                       }
