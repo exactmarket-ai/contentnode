@@ -1135,7 +1135,7 @@ export function CampaignsTab({ clientId, clientName }: { clientId: string; clien
       </div>
 
       {/* Campaign list */}
-      {loading ? (
+      {loading && campaigns.length === 0 ? (
         <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
           <Icons.Loader2 className="w-4 h-4 animate-spin" />
           <span className="text-sm">Loading campaigns…</span>
