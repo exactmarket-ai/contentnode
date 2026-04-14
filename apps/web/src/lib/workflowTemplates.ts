@@ -1815,7 +1815,7 @@ Vary the following across the 10 variants:
             subtype: 'review-miner',
             companyName: '',
             companySlug: '',
-            platforms: ['trustpilot'],
+            platforms: ['custom_url'],
             competitors: '',
             maxReviewsPerSource: 20,
             synthesisType: 'battlecard',

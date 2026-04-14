@@ -109,7 +109,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
         description: 'Deep web + review mining', workflowTemplateId: 'intel-competitive',
         setupFields: [
           { nodeId: 'ci-reviews', field: 'companyName', label: 'Company name', placeholder: 'Acme Corp' },
-          { nodeId: 'ci-reviews', field: 'companySlug', label: 'Trustpilot company slug', placeholder: 'acme-corp', hint: 'From trustpilot.com/review/your-slug' },
+          { nodeId: 'ci-reviews', field: 'companySlug', label: 'Review page URL (optional)', placeholder: 'https://www.trustpilot.com/review/acme-corp', hint: 'Direct URL to a public review page — Trustpilot, G2, or any review site. Leave blank to skip review mining.' },
           { nodeId: 'ci-reviews', field: 'competitors', label: 'Competitor names (comma-separated)', placeholder: 'Competitor A, Competitor B' },
           { nodeId: 'ci-scrape',  field: 'seedUrls', label: 'Competitor website URLs (one per line)', placeholder: 'https://competitor.com', type: 'textarea' },
         ],

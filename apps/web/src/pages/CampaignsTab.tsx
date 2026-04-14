@@ -222,22 +222,22 @@ const REQUIRED_NODE_FIELDS: Record<string, { validation: 'all' | 'any'; hint: st
     ],
   },
   'review-miner': {
-    validation: 'all',
-    hint: 'Needed to find the right Trustpilot reviews',
+    validation: 'any',
+    hint: 'Company name is required. Review page URL is optional but improves the brief.',
     fields: [
       {
         key: 'companyName',
         label: 'Company Name',
         type: 'text',
         placeholder: 'e.g. Acme Corp',
-        description: 'The company whose reviews you want to mine — used to frame the competitive brief',
+        description: 'The company being researched — used to frame the competitive brief',
       },
       {
         key: 'companySlug',
-        label: 'Trustpilot Slug',
+        label: 'Review Page URL (optional)',
         type: 'text',
-        placeholder: 'acme-corp',
-        description: 'The last part of the Trustpilot URL — e.g. for trustpilot.com/review/acme-corp enter acme-corp',
+        placeholder: 'https://www.trustpilot.com/review/acme-corp',
+        description: 'A direct URL to a public review page. If left blank, the brief uses web crawl and client brain data only.',
       },
     ],
   },

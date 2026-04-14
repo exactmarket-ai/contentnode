@@ -218,15 +218,11 @@ export class ReviewMinerExecutor extends NodeExecutor {
       }
     }
 
-    if (totalReviews === 0) {
-      throw new Error(
-        'Review Miner: could not extract reviews from any platform. ' +
-        'Review sites often require JavaScript rendering. ' +
-        'Try the custom_url platform with a direct page URL, or paste reviews into a Text Input node.'
-      )
-    }
-
-    const rawData = `# Review Mining: ${companyName}\nPlatforms: ${platforms.join(', ')}\n\n${sections.join('\n\n')}`
+    // Non-fatal: review sites often require JS rendering — return a notice so
+    // downstream synthesis nodes can still run using web scrape + client brain data.
+    const rawData = totalReviews === 0
+      ? `# Review Mining: ${companyName}\n\nNo reviews could be extracted from the configured platform(s). Review sites (Trustpilot, G2, Capterra) typically require JavaScript rendering which is not supported by this node.\n\nRecommendation: open the Review Miner node, switch the platform to "custom_url", and paste a direct URL to a publicly-accessible review page — or add a Text Input node and paste reviews manually.\n\n${sections.join('\n\n')}`
+      : `# Review Mining: ${companyName}\nPlatforms: ${platforms.join(', ')}\n\n${sections.join('\n\n')}`
 
     // ── Synthesize ───────────────────────────────────────────────────────────
     const systemPrompt = SYNTHESIS_PROMPTS[synthesisType] ?? SYNTHESIS_PROMPTS.themes
