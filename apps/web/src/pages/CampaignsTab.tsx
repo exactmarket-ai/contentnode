@@ -142,7 +142,7 @@ const ROLE_LABELS: Record<string, string> = {
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pending:    { label: 'Pending',   color: 'text-muted-foreground' },
   running:    { label: 'Running',   color: 'text-blue-400' },
-  completed:  { label: 'Done',      color: 'text-emerald-400' },
+  completed:  { label: 'Done',      color: 'text-[#22c55e]' },
   failed:     { label: 'Failed',    color: 'text-red-400' },
   cancelled:  { label: 'Cancelled', color: 'text-muted-foreground' },
 }
@@ -775,7 +775,7 @@ function CampaignCard({
             <Badge
               className={cn(
                 'text-[9px] px-1.5 py-0 h-4 border-0',
-                campaign.status === 'active' ? 'bg-emerald-900/50 text-emerald-300' :
+                campaign.status === 'active' ? 'bg-[#22c55e]/15 text-[#22c55e]' :
                 campaign.status === 'planning' ? 'bg-muted text-muted-foreground' :
                 'bg-muted text-muted-foreground'
               )}
@@ -865,7 +865,7 @@ function CampaignCard({
                     <a
                       href={`/review/${cw.latestRun.id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 shrink-0"
+                      className="flex items-center gap-1 text-[10px] text-[#a200ee] hover:text-[#a200ee]/80 shrink-0"
                       title="Review content"
                     >
                       <Icons.FileText className="w-3 h-3" />
@@ -964,7 +964,7 @@ function CampaignCard({
                   <span className="text-[11px] text-muted-foreground">{pendingWorkflows.length} queued</span>
                 )}
                 {completedWorkflows > 0 && (
-                  <span className="text-[11px] text-emerald-400 font-medium">{completedWorkflows} done</span>
+                  <span className="text-[11px] text-[#22c55e] font-medium">{completedWorkflows} done</span>
                 )}
                 {failedWorkflows.length > 0 && (
                   <span className="text-[11px] text-red-400">{failedWorkflows.length} failed</span>
