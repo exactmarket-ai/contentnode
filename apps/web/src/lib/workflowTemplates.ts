@@ -1991,4 +1991,730 @@ Write for a marketing director to review with their team.`,
       { id: 'e-ms-brief-out',   source: 'ms-brief',  target: 'ms-out' },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BRAND AWARENESS TEMPLATES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  {
+    id: 'dg-blog-post',
+    name: 'Blog Post Generator',
+    description: 'Writes a full SEO blog post from the client brain — structured with a hook, body, and CTA that matches the ICP and messaging framework. Set your target keyword in Additional Instructions.',
+    category: 'demand_gen',
+    icon: 'FileText',
+    nodes: [
+      {
+        id: 'bp-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 120 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S3'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'bp-write',
+        type: 'logic',
+        position: { x: 380, y: 120 },
+        data: {
+          label: 'Write Blog Post',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `You are a senior content strategist writing a blog post for the client described in the brain context.
+
+Target keyword: [set in Additional Instructions below]
+
+Structure:
+## [Title — include the keyword, make it specific and intriguing]
+
+**Hook (100 words):** Open with the problem or tension this post resolves. Reference something the ICP experiences regularly. No "In today's world..." openers.
+
+**The Setup (150 words):** Explain why this matters now and what most people get wrong about it.
+
+**The Core (400-500 words):** 3-4 substantive sections, each with a subheading. Use the client's messaging framework and ICP pain points to make the content specific. Include one concrete example or scenario.
+
+**The Takeaway (100 words):** Summarise the actionable insight. One clear thing the reader should do.
+
+**CTA (50 words):** Soft transition to the client's offer. Match the tone — no hard sell.
+
+Rules:
+- No filler phrases ("It's important to note", "In conclusion", "In this post I will")
+- Every sentence earns its place
+- Use the client's language, not generic industry speak
+- Total: 800–900 words`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bp-out',
+        type: 'output',
+        position: { x: 680, y: 120 },
+        data: {
+          label: 'Blog Post',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Blog Post' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-bp-brain-write', source: 'bp-brain', target: 'bp-write' },
+      { id: 'e-bp-write-out',   source: 'bp-write', target: 'bp-out' },
+    ],
+  },
+
+  {
+    id: 'dg-social-pack',
+    name: 'Social Content Pack',
+    description: 'Generates a week of social content from the client brain — one long-form LinkedIn post, three short-form variants, and an Instagram caption. Set the content topic in Additional Instructions.',
+    category: 'demand_gen',
+    icon: 'Share2',
+    nodes: [
+      {
+        id: 'sp-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 180 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08'],
+            dgBaseSections: [],
+            dgVertSections: ['S2'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'sp-linkedin',
+        type: 'logic',
+        position: { x: 380, y: 0 },
+        data: {
+          label: 'LinkedIn Post',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write a long-form LinkedIn post for the client.
+
+Topic: [set in Additional Instructions]
+
+Format:
+- Hook line: one sentence that stops the scroll. State a counterintuitive truth, a specific number, or a tension the ICP feels
+- No hashtag openers, no "Excited to share"
+- 3-5 short paragraphs. Each paragraph = one idea. White space is intentional
+- End with a question that invites real responses, not "what do you think?"
+- 200–300 words total
+- Voice: direct, specific, human. Sound like a practitioner not a marketer
+
+Use the client's messaging framework and ICP from the brain context to make the content specific and relevant.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'sp-shorts',
+        type: 'logic',
+        position: { x: 380, y: 200 },
+        data: {
+          label: 'Short-form Variants',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write 3 short-form social post variants for the client. Each under 280 characters.
+
+Topic: [set in Additional Instructions]
+
+Vary the angle across the 3:
+1. A bold claim or stat (specific, verifiable, from the brain context)
+2. A "most people do X, you should do Y" contrast
+3. A direct question that the ICP asks themselves
+
+Rules:
+- No hashtags
+- No emoji unless it's genuinely the right move
+- Start mid-thought — no warming up
+- Each stands alone without needing context
+
+Use the client's voice and ICP from the brain context.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'sp-instagram',
+        type: 'logic',
+        position: { x: 380, y: 380 },
+        data: {
+          label: 'Instagram Caption',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write an Instagram caption for the client.
+
+Topic: [set in Additional Instructions]
+
+Format:
+- First line: visual hook (describes what the image would show, or a statement that makes them tap "more")
+- Body: 3-4 sentences. Conversational, a little warmer than LinkedIn tone
+- 3-5 relevant hashtags at the end
+- 120–180 words
+
+Use the client's brand voice and ICP from the brain context. Make the caption feel native to Instagram — not a LinkedIn post with hashtags bolted on.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'sp-out',
+        type: 'output',
+        position: { x: 680, y: 180 },
+        data: {
+          label: 'Social Content Pack',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-sp-brain-li',    source: 'sp-brain',    target: 'sp-linkedin' },
+      { id: 'e-sp-brain-sh',    source: 'sp-brain',    target: 'sp-shorts' },
+      { id: 'e-sp-brain-ig',    source: 'sp-brain',    target: 'sp-instagram' },
+      { id: 'e-sp-li-out',      source: 'sp-linkedin', target: 'sp-out' },
+      { id: 'e-sp-sh-out',      source: 'sp-shorts',   target: 'sp-out' },
+      { id: 'e-sp-ig-out',      source: 'sp-instagram',target: 'sp-out' },
+    ],
+  },
+
+  {
+    id: 'dg-blog-to-social',
+    name: 'Blog → Social Repurpose',
+    description: 'Takes a finished blog post and repurposes it into a full social distribution pack — LinkedIn carousel angles, Twitter thread, and Instagram caption — all in the client\'s brand voice.',
+    category: 'demand_gen',
+    icon: 'Repeat2',
+    nodes: [
+      {
+        id: 'bts-input',
+        type: 'source',
+        position: { x: 80, y: 80 },
+        data: {
+          label: 'Blog Post Content',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: '',
+            label: 'Paste your finished blog post here',
+          },
+        },
+      },
+      {
+        id: 'bts-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 300 },
+        data: {
+          label: 'Brand Voice',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['08'],
+            dgBaseSections: [],
+            dgVertSections: [],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'bts-linkedin',
+        type: 'logic',
+        position: { x: 400, y: 0 },
+        data: {
+          label: 'LinkedIn Angles',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `From the blog post provided, extract 3 LinkedIn post angles. Each angle should stand alone — not a summary of the post, but one idea from it developed into a complete LinkedIn post.
+
+For each:
+- Different hook style (stat, tension, question)
+- 150–250 words
+- Ends with a specific engagement question
+- Signals the client's expertise without being promotional
+
+Use the brand voice from the brain context.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bts-twitter',
+        type: 'logic',
+        position: { x: 400, y: 220 },
+        data: {
+          label: 'Twitter / X Thread',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Turn the blog post into a Twitter/X thread.
+
+Format:
+1/ Hook tweet — the most counterintuitive or surprising idea from the post. Under 240 chars.
+2/-6/ One idea per tweet. Each self-contained. No "as I mentioned" callbacks. Under 240 chars each.
+7/ Summary tweet — the single most actionable takeaway.
+8/ CTA tweet — soft. "Full breakdown here: [link]" or similar.
+
+Style: punchy, specific, no corporate tone. Sounds like a practitioner sharing hard-won insight.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bts-ig',
+        type: 'logic',
+        position: { x: 400, y: 400 },
+        data: {
+          label: 'Instagram Caption',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write an Instagram caption repurposing the key idea from this blog post.
+
+- First line: visual hook — a statement that makes someone stop scrolling
+- 3-4 conversational sentences developing the idea
+- Warmer and more personal than LinkedIn
+- 3-5 hashtags at the end
+- 120–160 words
+
+Use the brand voice from the context.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bts-out',
+        type: 'output',
+        position: { x: 720, y: 200 },
+        data: {
+          label: 'Social Repurpose Pack',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-bts-input-li',   source: 'bts-input',   target: 'bts-linkedin' },
+      { id: 'e-bts-input-tw',   source: 'bts-input',   target: 'bts-twitter' },
+      { id: 'e-bts-input-ig',   source: 'bts-input',   target: 'bts-ig' },
+      { id: 'e-bts-brain-li',   source: 'bts-brain',   target: 'bts-linkedin' },
+      { id: 'e-bts-brain-tw',   source: 'bts-brain',   target: 'bts-twitter' },
+      { id: 'e-bts-brain-ig',   source: 'bts-brain',   target: 'bts-ig' },
+      { id: 'e-bts-li-out',     source: 'bts-linkedin',target: 'bts-out' },
+      { id: 'e-bts-tw-out',     source: 'bts-twitter', target: 'bts-out' },
+      { id: 'e-bts-ig-out',     source: 'bts-ig',      target: 'bts-out' },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RETENTION TEMPLATES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  {
+    id: 'dg-reengagement-email',
+    name: 'Re-engagement Email Sequence',
+    description: 'Generates a 3-email win-back sequence for lapsed customers or leads who went quiet — re-establishes value, addresses the silence directly, then creates urgency without desperation.',
+    category: 'demand_gen',
+    icon: 'MailOpen',
+    nodes: [
+      {
+        id: 're-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 200 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['08', '10', '12'],
+            dgBaseSections: ['B2'],
+            dgVertSections: ['S2'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 're-e1',
+        type: 'logic',
+        position: { x: 380, y: 0 },
+        data: {
+          label: 'Email 1 — Re-establish Value',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 1 of a 3-email re-engagement sequence. Send: immediately.
+
+Job: Re-establish value without mentioning that they went quiet. Act like you're resuming a conversation, not chasing someone.
+
+Structure:
+- Subject: Reference something specific they cared about (their use case, their role, their problem) — not "We miss you"
+- Body: Lead with a new development, insight, or result that's directly relevant to what they originally came for. Under 150 words.
+- CTA: One soft ask — share a relevant resource, ask a genuine question, or flag a new capability. Nothing salesy.
+
+Use the client brain to make the subject and insight specific to the ICP. Tone: peer-to-peer, not vendor-to-customer.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 're-e2',
+        type: 'logic',
+        position: { x: 380, y: 200 },
+        data: {
+          label: 'Email 2 — Address the Silence',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 2 of a 3-email re-engagement sequence. Send: Day 4.
+
+Job: Acknowledge that they've gone quiet. Be direct but not needy. Give them a graceful off-ramp while creating a reason to re-engage.
+
+Structure:
+- Subject: Honest and direct — "Should I close your file?" or "Still dealing with [pain point]?"
+- Body: 2-3 sentences. Acknowledge that timing might be off. Offer one of two options: (1) here's something that might help right now, or (2) happy to reconnect later — just say the word. Under 100 words.
+- CTA: Binary — stay in touch, or tell me when to follow up.
+
+Tone: respectful of their time, no guilt, no pressure.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 're-e3',
+        type: 'logic',
+        position: { x: 380, y: 400 },
+        data: {
+          label: 'Email 3 — Final Value',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write Email 3 of a 3-email re-engagement sequence. Send: Day 10. This is the final email.
+
+Job: One last genuine attempt. Give them something valuable regardless of whether they re-engage. Leave on a high note.
+
+Structure:
+- Subject: Lead with the value, not the ask — "The one thing that moves the needle for [ICP role]"
+- Body: Share one genuinely useful insight, framework, or resource relevant to their situation. 150 words max.
+- Close: "If the timing ever makes sense, you know where to find us." No call-to-action. Let it land.
+
+Use the client brain to make the insight specific and credible. Tone: generous, no chase energy.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 're-out',
+        type: 'output',
+        position: { x: 680, y: 200 },
+        data: {
+          label: 'Re-engagement Sequence',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Email' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-re-brain-e1', source: 're-brain', target: 're-e1' },
+      { id: 'e-re-brain-e2', source: 're-brain', target: 're-e2' },
+      { id: 'e-re-brain-e3', source: 're-brain', target: 're-e3' },
+      { id: 'e-re-e1-out',   source: 're-e1',    target: 're-out' },
+      { id: 'e-re-e2-out',   source: 're-e2',    target: 're-out' },
+      { id: 'e-re-e3-out',   source: 're-e3',    target: 're-out' },
+    ],
+  },
+
+  {
+    id: 'dg-customer-success',
+    name: 'Customer Success Content',
+    description: 'Generates three customer success assets from the client brain — a 30-day onboarding email, a feature spotlight piece, and a success story template pre-filled with the client\'s best use case.',
+    category: 'demand_gen',
+    icon: 'Star',
+    nodes: [
+      {
+        id: 'cs-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 200 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S2', 'S3'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'cs-onboard',
+        type: 'logic',
+        position: { x: 380, y: 0 },
+        data: {
+          label: '30-Day Onboarding Email',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write a 30-day onboarding email for a new customer of the client.
+
+This email goes out 30 days after signup/purchase. The goal is to move them from "set it up" to "got real value."
+
+Structure:
+- Subject: "30 days in — have you hit [specific milestone yet]?"
+- Body:
+  1. Acknowledge the 30-day mark without making it feel automated
+  2. Name the one thing most successful customers do in the first 30 days (use the client's best use case from the brain)
+  3. Flag one underused feature or workflow that would improve their result
+  4. Ask one question: "What's the biggest thing still slowing you down?"
+- Under 200 words. No bullet lists. Human tone.
+
+Use the client brain to make the milestone, feature, and question specific to the ICP.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'cs-spotlight',
+        type: 'logic',
+        position: { x: 380, y: 220 },
+        data: {
+          label: 'Feature Spotlight',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write a feature spotlight email for the client's most valuable or underutilised capability.
+
+Using the client brain, identify the feature or workflow that:
+- Delivers the clearest ROI for the ICP
+- Is most commonly under-adopted by new customers
+
+Structure:
+- Subject: Outcome-first — "How [ICP role] saves X hours using [feature]"
+- Opening: The problem this feature solves, stated in the customer's language
+- Middle: Walk through exactly how to use it — specific steps, real scenario, no jargon
+- End: One screenshot prompt or "try this now" micro-action
+- Under 220 words
+
+Tone: practical, tutorial-style. Feels like a tip from a helpful colleague, not a product email.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'cs-story',
+        type: 'logic',
+        position: { x: 380, y: 420 },
+        data: {
+          label: 'Success Story Template',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write a customer success story template for the client. Pre-fill it with the client's most compelling use case from the brain context.
+
+Format:
+## [Customer Name / Company Type] — [Outcome in one line]
+
+**The Situation**
+[2-3 sentences: who they are, what they were struggling with before. Use ICP language from the brain.]
+
+**What They Did**
+[2-3 sentences: the specific way they used the client's product/service. Reference actual workflows or features.]
+
+**The Result**
+[2-3 sentences: specific, measurable outcome. If no specific metric is available, use a qualitative improvement that the ICP cares about.]
+
+**In Their Words**
+"[Write a plausible quote the customer might say, in their voice, about the key outcome]"
+
+---
+Note: Replace bracketed sections with real customer data before publishing.
+
+Use the best-fit ICP segment and use case from the client brain to make this feel real and relevant.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'cs-out',
+        type: 'output',
+        position: { x: 680, y: 200 },
+        data: {
+          label: 'Customer Success Pack',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-cs-brain-ob', source: 'cs-brain',    target: 'cs-onboard' },
+      { id: 'e-cs-brain-sp', source: 'cs-brain',    target: 'cs-spotlight' },
+      { id: 'e-cs-brain-st', source: 'cs-brain',    target: 'cs-story' },
+      { id: 'e-cs-ob-out',   source: 'cs-onboard',  target: 'cs-out' },
+      { id: 'e-cs-sp-out',   source: 'cs-spotlight',target: 'cs-out' },
+      { id: 'e-cs-st-out',   source: 'cs-story',    target: 'cs-out' },
+    ],
+  },
+
+  {
+    id: 'dg-upsell-crosssell',
+    name: 'Upsell / Cross-sell Copy',
+    description: 'Generates targeted upgrade messaging for three customer segments — written to feel like a natural next step, not a sales pitch. Uses the client brain to match the offer to each segment\'s actual goal.',
+    category: 'demand_gen',
+    icon: 'TrendingUp',
+    nodes: [
+      {
+        id: 'up-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 200 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08', '12'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S2'],
+            includeBrand: false,
+          },
+        },
+      },
+      {
+        id: 'up-seg1',
+        type: 'logic',
+        position: { x: 380, y: 0 },
+        data: {
+          label: 'Segment 1 — Starter → Growth',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write an upsell email for the client's entry-level customers to move them to the next tier.
+
+Using the client brain:
+- Identify the entry-level segment (from ICP / segments section)
+- Identify the growth-stage pain point they will hit as they scale
+- Match that pain point to what the next tier solves
+
+Structure:
+- Subject: Name the growth pain directly — "You're probably hitting [limit] by now"
+- Body:
+  1. Acknowledge where they are (what they've achieved at the current tier)
+  2. Name the friction they're about to hit — specifically, not generically
+  3. Show how the next tier removes that friction — one concrete capability
+  4. CTA: "Worth a 15-minute look at what changes?"
+- Under 200 words. Consultative, not salesy.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'up-seg2',
+        type: 'logic',
+        position: { x: 380, y: 220 },
+        data: {
+          label: 'Segment 2 — Feature Upsell',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write a cross-sell or add-on email targeting existing customers who would benefit from a specific feature or adjacent product.
+
+Using the client brain:
+- Identify the most valuable add-on or complementary capability the client offers
+- Target the customer segment most likely to need it based on ICP use cases
+
+Structure:
+- Subject: Lead with the outcome the add-on delivers, not its name
+- Body:
+  1. "You're already doing X well — here's what unlocks the next level"
+  2. Describe one specific scenario where the add-on makes a meaningful difference
+  3. Show the cost of not having it (time lost, manual work, missed opportunity)
+  4. CTA: Trial, demo, or one-click activation
+- Under 200 words. Feels like a helpful heads-up from the account team.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'up-seg3',
+        type: 'logic',
+        position: { x: 380, y: 420 },
+        data: {
+          label: 'Segment 3 — Growth → Enterprise',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write an enterprise upgrade email for the client's growth-stage customers who are scaling toward enterprise needs.
+
+Using the client brain:
+- Identify the enterprise-level ICP segment
+- Identify the inflection point signals that indicate readiness (team size, usage volume, compliance needs, multi-team coordination)
+
+Structure:
+- Subject: Frame around the inflection point — "When you hit [X], here's what most teams do"
+- Body:
+  1. Name the inflection point and acknowledge they may be approaching it
+  2. Share what enterprise customers typically need at this stage — from the brain context
+  3. Show how the enterprise tier is built specifically for that transition
+  4. CTA: "Happy to map out what that would look like for your team"
+- Under 220 words. Executive tone — speaks to business outcomes, not features.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'up-out',
+        type: 'output',
+        position: { x: 680, y: 200 },
+        data: {
+          label: 'Upsell Copy Pack',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Email' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-up-brain-s1', source: 'up-brain', target: 'up-seg1' },
+      { id: 'e-up-brain-s2', source: 'up-brain', target: 'up-seg2' },
+      { id: 'e-up-brain-s3', source: 'up-brain', target: 'up-seg3' },
+      { id: 'e-up-s1-out',   source: 'up-seg1',  target: 'up-out' },
+      { id: 'e-up-s2-out',   source: 'up-seg2',  target: 'up-out' },
+      { id: 'e-up-s3-out',   source: 'up-seg3',  target: 'up-out' },
+    ],
+  },
 ]
