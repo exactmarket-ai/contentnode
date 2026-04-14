@@ -1721,10 +1721,11 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
 
 interface Vertical { id: string; name: string }
 
-function VerticalSelector({ verticals, selected, onSelect }: {
+function VerticalSelector({ verticals, selected, onSelect, onSelectCompany }: {
   verticals: Vertical[]
   selected: Vertical | null
   onSelect: (v: Vertical) => void
+  onSelectCompany: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -1743,31 +1744,35 @@ function VerticalSelector({ verticals, selected, onSelect }: {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-xs hover:bg-muted/40 transition-colors min-w-[140px]"
       >
-        {selected
-          ? <span className="font-medium truncate">{selected.name}</span>
-          : <span className="text-muted-foreground">Select vertical…</span>
-        }
+        <span className="font-medium truncate">{selected ? selected.name : 'Company'}</span>
         <svg className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-popover shadow-xl"  style={{ backgroundColor: 'hsl(var(--popover))' }}>
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-popover shadow-xl" style={{ backgroundColor: 'hsl(var(--popover))' }}>
           <div className="max-h-48 overflow-y-auto p-1">
-            {verticals.length === 0 ? (
-              <p className="px-3 py-3 text-center text-[11px] text-muted-foreground">
+            {/* Company — always first */}
+            <button
+              className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
+              onClick={() => { onSelectCompany(); setOpen(false) }}
+            >
+              {!selected && <span className="text-blue-500">✓</span>}
+              <span className="truncate">Company</span>
+            </button>
+            {[...verticals].sort((a, b) => a.name.localeCompare(b.name)).map((v) => (
+              <button
+                key={v.id}
+                className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
+                onClick={() => { onSelect(v); setOpen(false) }}
+              >
+                {selected?.id === v.id && <span className="text-blue-500">✓</span>}
+                <span className="truncate">{v.name}</span>
+              </button>
+            ))}
+            {verticals.length === 0 && (
+              <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
                 No verticals assigned — go to Structure tab to add
               </p>
-            ) : (
-              verticals.map((v) => (
-                <button
-                  key={v.id}
-                  className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
-                  onClick={() => { onSelect(v); setOpen(false) }}
-                >
-                  {selected?.id === v.id && <span className="text-blue-500">✓</span>}
-                  <span className="truncate">{v.name}</span>
-                </button>
-              ))
             )}
           </div>
         </div>
@@ -1800,9 +1805,8 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
     apiFetch(`/api/v1/clients/${clientId}/verticals`)
       .then((r) => r.json())
       .then(({ data }) => {
-        const list: Vertical[] = data ?? []
+        const list: Vertical[] = [...(data ?? [])].sort((a: Vertical, b: Vertical) => a.name.localeCompare(b.name))
         setVerticals(list)
-        if (list.length === 1) setSelectedVertical(list[0])
       })
       .catch(() => {})
       .finally(() => setVerticalsLoading(false))
@@ -2003,6 +2007,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
               verticals={verticals}
               selected={selectedVertical}
               onSelect={(v) => { setSelectedVertical(v); setActiveSection('attachments') }}
+              onSelectCompany={() => { setSelectedVertical(null); setActiveSection('attachments') }}
             />
         }
         {selectedVertical && (
@@ -2018,7 +2023,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
       <div className="flex flex-1 overflow-hidden">
 
       {/* Left nav */}
-      <div className={cn('w-64 shrink-0 overflow-y-auto border-r border-border bg-card', !selectedVertical && 'pointer-events-none opacity-40')}>
+      <div className="w-64 shrink-0 overflow-y-auto border-r border-border bg-card">
         <div className="px-3 py-3">
           {/* Attachments nav item */}
           <button
@@ -2079,9 +2084,9 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
         {!selectedVertical ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <div className="text-2xl">📋</div>
-            <p className="text-sm font-medium text-foreground">Select a vertical to get started</p>
+            <p className="text-sm font-medium text-foreground">Select a vertical above to fill in its GTM Framework</p>
             <p className="max-w-xs text-xs text-muted-foreground">
-              Verticals let you maintain separate GTM frameworks for each market {clientName} serves — e.g. Healthcare, Financial Services, Manufacturing.
+              Each vertical gets its own 18-section GTM Framework — e.g. Healthcare, Financial Services, Manufacturing.
             </p>
           </div>
         ) : activeSection === 'attachments' ? (

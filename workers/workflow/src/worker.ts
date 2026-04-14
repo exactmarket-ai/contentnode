@@ -13,6 +13,7 @@ import {
   QUEUE_ATTACHMENT_PROCESS,
   QUEUE_BRAND_ATTACHMENT_PROCESS,
   QUEUE_CAMPAIGN_BRAIN_PROCESS,
+  QUEUE_CLIENT_BRAIN_PROCESS,
   QUEUE_PROMPT_SUGGEST,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
@@ -24,6 +25,7 @@ import {
   type AttachmentProcessJobData,
   type BrandAttachmentProcessJobData,
   type CampaignBrainProcessJobData,
+  type ClientBrainProcessJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns, detectEditPatterns } from './patternDetector.js'
@@ -32,6 +34,7 @@ import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
 import { processBrandAttachment } from './brandExtraction.js'
 import { processCampaignBrainAttachment } from './campaignBrainExtraction.js'
+import { processClientBrainAttachment } from './clientBrainExtraction.js'
 import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
 import { withAgency } from '@contentnode/database'
 
@@ -212,6 +215,21 @@ const campaignBrainProcessWorker = createWorker<CampaignBrainProcessJobData>(
       await processCampaignBrainAttachment(job)
     } catch (err) {
       console.error('[campaign-brain-process] job failed:', err)
+      throw err
+    }
+  },
+  5
+)
+
+// ── client-brain-process ──────────────────────────────────────────────────────
+const clientBrainProcessWorker = createWorker<ClientBrainProcessJobData>(
+  QUEUE_CLIENT_BRAIN_PROCESS,
+  async (job: Job<ClientBrainProcessJobData>) => {
+    console.log(`[client-brain-process] job started for attachment=${job.data.attachmentId} client=${job.data.clientId}`)
+    try {
+      await processClientBrainAttachment(job)
+    } catch (err) {
+      console.error('[client-brain-process] job failed:', err)
       throw err
     }
   },

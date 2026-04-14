@@ -786,7 +786,7 @@ function BrandProfileSection({
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,.mp4,.mov,.mp3,.m4a,.wav,.webm"
+            accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv,.json,.html,.htm,.mp4,.mov,.mp3,.m4a,.wav,.webm"
             onChange={(e) => handleFiles(e.target.files)}
           />
           {uploading ? (
@@ -801,7 +801,7 @@ function BrandProfileSection({
                   browse
                 </button>
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · TXT · MD · MP4 · MP3 · MOV · WAV</p>
+              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · XLSX · TXT · MD · MP4 · MP3 · MOV · WAV</p>
             </>
           )}
         </div>
@@ -1587,7 +1587,7 @@ export function ClientBrandingTab({
             )}
           >
             <Icons.Globe className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">General</span>
+            <span className="truncate">Company</span>
           </button>
 
           {/* Verticals */}
@@ -1634,17 +1634,17 @@ export function ClientBrandingTab({
           {activeVerticalId ? (
             <>
               <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                <span>General</span>
+                <span>Company</span>
                 <Icons.ChevronRight className="h-3 w-3" />
                 <span className="text-foreground">{activeVerticalName}</span>
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Inherits the base brand profile. Upload vertical-specific documents here — Claude will layer this context on top of the general brand.
+                Inherits the base brand profile. Upload vertical-specific documents here — Claude will layer this context on top of the company brand.
               </p>
             </>
           ) : (
             <>
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">General</div>
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Company</div>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 The universal brand identity — voice, values, and guidelines shared across all verticals.
               </p>

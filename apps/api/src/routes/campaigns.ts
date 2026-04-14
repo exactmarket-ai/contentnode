@@ -113,7 +113,7 @@ export async function campaignRoutes(app: FastifyInstance) {
           select: {
             id: true, workflowId: true, status: true,
             startedAt: true, completedAt: true, campaignId: true,
-            errorMessage: true,
+            errorMessage: true, output: true,
           },
         }).then((runs) => {
           // Keep only the most recent run per workflow
@@ -126,15 +126,36 @@ export async function campaignRoutes(app: FastifyInstance) {
         })
       : []
 
+    // Extract first image asset path from run output (for thumbnail in campaign card)
+    function firstImagePath(run: { output: unknown } | null): string | null {
+      if (!run?.output) return null
+      const out = run.output as Record<string, unknown>
+      const nodeStatuses = out.nodeStatuses as Record<string, { output?: unknown }> | undefined
+      if (!nodeStatuses) return null
+      for (const ns of Object.values(nodeStatuses)) {
+        const nodeOut = ns?.output as Record<string, unknown> | undefined
+        if (!nodeOut) continue
+        const assets = nodeOut.assets as Array<{ localPath?: string; storageKey?: string }> | undefined
+        if (assets?.length) {
+          return assets[0].localPath ?? assets[0].storageKey ?? null
+        }
+      }
+      return null
+    }
+
     const runByWorkflow = Object.fromEntries(latestRuns.map((r) => [r.workflowId, r]))
 
     return reply.send({
       data: {
         ...campaign,
-        workflows: campaign.workflows.map((cw) => ({
-          ...cw,
-          latestRun: runByWorkflow[cw.workflowId] ?? null,
-        })),
+        workflows: campaign.workflows.map((cw) => {
+          const run = runByWorkflow[cw.workflowId] ?? null
+          const { output: _output, ...runWithoutOutput } = run ?? {}
+          return {
+            ...cw,
+            latestRun: run ? { ...runWithoutOutput, firstImagePath: firstImagePath(run) } : null,
+          }
+        }),
       },
     })
   })

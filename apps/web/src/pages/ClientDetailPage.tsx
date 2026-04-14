@@ -15,6 +15,7 @@ import { ClientBrandingTab } from './ClientBrandingTab'
 import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
 import { CampaignsTab } from './CampaignsTab'
+import { ClientBrainTab } from './ClientBrainTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -4786,7 +4787,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'brain', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4869,6 +4870,7 @@ export function ClientDetailPage() {
     framework:     'GTM Framework',
     demandgen:     'Demand Gen',
     branding:      'Branding',
+    brain:         'Client Brain',
     stakeholders:  'Contacts',
     access:        'Access',
     reviews:       'Reviews',
@@ -4881,7 +4883,7 @@ export function ClientDetailPage() {
   }
 
   // Tabs that live under the "Settings" group
-  const SETTINGS_TABS: Tab[] = ['structure', 'reports', 'access', 'stakeholders', 'runs']
+  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs']
   const MAIN_TABS: Tab[] = TABS.filter((t) => !SETTINGS_TABS.includes(t))
   const inSettings = SETTINGS_TABS.includes(activeTab)
 
@@ -5016,6 +5018,7 @@ export function ClientDetailPage() {
             </div>
           </div>
         )}
+        {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}
         {activeTab === 'access' && <AccessTab client={client} />}
         {activeTab === 'reviews' && <ReviewsTab clientId={client.id} clientName={client.name} />}

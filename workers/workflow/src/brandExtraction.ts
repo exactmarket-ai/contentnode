@@ -4,6 +4,7 @@ import { join, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import PDFParser from 'pdf2json'
+import * as XLSX from 'xlsx'
 import { prisma, withAgency } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
@@ -103,6 +104,17 @@ async function extractText(buffer: Buffer, filename: string, mimeType: string): 
   }
   if (ext === '.pdf' || mimeType.includes('pdf')) {
     return extractPDF(buffer, filename)
+  }
+  if (ext === '.xlsx' || ext === '.xls' ||
+      mimeType.includes('spreadsheetml') || mimeType.includes('ms-excel')) {
+    const workbook = XLSX.read(buffer, { type: 'buffer' })
+    const lines: string[] = []
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName]
+      const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false })
+      if (csv.trim()) lines.push(`## ${sheetName}\n${csv}`)
+    }
+    return lines.join('\n\n')
   }
   if (['.txt', '.md', '.csv', '.json', '.html', '.htm'].includes(ext)) {
     return buffer.toString('utf8')

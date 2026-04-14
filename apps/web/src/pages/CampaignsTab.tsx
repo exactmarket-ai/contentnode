@@ -87,6 +87,7 @@ interface CampaignWorkflowEntry {
     completedAt: string | null
     campaignId: string | null
     errorMessage: string | null
+    firstImagePath: string | null
   } | null
 }
 
@@ -702,6 +703,31 @@ function CampaignCard({
                     </div>
                   </div>
                   <RunDot status={cw.latestRun?.status} />
+                  {cw.latestRun?.firstImagePath && (
+                    <a
+                      href={`/review/${cw.latestRun.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0 w-8 h-8 rounded overflow-hidden border border-border/60 hover:border-border transition-colors"
+                      title="View image output"
+                    >
+                      <img
+                        src={cw.latestRun.firstImagePath}
+                        alt="output preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </a>
+                  )}
+                  {cw.latestRun?.status === 'completed' && (
+                    <a
+                      href={`/review/${cw.latestRun.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-opacity shrink-0"
+                      title="Review content"
+                    >
+                      <Icons.FileText className="w-3 h-3" />
+                      <span>Review</span>
+                    </a>
+                  )}
                   <a
                     href={`/workflows/${cw.workflowId}`}
                     onClick={(e) => e.stopPropagation()}
