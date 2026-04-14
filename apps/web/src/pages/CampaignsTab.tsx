@@ -739,7 +739,7 @@ function CampaignCard({
                     <a
                       href={`/review/${cw.latestRun.id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-opacity shrink-0"
+                      className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 shrink-0"
                       title="Review content"
                     >
                       <Icons.FileText className="w-3 h-3" />
