@@ -73,7 +73,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     produces: ['Ad variations', 'Landing pages'],
     requiresVertical: true,
     slots: [
-      { role: 'ad_copy',      label: 'Ad Copy',      keywords: ['ad', 'copy', 'ads', 'adcopy'],  description: 'Multi-channel ad variations' },
+      { role: 'ad_copy',      label: 'Ad Copy',      keywords: ['ad', 'copy', 'ads', 'adcopy'],  description: 'Multi-channel ad variations',  workflowTemplateId: 'dg-ad-copy' },
       { role: 'landing_page', label: 'Landing Page', keywords: ['landing', 'page'],               description: 'Matching pages per ad set',  workflowTemplateId: 'dg-seo-landing' },
     ],
   },

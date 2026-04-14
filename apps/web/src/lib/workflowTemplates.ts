@@ -1602,6 +1602,121 @@ Target 700-900 words total. Do not pad.`,
   },
 
   {
+    id: 'dg-ad-copy',
+    name: 'Ad Copy Variations',
+    description: 'Uses the client brain to generate multi-channel ad copy — Google Search, LinkedIn Sponsored, and Meta/Display — from a single campaign focus. Optional keyword/focus field narrows the angle.',
+    category: 'demand_gen',
+    icon: 'Megaphone',
+    nodes: [
+      {
+        id: 'dg-ad-focus',
+        type: 'source',
+        position: { x: 80, y: 80 },
+        data: {
+          label: 'Campaign Focus',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: '',
+            placeholder: 'Optional: target keyword or campaign angle, e.g. "reduce churn for SaaS teams"',
+          },
+        },
+      },
+      {
+        id: 'dg-ad-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 230 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08', '12', '14'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S2', 'S3', 'S7'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'dg-ad-write',
+        type: 'logic',
+        position: { x: 400, y: 150 },
+        data: {
+          label: 'Generate Ad Copy',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `You are a direct-response copywriter specialising in B2B paid media. Using the client brain context and the campaign focus provided (if any), write ad copy for three channels.
+
+Write every line as if the prospect is already frustrated and scanning fast. Lead with pain or outcome — never with the company name or a generic claim.
+
+---
+
+## Google Search Ads (3 variations)
+For each variation provide:
+- Headline 1 (max 30 chars)
+- Headline 2 (max 30 chars)
+- Headline 3 (max 30 chars)
+- Description 1 (max 90 chars)
+- Description 2 (max 90 chars)
+
+Variation A: Pain-led (name the problem in H1)
+Variation B: Outcome-led (name the result in H1)
+Variation C: Competitive (why switch / why now angle)
+
+---
+
+## LinkedIn Sponsored Content (2 variations)
+For each:
+- Intro copy (2-3 short paragraphs, max 150 words)
+- Headline (max 70 chars)
+- CTA label (max 20 chars)
+
+Variation A: Problem-agitate-solution
+Variation B: Social proof / credibility angle
+
+---
+
+## Meta / Display (short-form, 3 variations)
+For each:
+- Primary text (max 125 chars)
+- Headline (max 40 chars)
+- CTA label
+
+---
+
+Use the ICP role, top pain point, and core value proposition from the client brain throughout. Pull specific language from external intelligence if available. Do not use the company name as the first word in any headline.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'dg-ad-out',
+        type: 'output',
+        position: { x: 720, y: 150 },
+        data: {
+          label: 'Ad Copy',
+          subtype: 'content-output',
+          config: {
+            subtype: 'content-output',
+            output_type: 'ad_copy',
+            targetWordCountMin: 300,
+            targetWordCountMax: 700,
+          },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-ad-focus-write', source: 'dg-ad-focus', target: 'dg-ad-write' },
+      { id: 'e-ad-brain-write', source: 'dg-ad-brain', target: 'dg-ad-write' },
+      { id: 'e-ad-write-out',   source: 'dg-ad-write', target: 'dg-ad-out' },
+    ],
+  },
+
+  {
     id: 'dg-linkedin-outreach',
     name: 'LinkedIn Outreach Messages',
     description: 'Generates 10 LinkedIn outreach message variants from the client brain — personalized by ICP role and trigger event, short and conversion-focused.',
