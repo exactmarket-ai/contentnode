@@ -57,7 +57,8 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     slots: [
       { role: 'lead_magnet',   label: 'Lead Magnet',       keywords: ['lead magnet', 'magnet'],            description: 'Gated asset from your ICP and value prop',  workflowTemplateId: 'dg-lead-magnet' },
       { role: 'email_nurture', label: 'Email Nurture',     keywords: ['email', 'nurture'],                  description: '5-email sequence for new leads',             workflowTemplateId: 'dg-email-nurture' },
-      { role: 'landing_page',  label: 'Landing Page',      keywords: ['landing', 'seo', 'page'],            description: 'Conversion pages per target query',          workflowTemplateId: 'dg-seo-landing' },
+      { role: 'landing_page',  label: 'Landing Page',      keywords: ['landing', 'seo', 'page'],            description: 'Conversion pages per target query',          workflowTemplateId: 'dg-seo-landing',
+        setupFields: [{ nodeId: 'dg-seo-keyword', field: 'text', label: 'Target keyword or search query', placeholder: 'e.g. CMMC 2.0 compliance services' }] },
       { role: 'outreach',      label: 'LinkedIn Outreach', keywords: ['linkedin', 'outreach', 'message'],   description: 'Personalised message variants',              workflowTemplateId: 'dg-linkedin-outreach' },
     ],
   },
@@ -74,7 +75,8 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     requiresVertical: true,
     slots: [
       { role: 'ad_copy',      label: 'Ad Copy',      keywords: ['ad', 'copy', 'ads', 'adcopy'],  description: 'Multi-channel ad variations',  workflowTemplateId: 'dg-ad-copy' },
-      { role: 'landing_page', label: 'Landing Page', keywords: ['landing', 'page'],               description: 'Matching pages per ad set',  workflowTemplateId: 'dg-seo-landing' },
+      { role: 'landing_page', label: 'Landing Page', keywords: ['landing', 'page'],               description: 'Matching pages per ad set',  workflowTemplateId: 'dg-seo-landing',
+        setupFields: [{ nodeId: 'dg-seo-keyword', field: 'text', label: 'Target keyword or search query', placeholder: 'e.g. managed IT for defense contractors' }] },
     ],
   },
   {

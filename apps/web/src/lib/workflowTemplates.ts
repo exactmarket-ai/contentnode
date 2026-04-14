@@ -1553,7 +1553,7 @@ Do not apologize. Do not hedge. This email should feel like it comes from a peer
           config: {
             subtype: 'ai-generate',
             taskType: 'Generate',
-            prompt: `Write conversion-focused landing page copy targeting the keyword or search query provided in the input, using the client brain context.
+            prompt: `Write conversion-focused landing page copy using the client brain context and the target keyword or search query provided in the input (if any). If no keyword is provided, infer the most relevant search intent from the client brain context and write accordingly — do not ask for one or note that it is missing.
 
 This is not a blog post. It is a page for people who are already frustrated and searching for a solution.
 
