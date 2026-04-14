@@ -158,7 +158,9 @@ export class AudienceSignalExecutor extends NodeExecutor {
     const synthesisGoal = (config.synthesisGoal as string) ?? 'all'
 
     if (searchTerms.length === 0) {
-      throw new Error('Audience Signal: at least one search term is required')
+      return {
+        output: `# Audience Signal: No Search Terms Configured\n\nNo Reddit search terms were provided. Open the Audience Signal node config and add at least one search term to enable Reddit signal mining.\n\nThe workflow will continue using web crawl and client brain context only.`,
+      }
     }
 
     // ── Collect Reddit data ───────────────────────────────────────────────────
@@ -193,10 +195,18 @@ export class AudienceSignalExecutor extends NodeExecutor {
     }
 
     if (allPosts.length === 0) {
-      throw new Error(
-        'Audience Signal: no Reddit posts found. ' +
-        'Try broader search terms or remove subreddit filters.'
-      )
+      return {
+        output: [
+          `# Audience Signal: No Reddit Data Found`,
+          `Search terms: ${searchTerms.join(', ')}`,
+          subreddits.length > 0 ? `Subreddits: ${subreddits.join(', ')}` : '',
+          ``,
+          `Reddit returned no posts matching these terms above the upvote threshold (${minUpvotes}).`,
+          `Try broader search terms, remove subreddit filters, or lower the minimum upvotes setting.`,
+          ``,
+          `The workflow will continue using web crawl and client brain context only.`,
+        ].filter((l) => l !== null).join('\n'),
+      }
     }
 
     // Sort by score and take top posts
