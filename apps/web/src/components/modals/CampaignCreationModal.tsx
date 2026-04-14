@@ -39,6 +39,7 @@ interface CampaignTemplate {
   bgActive: string
   produces: string[]
   slots: TemplateSlot[]
+  requiresVertical?: boolean  // True when any slot uses a template with GTM/DG vert sections
 }
 
 const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
@@ -52,6 +53,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     borderActive: 'border-emerald-600',
     bgActive: 'bg-emerald-950/30',
     produces: ['Lead magnet', '5-email sequence', 'Landing pages', 'LinkedIn messages'],
+    requiresVertical: true,
     slots: [
       { role: 'lead_magnet',   label: 'Lead Magnet',       keywords: ['lead magnet', 'magnet'],            description: 'Gated asset from your ICP and value prop',  workflowTemplateId: 'dg-lead-magnet' },
       { role: 'email_nurture', label: 'Email Nurture',     keywords: ['email', 'nurture'],                  description: '5-email sequence for new leads',             workflowTemplateId: 'dg-email-nurture' },
@@ -69,6 +71,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     borderActive: 'border-blue-600',
     bgActive: 'bg-blue-950/30',
     produces: ['Ad variations', 'Landing pages'],
+    requiresVertical: true,
     slots: [
       { role: 'ad_copy',      label: 'Ad Copy',      keywords: ['ad', 'copy', 'ads', 'adcopy'],  description: 'Multi-channel ad variations' },
       { role: 'landing_page', label: 'Landing Page', keywords: ['landing', 'page'],               description: 'Matching pages per ad set',  workflowTemplateId: 'dg-seo-landing' },
@@ -84,6 +87,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     borderActive: 'border-pink-600',
     bgActive: 'bg-pink-950/30',
     produces: ['5-email nurture sequence'],
+    requiresVertical: true,
     slots: [
       { role: 'email_nurture', label: 'Email Nurture', keywords: ['email', 'nurture'], description: 'Sequence targeting existing leads', workflowTemplateId: 'dg-email-nurture' },
     ],
@@ -140,6 +144,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     borderActive: 'border-violet-600',
     bgActive: 'bg-violet-950/30',
     produces: ['Blog post', 'Social content pack', 'Blog → social repurpose'],
+    requiresVertical: true,
     slots: [
       { role: 'blog',    label: 'Blog Post',            keywords: ['blog', 'post', 'article'],            description: 'SEO blog post targeting a keyword',        workflowTemplateId: 'dg-blog-post' },
       { role: 'social',  label: 'Social Content Pack',  keywords: ['social', 'content pack', 'linkedin'],  description: 'LinkedIn, short-form, and Instagram posts', workflowTemplateId: 'dg-social-pack' },
@@ -156,6 +161,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     borderActive: 'border-amber-600',
     bgActive: 'bg-amber-950/30',
     produces: ['Re-engagement sequence', 'Customer success content', 'Upsell / cross-sell copy'],
+    requiresVertical: true,
     slots: [
       { role: 'email_nurture', label: 'Re-engagement Sequence',   keywords: ['reengagement', 're-engagement', 'win-back', 'winback'], description: '3-email sequence for lapsed customers',   workflowTemplateId: 'dg-reengagement-email' },
       { role: 'custom',        label: 'Customer Success Content', keywords: ['customer success', 'onboarding', 'success'],            description: 'Onboarding, feature spotlight, success story', workflowTemplateId: 'dg-customer-success' },
@@ -225,11 +231,28 @@ export function CampaignCreationModal({
   const [creatingSlots, setCreatingSlots] = useState<Record<number, boolean>>({})
   // setupValues: slot index → nodeId → field → value
   const [setupValues, setSetupValues] = useState<Record<number, Record<string, Record<string, string>>>>({})
+  // Vertical selection (required for content templates that use GTM/DG vert sections)
+  const [verticals, setVerticals] = useState<Array<{ id: string; name: string }>>([])
+  const [selectedVerticalId, setSelectedVerticalId] = useState('')
+  const [selectedVerticalName, setSelectedVerticalName] = useState('')
 
   useEffect(() => {
     apiFetch(`/api/v1/workflows?clientId=${clientId}`)
       .then((r) => r.json())
       .then(({ data }) => setWorkflows((data ?? []).filter((w: Workflow) => w.status !== 'archived')))
+      .catch(() => {})
+    // Fetch brand verticals for this client (used by all content templates)
+    apiFetch(`/api/v1/clients/${clientId}/brand-verticals`)
+      .then((r) => r.json())
+      .then(({ data }) => {
+        const verts = (data ?? []) as Array<{ id: string; name: string }>
+        setVerticals(verts)
+        // Auto-select the first vertical if only one exists
+        if (verts.length === 1) {
+          setSelectedVerticalId(verts[0].id)
+          setSelectedVerticalName(verts[0].name)
+        }
+      })
       .catch(() => {})
   }, [clientId])
 
@@ -269,19 +292,21 @@ export function CampaignCreationModal({
       const { data: wf } = await wRes.json()
       if (!wRes.ok || !wf?.id) throw new Error('Failed to create workflow')
 
-      // 2. Inject user-supplied setup values into template nodes before saving
+      // 2. Inject user-supplied setup values + vertical into template nodes before saving
       const slotSetup = setupValues[slotIndex] ?? {}
       const patchedNodes = tpl.nodes.map((node) => {
-        const nodeOverrides = slotSetup[node.id]
-        if (!nodeOverrides) return node
+        const nodeOverrides = slotSetup[node.id] ?? {}
+        // Inject vertical into all client_brain nodes (required for GTM/DG vert sections)
+        const verticalOverrides = node.type === 'client_brain' && selectedVerticalId
+          ? { verticalId: selectedVerticalId, verticalName: selectedVerticalName }
+          : {}
+        const merged = { ...nodeOverrides, ...verticalOverrides }
+        if (Object.keys(merged).length === 0) return node
         return {
           ...node,
           data: {
             ...node.data,
-            config: {
-              ...node.data.config,
-              ...nodeOverrides,
-            },
+            config: { ...node.data.config, ...merged },
           },
         }
       })
@@ -444,6 +469,46 @@ export function CampaignCreationModal({
                   <Input type="date" className="text-xs" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </div>
               </div>
+
+              {/* Vertical selector — required for all content templates */}
+              {selectedTemplate.requiresVertical && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Brand Vertical <span className="text-red-400">*</span>
+                  </Label>
+                  {verticals.length === 0 ? (
+                    <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-950/20 border border-amber-800/40">
+                      <Icons.AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-amber-300">
+                        No brand verticals found for this client. Add one in the client settings before running content workflows.
+                      </p>
+                    </div>
+                  ) : (
+                    <Select
+                      value={selectedVerticalId || '__none__'}
+                      onValueChange={(v) => {
+                        if (v === '__none__') { setSelectedVerticalId(''); setSelectedVerticalName(''); return }
+                        const found = verticals.find((vt) => vt.id === v)
+                        setSelectedVerticalId(v)
+                        setSelectedVerticalName(found?.name ?? '')
+                      }}
+                    >
+                      <SelectTrigger className="text-xs">
+                        <SelectValue placeholder="Select a vertical…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Select a vertical…</SelectItem>
+                        {verticals.map((vt) => (
+                          <SelectItem key={vt.id} value={vt.id}>{vt.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <p className="text-[10px] text-muted-foreground/60">
+                    All Client Brain nodes will use this vertical to pull GTM and Demand Gen context.
+                  </p>
+                </div>
+              )}
 
               {/* Template slot assignment */}
               {selectedTemplate.id !== 'custom' && selectedTemplate.slots.length > 0 && (
@@ -625,7 +690,12 @@ export function CampaignCreationModal({
         {step === 2 && (
           <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
             <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={handleCreate} disabled={saving || !name.trim()}>
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              disabled={saving || !name.trim() || (selectedTemplate?.requiresVertical === true && verticals.length > 0 && !selectedVerticalId)}
+              title={selectedTemplate?.requiresVertical && !selectedVerticalId && verticals.length > 0 ? 'Select a brand vertical to continue' : undefined}
+            >
               {saving
                 ? <Icons.Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
                 : <Icons.Layers className="w-3.5 h-3.5 mr-1.5" />
