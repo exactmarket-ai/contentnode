@@ -945,7 +945,6 @@ function CampaignCard({
                 <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-muted-foreground/70">
                   <li>Open the failed workflow and check which node is red</li>
                   <li>Make sure Client Brain sections are filled in for this client</li>
-                  <li>Verify <code className="bg-muted px-1 rounded">ANTHROPIC_API_KEY</code> is set in your worker env vars on Railway</li>
                   <li>For intelligence nodes: confirm required fields (URLs, keywords) are configured</li>
                   <li>Re-run the individual workflow to test before running the campaign again</li>
                 </ol>
