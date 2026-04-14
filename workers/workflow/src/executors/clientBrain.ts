@@ -213,6 +213,37 @@ export class ClientBrainExecutor extends NodeExecutor {
           }
         }
       }
+
+      // ── Global campaign brain docs (campaignScopedOnly = false) ──
+      // Documents uploaded to a campaign brain and marked "Global" are injected
+      // into every workflow run for this client, not just that campaign's runs.
+      const globalCampaignDocs = await prisma.campaignBrainAttachment.findMany({
+        where: {
+          agencyId: ctx.agencyId,
+          campaignScopedOnly: false,
+          summaryStatus: 'ready',
+          summary: { not: null },
+          campaign: { clientId: ctx.clientId! },
+        },
+        select: {
+          summary: true,
+          filename: true,
+          sourceUrl: true,
+          campaign: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      })
+
+      if (globalCampaignDocs.length > 0) {
+        const lines: string[] = ['\n# Campaign Intelligence (Global)']
+        for (const doc of globalCampaignDocs) {
+          const label = doc.sourceUrl ?? doc.filename
+          lines.push(`\n## ${doc.campaign.name} — ${label}`)
+          lines.push(doc.summary!)
+        }
+        parts.push(lines.join('\n'))
+      }
     })
 
     return { output: parts.join('\n\n---\n\n') }
