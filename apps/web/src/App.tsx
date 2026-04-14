@@ -3,11 +3,10 @@ import { ClerkProvider, SignIn, SignedIn, useAuth, useClerk } from '@clerk/clerk
 import { AppNav } from '@/components/layout/AppNav'
 import { WorkflowEditor } from '@/pages/WorkflowEditor'
 import { WorkflowListPage } from '@/pages/WorkflowListPage'
-import { ReportsPage } from '@/pages/ReportsPage'
+import { QualityAndReportsPage } from '@/pages/QualityAndReportsPage'
 import { ClientListPage } from '@/pages/ClientListPage'
 import { ClientDetailPage } from '@/pages/ClientDetailPage'
 import { UsagePage } from '@/pages/UsagePage'
-import { QualityPage } from '@/pages/QualityPage'
 import { HumanizerDashboard } from '@/pages/HumanizerDashboard'
 import { ReviewsAndRunsPage } from '@/pages/ReviewsAndRunsPage'
 import { CalendarPage } from '@/pages/CalendarPage'
@@ -91,9 +90,9 @@ const protectedChildren = [
   { path: 'clients', element: <ClientListPage /> },
   { path: 'clients/:id', element: <ClientDetailPage /> },
   { path: 'calendar', element: <CalendarPage /> },
-  { path: 'reports', element: <ReportsPage /> },
+  { path: 'quality', element: <QualityAndReportsPage /> },
+  { path: 'reports', element: <Navigate to="/quality" replace /> },
   { path: 'usage', element: <UsagePage /> },
-  { path: 'quality', element: <QualityPage /> },
   { path: 'humanizer', element: <HumanizerDashboard /> },
   { path: 'team', element: <TeamPage /> },
   { path: 'team/invite', element: <InvitePage /> },

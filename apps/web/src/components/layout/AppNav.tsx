@@ -32,8 +32,7 @@ const NAV_ITEMS = [
   { to: '/clients',   icon: Icons.Users,         label: 'Clients',     ...ACTIVE },
   { to: '/reviews',   icon: Icons.ClipboardEdit, label: 'Reviews & Runs', ...ACTIVE },
   { to: '/calendar',  icon: Icons.CalendarDays, label: 'Calendar',    ...ACTIVE },
-  { to: '/reports',   icon: Icons.PieChart,     label: 'Reports',     ...ACTIVE },
-  { to: '/quality',   icon: Icons.TrendingUp,   label: 'Quality',     ...ACTIVE },
+  { to: '/quality',   icon: Icons.TrendingUp,   label: 'Quality & Reports', ...ACTIVE },
   { to: '/usage',     icon: Icons.BarChart2,    label: 'Usage',       ...ACTIVE },
   { to: '/humanizer', icon: Icons.BrainCircuit, label: 'cnHumanizer', ...ACTIVE },
 ]
