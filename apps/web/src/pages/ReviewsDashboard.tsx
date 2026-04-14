@@ -139,7 +139,7 @@ function AssigneePicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-popover shadow-lg">
+        <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-card shadow-lg">
           <div className="p-1">
             <button
               onClick={() => assign(null)}
@@ -236,7 +236,7 @@ function StatusPicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-lg border border-border bg-popover shadow-lg">
+        <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-lg border border-border bg-card shadow-lg">
           <div className="p-1">
             {STATUS_OPTIONS.map((s) => {
               const c = STATUS_CONFIG[s]

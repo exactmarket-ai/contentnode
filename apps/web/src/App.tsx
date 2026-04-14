@@ -9,10 +9,9 @@ import { ClientDetailPage } from '@/pages/ClientDetailPage'
 import { UsagePage } from '@/pages/UsagePage'
 import { QualityPage } from '@/pages/QualityPage'
 import { HumanizerDashboard } from '@/pages/HumanizerDashboard'
-import { RunsDashboard } from '@/pages/RunsDashboard'
+import { ReviewsAndRunsPage } from '@/pages/ReviewsAndRunsPage'
 import { CalendarPage } from '@/pages/CalendarPage'
 import { ReviewPage } from '@/pages/ReviewPage'
-import { ReviewsDashboard } from '@/pages/ReviewsDashboard'
 import { TeamPage } from '@/pages/TeamPage'
 import { InvitePage } from '@/pages/InvitePage'
 import { AccessPage } from '@/pages/AccessPage'
@@ -85,12 +84,12 @@ function ProtectedLayout() {
 const protectedChildren = [
   { index: true, element: <Navigate to="/reviews" replace /> },
   { path: 'workflows', element: <WorkflowListPage /> },
-  { path: 'reviews', element: <ReviewsDashboard /> },
+  { path: 'reviews', element: <ReviewsAndRunsPage /> },
+  { path: 'runs', element: <Navigate to="/reviews" replace /> },
   { path: 'workflows/new', element: <WorkflowEditor /> },
   { path: 'workflows/:workflowId', element: <WorkflowEditor /> },
   { path: 'clients', element: <ClientListPage /> },
   { path: 'clients/:id', element: <ClientDetailPage /> },
-  { path: 'runs', element: <RunsDashboard /> },
   { path: 'calendar', element: <CalendarPage /> },
   { path: 'reports', element: <ReportsPage /> },
   { path: 'usage', element: <UsagePage /> },
