@@ -11,6 +11,18 @@ import * as Icons from 'lucide-react'
 import { useWorkflowStore, type PilotSuggestion } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 
+// ─── Inline bold renderer — converts **text** → <b>text</b> ─────────────────
+
+function renderBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  if (parts.length === 1) return text
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <b key={i} className="font-semibold">{part.slice(2, -2)}</b>
+      : part,
+  )
+}
+
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({
@@ -36,13 +48,18 @@ function MessageBubble({
       )}
       <div className="flex flex-col gap-2 max-w-[88%]">
         <div
-          className={`rounded-xl px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap ${
+          className={`rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
             isUser
               ? 'bg-violet-600 text-white rounded-tr-sm'
               : 'bg-muted text-foreground rounded-tl-sm'
           }`}
         >
-          {content}
+          {content.split('\n').map((line, i, arr) => (
+            <span key={i}>
+              {renderBold(line)}
+              {i < arr.length - 1 && <br />}
+            </span>
+          ))}
         </div>
         {/* Inline suggestion cards */}
         {suggestions && suggestions.length > 0 && (
@@ -83,7 +100,7 @@ function MessageBubble({
                     onClick={() => onApply?.(s)}
                     className="flex-1 rounded-md bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
                   >
-                    Add directly
+                    Add to Canvas
                   </button>
                 </div>
               </div>
