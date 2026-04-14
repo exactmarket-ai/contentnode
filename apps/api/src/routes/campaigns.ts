@@ -478,6 +478,88 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
     return reply.send({ data: { brief: updated.brief } })
   })
 
+  // ── Preflight field suggestions via client brain ─────────────────────────────
+  app.post<{ Params: { id: string }; Body: { subtypes: string[] } }>(
+    '/:id/preflight-suggest',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const subtypes: string[] = (req.body as { subtypes?: string[] }).subtypes ?? []
+
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: req.params.id, agencyId },
+        select: { clientId: true, client: { select: { name: true } } },
+      })
+      if (!campaign) return reply.code(404).send({ error: 'Campaign not found' })
+
+      const [gtmFramework, dgBase] = await Promise.all([
+        prisma.clientFramework.findFirst({
+          where: { clientId: campaign.clientId, agencyId },
+          select: { data: true },
+          orderBy: { updatedAt: 'desc' },
+        }),
+        prisma.clientDemandGenBase.findUnique({
+          where: { clientId: campaign.clientId },
+          select: { data: true },
+        }),
+      ])
+
+      const gtm = (gtmFramework?.data ?? {}) as Record<string, unknown>
+      const contextParts: string[] = [`CLIENT: ${campaign.client.name}`]
+      const extractSection = (key: string, label: string) => {
+        const val = gtm[key.toLowerCase()] ?? gtm[key]
+        if (val) contextParts.push(`${label}:\n${JSON.stringify(val, null, 2).slice(0, 800)}`)
+      }
+      extractSection('s01', 'Company Overview')
+      extractSection('s02', 'ICP / Target Audience')
+      extractSection('s08', 'Positioning & Messaging')
+      extractSection('s12', 'Competitive Landscape')
+      if (dgBase?.data) {
+        const b1 = (dgBase.data as Record<string, unknown>)['b1'] ?? (dgBase.data as Record<string, unknown>)['B1']
+        if (b1) contextParts.push(`Demand Gen Strategy:\n${JSON.stringify(b1, null, 2).slice(0, 600)}`)
+      }
+      const context = contextParts.join('\n\n')
+
+      const SUBTYPE_DESCRIPTIONS: Record<string, string> = {
+        'review-miner':    `"review-miner": { "companyName": "<company display name>", "companySlug": "<trustpilot-slug-lowercase-hyphens>" }`,
+        'deep-web-scrape': `"deep-web-scrape": { "seedUrls": "<url1>\\n<url2>\\n<url3>" }  — use actual competitor/industry domains from the context`,
+        'audience-signal': `"audience-signal": { "searchTerms": "<term1>\\n<term2>\\n<term3>\\n<term4>" }  — phrased as buyer pain points or questions they'd type into Reddit`,
+        'seo-intent':      `"seo-intent": { "topic": "<broad topic>", "seedKeywords": "<kw1>\\n<kw2>\\n<kw3>\\n<kw4>\\n<kw5>" }  — keywords with buyer intent`,
+      }
+
+      const requested = subtypes.filter((s) => SUBTYPE_DESCRIPTIONS[s])
+      if (requested.length === 0) return reply.send({ suggestions: {} })
+
+      const prompt = `You are configuring intelligence research workflow nodes for a marketing agency client. Based on the client context below, suggest specific values for the workflow fields listed.
+
+CLIENT CONTEXT:
+${context}
+
+Return ONLY a valid JSON object (no markdown, no explanation) with suggestions for these node types:
+${requested.map((s) => `- ${SUBTYPE_DESCRIPTIONS[s]}`).join('\n')}
+
+Rules:
+- companySlug: lowercase letters and hyphens only (Trustpilot URL slug format)
+- seedUrls: 2–4 real competitor or industry website URLs, one per line, inferred from the competitive landscape
+- searchTerms: 4–6 Reddit-style search phrases, one per line — buyer pain points or questions they'd actually type
+- seedKeywords: 5–8 keyword phrases with commercial buyer intent, one per line
+- Only include the node types listed above
+- If a value cannot be determined from context, make a reasonable inference from the industry and ICP`
+
+      const result = await callModel(
+        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.3 },
+        prompt,
+      )
+
+      let suggestions: Record<string, Record<string, string>> = {}
+      try {
+        const jsonMatch = result.text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) suggestions = JSON.parse(jsonMatch[0])
+      } catch { /* return empty on parse failure */ }
+
+      return reply.send({ suggestions })
+    }
+  )
+
   // ── Output bundle — latest completed run output per workflow ────────────────
   app.get<{ Params: { id: string } }>('/:id/bundle', async (req, reply) => {
     const { agencyId } = req.auth

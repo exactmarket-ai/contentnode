@@ -272,6 +272,7 @@ interface PreflightIssue {
 // ─── Preflight dialog ─────────────────────────────────────────────────────────
 
 function PreflightDialog({
+  campaignId,
   issues,
   values,
   onChange,
@@ -279,6 +280,7 @@ function PreflightDialog({
   onCancel,
   saving,
 }: {
+  campaignId: string
   issues: PreflightIssue[]
   values: Record<string, Record<string, Record<string, string>>>
   onChange: (workflowId: string, nodeId: string, field: string, value: string) => void
@@ -286,6 +288,42 @@ function PreflightDialog({
   onCancel: () => void
   saving: boolean
 }) {
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggested, setSuggested] = useState(false)
+  const [suggestError, setSuggestError] = useState('')
+
+  async function handleSuggest() {
+    setSuggesting(true)
+    setSuggestError('')
+    try {
+      const subtypes = [...new Set(issues.flatMap((i) => i.nodes.map((n) => n.subtype)))]
+      const res = await apiFetch(`/api/v1/campaigns/${campaignId}/preflight-suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subtypes }),
+      })
+      const { suggestions } = await res.json()
+      if (!res.ok || !suggestions) throw new Error('No suggestions returned')
+      // Apply suggestions: for each issue → node, merge matching subtype fields
+      for (const issue of issues) {
+        for (const n of issue.nodes) {
+          const nodeSuggestions = suggestions[n.subtype]
+          if (!nodeSuggestions) continue
+          for (const [field, value] of Object.entries(nodeSuggestions)) {
+            if (typeof value === 'string' && value.trim()) {
+              onChange(issue.workflowId, n.nodeId, field, value)
+            }
+          }
+        }
+      }
+      setSuggested(true)
+    } catch {
+      setSuggestError('Could not generate suggestions — fill in manually.')
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
   // Check if all issues are resolved
   const allReady = issues.every((issue) =>
     issue.nodes.every((n) => {
@@ -316,6 +354,40 @@ function PreflightDialog({
           <button onClick={onCancel} className="text-muted-foreground hover:text-foreground shrink-0">
             <Icons.X className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* AI suggest banner */}
+        <div className="px-5 py-3 border-b border-border bg-violet-50/60 flex items-center gap-3">
+          <Icons.Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+          <p className="text-xs text-violet-700 flex-1">
+            {suggested
+              ? 'AI pre-filled these based on your client brain — review and edit before running.'
+              : 'Your client brain knows this client. Let AI suggest values based on their ICP, positioning, and competitive landscape.'}
+          </p>
+          {suggestError && <p className="text-[11px] text-red-500">{suggestError}</p>}
+          {!suggested && (
+            <button
+              type="button"
+              onClick={handleSuggest}
+              disabled={suggesting}
+              className="flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-100 hover:bg-violet-200 border border-violet-300 rounded-md px-3 py-1.5 transition-colors shrink-0 disabled:opacity-60"
+            >
+              {suggesting
+                ? <><Icons.Loader2 className="w-3 h-3 animate-spin" /> Thinking…</>
+                : <><Icons.Wand2 className="w-3 h-3" /> Auto-fill</>}
+            </button>
+          )}
+          {suggested && (
+            <button
+              type="button"
+              onClick={handleSuggest}
+              disabled={suggesting}
+              className="flex items-center gap-1.5 text-[11px] text-violet-500 hover:text-violet-700 transition-colors shrink-0"
+            >
+              {suggesting ? <Icons.Loader2 className="w-3 h-3 animate-spin" /> : <Icons.RefreshCw className="w-3 h-3" />}
+              Re-suggest
+            </button>
+          )}
         </div>
 
         {/* Issues */}
@@ -1045,6 +1117,7 @@ function CampaignCard({
           {/* Preflight setup dialog */}
           {showPreflight && (
             <PreflightDialog
+              campaignId={campaign.id}
               issues={preflightIssues}
               values={preflightValues}
               onChange={(wfId, nodeId, field, value) =>
