@@ -365,7 +365,10 @@ function CampaignCard({
   const [polling, setPolling] = useState(false)
   const [pollCount, setPollCount] = useState(0)
   const [runError, setRunError] = useState<string | null>(null)
-  // Preflight
+  // Preflight — checked on expand, shown before Run All
+  const [nodeWarnings, setNodeWarnings] = useState<Record<string, PreflightIssue['nodes']>>({})
+  const [checkingWarnings, setCheckingWarnings] = useState(false)
+  const [warningsChecked, setWarningsChecked] = useState(false)
   const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([])
   const [preflightValues, setPreflightValues] = useState<Record<string, Record<string, Record<string, string>>>>({})
   const [showPreflight, setShowPreflight] = useState(false)
@@ -374,6 +377,35 @@ function CampaignCard({
 
   // Sync live workflows when campaign prop updates (e.g. on full refresh)
   useEffect(() => { setLiveWorkflows(campaign.workflows) }, [campaign.workflows])
+
+  // Check for unconfigured nodes as soon as the card is expanded
+  const checkWarnings = useCallback(async () => {
+    setCheckingWarnings(true)
+    const warnings: Record<string, PreflightIssue['nodes']> = {}
+    for (const cw of liveWorkflows) {
+      try {
+        const r = await apiFetch(`/api/v1/workflows/${cw.workflowId}`)
+        if (!r.ok) continue
+        const { data: wf } = await r.json()
+        const bad: PreflightIssue['nodes'] = []
+        for (const node of (wf.nodes ?? []) as Array<{ id: string; label: string; config: Record<string, unknown> }>) {
+          const cfg = (node.config ?? {}) as Record<string, unknown>
+          const subtype = (cfg.subtype as string) ?? ''
+          if (REQUIRED_NODE_FIELDS[subtype] && !isNodeConfigReady(subtype, cfg)) {
+            bad.push({ nodeId: node.id, nodeLabel: node.label ?? subtype, subtype })
+          }
+        }
+        if (bad.length > 0) warnings[cw.workflowId] = bad
+      } catch { /* ignore individual workflow fetch errors */ }
+    }
+    setNodeWarnings(warnings)
+    setWarningsChecked(true)
+    setCheckingWarnings(false)
+  }, [liveWorkflows]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (expanded && !warningsChecked) checkWarnings()
+  }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!polling) { if (pollRef.current) clearInterval(pollRef.current); return }
@@ -429,44 +461,57 @@ function CampaignCard({
     onRefresh()
   }
 
+  function openPreflightDialog(warningMap: Record<string, PreflightIssue['nodes']>) {
+    const issues: PreflightIssue[] = liveWorkflows
+      .filter((cw) => (warningMap[cw.workflowId]?.length ?? 0) > 0)
+      .map((cw) => ({ workflowId: cw.workflowId, workflowName: cw.workflow.name, nodes: warningMap[cw.workflowId] }))
+    const vals: Record<string, Record<string, Record<string, string>>> = {}
+    for (const issue of issues) {
+      vals[issue.workflowId] = {}
+      for (const n of issue.nodes) {
+        vals[issue.workflowId][n.nodeId] = {}
+        for (const f of REQUIRED_NODE_FIELDS[n.subtype]?.fields ?? []) {
+          vals[issue.workflowId][n.nodeId][f.key] = ''
+        }
+      }
+    }
+    setPreflightIssues(issues)
+    setPreflightValues(vals)
+    setShowPreflight(true)
+  }
+
   async function handleRunAll() {
     setRunning(true)
     setRunError(null)
     try {
-      // Preflight: fetch each workflow's nodes and check for required-but-empty fields
-      const issues: PreflightIssue[] = []
-      for (const cw of liveWorkflows) {
-        const r = await apiFetch(`/api/v1/workflows/${cw.workflowId}`)
-        if (!r.ok) continue
-        const { data: wf } = await r.json()
-        const badNodes: PreflightIssue['nodes'] = []
-        for (const node of (wf.nodes ?? []) as Array<{ id: string; label: string; config: Record<string, unknown> }>) {
-          const cfg = (node.config ?? {}) as Record<string, unknown>
-          const subtype = (cfg.subtype as string) ?? ''
-          if (REQUIRED_NODE_FIELDS[subtype] && !isNodeConfigReady(subtype, cfg)) {
-            badNodes.push({ nodeId: node.id, nodeLabel: node.label ?? subtype, subtype })
-          }
+      // If we already have warning data use it; otherwise fetch now
+      let warnings = nodeWarnings
+      if (!warningsChecked) {
+        // First time — fetch synchronously so we don't miss anything
+        const fresh: Record<string, PreflightIssue['nodes']> = {}
+        for (const cw of liveWorkflows) {
+          try {
+            const r = await apiFetch(`/api/v1/workflows/${cw.workflowId}`)
+            if (!r.ok) continue
+            const { data: wf } = await r.json()
+            const bad: PreflightIssue['nodes'] = []
+            for (const node of (wf.nodes ?? []) as Array<{ id: string; label: string; config: Record<string, unknown> }>) {
+              const cfg = (node.config ?? {}) as Record<string, unknown>
+              const subtype = (cfg.subtype as string) ?? ''
+              if (REQUIRED_NODE_FIELDS[subtype] && !isNodeConfigReady(subtype, cfg)) {
+                bad.push({ nodeId: node.id, nodeLabel: node.label ?? subtype, subtype })
+              }
+            }
+            if (bad.length > 0) fresh[cw.workflowId] = bad
+          } catch { /* ignore */ }
         }
-        if (badNodes.length > 0) {
-          issues.push({ workflowId: cw.workflowId, workflowName: cw.workflow.name, nodes: badNodes })
-        }
+        setNodeWarnings(fresh)
+        setWarningsChecked(true)
+        warnings = fresh
       }
 
-      if (issues.length > 0) {
-        // Initialise editable values from current (empty) config so fields start blank
-        const vals: Record<string, Record<string, Record<string, string>>> = {}
-        for (const issue of issues) {
-          vals[issue.workflowId] = {}
-          for (const n of issue.nodes) {
-            vals[issue.workflowId][n.nodeId] = {}
-            for (const f of REQUIRED_NODE_FIELDS[n.subtype]?.fields ?? []) {
-              vals[issue.workflowId][n.nodeId][f.key] = ''
-            }
-          }
-        }
-        setPreflightIssues(issues)
-        setPreflightValues(vals)
-        setShowPreflight(true)
+      if (Object.keys(warnings).length > 0) {
+        openPreflightDialog(warnings)
         return
       }
 
@@ -498,6 +543,12 @@ function CampaignCard({
       }
       setShowPreflight(false)
       setPreflightIssues([])
+      // Clear saved workflows from warnings
+      setNodeWarnings((prev) => {
+        const next = { ...prev }
+        for (const issue of preflightIssues) delete next[issue.workflowId]
+        return next
+      })
       await doRunAll()
     } catch (err) {
       setRunError(err instanceof Error ? err.message : 'Failed to save configuration')
@@ -638,6 +689,15 @@ function CampaignCard({
                         <span className="text-[9px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-full">
                           {ROLE_LABELS[cw.role] ?? cw.role}
                         </span>
+                      )}
+                      {nodeWarnings[cw.workflowId]?.length > 0 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openPreflightDialog(nodeWarnings) }}
+                          className="flex items-center gap-1 text-[9px] text-amber-400 bg-amber-950/40 border border-amber-700/40 px-1.5 py-0.5 rounded-full hover:bg-amber-950/60 transition-colors"
+                        >
+                          <Icons.AlertTriangle className="w-2.5 h-2.5" />
+                          Needs setup
+                        </button>
                       )}
                     </div>
                   </div>
@@ -935,16 +995,22 @@ function CampaignCard({
             {/* Run All — locked until brief exists */}
             <Button
               size="sm"
-              className="h-7 text-xs gap-1.5"
+              className={cn(
+                'h-7 text-xs gap-1.5',
+                Object.keys(nodeWarnings).length > 0 && !running && !polling &&
+                  'border-amber-600/50 text-amber-300 bg-amber-950/20 hover:bg-amber-950/40'
+              )}
               onClick={handleRunAll}
               disabled={running || polling || liveWorkflows.length === 0 || !briefText}
               title={!briefText ? 'Generate a brief first before running' : undefined}
             >
               {running
                 ? <Icons.Loader2 className="w-3 h-3 animate-spin" />
-                : <Icons.Play className="w-3 h-3" />
+                : Object.keys(nodeWarnings).length > 0
+                  ? <Icons.AlertTriangle className="w-3 h-3" />
+                  : <Icons.Play className="w-3 h-3" />
               }
-              Run All
+              {Object.keys(nodeWarnings).length > 0 && !running ? 'Setup & Run' : 'Run All'}
             </Button>
 
             {!briefText && !generatingBrief && (
