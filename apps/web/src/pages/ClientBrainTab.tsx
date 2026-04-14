@@ -70,11 +70,13 @@ function MasterBrainRow({
   clientId,
   onDelete,
   onSummaryUpdated,
+  onScopeToggled,
 }: {
   doc: MasterBrainEntry
   clientId: string
   onDelete: (doc: MasterBrainEntry) => void
   onSummaryUpdated: (id: string, table: string, summary: string) => void
+  onScopeToggled: (id: string, table: string, campaignScopedOnly: boolean) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -83,6 +85,8 @@ function MasterBrainRow({
   const [showText, setShowText] = useState(false)
   const [rawText, setRawText] = useState<string | null>(null)
   const [loadingText, setLoadingText] = useState(false)
+  const [togglingScoped, setTogglingScoped] = useState(false)
+  const [scopeError, setScopeError] = useState(false)
 
   const isProcessing =
     doc.extractionStatus === 'pending' || doc.extractionStatus === 'processing' ||
@@ -140,6 +144,30 @@ function MasterBrainRow({
     }
   }
 
+  const handleToggleScoped = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!doc.campaignId || togglingScoped) return
+    setTogglingScoped(true)
+    setScopeError(false)
+    try {
+      const res = await apiFetch(`/api/v1/campaigns/${doc.campaignId}/brain/attachments/${doc.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ campaignScopedOnly: !doc.campaignScopedOnly }),
+      })
+      if (res.ok) {
+        onScopeToggled(doc.id, doc.table, !doc.campaignScopedOnly)
+      } else {
+        setScopeError(true)
+        setTimeout(() => setScopeError(false), 3000)
+      }
+    } catch {
+      setScopeError(true)
+      setTimeout(() => setScopeError(false), 3000)
+    } finally {
+      setTogglingScoped(false)
+    }
+  }
+
   const displayName = doc.sourceUrl
     ? (() => {
         try {
@@ -149,11 +177,7 @@ function MasterBrainRow({
       })()
     : doc.filename
 
-  const scopeLabel = doc.verticalName
-    ? doc.verticalName
-    : doc.campaignName
-      ? (doc.campaignScopedOnly ? `${doc.campaignName} (only)` : doc.campaignName)
-      : null
+  const scopeLabel = doc.verticalName ?? null
 
   function statusBadge() {
     if (doc.extractionStatus === 'pending' || doc.extractionStatus === 'processing') {
@@ -203,6 +227,37 @@ function MasterBrainRow({
             <SourceBadge source={doc.source} label={doc.sourceLabel} />
             {scopeLabel && (
               <span className="text-[10px] text-muted-foreground">{scopeLabel}</span>
+            )}
+            {doc.campaignName && (
+              <span className="text-[10px] text-muted-foreground">{doc.campaignName}</span>
+            )}
+            {doc.table === 'campaign_brain_attachments' && doc.campaignId && (
+              <button
+                onClick={handleToggleScoped}
+                disabled={togglingScoped}
+                title={doc.campaignScopedOnly ? 'Campaign only — click to make Global' : 'Global — click to make Campaign only'}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide transition-colors',
+                  scopeError
+                    ? 'border-destructive/50 bg-destructive/10 text-destructive'
+                    : doc.campaignScopedOnly
+                      ? 'border-amber-300/60 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400'
+                      : 'border-emerald-300/60 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400'
+                )}
+              >
+                {togglingScoped ? (
+                  <Icons.Loader2 className="h-2 w-2 animate-spin" />
+                ) : scopeError ? (
+                  'Error'
+                ) : doc.campaignScopedOnly ? (
+                  'Campaign only'
+                ) : (
+                  <>
+                    <Icons.Globe className="h-2 w-2" />
+                    Global
+                  </>
+                )}
+              </button>
             )}
             {statusBadge()}
           </div>
@@ -728,6 +783,11 @@ export function ClientBrainTab({
                 onSummaryUpdated={(id, table, summary) =>
                   setAllDocs((prev) => prev.map((d) =>
                     d.id === id && d.table === table ? { ...d, summary, summaryStatus: 'ready' } : d
+                  ))
+                }
+                onScopeToggled={(id, table, campaignScopedOnly) =>
+                  setAllDocs((prev) => prev.map((d) =>
+                    d.id === id && d.table === table ? { ...d, campaignScopedOnly } : d
                   ))
                 }
               />
