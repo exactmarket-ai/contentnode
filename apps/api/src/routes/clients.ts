@@ -3209,8 +3209,10 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     })
 
     // 2. CampaignBrainAttachment (separate table, always source='campaign')
+    // Only include Global docs (campaignScopedOnly=false) — Campaign-only docs
+    // are scoped to their campaign and must not appear in the master brain view.
     const campaignBrainDocs = await prisma.campaignBrainAttachment.findMany({
-      where: { agencyId, campaign: { clientId } },
+      where: { agencyId, campaignScopedOnly: false, campaign: { clientId } },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true, filename: true, sourceUrl: true, mimeType: true, sizeBytes: true,
