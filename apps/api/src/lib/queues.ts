@@ -8,6 +8,7 @@ export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
 export const QUEUE_CAMPAIGN_BRAIN_PROCESS = 'campaign-brain-process'
+export const QUEUE_CLIENT_BRAIN_PROCESS = 'client-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 
 export interface WorkflowRunJobData {
@@ -55,6 +56,13 @@ export interface CampaignBrainProcessJobData {
   url?: string // set when processing a URL source
 }
 
+export interface ClientBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  clientId: string
+  url?: string
+}
+
 export interface PromptSuggestJobData {
   agencyId: string
   clientId: string
@@ -67,6 +75,7 @@ let frameworkResearchQueue: Queue<FrameworkResearchJobData> | null = null
 let attachmentProcessQueue: Queue<AttachmentProcessJobData> | null = null
 let brandAttachmentProcessQueue: Queue<BrandAttachmentProcessJobData> | null = null
 let campaignBrainProcessQueue: Queue<CampaignBrainProcessJobData> | null = null
+let clientBrainProcessQueue: Queue<ClientBrainProcessJobData> | null = null
 
 /**
  * Returns the singleton Queue instance for dispatching workflow run jobs.
@@ -140,6 +149,13 @@ export function getCampaignBrainProcessQueue(): Queue<CampaignBrainProcessJobDat
     campaignBrainProcessQueue = new Queue<CampaignBrainProcessJobData>(QUEUE_CAMPAIGN_BRAIN_PROCESS, { connection: getRedis() })
   }
   return campaignBrainProcessQueue
+}
+
+export function getClientBrainProcessQueue(): Queue<ClientBrainProcessJobData> {
+  if (!clientBrainProcessQueue) {
+    clientBrainProcessQueue = new Queue<ClientBrainProcessJobData>(QUEUE_CLIENT_BRAIN_PROCESS, { connection: getRedis() })
+  }
+  return clientBrainProcessQueue
 }
 
 let promptSuggestQueue: Queue<PromptSuggestJobData> | null = null
