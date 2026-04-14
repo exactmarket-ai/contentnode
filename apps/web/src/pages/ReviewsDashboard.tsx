@@ -588,11 +588,11 @@ export function ReviewsDashboard() {
                       />
                     </th>
                     <SortableHeader label="Date"        sortKey="completedAt"  current={sortKey} dir={sortDir} onSort={handleSort} />
-                    <SortableHeader label="Review"      sortKey="review"       current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Client"      sortKey="clientName"   current={sortKey} dir={sortDir} onSort={handleSort} />
-                    <SortableHeader label="Status"      sortKey="reviewStatus" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Review"      sortKey="review"       current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Created by"  sortKey="createdBy"    current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Assigned to" sortKey="assignee"     current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <SortableHeader label="Status"      sortKey="reviewStatus" current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Due date"    sortKey="dueDate"      current={sortKey} dir={sortDir} onSort={handleSort} />
                     <th className="px-4 py-2.5" />
                   </tr>
@@ -624,15 +624,8 @@ export function ReviewsDashboard() {
                         <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
                           {r.completedAt ? formatDate(r.completedAt) : '—'}
                         </td>
-                        <td className="px-4 py-2.5 font-medium text-foreground/90 max-w-[200px] truncate">{title}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{r.clientName ?? '—'}</td>
-                        <td className="px-4 py-2.5">
-                          <StatusPicker
-                            runId={r.id}
-                            status={r.reviewStatus}
-                            onUpdated={(s) => updateRun(r.id, { reviewStatus: s })}
-                          />
-                        </td>
+                        <td className="px-4 py-2.5 font-medium text-foreground/90 max-w-[200px] truncate">{title}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">
                           {createdBy ? (
                             <span className="flex items-center gap-1.5">
@@ -651,6 +644,13 @@ export function ReviewsDashboard() {
                             current={r.assignee}
                             teamMembers={teamMembers}
                             onAssigned={(assignee) => updateRun(r.id, { assignee, assigneeId: assignee?.id ?? null })}
+                          />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <StatusPicker
+                            runId={r.id}
+                            status={r.reviewStatus}
+                            onUpdated={(s) => updateRun(r.id, { reviewStatus: s })}
                           />
                         </td>
                         <td className="px-4 py-2.5">
