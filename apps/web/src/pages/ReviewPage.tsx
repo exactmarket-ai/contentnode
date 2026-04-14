@@ -124,7 +124,26 @@ function extractOutputs(run: RunData): OutputTab[] {
     })
     .filter(Boolean) as OutputTab[]
 
-  if (tabs.length > 0) return tabs
+  // Also surface image/video assets produced by logic nodes (e.g. image-generation wired
+  // into a text output node) — they won't appear via the output-node filter above.
+  const assetTabs: OutputTab[] = Object.entries(run.nodeStatuses)
+    .filter(([nodeId, s]) => {
+      if (s.status !== 'passed' || !s.output) return false
+      if (tabs.some((t) => t.nodeId === nodeId)) return false  // already in tabs
+      const out = s.output as Record<string, unknown>
+      return Array.isArray(out.assets) && (out.assets as unknown[]).length > 0
+    })
+    .map(([nodeId, s]) => {
+      const node = nodeMap[nodeId]
+      const out = s.output as Record<string, unknown>
+      const assets = (out.assets as Array<{ localPath: string }>).filter((a) => a.localPath)
+      if (!assets.length) return null
+      return { nodeId, label: node?.label ?? 'Image', content: '', originalContent: '', subtype: 'image-generation', assets }
+    })
+    .filter(Boolean) as OutputTab[]
+
+  const allTabs = [...tabs, ...assetTabs]
+  if (allTabs.length > 0) return allTabs
 
   const fallback = toText(run.finalOutput)
   if (fallback) return [{ nodeId: 'final', label: 'Output', content: fallback, originalContent: fallback }]

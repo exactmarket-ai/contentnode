@@ -18,15 +18,25 @@ function applyTemplate(template: string | undefined, content: string): string {
   return template.replace('{{content}}', content)
 }
 
+/** Media asset objects (image/video generation) should never be serialised as text. */
+function isMediaAsset(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false
+  const obj = v as Record<string, unknown>
+  return Array.isArray(obj.assets) && (obj.assets as unknown[]).length > 0
+}
+
 function coerceToString(value: unknown): string {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) {
     return value
+      .filter((v) => !isMediaAsset(v))   // drop image/video asset objects — they aren't text
       .map((v) => coerceToString(v))
+      .filter(Boolean)
       .join('\n\n')
   }
   if (value && typeof value === 'object') {
     const obj = value as Record<string, unknown>
+    if (isMediaAsset(obj)) return ''     // single media asset — return empty
     // Unwrap common text wrapper shapes
     if (typeof obj.content === 'string') return obj.content
     if (typeof obj.text === 'string') return obj.text
