@@ -5,8 +5,9 @@ import { z } from 'zod'
 import { prisma, auditService } from '@contentnode/database'
 import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
-import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue } from '../lib/queues.js'
+import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue, getClientBrainProcessQueue } from '../lib/queues.js'
 import { markStaleIfBrainChanged } from './templateLibrary.js'
+import { getClerkUserNames } from '../lib/clerk.js'
 
 const LOGO_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -2112,7 +2113,7 @@ Use empty string "" or empty array [] for any field not found. Never invent info
 
     return reply.send({ data: profile })
     } catch (err) {
-      req.log.error({ err, profileId, clientId: req.params.id }, '[autofill] unhandled error')
+      req.log.error({ err, profileId: req.params.profileId, clientId: req.params.id }, '[autofill] unhandled error')
       return reply.code(500).send({ error: (err instanceof Error ? err.message : String(err)) })
     }
   })
@@ -2804,7 +2805,7 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
 
     const { filename, file, mimetype } = data
 
-    const allowedExts = new Set(['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm'])
+    const allowedExts = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm'])
     const fileExt = filename.slice(filename.lastIndexOf('.')).toLowerCase()
     if (!allowedExts.has(fileExt)) {
       file.resume()
@@ -2823,8 +2824,11 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
 
     const sizeBytes = (file as unknown as { bytesRead?: number }).bytesRead ?? 0
 
+    const brandUploader = await prisma.user.findFirst({ where: { clerkUserId: req.auth.userId, agencyId }, select: { id: true } })
+    const brandUploaderId = brandUploader?.id ?? req.auth.userId
+
     const attachment = await prisma.clientBrandAttachment.create({
-      data: { agencyId, clientId, verticalId, filename, storageKey, mimeType: mimetype, sizeBytes },
+      data: { agencyId, clientId, verticalId, filename, storageKey, mimeType: mimetype, sizeBytes, uploadedByUserId: brandUploaderId },
       select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, extractionStatus: true, errorMessage: true },
     })
 
@@ -3039,4 +3043,294 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
       },
     })
   })
+
+  // ── Client Brain ──────────────────────────────────────────────────────────────
+
+  const ALLOWED_CLIENT_BRAIN_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+
+  // GET context
+  app.get<{ Params: { clientId: string } }>('/:clientId/brain/context', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.params
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { brainContext: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    return reply.send({ data: { context: client.brainContext ?? null } })
+  })
+
+  // PATCH context
+  app.patch<{ Params: { clientId: string }; Body: { context: string } }>('/:clientId/brain/context', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.params
+    const { context } = req.body
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    await prisma.client.update({ where: { id: clientId }, data: { brainContext: context } })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // GET attachments list (optionally filtered by ?source=)
+  app.get<{ Params: { clientId: string }; Querystring: { source?: string } }>('/:clientId/brain/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.params
+    const sourceFilter = req.query.source?.trim() || undefined
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const attachments = await prisma.clientBrainAttachment.findMany({
+      where: { clientId, agencyId, ...(sourceFilter ? { source: sourceFilter } : {}) },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true, sourceUrl: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true,
+        source: true, verticalId: true, campaignId: true, campaignScopedOnly: true,
+        uploadMethod: true, uploadedByUserId: true,
+      },
+    })
+    return reply.send({ data: attachments })
+  })
+
+  // POST upload file (optional ?source= and ?verticalId= query params)
+  app.post<{ Params: { clientId: string }; Querystring: { source?: string; verticalId?: string } }>('/:clientId/brain/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.params
+    const source = req.query.source?.trim() || 'client'
+    const verticalId = req.query.verticalId?.trim() || null
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const { filename, file, mimetype } = data
+    const fileExt = filename.slice(filename.lastIndexOf('.')).toLowerCase()
+    if (!ALLOWED_CLIENT_BRAIN_EXTS.has(fileExt)) {
+      return reply.code(400).send({ error: `File type ${fileExt} not supported. Allowed: ${[...ALLOWED_CLIENT_BRAIN_EXTS].join(', ')}` })
+    }
+
+    const storageKey = `client-brain/${agencyId}/${clientId}/${crypto.randomUUID()}${fileExt}`
+    const chunks: Buffer[] = []
+    for await (const chunk of file) chunks.push(chunk)
+    const buffer = Buffer.concat(chunks)
+    const { Readable } = await import('node:stream')
+    await uploadStream(storageKey, Readable.from(buffer), mimetype)
+
+    // Resolve internal user ID from Clerk user ID for audit trail.
+    // If no DB User record is linked yet, fall back to storing the Clerk user ID directly —
+    // the master view resolves it via Clerk API on read.
+    const uploader = await prisma.user.findFirst({ where: { clerkUserId: req.auth.userId, agencyId }, select: { id: true, name: true, email: true } })
+    const storedUploaderId = uploader?.id ?? req.auth.userId
+
+    const attachment = await prisma.clientBrainAttachment.create({
+      data: {
+        agencyId, clientId, filename, storageKey, mimeType: mimetype,
+        sizeBytes: buffer.byteLength, extractionStatus: 'pending', summaryStatus: 'pending',
+        source, verticalId, uploadMethod: 'file',
+        uploadedByUserId: storedUploaderId,
+      },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true, sourceUrl: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true,
+        source: true, verticalId: true, uploadMethod: true,
+      },
+    })
+
+    await getClientBrainProcessQueue().add('process', { agencyId, attachmentId: attachment.id, clientId })
+    return reply.code(201).send({ data: { ...attachment, uploadedByName: uploader?.name ?? uploader?.email ?? null } })
+  })
+
+  // POST from URL (optional ?source= and ?verticalId= query params)
+  app.post<{ Params: { clientId: string }; Body: { url: string }; Querystring: { source?: string; verticalId?: string } }>('/:clientId/brain/attachments/from-url', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.params
+    const { url } = req.body
+    const source = req.query.source?.trim() || 'client'
+    const verticalId = req.query.verticalId?.trim() || null
+    if (!url) return reply.code(400).send({ error: 'url is required' })
+
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const uploader = await prisma.user.findFirst({ where: { clerkUserId: req.auth.userId, agencyId }, select: { id: true, name: true, email: true } })
+    const storedUploaderId = uploader?.id ?? req.auth.userId
+
+    let hostname = url
+    try { hostname = new URL(url).hostname } catch {}
+
+    const attachment = await prisma.clientBrainAttachment.create({
+      data: {
+        agencyId, clientId, filename: hostname, sourceUrl: url, mimeType: 'text/html',
+        sizeBytes: 0, extractionStatus: 'pending', summaryStatus: 'pending',
+        source, verticalId, uploadMethod: 'url',
+        uploadedByUserId: storedUploaderId,
+      },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true, sourceUrl: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true,
+        source: true, verticalId: true, uploadMethod: true,
+      },
+    })
+
+    await getClientBrainProcessQueue().add('process', { agencyId, attachmentId: attachment.id, clientId, url })
+    return reply.code(201).send({ data: { ...attachment, uploadedByName: uploader?.name ?? uploader?.email ?? null } })
+  })
+
+  // PATCH summary (manual edit)
+  app.patch<{ Params: { clientId: string; attachmentId: string }; Body: { summary: string } }>(
+    '/:clientId/brain/attachments/:attachmentId',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { clientId, attachmentId } = req.params
+      const attachment = await prisma.clientBrainAttachment.findFirst({ where: { id: attachmentId, clientId, agencyId } })
+      if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+      await prisma.clientBrainAttachment.update({
+        where: { id: attachmentId },
+        data: { summary: req.body.summary, summaryStatus: 'ready' },
+      })
+      return reply.send({ data: { ok: true } })
+    }
+  )
+
+  // GET /:clientId/brain/all — master view: all brain attachments across all surfaces
+  app.get<{ Params: { clientId: string } }>('/:clientId/brain/all', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.params
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    // 1. ClientBrainAttachment (unified table — source: client | demand_gen | gtm_framework | branding)
+    const clientBrainDocs = await prisma.clientBrainAttachment.findMany({
+      where: { clientId, agencyId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, filename: true, sourceUrl: true, mimeType: true, sizeBytes: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true,
+        source: true, verticalId: true, campaignId: true, campaignScopedOnly: true,
+        uploadedByUserId: true, uploadMethod: true,
+      },
+    })
+
+    // 2. CampaignBrainAttachment (separate table, always source='campaign')
+    const campaignBrainDocs = await prisma.campaignBrainAttachment.findMany({
+      where: { agencyId, campaign: { clientId } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, filename: true, sourceUrl: true, mimeType: true, sizeBytes: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true,
+        campaignScopedOnly: true, uploadedByUserId: true,
+        campaign: { select: { id: true, name: true } },
+      },
+    })
+
+    // 3. ClientBrandAttachment (branding brain — separate table, always source='branding')
+    const brandDocs = await prisma.clientBrandAttachment.findMany({
+      where: { clientId, agencyId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true,
+        verticalId: true, uploadedByUserId: true,
+        vertical: { select: { id: true, name: true } },
+      },
+    })
+
+    // Resolve uploader display names across all three tables.
+    // uploadedByUserId may be an internal User UUID or a Clerk user ID (user_xxx fallback).
+    const allUploaderIds = [...new Set([
+      ...clientBrainDocs.map((d) => d.uploadedByUserId),
+      ...campaignBrainDocs.map((d) => d.uploadedByUserId),
+      ...brandDocs.map((d) => d.uploadedByUserId),
+    ].filter(Boolean) as string[])]
+
+    const uploaderMap: Record<string, string | null> = {}
+    if (allUploaderIds.length > 0) {
+      const internalIds = allUploaderIds.filter((id) => !id.startsWith('user_'))
+      const clerkIds = allUploaderIds.filter((id) => id.startsWith('user_'))
+
+      if (internalIds.length > 0) {
+        const dbUsers = await prisma.user.findMany({ where: { id: { in: internalIds }, agencyId }, select: { id: true, name: true, email: true } })
+        for (const u of dbUsers) uploaderMap[u.id] = u.name ?? u.email ?? null
+      }
+      if (clerkIds.length > 0) {
+        const clerkNames = await getClerkUserNames(clerkIds)
+        for (const [clerkId, { name, email }] of Object.entries(clerkNames)) {
+          uploaderMap[clerkId] = name ?? email ?? null
+        }
+      }
+    }
+
+    const SOURCE_LABELS: Record<string, string> = {
+      client: 'Client Brain', campaign: 'Campaign', gtm_framework: 'GTM Framework',
+      demand_gen: 'Demand Gen', branding: 'Branding',
+    }
+
+    const allDocs = [
+      ...clientBrainDocs.map((d) => ({
+        id: d.id, table: 'client_brain_attachments',
+        filename: d.filename, sourceUrl: d.sourceUrl, mimeType: d.mimeType, sizeBytes: d.sizeBytes,
+        extractionStatus: d.extractionStatus, summaryStatus: d.summaryStatus, summary: d.summary,
+        createdAt: d.createdAt.toISOString(),
+        source: d.source, sourceLabel: SOURCE_LABELS[d.source] ?? d.source,
+        verticalId: d.verticalId, verticalName: null as string | null,
+        campaignId: d.campaignId, campaignName: null as string | null,
+        campaignScopedOnly: d.campaignScopedOnly,
+        uploadMethod: d.uploadMethod,
+        uploadedByName: d.uploadedByUserId ? (uploaderMap[d.uploadedByUserId] ?? null) : null,
+      })),
+      ...campaignBrainDocs.map((d) => ({
+        id: d.id, table: 'campaign_brain_attachments',
+        filename: d.filename, sourceUrl: d.sourceUrl, mimeType: d.mimeType, sizeBytes: d.sizeBytes,
+        extractionStatus: d.extractionStatus, summaryStatus: d.summaryStatus, summary: d.summary,
+        createdAt: d.createdAt.toISOString(),
+        source: 'campaign', sourceLabel: 'Campaign',
+        verticalId: null, verticalName: null,
+        campaignId: d.campaign.id, campaignName: d.campaign.name,
+        campaignScopedOnly: d.campaignScopedOnly,
+        uploadMethod: d.sourceUrl ? 'url' : 'file',
+        uploadedByName: d.uploadedByUserId ? (uploaderMap[d.uploadedByUserId] ?? null) : null,
+      })),
+      ...brandDocs.map((d) => ({
+        id: d.id, table: 'client_brand_attachments',
+        filename: d.filename, sourceUrl: null, mimeType: d.mimeType, sizeBytes: d.sizeBytes,
+        extractionStatus: d.extractionStatus, summaryStatus: d.summaryStatus, summary: d.summary,
+        createdAt: d.createdAt.toISOString(),
+        source: 'branding', sourceLabel: 'Branding',
+        verticalId: d.verticalId, verticalName: d.vertical?.name ?? null,
+        campaignId: null, campaignName: null, campaignScopedOnly: false,
+        uploadMethod: 'file',
+        uploadedByName: d.uploadedByUserId ? (uploaderMap[d.uploadedByUserId] ?? null) : null,
+      })),
+    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+    return reply.send({ data: allDocs })
+  })
+
+  // GET raw extracted text for a client brain attachment
+  app.get<{ Params: { clientId: string; attachmentId: string } }>(
+    '/:clientId/brain/attachments/:attachmentId/text',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { clientId, attachmentId } = req.params
+      const attachment = await prisma.clientBrainAttachment.findFirst({
+        where: { id: attachmentId, clientId, agencyId },
+        select: { extractedText: true, filename: true },
+      })
+      if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+      return reply.send({ data: { text: attachment.extractedText ?? '', filename: attachment.filename } })
+    }
+  )
+
+  // DELETE attachment
+  app.delete<{ Params: { clientId: string; attachmentId: string } }>(
+    '/:clientId/brain/attachments/:attachmentId',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { clientId, attachmentId } = req.params
+      const attachment = await prisma.clientBrainAttachment.findFirst({ where: { id: attachmentId, clientId, agencyId } })
+      if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+      if (attachment.storageKey) {
+        try { await deleteObject(attachment.storageKey) } catch {}
+      }
+      await prisma.clientBrainAttachment.delete({ where: { id: attachmentId } })
+      return reply.send({ data: { ok: true } })
+    }
+  )
 }

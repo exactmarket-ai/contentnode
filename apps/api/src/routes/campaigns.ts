@@ -103,11 +103,12 @@ export async function campaignRoutes(app: FastifyInstance) {
 
     if (!campaign) return reply.code(404).send({ error: 'Campaign not found' })
 
-    // Attach latest run per workflow
+    // Attach latest run per workflow — scoped to this campaign only so
+    // historical failures from other campaigns don't bleed into the display.
     const workflowIds = campaign.workflows.map((cw) => cw.workflowId)
     const latestRuns = workflowIds.length > 0
       ? await prisma.workflowRun.findMany({
-          where: { workflowId: { in: workflowIds }, agencyId },
+          where: { workflowId: { in: workflowIds }, agencyId, campaignId: campaign.id },
           orderBy: { createdAt: 'desc' },
           select: {
             id: true, workflowId: true, status: true,
@@ -539,14 +540,14 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
       select: {
         id: true, filename: true, mimeType: true, sizeBytes: true,
         sourceUrl: true, extractionStatus: true, summaryStatus: true,
-        summary: true, createdAt: true,
+        summary: true, campaignScopedOnly: true, createdAt: true,
       },
     })
     return reply.send({ data: attachments })
   })
 
   // ── Campaign Brain: upload file ──────────────────────────────────────────────
-  const ALLOWED_BRAIN_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+  const ALLOWED_BRAIN_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.xlsx', '.xls'])
 
   app.post<{ Params: { id: string } }>('/:id/brain/attachments', async (req, reply) => {
     const { agencyId } = req.auth
@@ -574,9 +575,12 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
 
     const sizeBytes = (file as unknown as { bytesRead?: number }).bytesRead ?? 0
 
+    const uploader = await prisma.user.findFirst({ where: { clerkUserId: req.auth.userId, agencyId }, select: { id: true } })
+    const storedUploaderId = uploader?.id ?? req.auth.userId
+
     const attachment = await prisma.campaignBrainAttachment.create({
-      data: { agencyId, campaignId: campaign.id, filename, storageKey, mimeType: mimetype, sizeBytes },
-      select: { id: true, filename: true, mimeType: true, sizeBytes: true, extractionStatus: true, summaryStatus: true, summary: true, createdAt: true },
+      data: { agencyId, campaignId: campaign.id, filename, storageKey, mimeType: mimetype, sizeBytes, uploadedByUserId: storedUploaderId },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, extractionStatus: true, summaryStatus: true, summary: true, campaignScopedOnly: true, createdAt: true },
     })
 
     await getCampaignBrainProcessQueue().add('process', {
@@ -597,6 +601,9 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
     const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, agencyId } })
     if (!campaign) return reply.code(404).send({ error: 'Campaign not found' })
 
+    const uploader = await prisma.user.findFirst({ where: { clerkUserId: req.auth.userId, agencyId }, select: { id: true } })
+    const storedUploaderId = uploader?.id ?? req.auth.userId
+
     const attachment = await prisma.campaignBrainAttachment.create({
       data: {
         agencyId,
@@ -604,8 +611,9 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
         filename: url,
         sourceUrl: url,
         mimeType: 'text/html',
+        uploadedByUserId: storedUploaderId,
       },
-      select: { id: true, filename: true, mimeType: true, sizeBytes: true, extractionStatus: true, summaryStatus: true, summary: true, createdAt: true, sourceUrl: true },
+      select: { id: true, filename: true, mimeType: true, sizeBytes: true, extractionStatus: true, summaryStatus: true, summary: true, campaignScopedOnly: true, createdAt: true, sourceUrl: true },
     })
 
     await getCampaignBrainProcessQueue().add('process', {
@@ -618,13 +626,16 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
     return reply.code(201).send({ data: attachment })
   })
 
-  // ── Campaign Brain: update summary (user edit) ───────────────────────────────
+  // ── Campaign Brain: update summary and/or campaignScopedOnly ────────────────
   app.patch<{ Params: { id: string; aid: string } }>('/:id/brain/attachments/:aid', async (req, reply) => {
     const { agencyId } = req.auth
-    const { summary } = req.body as { summary?: string }
+    const { summary, campaignScopedOnly } = req.body as { summary?: string; campaignScopedOnly?: boolean }
     const updated = await prisma.campaignBrainAttachment.updateMany({
       where: { id: req.params.aid, campaignId: req.params.id, agencyId },
-      data: { ...(summary !== undefined ? { summary } : {}) },
+      data: {
+        ...(summary !== undefined ? { summary } : {}),
+        ...(campaignScopedOnly !== undefined ? { campaignScopedOnly } : {}),
+      },
     })
     if (updated.count === 0) return reply.code(404).send({ error: 'Attachment not found' })
     return reply.send({ data: { updated: true } })
@@ -643,5 +654,16 @@ Keep the brief actionable and under 600 words. Write for a marketing director re
     }
     await prisma.campaignBrainAttachment.delete({ where: { id: attachment.id } })
     return reply.send({ data: { deleted: true } })
+  })
+
+  // ── Campaign Brain: get raw extracted text ───────────────────────────────────
+  app.get<{ Params: { id: string; aid: string } }>('/:id/brain/attachments/:aid/text', async (req, reply) => {
+    const { agencyId } = req.auth
+    const attachment = await prisma.campaignBrainAttachment.findFirst({
+      where: { id: req.params.aid, campaignId: req.params.id, agencyId },
+      select: { extractedText: true, filename: true },
+    })
+    if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+    return reply.send({ data: { text: attachment.extractedText ?? '', filename: attachment.filename } })
   })
 }

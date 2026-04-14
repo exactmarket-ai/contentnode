@@ -680,7 +680,7 @@ function DgAttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryU
 
 // ── Intake section ────────────────────────────────────────────────────────────
 
-function IntakeSection({ clientId }: { clientId: string }) {
+function IntakeSection({ clientId, verticalId }: { clientId: string; verticalId: string | null }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [uploadingCount, setUploadingCount] = useState(0)
@@ -692,11 +692,12 @@ function IntakeSection({ clientId }: { clientId: string }) {
   const [attachments, setAttachments] = useState<DgAttachment[]>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const base = `/api/v1/clients/${clientId}/brand-profile/attachments`
+  const baseParams = `source=demand_gen${verticalId ? `&verticalId=${verticalId}` : ''}`
+  const base = `/api/v1/clients/${clientId}/brain/attachments`
 
   const fetchAttachments = useCallback(() => {
-    return apiFetch(base).then((r) => r.json()).then(({ data }) => setAttachments(data ?? [])).catch(() => {})
-  }, [base])
+    return apiFetch(`${base}?${baseParams}`).then((r) => r.json()).then(({ data }) => setAttachments(data ?? [])).catch(() => {})
+  }, [base, baseParams])
 
   useEffect(() => { fetchAttachments() }, [fetchAttachments])
 
@@ -713,7 +714,7 @@ function IntakeSection({ clientId }: { clientId: string }) {
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await apiFetch(base, { method: 'POST', body: form })
+      const res = await apiFetch(`${base}?${baseParams}`, { method: 'POST', body: form })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setUploadError((body as { error?: string }).error ?? 'Upload failed')
@@ -741,7 +742,7 @@ function IntakeSection({ clientId }: { clientId: string }) {
     setUrlSubmitting(true)
     setUploadError(null)
     try {
-      const res = await apiFetch(`${base}/from-url`, {
+      const res = await apiFetch(`${base}/from-url?${baseParams}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ url: urlValue.trim() }),
@@ -1075,10 +1076,11 @@ const SECTIONS_NAV = [
 
 interface Vertical { id: string; name: string }
 
-function VerticalSelector({ verticals, selected, onSelect }: {
+function VerticalSelector({ verticals, selected, onSelect, onSelectCompany }: {
   verticals: Vertical[]
   selected: Vertical | null
   onSelect: (v: Vertical) => void
+  onSelectCompany: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -1097,30 +1099,34 @@ function VerticalSelector({ verticals, selected, onSelect }: {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-xs hover:bg-muted/40 transition-colors min-w-[140px]"
       >
-        {selected
-          ? <span className="font-medium truncate">{selected.name}</span>
-          : <span className="text-muted-foreground">Select vertical…</span>
-        }
+        <span className="font-medium truncate">{selected ? selected.name : 'Company'}</span>
         <svg className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
       </button>
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-popover shadow-xl" style={{ backgroundColor: 'hsl(var(--popover))' }}>
           <div className="max-h-48 overflow-y-auto p-1">
-            {verticals.length === 0 ? (
-              <p className="px-3 py-3 text-center text-[11px] text-muted-foreground">
+            {/* Company (always first) */}
+            <button
+              className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
+              onClick={() => { onSelectCompany(); setOpen(false) }}
+            >
+              {!selected && <span className="text-orange-500">✓</span>}
+              <span className="truncate">Company</span>
+            </button>
+            {verticals.map((v) => (
+              <button
+                key={v.id}
+                className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
+                onClick={() => { onSelect(v); setOpen(false) }}
+              >
+                {selected?.id === v.id && <span className="text-orange-500">✓</span>}
+                <span className="truncate">{v.name}</span>
+              </button>
+            ))}
+            {verticals.length === 0 && (
+              <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
                 No verticals assigned — go to Structure tab to add
               </p>
-            ) : (
-              verticals.map((v) => (
-                <button
-                  key={v.id}
-                  className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
-                  onClick={() => { onSelect(v); setOpen(false) }}
-                >
-                  {selected?.id === v.id && <span className="text-orange-500">✓</span>}
-                  <span className="truncate">{v.name}</span>
-                </button>
-              ))
             )}
           </div>
         </div>
@@ -1155,9 +1161,8 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
     apiFetch(`/api/v1/clients/${clientId}/verticals`)
       .then((r) => r.json())
       .then(({ data }) => {
-        const list: Vertical[] = data ?? []
+        const list: Vertical[] = [...(data ?? [])].sort((a: Vertical, b: Vertical) => a.name.localeCompare(b.name))
         setVerticals(list)
-        if (list.length === 1) setSelectedVertical(list[0])
       })
       .catch(() => {})
       .finally(() => setVerticalsLoading(false))
@@ -1322,7 +1327,12 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
             <span className="text-[9px] font-extrabold uppercase tracking-widest text-muted-foreground/50">Vertical-Specific</span>
           </div>
           <div className="px-3 pb-2">
-            <VerticalSelector verticals={verticals} selected={selectedVertical} onSelect={setSelectedVertical} />
+            <VerticalSelector
+              verticals={verticals}
+              selected={selectedVertical}
+              onSelect={setSelectedVertical}
+              onSelectCompany={() => setSelectedVertical(null)}
+            />
           </div>
           {SECTIONS_NAV.map((s) => (
             <button
@@ -1393,14 +1403,21 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
             <div className="flex-1 border-t border-border" />
           </div>
 
-          {/* ── Per-vertical sections ── */}
+          {/* ── Feed the Brain (section 00) — always shown for Company and verticals ── */}
+          <div ref={(el) => { sectionRefs.current['00'] = el }}>
+            <IntakeSection clientId={clientId} verticalId={selectedVertical?.id ?? null} />
+          </div>
+
+          {/* ── Per-vertical sections (01–07) ── */}
           {!selectedVertical ? (
             <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
               <Icons.TrendingUp className="h-8 w-8 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Select a vertical from the left panel to view or edit vertical-specific Demand Gen data</p>
-              {verticals.length === 0 && (
-                <p className="text-xs text-muted-foreground/60">No verticals assigned — go to Structure tab to add one</p>
-              )}
+              <p className="text-sm text-muted-foreground">Select a vertical above to fill in vertical-specific demand gen strategy</p>
+              <p className="text-xs text-muted-foreground/60">
+                {verticals.length === 0
+                  ? 'No verticals assigned — go to Structure tab to add one'
+                  : 'Company-wide data above applies to all verticals'}
+              </p>
             </div>
           ) : !dg ? (
             <div className="flex h-32 items-center justify-center">
@@ -1409,7 +1426,6 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
           ) : (
             <>
               {([
-                ['00', <IntakeSection clientId={clientId} />],
                 ['01', <S1 dg={dg} set={set} />],
                 ['02', <S2 dg={dg} set={set} />],
                 ['03', <S3 dg={dg} set={set} />],

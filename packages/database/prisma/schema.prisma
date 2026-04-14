@@ -119,6 +119,8 @@ model Client {
   brandAttachments   ClientBrandAttachment[]
   manualUsageEntries ManualUsageEntry[]
   campaigns          Campaign[]
+  brainAttachments   ClientBrainAttachment[]
+  brainContext       String?  @db.Text @map("brain_context")
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -1248,6 +1250,7 @@ model ClientBrandAttachment {
   // pending | processing | ready | failed
   summaryStatus     String   @default("pending") @map("summary_status")
   summary           String?  @map("summary") @db.Text
+  uploadedByUserId  String?  @map("uploaded_by_user_id")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
@@ -1336,6 +1339,39 @@ model CampaignWorkflow {
 }
 
 // ─────────────────────────────────────────────
+// ClientBrainAttachment — per-file brain docs for a client (client-level brain)
+// ─────────────────────────────────────────────
+model ClientBrainAttachment {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clientId   String   @map("client_id")
+  filename   String
+  storageKey String?  @map("storage_key")
+  sourceUrl  String?  @map("source_url")
+  mimeType   String   @default("") @map("mime_type")
+  sizeBytes  Int      @default(0) @map("size_bytes")
+  extractionStatus String  @default("pending") @map("extraction_status")
+  extractedText    String? @db.Text @map("extracted_text")
+  summaryStatus    String  @default("pending") @map("summary_status")
+  summary          String? @db.Text
+  // client | campaign | gtm_framework | demand_gen | branding
+  source              String   @default("client")
+  verticalId          String?  @map("vertical_id")
+  campaignId          String?  @map("campaign_id")
+  campaignScopedOnly  Boolean  @default(false) @map("campaign_scoped_only")
+  uploadedByUserId    String?  @map("uploaded_by_user_id")
+  // file | url | note
+  uploadMethod        String   @default("file") @map("upload_method")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([agencyId])
+  @@index([source])
+  @@map("client_brain_attachments")
+}
+
 // CampaignBrainAttachment — per-file brain docs for a campaign
 // ─────────────────────────────────────────────
 model CampaignBrainAttachment {
@@ -1353,6 +1389,9 @@ model CampaignBrainAttachment {
   // pending | processing | ready | failed
   summaryStatus    String  @default("pending") @map("summary_status")
   summary          String? @db.Text
+  // when true, this doc is only injected for this campaign's runs (experimental content)
+  campaignScopedOnly Boolean @default(false) @map("campaign_scoped_only")
+  uploadedByUserId   String? @map("uploaded_by_user_id")
   createdAt  DateTime @default(now()) @map("created_at")
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
