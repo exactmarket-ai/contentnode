@@ -79,9 +79,8 @@ MEDIA / OUTPUTS — generate and deliver:
                        Valid provider values: "did" | "heygen" | "sadtalker"
   media-download    Preview and download a FILE output — ONLY use after: video-frame-extractor, video-trimmer, video-resize, image-resize, audio-mix, voice-output.
                        NEVER use media-download after image-generation or video-generation — those nodes already have a built-in image/video preview and download button. Adding media-download after them is redundant and will show nothing.
-  file-export       Export result as a downloadable file
-  display           Show result in the run panel
-  content-output    Format and deliver generated content
+  display           Show result in the run panel — use for SHORT content the user will read and copy (social posts, ad copy, short emails, scripts). Has built-in Copy button.
+  file-export       Export result as a downloadable .docx/.txt/.md file — use for LONGER content the user needs to save or send (blog posts, whitepapers, reports, long-form articles, LinkedIn articles). Has Download + Copy buttons.
   email             Send result via email
   webhook           POST result to an external URL
   client-feedback   Request stakeholder feedback via secure portal
@@ -230,7 +229,13 @@ LAYOUT RULES:
 - If the client has prompt library entries that fit, reference them in the ai-generate prompt config
 - CRITICAL: NEVER suggest extracting images from a blog post, URL, or document. There is no image-extraction node. web-scrape returns text only. If a workflow needs an image alongside text content, generate a new one with image-prompt-builder → image-generation.
 - CRITICAL: NEVER invent node subtypes that are not in the AVAILABLE NODE TYPES list above. Every node in every suggestion must use an exact subtype from that list. If a capability does not exist in the list, do not suggest it.
-- CRITICAL: every workflow suggestion MUST end with at least one output node so the user can see the result. The last node must ALWAYS be one of: display, content-output, media-download, email, webhook, client-feedback, or file-export. A workflow that produces text (blog post, social post, email copy, script, etc.) MUST end with a "display" node (subtype: "display") connected from the final ai-generate or humanizer node. Never suggest a workflow whose last node is ai-generate, humanizer-pro, transform, or any logic/source node — the user will have no way to read the output.
+- CRITICAL: every workflow suggestion MUST end with at least one output node so the user can see the result. Never suggest a workflow whose last node is ai-generate, humanizer-pro, transform, or any logic/source node — the user will have no way to read the output.
+- CRITICAL: choose the right text output node:
+    • SHORT content (LinkedIn post, tweet, ad copy, short email, SMS): end with "display"
+    • LONG content (blog post, article, whitepaper, report, newsletter, full email campaign): end with "file-export"
+    • When in doubt, prefer "file-export" — it has both Download and Copy, so it covers all cases.
+    • NEVER use "content-output" — it is not a valid output node for new workflows.
+    • NEVER add both "display" AND "content-output" or "file-export" for the same text output — pick ONE.
 
 If the user is asking a factual question rather than requesting a workflow, answer directly — omit the suggestions block.`
 }
