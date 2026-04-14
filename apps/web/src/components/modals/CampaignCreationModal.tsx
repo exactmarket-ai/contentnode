@@ -10,12 +10,22 @@ import { WORKFLOW_TEMPLATES } from '@/lib/workflowTemplates'
 
 // ─── Campaign templates ───────────────────────────────────────────────────────
 
+interface SetupField {
+  nodeId: string
+  field: string
+  label: string
+  placeholder: string
+  hint?: string
+  type?: 'text' | 'textarea'
+}
+
 interface TemplateSlot {
   role: string
   label: string
   keywords: string[]
   description: string
   workflowTemplateId?: string  // ID from WORKFLOW_TEMPLATES to auto-create if no match
+  setupFields?: SetupField[]   // Required node fields the user must supply before running
 }
 
 interface CampaignTemplate {
@@ -89,9 +99,35 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     bgActive: 'bg-violet-950/30',
     produces: ['Competitive battlecard', 'SEO content map', 'Audience brief'],
     slots: [
-      { role: 'research', label: 'Competitive Research', keywords: ['competitive', 'review', 'scrape', 'web', 'miner', 'intel'], description: 'Deep web + review mining',  workflowTemplateId: 'intel-competitive' },
-      { role: 'research', label: 'SEO Research',         keywords: ['seo', 'keyword', 'intent', 'content strategy'],             description: 'Keyword intent mapping',     workflowTemplateId: 'intel-seo-content-strategy' },
-      { role: 'research', label: 'Audience Research',    keywords: ['audience', 'signal', 'reddit', 'market signal'],            description: 'Reddit + social signals',    workflowTemplateId: 'intel-market-signal-brief' },
+      {
+        role: 'research', label: 'Competitive Research', keywords: ['competitive', 'review', 'scrape', 'web', 'miner', 'intel'],
+        description: 'Deep web + review mining', workflowTemplateId: 'intel-competitive',
+        setupFields: [
+          { nodeId: 'ci-reviews', field: 'companyName', label: 'Company name', placeholder: 'Acme Corp' },
+          { nodeId: 'ci-reviews', field: 'companySlug', label: 'Trustpilot company slug', placeholder: 'acme-corp', hint: 'From trustpilot.com/review/your-slug' },
+          { nodeId: 'ci-reviews', field: 'competitors', label: 'Competitor names (comma-separated)', placeholder: 'Competitor A, Competitor B' },
+          { nodeId: 'ci-scrape',  field: 'seedUrls', label: 'Competitor website URLs (one per line)', placeholder: 'https://competitor.com', type: 'textarea' },
+        ],
+      },
+      {
+        role: 'research', label: 'SEO Research', keywords: ['seo', 'keyword', 'intent', 'content strategy'],
+        description: 'Keyword intent mapping', workflowTemplateId: 'intel-seo-content-strategy',
+        setupFields: [
+          { nodeId: 'seo-keywords', field: 'topic', label: 'Topic / industry', placeholder: 'B2B project management software' },
+          { nodeId: 'seo-keywords', field: 'seedKeywords', label: 'Seed keywords (comma-separated)', placeholder: 'project management, team collaboration, task tracking' },
+          { nodeId: 'seo-audience', field: 'searchTerms', label: 'Reddit search terms (comma-separated)', placeholder: 'best project management tools, team software' },
+          { nodeId: 'seo-audience', field: 'subreddits', label: 'Subreddits (comma-separated, optional)', placeholder: 'projectmanagement, startups, productivity' },
+        ],
+      },
+      {
+        role: 'research', label: 'Audience Research', keywords: ['audience', 'signal', 'reddit', 'market signal'],
+        description: 'Reddit + social signals', workflowTemplateId: 'intel-market-signal-brief',
+        setupFields: [
+          { nodeId: 'ms-web',    field: 'seedUrls',    label: 'Industry site URLs to crawl (one per line)', placeholder: 'https://industry-publication.com\nhttps://trade-body.org', type: 'textarea' },
+          { nodeId: 'ms-reddit', field: 'searchTerms', label: 'Reddit search terms (comma-separated)', placeholder: 'your product category, your ICP job title' },
+          { nodeId: 'ms-reddit', field: 'subreddits',  label: 'Subreddits to search (comma-separated, optional)', placeholder: 'yourindustry, entrepreneur' },
+        ],
+      },
     ],
   },
   {
@@ -187,6 +223,8 @@ export function CampaignCreationModal({
   const [slotAssignments, setSlotAssignments] = useState<Record<number, string>>({})
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<string[]>(preselectedWorkflowIds)
   const [creatingSlots, setCreatingSlots] = useState<Record<number, boolean>>({})
+  // setupValues: slot index → nodeId → field → value
+  const [setupValues, setSetupValues] = useState<Record<number, Record<string, Record<string, string>>>>({})
 
   useEffect(() => {
     apiFetch(`/api/v1/workflows?clientId=${clientId}`)
@@ -231,14 +269,31 @@ export function CampaignCreationModal({
       const { data: wf } = await wRes.json()
       if (!wRes.ok || !wf?.id) throw new Error('Failed to create workflow')
 
-      // 2. Apply template nodes + edges via the graph endpoint
+      // 2. Inject user-supplied setup values into template nodes before saving
+      const slotSetup = setupValues[slotIndex] ?? {}
+      const patchedNodes = tpl.nodes.map((node) => {
+        const nodeOverrides = slotSetup[node.id]
+        if (!nodeOverrides) return node
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            config: {
+              ...node.data.config,
+              ...nodeOverrides,
+            },
+          },
+        }
+      })
+
+      // 3. Apply template nodes + edges via the graph endpoint
       await apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodes: tpl.nodes, edges: tpl.edges }),
+        body: JSON.stringify({ nodes: patchedNodes, edges: tpl.edges }),
       })
 
-      // 3. Add new workflow to local list and assign to slot
+      // 4. Add new workflow to local list and assign to slot
       setWorkflows((prev) => [...prev, { id: wf.id, name: wf.name, status: wf.status, connectivityMode: wf.connectivityMode }])
       setSlotAssignments((prev) => ({ ...prev, [slotIndex]: wf.id }))
     } catch {
@@ -394,65 +449,126 @@ export function CampaignCreationModal({
               {selectedTemplate.id !== 'custom' && selectedTemplate.slots.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Assign Workflows</Label>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {selectedTemplate.slots.map((slot, i) => {
                       const isCreating = creatingSlots[i]
                       const assigned = slotAssignments[i]
                       const assignedWorkflow = workflows.find((w) => w.id === assigned)
+                      const needsSetup = slot.setupFields && slot.setupFields.length > 0
+                      const isUnassigned = !assigned || assigned === '__none__'
+
+                      function setSlotFieldValue(nodeId: string, field: string, value: string) {
+                        setSetupValues((prev) => ({
+                          ...prev,
+                          [i]: { ...prev[i], [nodeId]: { ...(prev[i]?.[nodeId] ?? {}), [field]: value } },
+                        }))
+                      }
+
                       return (
-                        <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/10">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium">{slot.label}</p>
-                            <p className="text-[10px] text-muted-foreground">{slot.description}</p>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {isCreating ? (
-                              <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground w-40">
-                                <Icons.Loader2 className="w-3 h-3 animate-spin" />
-                                Creating…
-                              </span>
-                            ) : (
-                              <>
-                                <Select
-                                  value={assigned ?? '__none__'}
-                                  onValueChange={(v) => setSlotAssignments((prev) => ({ ...prev, [i]: v }))}
-                                >
-                                  <SelectTrigger className="w-36 h-7 text-xs">
-                                    <SelectValue placeholder="Skip slot" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="__none__">Skip slot</SelectItem>
-                                    {workflows.map((wf) => (
-                                      <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                {slot.workflowTemplateId && (!assigned || assigned === '__none__') && (
-                                  <button
-                                    type="button"
-                                    onClick={() => createWorkflowFromTemplate(i, slot.workflowTemplateId!)}
-                                    className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 border border-emerald-800/50 rounded px-1.5 py-1 transition-colors whitespace-nowrap"
-                                    title={`Create ${slot.label} workflow from template`}
+                        <div key={i} className="rounded-lg border border-border bg-muted/10 overflow-hidden">
+                          {/* Slot header row */}
+                          <div className="flex items-center gap-3 px-3 py-2.5">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium">{slot.label}</p>
+                              <p className="text-[10px] text-muted-foreground">{slot.description}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {isCreating ? (
+                                <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground w-40">
+                                  <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                                  Creating…
+                                </span>
+                              ) : (
+                                <>
+                                  <Select
+                                    value={assigned ?? '__none__'}
+                                    onValueChange={(v) => setSlotAssignments((prev) => ({ ...prev, [i]: v }))}
                                   >
-                                    <Icons.Plus className="w-3 h-3" />
-                                    Create
-                                  </button>
-                                )}
-                                {assigned && assigned !== '__none__' && assignedWorkflow && (
-                                  <a
-                                    href={`/workflows/${assigned}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                    title="Open workflow"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <Icons.ExternalLink className="w-3 h-3" />
-                                  </a>
-                                )}
-                              </>
-                            )}
+                                    <SelectTrigger className="w-36 h-7 text-xs">
+                                      <SelectValue placeholder="Skip slot" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">Skip slot</SelectItem>
+                                      {workflows.map((wf) => (
+                                        <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  {slot.workflowTemplateId && isUnassigned && (
+                                    <button
+                                      type="button"
+                                      onClick={() => createWorkflowFromTemplate(i, slot.workflowTemplateId!)}
+                                      className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 border border-emerald-800/50 rounded px-1.5 py-1 transition-colors whitespace-nowrap"
+                                      title={`Create ${slot.label} workflow from template`}
+                                    >
+                                      <Icons.Plus className="w-3 h-3" />
+                                      Create
+                                    </button>
+                                  )}
+                                  {!isUnassigned && assignedWorkflow && (
+                                    <a
+                                      href={`/workflows/${assigned}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-muted-foreground hover:text-foreground transition-colors"
+                                      title="Open workflow"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <Icons.ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
+
+                          {/* Setup fields — shown before the workflow is created */}
+                          {needsSetup && isUnassigned && (
+                            <div className="border-t border-amber-800/30 bg-amber-950/20 px-3 py-3 space-y-2.5">
+                              <p className="text-[10px] text-amber-300 font-medium flex items-center gap-1.5">
+                                <Icons.Settings className="w-3 h-3" />
+                                Configure before creating — these values will be baked into the workflow
+                              </p>
+                              {slot.setupFields!.map((sf) => (
+                                <div key={`${sf.nodeId}-${sf.field}`} className="space-y-1">
+                                  <label className="text-[10px] text-muted-foreground">{sf.label}</label>
+                                  {sf.type === 'textarea' ? (
+                                    <textarea
+                                      className="w-full text-xs bg-background/60 border border-border/60 rounded px-2 py-1.5 resize-none outline-none focus:border-amber-600/50 transition-colors placeholder:text-muted-foreground/40"
+                                      rows={2}
+                                      placeholder={sf.placeholder}
+                                      value={setupValues[i]?.[sf.nodeId]?.[sf.field] ?? ''}
+                                      onChange={(e) => setSlotFieldValue(sf.nodeId, sf.field, e.target.value)}
+                                    />
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      className="w-full text-xs bg-background/60 border border-border/60 rounded px-2 py-1.5 outline-none focus:border-amber-600/50 transition-colors placeholder:text-muted-foreground/40"
+                                      placeholder={sf.placeholder}
+                                      value={setupValues[i]?.[sf.nodeId]?.[sf.field] ?? ''}
+                                      onChange={(e) => setSlotFieldValue(sf.nodeId, sf.field, e.target.value)}
+                                    />
+                                  )}
+                                  {sf.hint && (
+                                    <p className="text-[9px] text-muted-foreground/60">{sf.hint}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Post-creation confirmation */}
+                          {needsSetup && !isUnassigned && assignedWorkflow && (
+                            <div className="border-t border-emerald-800/30 bg-emerald-950/20 px-3 py-2 flex items-center gap-2">
+                              <Icons.CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" />
+                              <p className="text-[10px] text-emerald-300 flex-1">
+                                Created with your settings.{' '}
+                                <a href={`/workflows/${assigned}`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-emerald-200">
+                                  Open to verify →
+                                </a>
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )
                     })}

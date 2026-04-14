@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -184,12 +184,46 @@ function CampaignCard({
   const [loadingBundle, setLoadingBundle] = useState(false)
   const [runResults, setRunResults] = useState<Array<{ workflowName: string; runId: string }> | null>(null)
 
+  // Live polling
+  const [liveWorkflows, setLiveWorkflows] = useState(campaign.workflows)
+  const [polling, setPolling] = useState(false)
+  const [pollCount, setPollCount] = useState(0)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Sync live workflows when campaign prop updates (e.g. on full refresh)
+  useEffect(() => { setLiveWorkflows(campaign.workflows) }, [campaign.workflows])
+
+  useEffect(() => {
+    if (!polling) { if (pollRef.current) clearInterval(pollRef.current); return }
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/api/v1/campaigns/${campaign.id}`)
+        const { data } = await res.json()
+        if (data?.workflows) {
+          setLiveWorkflows(data.workflows)
+          const allTerminal = data.workflows.every((cw: CampaignWorkflowEntry) =>
+            cw.latestRun && ['completed', 'failed', 'cancelled'].includes(cw.latestRun.status)
+          )
+          if (allTerminal) { setPolling(false); onRefresh() }
+        }
+      } catch { /* keep polling */ }
+      setPollCount((c) => {
+        if (c >= 119) { setPolling(false); return 0 }
+        return c + 1
+      })
+    }, 5000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [polling]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const goalCfg = GOAL_CONFIG[campaign.goal] ?? GOAL_CONFIG.custom
   const GoalIcon = Icons[goalCfg.icon] as React.ElementType
 
-  const completedWorkflows = campaign.workflows.filter(
+  const completedWorkflows = liveWorkflows.filter(
     (cw) => cw.latestRun?.status === 'completed'
   ).length
+  const failedWorkflows   = liveWorkflows.filter((cw) => cw.latestRun?.status === 'failed')
+  const pendingWorkflows  = liveWorkflows.filter((cw) => cw.latestRun?.status === 'pending')
+  const workerStuck = polling && pollCount >= 3 && pendingWorkflows.length === liveWorkflows.filter(cw => cw.latestRun).length && failedWorkflows.length === 0
 
   async function handleRunAll() {
     setRunning(true)
@@ -197,6 +231,9 @@ function CampaignCard({
       const res = await apiFetch(`/api/v1/campaigns/${campaign.id}/run`, { method: 'POST' })
       const { data } = await res.json()
       setRunResults(data.runs)
+      setExpanded(true)
+      setPollCount(0)
+      setPolling(true)
       onRefresh()
     } catch {
       // error handled gracefully
@@ -289,22 +326,25 @@ function CampaignCard({
             <span className="text-[10px] text-muted-foreground">{goalCfg.label}</span>
             {dateRange && <span className="text-[10px] text-muted-foreground">{dateRange}</span>}
             <span className="text-[10px] text-muted-foreground">
-              {completedWorkflows}/{campaign.workflows.length} workflows done
+              {completedWorkflows}/{liveWorkflows.length} workflows done
             </span>
           </div>
         </div>
 
         {/* Progress bar */}
-        {campaign.workflows.length > 0 && (
+        {liveWorkflows.length > 0 && (
           <div className="hidden sm:flex items-center gap-2 w-32 shrink-0">
             <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-500 transition-all"
-                style={{ width: `${(completedWorkflows / campaign.workflows.length) * 100}%` }}
+                className={cn(
+                  'h-full transition-all',
+                  failedWorkflows.length > 0 ? 'bg-red-500' : polling ? 'bg-blue-500' : 'bg-emerald-500'
+                )}
+                style={{ width: `${(completedWorkflows / liveWorkflows.length) * 100}%` }}
               />
             </div>
             <span className="text-[10px] text-muted-foreground shrink-0">
-              {Math.round((completedWorkflows / campaign.workflows.length) * 100)}%
+              {Math.round((completedWorkflows / liveWorkflows.length) * 100)}%
             </span>
           </div>
         )}
@@ -317,10 +357,10 @@ function CampaignCard({
         <div className="border-t border-border">
           {/* Workflow list */}
           <div className="px-4 py-3 space-y-1.5">
-            {campaign.workflows.length === 0 ? (
+            {liveWorkflows.length === 0 ? (
               <p className="text-xs text-muted-foreground py-1">No workflows added to this campaign yet.</p>
             ) : (
-              campaign.workflows.map((cw) => (
+              liveWorkflows.map((cw) => (
                 <div
                   key={cw.id}
                   className="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-muted/20 group"
@@ -348,6 +388,54 @@ function CampaignCard({
               ))
             )}
           </div>
+
+          {/* Worker stuck warning */}
+          {workerStuck && (
+            <div className="mx-4 mb-3 p-3 rounded-lg bg-amber-950/30 border border-amber-700/40 flex items-start gap-2.5">
+              <Icons.AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-amber-300 font-medium">Runs queued but not starting</p>
+                <p className="text-[11px] text-amber-200/70 mt-0.5">
+                  The runs were created but the worker hasn't picked them up yet. Check that your <strong>workflow worker</strong> service is running on Railway and is connected to the same Redis instance.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Failure panel */}
+          {failedWorkflows.length > 0 && !polling && (
+            <div className="mx-4 mb-3 p-3 rounded-lg bg-red-950/30 border border-red-700/40 space-y-2">
+              <div className="flex items-center gap-2">
+                <Icons.XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                <p className="text-xs text-red-300 font-medium">
+                  {failedWorkflows.length} workflow{failedWorkflows.length > 1 ? 's' : ''} failed
+                </p>
+              </div>
+              <div className="space-y-1">
+                {failedWorkflows.map((cw) => (
+                  <div key={cw.id} className="flex items-center gap-2">
+                    <span className="text-[11px] text-red-200/80">{cw.workflow.name}</span>
+                    <a
+                      href={`/workflows/${cw.workflowId}`}
+                      className="text-[10px] text-red-400/70 hover:text-red-300 underline underline-offset-2"
+                    >
+                      Open workflow →
+                    </a>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-red-800/40 pt-2 space-y-1">
+                <p className="text-[10px] text-red-200/60 font-medium">Next steps:</p>
+                <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-red-200/50">
+                  <li>Open the failed workflow and check which node is red</li>
+                  <li>Make sure Client Brain sections are filled in for this client</li>
+                  <li>Verify <code className="bg-red-900/40 px-1 rounded">ANTHROPIC_API_KEY</code> is set in your worker env vars on Railway</li>
+                  <li>For intelligence nodes: confirm required fields (URLs, keywords) are configured</li>
+                  <li>Re-run the individual workflow to test before running the campaign again</li>
+                </ol>
+              </div>
+            </div>
+          )}
 
           {/* Run feedback */}
           {runResults && (
@@ -504,7 +592,7 @@ function CampaignCard({
               size="sm"
               className="h-7 text-xs gap-1.5"
               onClick={handleRunAll}
-              disabled={running || campaign.workflows.length === 0}
+              disabled={running || polling || liveWorkflows.length === 0}
             >
               {running
                 ? <Icons.Loader2 className="w-3 h-3 animate-spin" />
@@ -512,6 +600,13 @@ function CampaignCard({
               }
               Run All
             </Button>
+
+            {polling && (
+              <span className="flex items-center gap-1.5 text-[10px] text-blue-400">
+                <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                Checking status…
+              </span>
+            )}
 
             <Button
               variant="outline"
