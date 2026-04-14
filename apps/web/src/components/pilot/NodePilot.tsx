@@ -100,7 +100,7 @@ function MessageBubble({
                     onClick={() => onApply?.(s)}
                     className="flex-1 rounded-md bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
                   >
-                    Add to Canvas
+                    Add workflow
                   </button>
                 </div>
               </div>
