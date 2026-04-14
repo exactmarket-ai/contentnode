@@ -211,7 +211,7 @@ export function CampaignCreationModal({
         selectedTemplate && selectedTemplate.id !== 'custom'
           ? selectedTemplate.slots
               .map((slot, i) => ({ workflowId: slotAssignments[i] ?? '', role: slot.role, order: i }))
-              .filter((w) => w.workflowId)
+              .filter((w) => w.workflowId && w.workflowId !== '__none__')
           : selectedWorkflowIds.map((id, i) => ({ workflowId: id, role: 'custom', order: i }))
 
       for (const w of workflowsToAdd) {
@@ -343,7 +343,7 @@ export function CampaignCreationModal({
                             <SelectValue placeholder="Skip slot" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Skip slot</SelectItem>
+                            <SelectItem value="__none__">Skip slot</SelectItem>
                             {workflows.map((wf) => (
                               <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
                             ))}
