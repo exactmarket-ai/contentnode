@@ -102,6 +102,7 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     borderActive: 'border-violet-600',
     bgActive: 'bg-violet-950/30',
     produces: ['Competitive battlecard', 'SEO content map', 'Audience brief'],
+    requiresVertical: true,
     slots: [
       {
         role: 'research', label: 'Competitive Research', keywords: ['competitive', 'review', 'scrape', 'web', 'miner', 'intel'],
@@ -355,12 +356,20 @@ export function CampaignCreationModal({
       const { data: campaign, error: err } = await res.json()
       if (!res.ok) throw new Error(err ?? 'Failed to create campaign')
 
-      const workflowsToAdd =
+      const slotWorkflows =
         selectedTemplate && selectedTemplate.id !== 'custom'
           ? selectedTemplate.slots
               .map((slot, i) => ({ workflowId: slotAssignments[i] ?? '', role: slot.role, order: i }))
               .filter((w) => w.workflowId && w.workflowId !== '__none__')
-          : selectedWorkflowIds.map((id, i) => ({ workflowId: id, role: 'custom', order: i }))
+          : []
+      const slottedIds = new Set(slotWorkflows.map((w) => w.workflowId))
+      const extraWorkflows = selectedWorkflowIds
+        .filter((id) => !slottedIds.has(id))
+        .map((id, i) => ({ workflowId: id, role: 'custom', order: slotWorkflows.length + i }))
+      const workflowsToAdd =
+        selectedTemplate?.id === 'custom'
+          ? selectedWorkflowIds.map((id, i) => ({ workflowId: id, role: 'custom', order: i }))
+          : [...slotWorkflows, ...extraWorkflows]
 
       for (const w of workflowsToAdd) {
         await apiFetch(`/api/v1/campaigns/${campaign.id}/workflows`, {
@@ -652,8 +661,8 @@ export function CampaignCreationModal({
                 </div>
               )}
 
-              {/* Custom workflow multi-select */}
-              {selectedTemplate.id === 'custom' && (
+              {/* Workflow multi-select — full list for custom, extras for templates */}
+              {selectedTemplate.id === 'custom' ? (
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Add Workflows (optional)</Label>
                   {workflows.length === 0 ? (
@@ -687,6 +696,44 @@ export function CampaignCreationModal({
                     </div>
                   )}
                 </div>
+              ) : (
+                /* Extra workflows for template-based campaigns */
+                (() => {
+                  const slottedIds = new Set(Object.values(slotAssignments).filter(Boolean))
+                  const available = workflows.filter((wf) => !slottedIds.has(wf.id))
+                  if (available.length === 0) return null
+                  return (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Add Extra Workflows (optional)</Label>
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                        {available.map((wf) => {
+                          const selected = selectedWorkflowIds.includes(wf.id)
+                          return (
+                            <button
+                              key={wf.id}
+                              type="button"
+                              onClick={() => toggleWorkflow(wf.id)}
+                              className={cn(
+                                'flex items-center gap-2.5 w-full px-3 py-2 rounded border text-left text-xs transition-colors',
+                                selected
+                                  ? 'bg-emerald-950/40 border-emerald-700 text-foreground'
+                                  : 'border-border text-muted-foreground hover:text-foreground'
+                              )}
+                            >
+                              <span className={cn('w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0', selected ? 'bg-emerald-500 border-emerald-500' : 'border-muted-foreground')}>
+                                {selected && <Icons.Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                              </span>
+                              <span className="font-medium truncate flex-1">{wf.name}</span>
+                              <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', wf.connectivityMode === 'offline' ? 'bg-amber-900/40 text-amber-400' : 'bg-emerald-900/30 text-emerald-400')}>
+                                {wf.connectivityMode}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()
               )}
 
               {error && <p className="text-xs text-red-400">{error}</p>}

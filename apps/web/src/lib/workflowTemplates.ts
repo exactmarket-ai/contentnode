@@ -1841,9 +1841,27 @@ Vary the following across the 10 variants:
         },
       },
       {
+        id: 'ci-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 520 },
+        data: {
+          label: 'Client Context',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '',
+            verticalName: '',
+            gtmSections: ['02', '08', '12', '14'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S2', 'S7'],
+            includeBrand: false,
+          },
+        },
+      },
+      {
         id: 'ci-synthesize',
         type: 'logic',
-        position: { x: 420, y: 220 },
+        position: { x: 420, y: 280 },
         data: {
           label: 'Compile Intelligence Brief',
           subtype: 'ai-generate',
@@ -1851,24 +1869,27 @@ Vary the following across the 10 variants:
             subtype: 'ai-generate',
             provider: 'anthropic',
             model: 'claude-sonnet-4-5',
-            prompt: `You are a competitive intelligence analyst. Using the review mining and website analysis provided, create a comprehensive Competitive Intelligence Brief:
+            prompt: `You are a competitive intelligence analyst. Using the review mining, website analysis, and client context provided, create a comprehensive Competitive Intelligence Brief tailored to this client's positioning and ICP:
 
 ## Executive Summary
-One paragraph on the competitive landscape and our client's position.
+One paragraph on the competitive landscape and our client's position relative to their ICP and messaging framework.
 
 ## Battlecard
 | Factor | Our Client | Competitor 1 | Competitor 2 |
 |--------|-----------|--------------|--------------|
-[Fill based on data]
+[Fill based on data — anchor "Our Client" column to the client's actual positioning and value props]
 
 ## Messaging Opportunities
-White space in the market — claims we can own based on competitor gaps.
+White space in the market — claims we can own based on competitor gaps and our client's unique positioning.
 
 ## Proof Point Priorities
-Which customer outcomes and metrics to lead with, based on what competitors aren't saying.
+Which customer outcomes and metrics to lead with, based on what competitors aren't saying and what the ICP cares most about.
 
 ## Objection Playbook
-Top 5 objections buyers raise (from reviews) with our recommended counters.
+Top 5 objections buyers raise (from reviews) with counters grounded in the client's GTM messaging.
+
+## Vertical-Specific Signals
+Any competitive dynamics, language patterns, or buyer behaviours specific to this client's vertical.
 
 Format for use by sales and marketing teams.`,
           },
@@ -1886,9 +1907,10 @@ Format for use by sales and marketing teams.`,
       },
     ],
     edges: [
-      { id: 'e-ci-rev-synth',   source: 'ci-reviews',   target: 'ci-synthesize' },
-      { id: 'e-ci-scrape-synth', source: 'ci-scrape',   target: 'ci-synthesize' },
-      { id: 'e-ci-synth-out',   source: 'ci-synthesize', target: 'ci-out' },
+      { id: 'e-ci-rev-synth',    source: 'ci-reviews',    target: 'ci-synthesize' },
+      { id: 'e-ci-scrape-synth', source: 'ci-scrape',     target: 'ci-synthesize' },
+      { id: 'e-ci-brain-synth',  source: 'ci-brain',      target: 'ci-synthesize' },
+      { id: 'e-ci-synth-out',    source: 'ci-synthesize', target: 'ci-out' },
     ],
   },
 
@@ -1935,9 +1957,27 @@ Format for use by sales and marketing teams.`,
         },
       },
       {
+        id: 'seo-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 520 },
+        data: {
+          label: 'Client Context',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '',
+            verticalName: '',
+            gtmSections: ['02', '08', '12'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S2', 'S3', 'S7'],
+            includeBrand: false,
+          },
+        },
+      },
+      {
         id: 'seo-calendar',
         type: 'logic',
-        position: { x: 420, y: 220 },
+        position: { x: 420, y: 280 },
         data: {
           label: 'Build Content Calendar',
           subtype: 'ai-generate',
@@ -1945,12 +1985,12 @@ Format for use by sales and marketing teams.`,
             subtype: 'ai-generate',
             provider: 'anthropic',
             model: 'claude-sonnet-4-5',
-            prompt: `You are a content strategist. Using the keyword intent data and audience signal research provided, build a 12-piece content calendar:
+            prompt: `You are a content strategist. Using the keyword intent data, audience signal research, and client context provided, build a 12-piece content calendar tailored to this client's ICP, positioning, and vertical:
 
 ## Content Strategy Brief
 
 ### Thesis
-One sentence on what this content program is designed to do.
+One sentence on what this content program is designed to do — anchored to the client's demand gen goals and ICP.
 
 ### Content Calendar (12 pieces)
 
@@ -1959,13 +1999,16 @@ For each piece:
 **Format:** [Blog post / Video / Landing page / Email / LinkedIn]
 **Target keyword:** [Primary keyword + volume tier]
 **Funnel stage:** [Awareness / Consideration / Decision]
-**Angle:** [What makes this worth reading — the hook]
+**Angle:** [What makes this worth reading — hook grounded in client positioning or ICP pain]
 **Audience need:** [The question or pain from Reddit this answers]
-**CTA:** [What the reader should do next]
-**Priority:** [High / Medium — based on volume + audience signal strength]
+**CTA:** [What the reader should do next — aligned to the client's conversion goal]
+**Priority:** [High / Medium — based on volume + audience signal strength + vertical fit]
 
 ### Quick Win Picks
-Top 3 pieces to publish first and why.
+Top 3 pieces to publish first and why — considering the client's vertical positioning and GTM stage.
+
+### Vertical Opportunities
+Any keyword clusters or content angles that are specifically strong for this client's vertical and competitive position.
 
 Format as a brief the content team can execute immediately.`,
           },
@@ -1983,9 +2026,10 @@ Format as a brief the content team can execute immediately.`,
       },
     ],
     edges: [
-      { id: 'e-seo-kw-cal',  source: 'seo-keywords', target: 'seo-calendar' },
-      { id: 'e-seo-aud-cal', source: 'seo-audience',  target: 'seo-calendar' },
-      { id: 'e-seo-cal-out', source: 'seo-calendar',  target: 'seo-out' },
+      { id: 'e-seo-kw-cal',    source: 'seo-keywords', target: 'seo-calendar' },
+      { id: 'e-seo-aud-cal',   source: 'seo-audience',  target: 'seo-calendar' },
+      { id: 'e-seo-brain-cal', source: 'seo-brain',     target: 'seo-calendar' },
+      { id: 'e-seo-cal-out',   source: 'seo-calendar',  target: 'seo-out' },
     ],
   },
 
@@ -2045,7 +2089,7 @@ Format as a brief the content team can execute immediately.`,
             verticalName: '',
             gtmSections: ['02', '08', '12'],
             dgBaseSections: ['B1'],
-            dgVertSections: ['S2', 'S3'],
+            dgVertSections: ['S2', 'S3', 'S7'],
             includeBrand: false,
           },
         },
@@ -2061,28 +2105,32 @@ Format as a brief the content team can execute immediately.`,
             subtype: 'ai-generate',
             provider: 'anthropic',
             model: 'claude-sonnet-4-5',
-            prompt: `You are a demand generation strategist. Using the Reddit audience signals, industry research, and client context provided, produce a Market Signal Intelligence Brief:
+            prompt: `You are a demand generation strategist. Using the Reddit audience signals, industry research, and client context provided, produce a Market Signal Intelligence Brief tailored to this client's vertical, ICP, and positioning:
 
 ## Executive Summary (3 sentences max)
+Framed around what this means for this specific client and their market position.
 
 ## Audience Signals
-What the target audience is actually saying, worrying about, and looking for — in their own words.
+What the target audience is actually saying, worrying about, and looking for — in their own words. Flag any language that aligns with or contradicts the client's current messaging.
 
 ## External Market Intelligence
-Trends, stats, and dynamics from the industry research.
+Trends, stats, and dynamics from the industry research relevant to this client's vertical.
+
+## Vertical-Specific Signals
+Market dynamics, buyer behaviours, or terminology patterns specific to this client's vertical that should inform demand gen strategy.
 
 ## Demand Gen Opportunities
 5 specific opportunities to capture demand based on the signals above. For each:
 - The opportunity
 - The signal that surfaced it
 - The channel/format to capture it
-- A content angle or hook to lead with
+- A content angle or hook to lead with (grounded in the client's ICP and positioning)
 
 ## Vocabulary for Messaging
-10–15 phrases to use (and 5 to avoid) based on audience language.
+10–15 phrases to use (and 5 to avoid) based on audience language — filtered for fit with the client's voice and vertical.
 
 ## Recommended Next Actions
-3 immediate actions for the demand gen program.
+3 immediate actions for the demand gen program aligned to the client's current GTM stage.
 
 Write for a marketing director to review with their team.`,
           },
