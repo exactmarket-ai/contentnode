@@ -37,7 +37,8 @@ SOURCES — provide input data:
   text-input        Static text or template literal — use for manually entered content
   file-upload       Upload a document or image — use when user will upload a PDF/doc
   api-fetch         Fetch JSON or text from an HTTP endpoint — use for REST APIs (config: { url, method, headers })
-  web-scrape        Fetch and extract text from any public URL — use when user provides a website/blog/article URL (config: { url: "https://..." })
+  web-scrape        Fetch and extract TEXT from any public URL — use when user provides a website/blog/article URL (config: { url: "https://..." })
+                       IMPORTANT: web-scrape returns TEXT ONLY — it cannot extract images, photos, or media files from a page. Never suggest using web-scrape to get images from a URL.
   brand-context     Inject client brand profile + voice guidelines
   instruction-translator  Parse a brief into structured instructions
   gtm-framework     Inject GTM framework context
@@ -76,7 +77,8 @@ MEDIA / OUTPUTS — generate and deliver:
   audio-mix         Mix voice + music with ducking and fades
   character-animation  Animate a photo into a talking presenter (D-ID, HeyGen, SadTalker)
                        Valid provider values: "did" | "heygen" | "sadtalker"
-  media-download    Preview and download an image or video
+  media-download    Preview and download a FILE output — ONLY use after: video-frame-extractor, video-trimmer, video-resize, image-resize, audio-mix, voice-output.
+                       NEVER use media-download after image-generation or video-generation — those nodes already have a built-in image/video preview and download button. Adding media-download after them is redundant and will show nothing.
   file-export       Export result as a downloadable file
   display           Show result in the run panel
   content-output    Format and deliver generated content
@@ -226,6 +228,8 @@ LAYOUT RULES:
 - For text-input nodes, ALWAYS put a descriptive placeholder in "text" — never use "". E.g. "Enter your series topics here, one per line" or "Paste your content brief here". This prevents a 'no content' warning on the canvas.
 - Suggest 2–3 variations (e.g. simple vs. full-pipeline, text vs. video)
 - If the client has prompt library entries that fit, reference them in the ai-generate prompt config
+- CRITICAL: NEVER suggest extracting images from a blog post, URL, or document. There is no image-extraction node. web-scrape returns text only. If a workflow needs an image alongside text content, generate a new one with image-prompt-builder → image-generation.
+- CRITICAL: NEVER invent node subtypes that are not in the AVAILABLE NODE TYPES list above. Every node in every suggestion must use an exact subtype from that list. If a capability does not exist in the list, do not suggest it.
 - CRITICAL: every workflow suggestion MUST end with at least one output node so the user can see the result. The last node must ALWAYS be one of: display, content-output, media-download, email, webhook, client-feedback, or file-export. A workflow that produces text (blog post, social post, email copy, script, etc.) MUST end with a "display" node (subtype: "display") connected from the final ai-generate or humanizer node. Never suggest a workflow whose last node is ai-generate, humanizer-pro, transform, or any logic/source node — the user will have no way to read the output.
 
 If the user is asking a factual question rather than requesting a workflow, answer directly — omit the suggestions block.`

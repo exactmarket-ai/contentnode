@@ -169,7 +169,14 @@ function NodeConfigForm({
             <FileExportConfig config={config} onChange={onChange} />
           </>
         )
-      return <ContentOutputConfig config={config} onChange={onChange} />
+      // content-output also shows run output (same as display)
+      return (
+        <>
+          <DisplayNodeOutput nodeRunStatus={nodeRunStatus} />
+          <Separator />
+          <ContentOutputConfig config={config} onChange={onChange} />
+        </>
+      )
     case 'insight':
       return <InsightNodeConfig config={config} />
     case 'voice_output':

@@ -28,8 +28,17 @@ export function MediaDownloadConfig({
   onChange: (k: string, v: unknown) => void
   nodeRunStatus?: { status?: string; output?: unknown }
 }) {
-  const output = nodeRunStatus?.status === 'passed' && nodeRunStatus.output
-    ? (nodeRunStatus.output as MediaOutput)
+  const rawOutput = nodeRunStatus?.status === 'passed' && nodeRunStatus.output
+    ? (nodeRunStatus.output as Record<string, unknown>)
+    : null
+
+  // Unwrap image-generation / video-generation output shape: { assets: [{ localPath, storageKey, ... }] }
+  const output: MediaOutput | null = rawOutput
+    ? (rawOutput.localPath || rawOutput.storageKey)
+      ? (rawOutput as MediaOutput)
+      : Array.isArray(rawOutput.assets) && (rawOutput.assets as MediaOutput[]).length > 0
+        ? (rawOutput.assets as MediaOutput[])[0]
+        : null
     : null
 
   if (!output?.localPath && !output?.storageKey) {
