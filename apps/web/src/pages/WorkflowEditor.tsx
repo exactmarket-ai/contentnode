@@ -64,6 +64,10 @@ export function WorkflowEditor() {
           connectivity_mode: 'online',
           default_model_config: { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.7 },
         },
+        // Clear nodePILOT conversation so a fresh workflow gets a fresh chat
+        pilotMessages: [],
+        pilotSuggestions: [],
+        pilotLoading: false,
       })
     }
   }, [workflowId])
