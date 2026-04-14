@@ -632,11 +632,11 @@ export function CampaignCreationModal({
 
                           {/* Post-creation confirmation */}
                           {needsSetup && !isUnassigned && assignedWorkflow && (
-                            <div className="border-t border-emerald-800/30 bg-emerald-950/20 px-3 py-2 flex items-center gap-2">
-                              <Icons.CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" />
-                              <p className="text-[10px] text-emerald-300 flex-1">
+                            <div className="border-t border-border bg-muted/30 px-3 py-2 flex items-center gap-2">
+                              <Icons.CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                              <p className="text-[10px] flex-1" style={{ color: '#5f5e5a' }}>
                                 Created with your settings.{' '}
-                                <a href={`/workflows/${assigned}`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-emerald-200">
+                                <a href={`/workflows/${assigned}`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
                                   Open to verify →
                                 </a>
                               </p>
