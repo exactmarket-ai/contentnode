@@ -597,8 +597,8 @@ export function CampaignCreationModal({
 
                           {/* Setup fields — shown before the workflow is created */}
                           {needsSetup && isUnassigned && (
-                            <div className="border-t border-amber-800/30 bg-amber-950/20 px-3 py-3 space-y-2.5">
-                              <p className="text-[10px] text-amber-300 font-medium flex items-center gap-1.5">
+                            <div className="border-t border-border bg-muted/30 px-3 py-3 space-y-2.5">
+                              <p className="text-[10px] font-medium flex items-center gap-1.5" style={{ color: '#ef4444' }}>
                                 <Icons.Settings className="w-3 h-3" />
                                 Configure before creating — these values will be baked into the workflow
                               </p>
