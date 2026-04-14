@@ -130,6 +130,10 @@ export class SourceNodeExecutor extends NodeExecutor {
       }
     }
 
+    // text-input nodes with no content pass through empty string so that
+    // downstream AI nodes can still run using their own prompt + client brain.
+    if (isTextInputNode) return { output: '' }
+
     const label = ctx.nodeLabel ?? ctx.nodeId
     throw new Error(
       `"${label}": no content configured. ` +
