@@ -1,0 +1,241 @@
+import { callModel, type ModelConfig } from '@contentnode/ai'
+import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+
+const TIMEOUT_MS = 15_000
+const MODEL: ModelConfig = {
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-5',
+  api_key_ref: 'ANTHROPIC_API_KEY',
+  temperature: 0.2,
+  max_tokens: 4096,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform scrapers
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fetchHtml(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    if (!res.ok) return null
+    return res.text()
+  } catch {
+    return null
+  }
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .split('\n').map((l) => l.trim()).filter(Boolean).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/** Extract review text blocks from Trustpilot HTML (server-rendered) */
+function parseTrustpilotReviews(html: string, max: number): string[] {
+  const reviews: string[] = []
+  // Look for data-service-review patterns
+  const reviewPattern = /<p[^>]+data-service-review[^>]*>([\s\S]*?)<\/p>/gi
+  let m: RegExpExecArray | null
+  while ((m = reviewPattern.exec(html)) !== null && reviews.length < max) {
+    const text = stripHtml(m[1]).trim()
+    if (text.length > 30) reviews.push(text)
+  }
+  // Fallback: grab text from review card sections
+  if (reviews.length === 0) {
+    const cardPattern = /<section[^>]+class="[^"]*review[^"]*"[^>]*>([\s\S]*?)<\/section>/gi
+    while ((m = cardPattern.exec(html)) !== null && reviews.length < max) {
+      const text = stripHtml(m[1]).trim()
+      if (text.length > 50) reviews.push(text.slice(0, 500))
+    }
+  }
+  return reviews
+}
+
+/** Attempt to scrape a review platform page */
+async function scrapeReviewPage(
+  platform: string,
+  slug: string,
+  isCompetitor: boolean,
+  maxReviews: number,
+): Promise<{ platform: string; company: string; reviews: string[]; url: string }> {
+  const label = isCompetitor ? `${slug} (competitor)` : slug
+
+  let url = ''
+  let reviews: string[] = []
+
+  if (platform === 'trustpilot') {
+    // Trustpilot uses domain as slug (e.g., "openai.com")
+    url = `https://www.trustpilot.com/review/${slug}`
+    const html = await fetchHtml(url)
+    if (html) {
+      reviews = parseTrustpilotReviews(html, maxReviews)
+      // If no structured reviews found, grab all text and let Claude parse it
+      if (reviews.length === 0) {
+        const text = stripHtml(html)
+        // Find review-like paragraphs (>50 chars, appear after star mentions)
+        const paras = text.split('\n').filter((l) => l.length > 60 && l.length < 600)
+        reviews = paras.slice(0, maxReviews)
+      }
+    }
+  } else if (platform === 'g2') {
+    // G2 uses product slug (e.g., "salesforce-sales-cloud")
+    url = `https://www.g2.com/products/${slug}/reviews`
+    const html = await fetchHtml(url)
+    if (html) {
+      // G2 is heavy JS — extract what we can from the initial HTML
+      const text = stripHtml(html)
+      const paras = text.split('\n').filter((l) => l.length > 80 && l.length < 800)
+      reviews = paras.slice(0, maxReviews)
+    }
+  } else if (platform === 'capterra') {
+    // Capterra: e.g., "hubspot-crm"
+    url = `https://www.capterra.com/reviews/${slug}`
+    const html = await fetchHtml(url)
+    if (html) {
+      const text = stripHtml(html)
+      const paras = text.split('\n').filter((l) => l.length > 80 && l.length < 800)
+      reviews = paras.slice(0, maxReviews)
+    }
+  } else if (platform === 'custom_url') {
+    // User provides a direct review page URL
+    url = slug
+    const html = await fetchHtml(url)
+    if (html) {
+      const text = stripHtml(html)
+      const paras = text.split('\n').filter((l) => l.length > 60 && l.length < 800)
+      reviews = paras.slice(0, maxReviews)
+    }
+  }
+
+  return { platform, company: label, reviews, url }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Synthesis prompts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SYNTHESIS_PROMPTS: Record<string, string> = {
+  themes: `You are a market research analyst. Analyze the following review data and extract:
+1. **Top 5 positive themes** — what customers love most
+2. **Top 5 pain points** — recurring complaints or gaps
+3. **Contradictions** — areas where customers disagree or expectations vary
+4. **Buyer language** — exact phrases and vocabulary customers use (for messaging)
+5. **Competitor gaps** — where competitors fall short vs. the target company
+Format as a structured intelligence brief with clear headings.`,
+
+  battlecard: `You are a competitive intelligence analyst. Using this review data, build a competitive battlecard:
+**[Company] vs Competitors**
+For each section: direct quotes where possible, then strategic insight.
+1. **Our Strengths** (from target company reviews)
+2. **Competitor Weaknesses** (from competitor reviews)
+3. **Objection Handlers** (common objections + how to counter)
+4. **Proof Points** (specific metrics or outcomes mentioned in reviews)
+5. **Messaging Opportunities** (gaps in competitor messaging we can own)`,
+
+  objections: `You are a sales enablement strategist. Extract and organize sales objections from these reviews:
+For each objection:
+- The objection (exact customer language where possible)
+- How frequently it appears
+- Suggested counter-response based on what delighted customers say
+Group by: Price/ROI objections, Feature/capability objections, Implementation/support objections, Trust/credibility objections.`,
+
+  testimonials: `You are a copywriter. Extract the best testimonial material from these reviews:
+1. **Hero quotes** — powerful, specific, outcome-focused statements (5-10)
+2. **Social proof stats** — any specific numbers, percentages, time saved mentioned
+3. **Use-case spotlights** — specific problems solved with enough detail to be compelling
+4. **Trust signals** — mentions of reliability, support quality, team responsiveness
+Format for direct use in marketing copy. Include the source platform for each.`,
+
+  all: `You are a market intelligence analyst. Provide a comprehensive review analysis including:
+1. **Summary** — overall sentiment and volume context
+2. **Key themes** — top praise and pain points
+3. **Competitive landscape** — how the target compares to competitors in reviews
+4. **Buyer language** — exact vocabulary and phrases to use in messaging
+5. **Objection map** — common objections and counter-narratives
+6. **Testimonial highlights** — best quotes for marketing use
+7. **Strategic recommendations** — 3-5 actionable insights from this review data`,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Executor
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class ReviewMinerExecutor extends NodeExecutor {
+  async execute(
+    _input: unknown,
+    config: Record<string, unknown>,
+    _ctx: NodeExecutionContext,
+  ): Promise<NodeExecutionResult> {
+    const companySlug = (config.companySlug as string | undefined)?.trim() ?? ''
+    const companyName = (config.companyName as string | undefined)?.trim() ?? companySlug
+    const platforms = (config.platforms as string[]) ?? ['trustpilot']
+    const competitors = ((config.competitors as string | undefined) ?? '')
+      .split('\n').map((s) => s.trim()).filter(Boolean)
+    const maxReviews = Math.min(50, Math.max(5, (config.maxReviewsPerSource as number) ?? 20))
+    const synthesisType = (config.synthesisType as string) ?? 'themes'
+
+    if (!companySlug) throw new Error('Review Miner: company slug/URL is required')
+
+    // ── Scrape all sources in parallel ───────────────────────────────────────
+    const scrapeJobs: Array<Promise<{ platform: string; company: string; reviews: string[]; url: string }>> = []
+
+    for (const platform of platforms) {
+      scrapeJobs.push(scrapeReviewPage(platform, companySlug, false, maxReviews))
+    }
+    for (const comp of competitors) {
+      for (const platform of platforms) {
+        scrapeJobs.push(scrapeReviewPage(platform, comp, true, maxReviews))
+      }
+    }
+
+    const results = await Promise.all(scrapeJobs)
+
+    // ── Format raw data ──────────────────────────────────────────────────────
+    const sections: string[] = []
+    let totalReviews = 0
+
+    for (const r of results) {
+      if (r.reviews.length === 0) {
+        sections.push(`## ${r.platform.toUpperCase()} — ${r.company}\nSource: ${r.url}\n(No reviews extracted — site may require JS rendering or block automated access)`)
+      } else {
+        totalReviews += r.reviews.length
+        const reviewText = r.reviews.map((rev, i) => `${i + 1}. ${rev}`).join('\n')
+        sections.push(`## ${r.platform.toUpperCase()} — ${r.company}\nSource: ${r.url}\n${reviewText}`)
+      }
+    }
+
+    if (totalReviews === 0) {
+      throw new Error(
+        'Review Miner: could not extract reviews from any platform. ' +
+        'Review sites often require JavaScript rendering. ' +
+        'Try the custom_url platform with a direct page URL, or paste reviews into a Text Input node.'
+      )
+    }
+
+    const rawData = `# Review Mining: ${companyName}\nPlatforms: ${platforms.join(', ')}\n\n${sections.join('\n\n')}`
+
+    // ── Synthesize ───────────────────────────────────────────────────────────
+    const systemPrompt = SYNTHESIS_PROMPTS[synthesisType] ?? SYNTHESIS_PROMPTS.themes
+    const result = await callModel({ ...MODEL }, `${systemPrompt}\n\n${rawData}`)
+
+    return {
+      output: result.text,
+      tokensUsed: result.tokens_used,
+      modelUsed: result.model_used,
+    }
+  }
+}

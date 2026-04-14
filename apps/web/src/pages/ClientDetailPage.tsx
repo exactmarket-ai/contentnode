@@ -14,6 +14,7 @@ import { ClientFrameworkTab } from './ClientFrameworkTab'
 import { ClientBrandingTab } from './ClientBrandingTab'
 import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
+import { CampaignsTab } from './CampaignsTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -4785,7 +4786,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4862,6 +4863,7 @@ export function ClientDetailPage() {
   const TAB_LABELS: Record<Tab, string> = {
     overview:      'Overview',
     workflows:     'Workflows',
+    campaigns:     'Campaigns',
     deliverables:  'Deliverables',
     library:       'Library',
     framework:     'GTM Framework',
@@ -4999,6 +5001,7 @@ export function ClientDetailPage() {
         : <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={switchTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
+        {activeTab === 'campaigns' && <CampaignsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'library' && (
           <div className="space-y-10">

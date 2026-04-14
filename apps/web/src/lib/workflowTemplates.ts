@@ -1676,4 +1676,319 @@ Vary the following across the 10 variants:
       { id: 'e-li-write-out',   source: 'dg-li-write', target: 'dg-li-out' },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // INTELLIGENCE TOOL TEMPLATES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  {
+    id: 'intel-competitive',
+    name: 'Competitive Intelligence Pack',
+    description:
+      'Mine Trustpilot reviews for your client and their top competitors, deep-scrape competitor websites, then generate a battlecard and messaging opportunities.',
+    category: 'demand_gen',
+    icon: 'Swords',
+    nodes: [
+      {
+        id: 'ci-reviews',
+        type: 'review_miner',
+        position: { x: 80, y: 120 },
+        data: {
+          label: 'Review Mining',
+          subtype: 'review-miner',
+          config: {
+            subtype: 'review-miner',
+            companyName: '',
+            companySlug: '',
+            platforms: ['trustpilot'],
+            competitors: '',
+            maxReviewsPerSource: 20,
+            synthesisType: 'battlecard',
+          },
+        },
+      },
+      {
+        id: 'ci-scrape',
+        type: 'deep_web_scrape',
+        position: { x: 80, y: 320 },
+        data: {
+          label: 'Competitor Website Crawl',
+          subtype: 'deep-web-scrape',
+          config: {
+            subtype: 'deep-web-scrape',
+            seedUrls: '',
+            maxPages: 10,
+            linkPattern: '/about|/pricing|/features|/why',
+            stayOnDomain: true,
+            synthesisTarget: 'gtm_12',
+            synthesisInstructions: 'Focus on competitor positioning, messaging, value props, and pricing signals',
+          },
+        },
+      },
+      {
+        id: 'ci-synthesize',
+        type: 'logic',
+        position: { x: 420, y: 220 },
+        data: {
+          label: 'Compile Intelligence Brief',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-5',
+            prompt: `You are a competitive intelligence analyst. Using the review mining and website analysis provided, create a comprehensive Competitive Intelligence Brief:
+
+## Executive Summary
+One paragraph on the competitive landscape and our client's position.
+
+## Battlecard
+| Factor | Our Client | Competitor 1 | Competitor 2 |
+|--------|-----------|--------------|--------------|
+[Fill based on data]
+
+## Messaging Opportunities
+White space in the market — claims we can own based on competitor gaps.
+
+## Proof Point Priorities
+Which customer outcomes and metrics to lead with, based on what competitors aren't saying.
+
+## Objection Playbook
+Top 5 objections buyers raise (from reviews) with our recommended counters.
+
+Format for use by sales and marketing teams.`,
+          },
+        },
+      },
+      {
+        id: 'ci-out',
+        type: 'output',
+        position: { x: 740, y: 220 },
+        data: {
+          label: 'Competitive Brief',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-ci-rev-synth',   source: 'ci-reviews',   target: 'ci-synthesize' },
+      { id: 'e-ci-scrape-synth', source: 'ci-scrape',   target: 'ci-synthesize' },
+      { id: 'e-ci-synth-out',   source: 'ci-synthesize', target: 'ci-out' },
+    ],
+  },
+
+  {
+    id: 'intel-seo-content-strategy',
+    name: 'SEO Content Strategy',
+    description:
+      'Combine Reddit audience signals with keyword intent analysis to produce a prioritized content calendar with keyword clusters and topic angles.',
+    category: 'demand_gen',
+    icon: 'BarChart3',
+    nodes: [
+      {
+        id: 'seo-keywords',
+        type: 'seo_intent',
+        position: { x: 80, y: 120 },
+        data: {
+          label: 'Keyword Intent Analysis',
+          subtype: 'seo-intent',
+          config: {
+            subtype: 'seo-intent',
+            topic: '',
+            seedKeywords: '',
+            expandCount: 40,
+            dataSource: 'google_autocomplete',
+            funnelMapping: true,
+          },
+        },
+      },
+      {
+        id: 'seo-audience',
+        type: 'audience_signal',
+        position: { x: 80, y: 320 },
+        data: {
+          label: 'Audience Signal Research',
+          subtype: 'audience-signal',
+          config: {
+            subtype: 'audience-signal',
+            searchTerms: '',
+            subreddits: '',
+            maxPosts: 25,
+            minUpvotes: 5,
+            synthesisGoal: 'questions',
+          },
+        },
+      },
+      {
+        id: 'seo-calendar',
+        type: 'logic',
+        position: { x: 420, y: 220 },
+        data: {
+          label: 'Build Content Calendar',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-5',
+            prompt: `You are a content strategist. Using the keyword intent data and audience signal research provided, build a 12-piece content calendar:
+
+## Content Strategy Brief
+
+### Thesis
+One sentence on what this content program is designed to do.
+
+### Content Calendar (12 pieces)
+
+For each piece:
+**Title:** [SEO-optimized title]
+**Format:** [Blog post / Video / Landing page / Email / LinkedIn]
+**Target keyword:** [Primary keyword + volume tier]
+**Funnel stage:** [Awareness / Consideration / Decision]
+**Angle:** [What makes this worth reading — the hook]
+**Audience need:** [The question or pain from Reddit this answers]
+**CTA:** [What the reader should do next]
+**Priority:** [High / Medium — based on volume + audience signal strength]
+
+### Quick Win Picks
+Top 3 pieces to publish first and why.
+
+Format as a brief the content team can execute immediately.`,
+          },
+        },
+      },
+      {
+        id: 'seo-out',
+        type: 'output',
+        position: { x: 740, y: 220 },
+        data: {
+          label: 'Content Strategy',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-seo-kw-cal',  source: 'seo-keywords', target: 'seo-calendar' },
+      { id: 'e-seo-aud-cal', source: 'seo-audience',  target: 'seo-calendar' },
+      { id: 'e-seo-cal-out', source: 'seo-calendar',  target: 'seo-out' },
+    ],
+  },
+
+  {
+    id: 'intel-market-signal-brief',
+    name: 'Market Signal Research Brief',
+    description:
+      'Crawl industry sites and mine Reddit to produce a demand gen intelligence brief covering audience pain points, external signals, and content opportunities.',
+    category: 'demand_gen',
+    icon: 'Radar',
+    nodes: [
+      {
+        id: 'ms-reddit',
+        type: 'audience_signal',
+        position: { x: 80, y: 80 },
+        data: {
+          label: 'Reddit Signal Mining',
+          subtype: 'audience-signal',
+          config: {
+            subtype: 'audience-signal',
+            searchTerms: '',
+            subreddits: '',
+            maxPosts: 30,
+            minUpvotes: 10,
+            synthesisGoal: 'all',
+          },
+        },
+      },
+      {
+        id: 'ms-web',
+        type: 'deep_web_scrape',
+        position: { x: 80, y: 280 },
+        data: {
+          label: 'Industry Site Crawl',
+          subtype: 'deep-web-scrape',
+          config: {
+            subtype: 'deep-web-scrape',
+            seedUrls: '',
+            maxPages: 12,
+            linkPattern: '',
+            stayOnDomain: true,
+            synthesisTarget: 'dg_s7',
+            synthesisInstructions: 'Extract market trends, statistics, and buyer signals relevant to demand generation',
+          },
+        },
+      },
+      {
+        id: 'ms-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 480 },
+        data: {
+          label: 'Client Context',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '',
+            verticalName: '',
+            gtmSections: ['02', '08', '12'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S2', 'S3'],
+            includeBrand: false,
+          },
+        },
+      },
+      {
+        id: 'ms-brief',
+        type: 'logic',
+        position: { x: 440, y: 280 },
+        data: {
+          label: 'Compile Demand Gen Brief',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-5',
+            prompt: `You are a demand generation strategist. Using the Reddit audience signals, industry research, and client context provided, produce a Market Signal Intelligence Brief:
+
+## Executive Summary (3 sentences max)
+
+## Audience Signals
+What the target audience is actually saying, worrying about, and looking for — in their own words.
+
+## External Market Intelligence
+Trends, stats, and dynamics from the industry research.
+
+## Demand Gen Opportunities
+5 specific opportunities to capture demand based on the signals above. For each:
+- The opportunity
+- The signal that surfaced it
+- The channel/format to capture it
+- A content angle or hook to lead with
+
+## Vocabulary for Messaging
+10–15 phrases to use (and 5 to avoid) based on audience language.
+
+## Recommended Next Actions
+3 immediate actions for the demand gen program.
+
+Write for a marketing director to review with their team.`,
+          },
+        },
+      },
+      {
+        id: 'ms-out',
+        type: 'output',
+        position: { x: 760, y: 280 },
+        data: {
+          label: 'Market Signal Brief',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', outputType: 'Custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-ms-reddit-brief', source: 'ms-reddit', target: 'ms-brief' },
+      { id: 'e-ms-web-brief',   source: 'ms-web',    target: 'ms-brief' },
+      { id: 'e-ms-brain-brief', source: 'ms-brain',  target: 'ms-brief' },
+      { id: 'e-ms-brief-out',   source: 'ms-brief',  target: 'ms-out' },
+    ],
+  },
 ]

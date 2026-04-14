@@ -254,12 +254,59 @@ Full spec is in docs/contentnode-spec-v4.md
   on completion. ReviewsTab in ClientDetailPage now shows Assignee column.
 - Default AI model: claude-sonnet-4-5 (CLAUDE.md) / claude-haiku-4-5-20251001 (promptSuggester)
 
+## What has been built (continued — Phase 3 Intelligence Tools)
+- Phase 3 complete: 4 intelligence source nodes for demand gen research
+  - **Deep Web Scrape** (`deep_web_scrape` executor):
+    - Multi-page BFS crawler — fetches seed URL(s), extracts links, follows up to 20 pages
+    - Link filtering by domain (stay-on-domain default) + optional regex pattern filter
+    - 4 synthesis targets: General Summary / S7 External Intelligence / §12 Competitive / Raw
+    - Uses native `fetch()` + regex HTML stripping + Claude for synthesis
+  - **Review Miner** (`review_miner` executor):
+    - Scrapes Trustpilot, G2, Capterra, or custom URLs for a company and its competitors
+    - 5 synthesis types: Theme Analysis / Competitive Battlecard / Objection Map / Testimonials / Full
+    - Note: Trustpilot works best (server-rendered HTML); G2/Capterra may be partial (JS-heavy)
+    - Graceful degradation — reports which sources returned no data
+  - **SEO Intent Tool** (`seo_intent` executor):
+    - 3 data sources: Claude inference (no key), Google Autocomplete (free), DataForSEO (paid)
+    - Expands seed keywords into 10–60 variations + classifies by intent
+    - Funnel stage mapping: Awareness / Consideration / Decision
+    - DataForSEO: basic auth via `login:password` credential env var ref
+  - **Audience Signal Scraper** (`audience_signal` executor):
+    - Reddit public JSON API (no API key required) — searches subreddits or global Reddit
+    - Fetches top comments for each post (additional signal depth)
+    - 5 analysis goals: Pain Points / Vocabulary Map / Objection Map / Question Map / Full
+    - Filters by min upvotes; sorted by score
+  - All 4 use `callModel()` for synthesis via `@contentnode/ai` provider
+  - Config panels in `apps/web/src/components/layout/config/source/`
+  - Registered in EXECUTOR_REGISTRY in `runner.ts`
+  - 4 palette nodes in PALETTE_NODES (category: source)
+  - 3 new workflow templates: Competitive Intelligence Pack, SEO Content Strategy,
+    Market Signal Research Brief (all in `demand_gen` category)
+  - `FieldGroup` now accepts optional `description` prop (backwards compatible)
+
 ## Architecture notes
 - RLS enforcement: every worker job touching tenant data needs withAgency(agencyId, fn)
 - Rate limiting: @fastify/rate-limit registered globally but opt-in (global: false).
   Add config: { rateLimit: { max: N, timeWindow: 'Xm' } } to each route that needs it.
 - Dockerfiles (Dockerfile.api/worker/web): currently run as root — no USER directive.
   See TODO for fix.
+
+## What has been built (continued — Phase 5 Campaign Layer)
+- Campaign layer complete: groups workflows under a shared goal/timeline
+  - **DB**: `Campaign` model (id, agencyId, clientId, name, goal, status, brief, startDate, endDate)
+    `CampaignWorkflow` junction model (campaignId, workflowId, order, role)
+    `WorkflowRun.campaignId` (optional FK — set when run is triggered from a campaign)
+    Relations added to Agency, Client, Workflow models
+  - **API** (`/api/v1/campaigns`): full CRUD, add/remove/reorder workflows per campaign
+    `POST /:id/run` — creates WorkflowRun records + enqueues all in parallel on BullMQ
+    `POST /:id/brief` — generates campaign brief using Claude with client DG/GTM context
+    `GET /:id/bundle` — returns latest completed run output per workflow as structured bundle
+    Campaign marked `active` on first run; workflow roles: lead_magnet, email_nurture, landing_page, outreach, ad_copy, blog, social, research, custom
+  - **Frontend**: `CampaignsTab.tsx` on ClientDetailPage (tab: 'campaigns')
+    `CampaignCreationModal.tsx` — name, goal (5 options), dates, workflow multi-select
+    Campaign card: expandable, shows workflow list with run status dots + progress bar
+    Actions: Run All (fires parallel), Generate Brief (Claude), View Outputs (bundle), Delete
+    Empty state with first-campaign CTA
 
 ## Current session
 - MVP running in production on Railway (API + worker) + Vercel (web).

@@ -23,6 +23,10 @@ import { WorkflowOutputConfig } from './config/source/WorkflowOutputConfig'
 import { GtmFrameworkConfig } from './config/source/GtmFrameworkConfig'
 import { BrandContextConfig } from './config/source/BrandContextConfig'
 import { ClientBrainConfig } from './config/source/ClientBrainConfig'
+import { DeepWebScrapeConfig } from './config/source/DeepWebScrapeConfig'
+import { ReviewMinerConfig } from './config/source/ReviewMinerConfig'
+import { SeoIntentConfig } from './config/source/SeoIntentConfig'
+import { AudienceSignalConfig } from './config/source/AudienceSignalConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -89,6 +93,14 @@ function NodeConfigForm({
       return <BrandContextConfig config={config} onChange={onChange} />
     case 'client_brain':
       return <ClientBrainConfig config={config} onChange={onChange} />
+    case 'deep_web_scrape':
+      return <DeepWebScrapeConfig config={config} onChange={onChange} />
+    case 'review_miner':
+      return <ReviewMinerConfig config={config} onChange={onChange} />
+    case 'seo_intent':
+      return <SeoIntentConfig config={config} onChange={onChange} />
+    case 'audience_signal':
+      return <AudienceSignalConfig config={config} onChange={onChange} />
     case 'source':
       if (subtype === 'transcription')
         return <TranscriptionConfig config={config} onChange={onChange} />
@@ -258,8 +270,12 @@ export function ConfigPanel() {
     logic: 'text-blue-400',
     output: 'text-purple-400',
     insight: 'text-yellow-400',
-    gtm_framework: 'text-blue-500',
-    client_brain:  'text-orange-500',
+    gtm_framework:    'text-blue-500',
+    client_brain:     'text-orange-500',
+    deep_web_scrape:  'text-cyan-400',
+    review_miner:     'text-rose-400',
+    seo_intent:       'text-violet-400',
+    audience_signal:  'text-teal-400',
   }
   const colorClass = CATEGORY_COLOR[nodeType] ?? 'text-foreground'
 

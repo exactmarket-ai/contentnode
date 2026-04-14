@@ -86,11 +86,12 @@ export function formatBytes(bytes: number) {
 
 // ─── FieldGroup ───────────────────────────────────────────────────────────────
 
-export function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+export function FieldGroup({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
+      {description && <p className="text-[10px] text-muted-foreground">{description}</p>}
     </div>
   )
 }

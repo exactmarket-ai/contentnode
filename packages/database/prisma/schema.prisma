@@ -53,6 +53,7 @@ model Agency {
   brandBuilders      ClientBrandBuilder[]
   brandAttachments   ClientBrandAttachment[]
   manualUsageEntries ManualUsageEntry[]
+  campaigns          Campaign[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -117,6 +118,7 @@ model Client {
   brandBuilders    ClientBrandBuilder[]
   brandAttachments   ClientBrandAttachment[]
   manualUsageEntries ManualUsageEntry[]
+  campaigns          Campaign[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -369,10 +371,11 @@ model Workflow {
   agency          Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   defaultAssignee User?    @relation("WorkflowDefaultAssignee", fields: [defaultAssigneeId], references: [id])
-  nodes     Node[]
-  edges     Edge[]
-  runs      WorkflowRun[]
-  schedules WorkflowSchedule[]
+  nodes            Node[]
+  edges            Edge[]
+  runs             WorkflowRun[]
+  schedules        WorkflowSchedule[]
+  campaignWorkflows CampaignWorkflow[]
 
   @@index([agencyId])
   @@index([clientId])
@@ -553,8 +556,10 @@ model WorkflowRun {
   assigneeId          String?   @map("assignee_id")
   internalNotes       String?   @map("internal_notes")
   dueDate             DateTime? @map("due_date")
+  campaignId          String?   @map("campaign_id")
 
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   user              User?                 @relation("RunTriggeredBy", fields: [triggeredBy], references: [id])
   assignee          User?                 @relation("RunAssignee", fields: [assigneeId], references: [id])
   documents         Document[]
@@ -570,6 +575,7 @@ model WorkflowRun {
   @@index([batchId])
   @@index([divisionId])
   @@index([jobId])
+  @@index([campaignId])
   @@map("workflow_runs")
 }
 
@@ -1275,4 +1281,51 @@ model ManualUsageEntry {
   @@index([agencyId])
   @@index([clientId])
   @@map("manual_usage_entries")
+}
+
+// ─────────────────────────────────────────────
+// Campaign — groups workflows under a shared goal
+// ─────────────────────────────────────────────
+model Campaign {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  clientId  String   @map("client_id")
+  name      String
+  // lead_gen | nurture | awareness | retention | custom
+  goal      String   @default("lead_gen")
+  // planning | active | archived
+  status    String   @default("planning")
+  brief     String?  @db.Text
+  startDate DateTime? @map("start_date")
+  endDate   DateTime? @map("end_date")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agency    Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workflows CampaignWorkflow[]
+  runs      WorkflowRun[]
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("campaigns")
+}
+
+// ─────────────────────────────────────────────
+// CampaignWorkflow — ordered workflows within a campaign
+// ─────────────────────────────────────────────
+model CampaignWorkflow {
+  id         String  @id @default(cuid())
+  campaignId String  @map("campaign_id")
+  workflowId String  @map("workflow_id")
+  order      Int     @default(0)
+  // lead_magnet | email_nurture | landing_page | outreach | ad_copy | blog | social | research | custom
+  role       String? @default("custom")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  workflow Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, workflowId])
+  @@index([campaignId])
+  @@map("campaign_workflows")
 }

@@ -36,6 +36,7 @@ import { verticalRoutes } from './routes/verticals.js'
 import { templateLibraryRoutes } from './routes/templateLibrary.js'
 import { voiceProviderRoutes } from './routes/voiceProviders.js'
 import { nodePilotRoutes }     from './routes/nodepilot.js'
+import { campaignRoutes }       from './routes/campaigns.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -143,6 +144,7 @@ await app.register(verticalRoutes,         { prefix: '/api/v1/verticals' })
 await app.register(templateLibraryRoutes,  { prefix: '/api/v1/template-library' })
 await app.register(voiceProviderRoutes,    { prefix: '/api/v1/voice-providers' })
 await app.register(nodePilotRoutes,        { prefix: '/api/v1/nodepilot' })
+await app.register(campaignRoutes,         { prefix: '/api/v1/campaigns' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

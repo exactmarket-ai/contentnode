@@ -129,6 +129,31 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'Fingerprint',
     defaultConfig: { subtype: 'brand-context', clientId: '', clientName: '', verticalId: '', verticalName: '', dataSource: 'both' },
   },
+  // Phase 3 — Intelligence Tools
+  {
+    type: 'deep_web_scrape', subtype: 'deep-web-scrape',
+    label: 'Deep Web Scrape', description: 'Multi-page web crawler — follows links, synthesizes content into structured intelligence',
+    category: 'source', icon: 'SearchCode',
+    defaultConfig: { subtype: 'deep-web-scrape', seedUrls: '', maxPages: 10, linkPattern: '', stayOnDomain: true, synthesisTarget: 'summary', synthesisInstructions: '' },
+  },
+  {
+    type: 'review_miner', subtype: 'review-miner',
+    label: 'Review Miner', description: 'Scrape Trustpilot, G2, and Capterra — extract themes, objections, and battlecard data from reviews',
+    category: 'source', icon: 'MessageSquareQuote',
+    defaultConfig: { subtype: 'review-miner', companyName: '', companySlug: '', platforms: ['trustpilot'], competitors: '', maxReviewsPerSource: 20, synthesisType: 'themes' },
+  },
+  {
+    type: 'seo_intent', subtype: 'seo-intent',
+    label: 'SEO Intent Tool', description: 'Expand keywords and classify by search intent — map to funnel stages for content planning',
+    category: 'source', icon: 'TrendingUp',
+    defaultConfig: { subtype: 'seo-intent', topic: '', seedKeywords: '', expandCount: 30, dataSource: 'claude', apiKeyRef: '', funnelMapping: true },
+  },
+  {
+    type: 'audience_signal', subtype: 'audience-signal',
+    label: 'Audience Signal Scraper', description: 'Mine Reddit for real audience language — pain points, vocabulary, objections, and questions',
+    category: 'source', icon: 'Users',
+    defaultConfig: { subtype: 'audience-signal', searchTerms: '', subreddits: '', maxPosts: 25, minUpvotes: 5, synthesisGoal: 'all' },
+  },
   {
     type: 'audio_input', subtype: 'audio-input',
     label: 'Audio Input', description: 'Upload an existing audio file to use as a source in your workflow',

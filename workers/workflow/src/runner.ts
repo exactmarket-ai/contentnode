@@ -38,6 +38,10 @@ import { VideoCompositionExecutor } from './executors/videoComposition.js'
 import { VideoTrimmerExecutor } from './executors/videoTrimmer.js'
 import { VideoResizeExecutor } from './executors/videoResize.js'
 import { AudioReplaceExecutor } from './executors/audioReplace.js'
+import { DeepWebScrapeExecutor } from './executors/deepWebScrape.js'
+import { ReviewMinerExecutor } from './executors/reviewMiner.js'
+import { SeoIntentExecutor } from './executors/seoIntent.js'
+import { AudienceSignalExecutor } from './executors/audienceSignal.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -126,6 +130,11 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:video-trimmer':           VideoTrimmerExecutor,
   'logic:video-resize':            VideoResizeExecutor,
   'audio_replace':                 AudioReplaceExecutor,
+  // Phase 3 — Intelligence Tools
+  'deep_web_scrape':               DeepWebScrapeExecutor,
+  'review_miner':                  ReviewMinerExecutor,
+  'seo_intent':                    SeoIntentExecutor,
+  'audience_signal':               AudienceSignalExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {
