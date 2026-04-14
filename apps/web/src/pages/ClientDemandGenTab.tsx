@@ -487,9 +487,179 @@ function S7({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
+// ── Intake section (files + URL) ──────────────────────────────────────────────
+
+function IntakeSection({ clientId }: { clientId: string }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [showUrlInput, setShowUrlInput] = useState(false)
+  const [urlValue, setUrlValue] = useState('')
+  const [urlSubmitting, setUrlSubmitting] = useState(false)
+  const [attachments, setAttachments] = useState<{ id: string; filename: string; extractionStatus: string }[]>([])
+
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${clientId}/brand-profile/attachments`)
+      .then((r) => r.json())
+      .then(({ data }) => setAttachments(data ?? []))
+      .catch(() => {})
+  }, [clientId])
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    setUploadError(null)
+    for (const file of Array.from(files)) {
+      const fd = new FormData()
+      fd.append('file', file)
+      try {
+        const res = await apiFetch(`/api/v1/clients/${clientId}/brand-profile/attachments`, { method: 'POST', body: fd })
+        if (res.ok) {
+          const { data } = await res.json()
+          setAttachments((prev) => [data, ...prev])
+        } else {
+          const { error } = await res.json().catch(() => ({ error: 'Upload failed' }))
+          setUploadError(error ?? 'Upload failed')
+        }
+      } catch {
+        setUploadError('Upload failed')
+      }
+    }
+    setUploading(false)
+  }
+
+  const handleUrl = async () => {
+    if (!urlValue.trim()) return
+    setUrlSubmitting(true)
+    setUploadError(null)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/brand-profile/attachments`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: urlValue.trim() }),
+      })
+      if (res.ok) {
+        const { data } = await res.json()
+        setAttachments((prev) => [data, ...prev])
+        setUrlValue('')
+        setShowUrlInput(false)
+      } else {
+        const { error } = await res.json().catch(() => ({ error: 'Failed to add URL' }))
+        setUploadError(error ?? 'Failed to add URL')
+      }
+    } catch {
+      setUploadError('Failed to add URL')
+    }
+    setUrlSubmitting(false)
+  }
+
+  const processing = attachments.filter((a) => a.extractionStatus === 'pending' || a.extractionStatus === 'processing').length
+  const ready = attachments.filter((a) => a.extractionStatus === 'ready').length
+
+  return (
+    <div>
+      <div className="mb-5 flex items-start justify-between">
+        <div>
+          <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-orange-500">Intake</div>
+          <h2 className="text-xl font-bold text-foreground">Feed the Brain</h2>
+          <p className="mt-1 text-[11px] text-muted-foreground">Upload files, paste notes, or add URLs. Claude reads everything and populates the sections below.</p>
+        </div>
+        {ready > 0 && (
+          <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+            {ready} file{ready !== 1 ? 's' : ''} in brain
+          </span>
+        )}
+      </div>
+
+      {/* Drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files) }}
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          'mb-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 transition-colors',
+          dragging ? 'border-orange-400 bg-orange-50/20' : 'border-border hover:border-orange-300 hover:bg-muted/20',
+        )}
+      >
+        <input ref={inputRef} type="file" multiple className="hidden" accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,.mp4,.mov,.mp3,.m4a,.wav,.webm" onChange={(e) => handleFiles(e.target.files)} />
+        {uploading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Icons.Loader2 className="h-4 w-4 animate-spin" />
+            Uploading…
+          </div>
+        ) : (
+          <>
+            <Icons.Upload className="h-6 w-6 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-foreground">Drop files here or click to browse</p>
+            <p className="text-[11px] text-muted-foreground">PDFs, decks, Word docs, audio recordings, sales call recordings</p>
+          </>
+        )}
+      </div>
+
+      {/* URL input toggle */}
+      <button
+        onClick={() => setShowUrlInput((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Icons.Link className="h-3 w-3" />
+        Add URL
+      </button>
+
+      {showUrlInput && (
+        <div className="mt-2 flex gap-2">
+          <input
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleUrl()}
+            placeholder="https://clientwebsite.com"
+            className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            disabled={!urlValue.trim() || urlSubmitting}
+            onClick={handleUrl}
+            className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 transition-colors disabled:opacity-40"
+          >
+            {urlSubmitting ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+          </button>
+        </div>
+      )}
+
+      {uploadError && (
+        <p className="mt-2 text-[11px] text-red-500">{uploadError}</p>
+      )}
+
+      {/* File list */}
+      {attachments.length > 0 && (
+        <div className="mt-4 space-y-1.5">
+          {attachments.map((a) => (
+            <div key={a.id} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+              <Icons.FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              <span className="flex-1 truncate text-xs text-foreground">{a.filename}</span>
+              {(a.extractionStatus === 'pending' || a.extractionStatus === 'processing') && (
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" /> Reading…
+                </span>
+              )}
+              {a.extractionStatus === 'ready' && (
+                <span className="text-[10px] text-green-600">✓ Ready</span>
+              )}
+            </div>
+          ))}
+          {processing > 0 && (
+            <p className="text-[10px] text-muted-foreground">{processing} file{processing !== 1 ? 's' : ''} being processed — sections will update when complete</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Nav sidebar ───────────────────────────────────────────────────────────────
 
 const SECTIONS_NAV = [
+  { num: '00', short: 'Feed the Brain' },
   { num: '01', short: 'Current Marketing Reality' },
   { num: '02', short: 'Offer Clarity' },
   { num: '03', short: 'ICP + Buying Psychology' },
@@ -499,21 +669,97 @@ const SECTIONS_NAV = [
   { num: '07', short: 'External Intelligence' },
 ]
 
+// ── Vertical selector (same pattern as GTM Framework) ────────────────────────
+
+interface Vertical { id: string; name: string }
+
+function VerticalSelector({ verticals, selected, onSelect }: {
+  verticals: Vertical[]
+  selected: Vertical | null
+  onSelect: (v: Vertical) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-xs hover:bg-muted/40 transition-colors min-w-[140px]"
+      >
+        {selected
+          ? <span className="font-medium truncate">{selected.name}</span>
+          : <span className="text-muted-foreground">Select vertical…</span>
+        }
+        <svg className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-popover shadow-xl" style={{ backgroundColor: 'hsl(var(--popover))' }}>
+          <div className="max-h-48 overflow-y-auto p-1">
+            {verticals.length === 0 ? (
+              <p className="px-3 py-3 text-center text-[11px] text-muted-foreground">
+                No verticals assigned — go to Structure tab to add
+              </p>
+            ) : (
+              verticals.map((v) => (
+                <button
+                  key={v.id}
+                  className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
+                  onClick={() => { onSelect(v); setOpen(false) }}
+                >
+                  {selected?.id === v.id && <span className="text-orange-500">✓</span>}
+                  <span className="truncate">{v.name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function ClientDemandGenTab({ clientId }: { clientId: string }) {
+  const [verticals, setVerticals] = useState<Vertical[]>([])
+  const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
+  const [verticalsLoading, setVerticalsLoading] = useState(true)
   const [dg, setDgRaw] = useState<DemandGenData | null>(null)
   const [activeSection, setActiveSection] = useState('01')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestDgRef = useRef<DemandGenData | null>(null)
 
-  // Load
+  // Load verticals assigned to this client
   useEffect(() => {
-    apiFetch(`/api/v1/clients/${clientId}/demand-gen`)
+    apiFetch(`/api/v1/clients/${clientId}/verticals`)
       .then((r) => r.json())
       .then(({ data }) => {
-        const loaded = data ? { ...defaultDemandGen(), ...data } : defaultDemandGen()
+        const list: Vertical[] = data ?? []
+        setVerticals(list)
+        if (list.length === 1) setSelectedVertical(list[0])
+      })
+      .catch(() => {})
+      .finally(() => setVerticalsLoading(false))
+  }, [clientId])
+
+  // Load demand gen data when vertical selected
+  useEffect(() => {
+    if (!selectedVertical) { setDgRaw(null); return }
+    setDgRaw(null)
+    apiFetch(`/api/v1/clients/${clientId}/demand-gen/${selectedVertical.id}`)
+      .then((r) => r.json())
+      .then(({ data }) => {
+        const loaded = data ? { ...defaultDemandGen(), ...(data as Partial<DemandGenData>) } : defaultDemandGen()
         setDgRaw(loaded)
         latestDgRef.current = loaded
       })
@@ -522,16 +768,17 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
         setDgRaw(def)
         latestDgRef.current = def
       })
-  }, [clientId])
+  }, [clientId, selectedVertical])
 
   // Auto-save (debounced 1.5s)
   const scheduleSave = useCallback(() => {
+    if (!selectedVertical) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSaveStatus('saving')
     saveTimer.current = setTimeout(async () => {
-      if (!latestDgRef.current) return
+      if (!latestDgRef.current || !selectedVertical) return
       try {
-        await apiFetch(`/api/v1/clients/${clientId}/demand-gen`, {
+        await apiFetch(`/api/v1/clients/${clientId}/demand-gen/${selectedVertical.id}`, {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(latestDgRef.current),
@@ -542,7 +789,7 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
         setSaveStatus('error')
       }
     }, 1500)
-  }, [clientId])
+  }, [clientId, selectedVertical])
 
   const set = useCallback((fn: (d: DemandGenData) => void) => {
     setDgRaw((prev) => {
@@ -563,7 +810,7 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
     sectionRefs.current[num]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  if (!dg) {
+  if (verticalsLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -575,12 +822,12 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
     <div className="flex h-full min-h-0">
       {/* Left nav */}
       <div className="w-56 shrink-0 border-r border-border bg-muted/20 flex flex-col">
-        <div className="px-4 py-4 border-b border-border">
+        <div className="px-4 py-4 border-b border-border space-y-3">
           <div className="flex items-center gap-2">
             <Icons.TrendingUp className="h-4 w-4 text-orange-500" />
             <span className="text-sm font-semibold text-foreground">Demand Gen</span>
           </div>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">Execution layer on top of GTM</p>
+          <VerticalSelector verticals={verticals} selected={selectedVertical} onSelect={setSelectedVertical} />
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
           {SECTIONS_NAV.map((s) => (
@@ -624,8 +871,24 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
+        {!selectedVertical ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center space-y-2">
+              <Icons.TrendingUp className="h-8 w-8 mx-auto text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Select a vertical to view or edit Demand Gen data</p>
+              {verticals.length === 0 && (
+                <p className="text-xs text-muted-foreground/60">No verticals assigned — go to Structure tab to add one</p>
+              )}
+            </div>
+          </div>
+        ) : !dg ? (
+          <div className="flex h-64 items-center justify-center">
+            <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
         <div className="mx-auto max-w-3xl px-8 py-8 space-y-16">
           {([
+            ['00', <IntakeSection clientId={clientId} />],
             ['01', <S1 dg={dg} set={set} />],
             ['02', <S2 dg={dg} set={set} />],
             ['03', <S3 dg={dg} set={set} />],
@@ -639,6 +902,7 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   )

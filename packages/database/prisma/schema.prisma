@@ -41,7 +41,7 @@ model Agency {
   companyProfiles    CompanyProfile[]
   divisions          Division[]
   jobs               Job[]
-  clientDemandGen    ClientDemandGen[]
+  clientDemandGen      ClientDemandGen[]
   clientFrameworks   ClientFramework[]
   clientVerticals    ClientVertical[]
   verticals          Vertical[]
@@ -105,7 +105,7 @@ model Client {
   profiles        ClientProfile[]
   companyProfiles CompanyProfile[]
   divisions    Division[]
-  demandGen       ClientDemandGen?
+  demandGen       ClientDemandGen[]
   frameworks      ClientFramework[]
   clientVerticals ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
@@ -132,6 +132,7 @@ model Vertical {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   agency     Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  demandGen            ClientDemandGen[]
   frameworks           ClientFramework[]
   clientVerticals      ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
@@ -164,17 +165,19 @@ model ClientVertical {
 // ClientDemandGen — per-client demand generation data
 // ─────────────────────────────────────────────
 model ClientDemandGen {
-  id        String   @id @default(cuid())
-  agencyId  String   @map("agency_id")
-  clientId  String   @map("client_id")
-  data      Json     @default("{}")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clientId   String   @map("client_id")
+  verticalId String   @map("vertical_id")
+  data       Json     @default("{}")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
 
-  @@unique([clientId])
+  @@unique([clientId, verticalId])
   @@index([agencyId])
   @@map("client_demand_gen")
 }
