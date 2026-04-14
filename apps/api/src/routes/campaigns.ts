@@ -13,8 +13,8 @@ const createCampaignBody = z.object({
   name: z.string().min(1).max(200),
   clientId: z.string().min(1),
   goal: z.enum(['lead_gen', 'nurture', 'awareness', 'retention', 'custom']).default('lead_gen'),
-  startDate: z.string().datetime().optional(),
-  endDate: z.string().datetime().optional(),
+  startDate: z.string().min(1).optional(),
+  endDate: z.string().min(1).optional(),
 })
 
 const updateCampaignBody = z.object({
@@ -22,8 +22,8 @@ const updateCampaignBody = z.object({
   goal: z.enum(['lead_gen', 'nurture', 'awareness', 'retention', 'custom']).optional(),
   status: z.enum(['planning', 'active', 'archived']).optional(),
   brief: z.string().optional(),
-  startDate: z.string().datetime().nullable().optional(),
-  endDate: z.string().datetime().nullable().optional(),
+  startDate: z.string().min(1).nullable().optional(),
+  endDate: z.string().min(1).nullable().optional(),
 })
 
 const addWorkflowBody = z.object({
