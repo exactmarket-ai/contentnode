@@ -15,6 +15,7 @@ import { OutputNode } from './nodes/OutputNode'
 import { InsightNode } from './nodes/InsightNode'
 import { GtmFrameworkNode } from './nodes/GtmFrameworkNode'
 import { BrandContextNode } from './nodes/BrandContextNode'
+import { ClientBrainNode } from './nodes/ClientBrainNode'
 import { GroupNode } from './nodes/GroupNode'
 import { VoiceOutputNode } from './nodes/VoiceOutputNode'
 import { MusicGenerationNode } from './nodes/MusicGenerationNode'
@@ -33,6 +34,11 @@ const nodeTypes = {
   insight: InsightNode,
   gtm_framework: GtmFrameworkNode,
   brand_context: BrandContextNode,
+  client_brain: ClientBrainNode,
+  deep_web_scrape: SourceNode,
+  review_miner: SourceNode,
+  seo_intent: SourceNode,
+  audience_signal: SourceNode,
   group: GroupNode,
   voice_output: VoiceOutputNode,
   music_generation: MusicGenerationNode,
@@ -243,7 +249,7 @@ export function WorkflowCanvas() {
             if (node.type === 'logic') return 'rgba(59,130,246,0.4)'
             if (node.type === 'output') return 'rgba(168,85,247,0.4)'
             if (node.type === 'insight') return 'rgba(234,179,8,0.5)'
-            if (node.type === 'gtm_framework' || node.type === 'brand_context') return 'rgba(24,95,165,0.4)'
+            if (['gtm_framework', 'brand_context', 'client_brain', 'deep_web_scrape', 'review_miner', 'seo_intent', 'audience_signal'].includes(node.type ?? '')) return 'rgba(24,95,165,0.4)'
             if (node.type === 'group') return 'rgba(59,130,246,0.15)'
             return 'rgba(255,255,255,0.1)'
           }}

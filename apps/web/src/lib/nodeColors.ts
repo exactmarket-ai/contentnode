@@ -115,7 +115,11 @@ export function getNodeSpec(type: string, subtype?: string): NodeSpec {
 
   if (MEDIA_TYPES.has(type) || (subtype && MEDIA_SUBTYPES.has(subtype))) {
     specType = 'media'
-  } else if (type === 'source' || type === 'gtm_framework' || type === 'brand_context') {
+  } else if (
+    type === 'source' || type === 'gtm_framework' || type === 'brand_context' ||
+    type === 'client_brain' || type === 'deep_web_scrape' || type === 'review_miner' ||
+    type === 'seo_intent' || type === 'audience_signal'
+  ) {
     specType = 'input'
   } else if (type === 'logic') {
     specType = 'ai-model'
