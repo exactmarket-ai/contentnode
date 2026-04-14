@@ -171,6 +171,98 @@ function AssigneePicker({
   )
 }
 
+// ── Inline Status Picker ──────────────────────────────────────────────────────
+
+const STATUS_OPTIONS = [
+  'none', 'pending', 'sent_to_client', 'client_responded', 'closed',
+] as const
+
+function StatusPicker({
+  runId,
+  status,
+  onUpdated,
+}: {
+  runId: string
+  status: string
+  onUpdated: (status: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  async function pick(next: string) {
+    if (next === status) { setOpen(false); return }
+    setSaving(true)
+    setOpen(false)
+    try {
+      const res = await apiFetch(`/api/v1/runs/${runId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewStatus: next }),
+      })
+      if (res.ok) onUpdated(next)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.none
+
+  return (
+    <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors hover:ring-1 hover:ring-border',
+          cfg.color,
+        )}
+      >
+        {saving ? (
+          <Icons.Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <span className={cn('h-1.5 w-1.5 rounded-full', cfg.dot)} />
+        )}
+        {cfg.label}
+        <Icons.ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-lg border border-border bg-popover shadow-lg">
+          <div className="p-1">
+            {STATUS_OPTIONS.map((s) => {
+              const c = STATUS_CONFIG[s]
+              return (
+                <button
+                  key={s}
+                  onClick={() => pick(s)}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent',
+                    s === status ? 'font-medium' : '',
+                    c.color,
+                  )}
+                >
+                  <span className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
+                  {c.label}
+                  {s === status && <Icons.Check className="ml-auto h-3 w-3 shrink-0" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Inline Due Date Picker ────────────────────────────────────────────────────
 
 function DueDateCell({
@@ -306,6 +398,8 @@ export function ReviewsDashboard() {
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('completedAt')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -353,6 +447,50 @@ export function ReviewsDashboard() {
   function updateRun(id: string, patch: Partial<ReviewRun>) {
     setRuns((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }
+
+  // Selection helpers
+  const allFilteredIds = filtered.map((r) => r.id)
+  const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id))
+  const someSelected = !allSelected && allFilteredIds.some((id) => selectedIds.has(id))
+
+  function toggleRow(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(allFilteredIds))
+    }
+  }
+
+  async function applyBulkStatus(status: string) {
+    const ids = [...selectedIds]
+    setBulkSaving(true)
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          apiFetch(`/api/v1/runs/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reviewStatus: status }),
+          }),
+        ),
+      )
+      setRuns((prev) => prev.map((r) => (selectedIds.has(r.id) ? { ...r, reviewStatus: status } : r)))
+      setSelectedIds(new Set())
+    } finally {
+      setBulkSaving(false)
+    }
+  }
+
+  const numSelected = selectedIds.size
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -439,6 +577,16 @@ export function ReviewsDashboard() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
+                    {/* Select-all checkbox */}
+                    <th className="w-10 px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = someSelected }}
+                        onChange={toggleAll}
+                        className="h-3.5 w-3.5 cursor-pointer rounded border-border accent-blue-600"
+                      />
+                    </th>
                     <SortableHeader label="Date"        sortKey="completedAt"  current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Review"      sortKey="review"       current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Client"      sortKey="clientName"   current={sortKey} dir={sortDir} onSort={handleSort} />
@@ -451,27 +599,39 @@ export function ReviewsDashboard() {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {filtered.map((r) => {
-                    const cfg = STATUS_CONFIG[r.reviewStatus] ?? STATUS_CONFIG.none
                     const title = [r.projectName, r.workflowName, r.itemName].filter(Boolean).join(' — ')
                     const createdBy = r.triggeredByUser
                       ? (r.triggeredByUser.name ?? r.triggeredByUser.email)
                       : null
+                    const isSelected = selectedIds.has(r.id)
                     return (
                       <tr
                         key={r.id}
                         onClick={() => navigate(`/review/${r.id}`)}
-                        className="cursor-pointer hover:bg-accent/30 transition-colors"
+                        className={cn(
+                          'cursor-pointer transition-colors',
+                          isSelected ? 'bg-blue-50/60 hover:bg-blue-50/80' : 'hover:bg-accent/30',
+                        )}
                       >
+                        <td className="w-10 px-3 py-2.5" onClick={(e) => toggleRow(r.id, e)}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            className="h-3.5 w-3.5 cursor-pointer rounded border-border accent-blue-600"
+                          />
+                        </td>
                         <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
                           {r.completedAt ? formatDate(r.completedAt) : '—'}
                         </td>
                         <td className="px-4 py-2.5 font-medium text-foreground/90 max-w-[200px] truncate">{title}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{r.clientName ?? '—'}</td>
                         <td className="px-4 py-2.5">
-                          <span className={cn('inline-flex items-center gap-1.5 font-medium', cfg.color)}>
-                            <span className={cn('h-1.5 w-1.5 rounded-full', cfg.dot)} />
-                            {cfg.label}
-                          </span>
+                          <StatusPicker
+                            runId={r.id}
+                            status={r.reviewStatus}
+                            onUpdated={(s) => updateRun(r.id, { reviewStatus: s })}
+                          />
                         </td>
                         <td className="px-4 py-2.5 text-muted-foreground">
                           {createdBy ? (
@@ -512,6 +672,44 @@ export function ReviewsDashboard() {
           </div>
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {numSelected > 0 && (
+        <div className="shrink-0 border-t border-border bg-card px-6 py-3 flex items-center gap-3">
+          <span className="text-xs font-medium text-foreground">
+            {numSelected} selected
+          </span>
+          <span className="text-muted-foreground/40">·</span>
+          <span className="text-xs text-muted-foreground">Set status:</span>
+          <div className="flex items-center gap-1.5">
+            {STATUS_OPTIONS.map((s) => {
+              const c = STATUS_CONFIG[s]
+              return (
+                <button
+                  key={s}
+                  disabled={bulkSaving}
+                  onClick={() => applyBulkStatus(s)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                    'border-border bg-background hover:bg-accent disabled:opacity-50',
+                    c.color,
+                  )}
+                >
+                  <span className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
+                  {c.label}
+                </button>
+              )
+            })}
+          </div>
+          {bulkSaving && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+          >
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   )
 }
