@@ -258,7 +258,7 @@ export function NodePilot() {
   return (
     <div
       className="relative flex shrink-0 flex-col border-t border-border bg-card"
-      style={{ height: '50vh' }}
+      style={{ height: '70vh' }}
     >
       {/* Top-edge collapse handle — same pattern as Node Config panel */}
       <button
