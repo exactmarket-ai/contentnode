@@ -886,13 +886,13 @@ function CampaignCard({
 
           {/* Run error banner */}
           {runError && (
-            <div className="mx-4 mb-3 p-3 rounded-lg bg-red-950/30 border border-red-700/40 flex items-start gap-2.5">
+            <div className="mx-4 mb-3 p-3 rounded-lg border border-border flex items-start gap-2.5">
               <Icons.XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-red-300 font-medium">Failed to start runs</p>
-                <p className="text-[11px] text-red-200/70 mt-0.5">{runError}</p>
+                <p className="text-xs text-foreground font-medium">Failed to start runs</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{runError}</p>
               </div>
-              <button onClick={() => setRunError(null)} className="text-red-400/60 hover:text-red-400 shrink-0">
+              <button onClick={() => setRunError(null)} className="text-muted-foreground hover:text-foreground shrink-0">
                 <Icons.X className="w-3 h-3" />
               </button>
             </div>
@@ -913,10 +913,10 @@ function CampaignCard({
 
           {/* Failure panel */}
           {failedWorkflows.length > 0 && !polling && (
-            <div className="mx-4 mb-3 p-3 rounded-lg bg-red-950/30 border border-red-700/40 space-y-2">
+            <div className="mx-4 mb-3 p-3 rounded-lg border border-border space-y-2">
               <div className="flex items-center gap-2">
                 <Icons.XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                <p className="text-xs text-red-300 font-medium">
+                <p className="text-xs text-red-400 font-medium">
                   {failedWorkflows.length} workflow{failedWorkflows.length > 1 ? 's' : ''} failed
                 </p>
               </div>
@@ -924,28 +924,28 @@ function CampaignCard({
                 {failedWorkflows.map((cw) => (
                   <div key={cw.id} className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-red-200/80">{cw.workflow.name}</span>
+                      <span className="text-[11px] text-foreground">{cw.workflow.name}</span>
                       <a
                         href={`/workflows/${cw.workflowId}`}
-                        className="text-[10px] text-red-400/70 hover:text-red-300 underline underline-offset-2"
+                        className="text-[10px] text-primary hover:text-primary/80 underline underline-offset-2"
                       >
                         Open workflow →
                       </a>
                     </div>
                     {cw.latestRun?.errorMessage && (
-                      <p className="text-[10px] text-red-300/70 bg-red-950/40 border border-red-800/40 rounded px-2 py-1 font-mono break-all">
+                      <p className="text-[10px] text-muted-foreground bg-muted/40 border border-border rounded px-2 py-1 font-mono break-all">
                         {cw.latestRun.errorMessage}
                       </p>
                     )}
                   </div>
                 ))}
               </div>
-              <div className="border-t border-red-800/40 pt-2 space-y-1">
-                <p className="text-[10px] text-red-200/60 font-medium">Next steps:</p>
-                <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-red-200/50">
+              <div className="border-t border-border pt-2 space-y-1">
+                <p className="text-[10px] text-muted-foreground font-medium">Next steps:</p>
+                <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-muted-foreground/70">
                   <li>Open the failed workflow and check which node is red</li>
                   <li>Make sure Client Brain sections are filled in for this client</li>
-                  <li>Verify <code className="bg-red-900/40 px-1 rounded">ANTHROPIC_API_KEY</code> is set in your worker env vars on Railway</li>
+                  <li>Verify <code className="bg-muted px-1 rounded">ANTHROPIC_API_KEY</code> is set in your worker env vars on Railway</li>
                   <li>For intelligence nodes: confirm required fields (URLs, keywords) are configured</li>
                   <li>Re-run the individual workflow to test before running the campaign again</li>
                 </ol>
