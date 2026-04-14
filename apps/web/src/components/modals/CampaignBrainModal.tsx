@@ -54,6 +54,7 @@ function AttachmentRow({
   const [editValue, setEditValue] = useState(a.summary ?? '')
   const [saving, setSaving] = useState(false)
   const [togglingScoped, setTogglingScoped] = useState(false)
+  const [scopeError, setScopeError] = useState(false)
 
   const isProcessing =
     a.extractionStatus === 'pending' || a.extractionStatus === 'processing' ||
@@ -78,6 +79,7 @@ function AttachmentRow({
 
   const handleToggleScoped = async () => {
     setTogglingScoped(true)
+    setScopeError(false)
     try {
       const next = !a.campaignScopedOnly
       const res = await apiFetch(`/api/v1/campaigns/${campaignId}/brain/attachments/${a.id}`, {
@@ -85,8 +87,16 @@ function AttachmentRow({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ campaignScopedOnly: next }),
       })
-      if (res.ok) onScopedToggled(a.id, next)
-    } catch { /* ignore */ } finally {
+      if (res.ok) {
+        onScopedToggled(a.id, next)
+      } else {
+        setScopeError(true)
+        setTimeout(() => setScopeError(false), 3000)
+      }
+    } catch {
+      setScopeError(true)
+      setTimeout(() => setScopeError(false), 3000)
+    } finally {
       setTogglingScoped(false)
     }
   }
@@ -155,15 +165,21 @@ function AttachmentRow({
         <button
           onClick={(e) => { e.stopPropagation(); void handleToggleScoped() }}
           disabled={togglingScoped}
-          title={a.campaignScopedOnly ? 'Campaign only — click to make available globally' : 'Click to limit this doc to this campaign only'}
+          title={a.campaignScopedOnly ? 'Campaign only — click to share globally with this client' : 'Global — click to limit to this campaign only'}
           className={cn(
-            'shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors disabled:opacity-50',
-            a.campaignScopedOnly
-              ? 'border border-amber-400/60 bg-amber-100/80 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-              : 'border border-border text-muted-foreground hover:border-border hover:text-foreground'
+            'shrink-0 rounded px-2 py-0.5 text-[9px] font-medium transition-colors disabled:opacity-50',
+            scopeError
+              ? 'border border-red-400/60 bg-red-50 text-red-600'
+              : a.campaignScopedOnly
+                ? 'border border-amber-400/60 bg-amber-100/80 text-amber-700 hover:bg-amber-200/80'
+                : 'border border-emerald-400/60 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
           )}
         >
-          {a.campaignScopedOnly ? 'Campaign only' : 'Global'}
+          {togglingScoped
+            ? <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" />
+            : scopeError
+              ? 'Error'
+              : a.campaignScopedOnly ? 'Campaign only' : 'Global'}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(a.id) }}
