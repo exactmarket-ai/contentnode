@@ -87,6 +87,8 @@ export class ImagePromptBuilderExecutor extends NodeExecutor {
     return {
       output: parsed,
       tokensUsed: result.tokens_used,
+      inputTokens: result.input_tokens,
+      outputTokens: result.output_tokens,
       modelUsed: result.model_used,
     }
   }

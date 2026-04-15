@@ -169,6 +169,8 @@ Output format — use this exact structure:
     return {
       output: result.text,
       tokensUsed: result.tokens_used,
+      inputTokens: result.input_tokens,
+      outputTokens: result.output_tokens,
       modelUsed: result.model_used,
     }
   }

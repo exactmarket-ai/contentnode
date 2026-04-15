@@ -647,11 +647,21 @@ export async function clientRoutes(app: FastifyInstance) {
     const rate = <T extends Record<string, number>>(map: T, key: string) =>
       map[key.toLowerCase()] ?? map['default'] ?? 0
 
-    // ── AI tokens by model ──────────────────────────────────────────────────────
-    const tokensByModel: Record<string, number> = {}
+    // ── AI tokens by model — track input/output separately for accurate cost ────
+    const tokensByModel: Record<string, { input: number; output: number; combined: number }> = {}
     for (const r of clientRunRecords.filter((r) => r.metric === 'ai_tokens')) {
-      const model = ((r.metadata as Record<string, unknown>)['model'] as string) ?? 'unknown'
-      tokensByModel[model] = (tokensByModel[model] ?? 0) + r.quantity
+      const meta  = r.metadata as Record<string, unknown>
+      const model = (meta['model'] as string) ?? 'unknown'
+      if (!tokensByModel[model]) tokensByModel[model] = { input: 0, output: 0, combined: 0 }
+      tokensByModel[model].combined += r.quantity
+      // Use actual split when available (new records); fall back to 80/20 for old records
+      if (meta['inputTokens'] !== undefined && meta['outputTokens'] !== undefined) {
+        tokensByModel[model].input  += meta['inputTokens']  as number
+        tokensByModel[model].output += meta['outputTokens'] as number
+      } else {
+        tokensByModel[model].input  += Math.round(r.quantity * 0.8)
+        tokensByModel[model].output += Math.round(r.quantity * 0.2)
+      }
     }
 
     // ── Humanizer by service ────────────────────────────────────────────────────
@@ -758,13 +768,13 @@ export async function clientRoutes(app: FastifyInstance) {
       prisma.clientFrameworkAttachment.count({ where: { agencyId, clientId, summaryStatus: 'ready' } }),
     ])
 
-    const totalTokens = Object.values(tokensByModel).reduce((s, n) => s + n, 0)
+    const totalTokens = Object.values(tokensByModel).reduce((s, v) => s + v.combined, 0)
     const totalHumWords = Object.values(humByService).reduce((s, n) => s + n, 0)
 
-    // AI token cost estimates (assume ~50/50 input/output split)
-    const totalTokensCostUsd = Object.entries(tokensByModel).reduce((sum, [model, tokens]) => {
+    // AI token cost — uses actual input/output split stored in UsageRecord metadata
+    const totalTokensCostUsd = Object.entries(tokensByModel).reduce((sum, [model, counts]) => {
       const r = RATES.tokens[model] ?? RATES.tokens['claude-sonnet-4-5'] ?? { in: 3.00, out: 15.00 }
-      return sum + (tokens / 2 / 1_000_000) * r.in + (tokens / 2 / 1_000_000) * r.out
+      return sum + (counts.input / 1_000_000) * r.in + (counts.output / 1_000_000) * r.out
     }, 0)
 
     // Humanizer cost
@@ -852,7 +862,7 @@ export async function clientRoutes(app: FastifyInstance) {
         // ── AI text generation ─────────────────────────────────────────────
         totalTokens,
         totalTokensCostUsd,
-        tokensByModel: Object.entries(tokensByModel).map(([model, tokens]) => ({ model, tokens })).sort((a, b) => b.tokens - a.tokens),
+        tokensByModel: Object.entries(tokensByModel).map(([model, counts]) => ({ model, tokens: counts.combined, inputTokens: counts.input, outputTokens: counts.output })).sort((a, b) => b.tokens - a.tokens),
 
         // ── Humanizer ─────────────────────────────────────────────────────
         totalHumWords,

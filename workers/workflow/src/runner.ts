@@ -809,20 +809,28 @@ export class WorkflowRunner {
               }
             }
 
-            // Record token usage (existing monthly-bucket tracking)
+            // Record token usage (monthly-bucket tracking with accurate input/output split)
             if (result.tokensUsed !== undefined) {
-              await this.recordTokenUsage(result.tokensUsed, result.modelUsed ?? node.type, callerClerkId)
+              await this.recordTokenUsage(
+                result.tokensUsed,
+                result.modelUsed ?? node.type,
+                callerClerkId,
+                result.inputTokens,
+                result.outputTokens,
+              )
             }
 
-            // Fire granular UsageEvent for LLM nodes
-            if (result.tokensUsed !== undefined && node.type === 'logic') {
-              const nodeConfig = config as Record<string, unknown>
+            // Fire granular UsageEvent for all LLM nodes (logic + intelligence node types)
+            if (result.tokensUsed !== undefined) {
+              const nodeConfig  = config as Record<string, unknown>
               const llmProvider = (nodeConfig.provider as string | undefined) ?? 'anthropic'
-              const llmModel    = (nodeConfig.model    as string | undefined) ?? 'unknown'
+              const llmModel    = result.modelUsed ?? (nodeConfig.model as string | undefined) ?? 'unknown'
               const isOnline    = llmProvider !== 'ollama'
               const startedAt   = runOutput.nodeStatuses[node.id]?.startedAt
               const durationMs  = startedAt ? Date.now() - new Date(startedAt).getTime() : 0
-              const costUsd     = costEstimator.estimateLlmCost(llmProvider, llmModel, result.tokensUsed, 0, isOnline)
+              const inTok       = result.inputTokens  ?? Math.round(result.tokensUsed * 0.8)
+              const outTok      = result.outputTokens ?? Math.round(result.tokensUsed * 0.2)
+              const costUsd     = costEstimator.estimateLlmCost(llmProvider, llmModel, inTok, outTok, isOnline)
               usageEventService.record({
                 agencyId:          this.agencyId,
                 userId:            ctx.userId ?? undefined,
@@ -837,8 +845,8 @@ export class WorkflowRunner {
                 workflowRunId:     this.workflowRunId,
                 nodeId:            node.id,
                 nodeType:          node.type,
-                inputTokens:       result.tokensUsed,
-                outputTokens:      0,
+                inputTokens:       inTok,
+                outputTokens:      outTok,
                 estimatedCostUsd:  costUsd ?? undefined,
                 durationMs,
                 status:            'success',
@@ -1103,7 +1111,7 @@ export class WorkflowRunner {
       await this.persistOutput(runOutput)  // save humanizer 'passed' before detection re-runs
 
       if (humResult.tokensUsed) {
-        await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'humanizer', callerClerkId)
+        await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'humanizer', undefined, humResult.inputTokens, humResult.outputTokens)
       }
 
       // Mark detection as running again
@@ -1207,7 +1215,13 @@ export class WorkflowRunner {
     })
   }
 
-  private async recordTokenUsage(tokensUsed: number, model: string, userId?: string | null): Promise<void> {
+  private async recordTokenUsage(
+    tokensUsed: number,
+    model: string,
+    userId?: string | null,
+    inputTokens?: number,
+    outputTokens?: number,
+  ): Promise<void> {
     const now = new Date()
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -1222,6 +1236,8 @@ export class WorkflowRunner {
         metadata: {
           workflowRunId: this.workflowRunId,
           model,
+          ...(inputTokens  !== undefined ? { inputTokens }  : {}),
+          ...(outputTokens !== undefined ? { outputTokens } : {}),
           ...(userId ? { userId } : {}),
         } as Prisma.InputJsonValue,
       },

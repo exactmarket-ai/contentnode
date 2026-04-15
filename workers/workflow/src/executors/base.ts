@@ -75,7 +75,9 @@ export interface GeneratedAsset {
 export interface NodeExecutionResult {
   output: unknown
   /** Token usage to record (only set for AI nodes) */
-  tokensUsed?: number
+  tokensUsed?: number   // combined total — used as fallback if split not available
+  inputTokens?: number  // prompt + context tokens (lower rate)
+  outputTokens?: number // generated tokens (higher rate)
   modelUsed?: string
   /** Routing decision for conditional nodes ('pass' | 'fail') */
   routePath?: string

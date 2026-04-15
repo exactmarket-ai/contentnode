@@ -69,6 +69,6 @@ ${rawText}`
       throw new Error(`Instruction Translator: failed to parse AI response — ${result.text.slice(0, 200)}`)
     }
 
-    return { output: parsed, tokensUsed: result.tokens_used }
+    return { output: parsed, tokensUsed: result.tokens_used, inputTokens: result.input_tokens, outputTokens: result.output_tokens }
   }
 }

@@ -125,6 +125,8 @@ Respond with a JSON object (no markdown, no code fences) with exactly these fiel
     return {
       output: { ...reviewOutput, insight_created: insightCreated },
       tokensUsed: result.tokens_used,
+      inputTokens: result.input_tokens,
+      outputTokens: result.output_tokens,
       modelUsed: result.model_used,
     }
   }

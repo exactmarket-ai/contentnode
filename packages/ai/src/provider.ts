@@ -24,7 +24,9 @@ export interface ModelConfig {
 
 export interface ModelResult {
   text: string
-  tokens_used: number
+  tokens_used: number   // combined total (kept for backward compat)
+  input_tokens: number  // prompt + context tokens (billed at lower rate)
+  output_tokens: number // generated tokens (billed at higher rate)
   model_used: string
 }
 
@@ -83,9 +85,13 @@ async function callAnthropic(config: ModelConfig, prompt: string, images?: Image
     .map((b) => b.text)
     .join('')
 
+  const inputT  = response.usage.input_tokens  ?? 0
+  const outputT = response.usage.output_tokens ?? 0
   return {
     text,
-    tokens_used: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),
+    tokens_used: inputT + outputT,
+    input_tokens: inputT,
+    output_tokens: outputT,
     model_used: response.model,
   }
 }
@@ -114,9 +120,13 @@ async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelRes
   const text = response.choices[0]?.message?.content ?? ''
   const usage = response.usage
 
+  const inputT  = usage?.prompt_tokens     ?? 0
+  const outputT = usage?.completion_tokens ?? 0
   return {
     text,
-    tokens_used: (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0),
+    tokens_used: inputT + outputT,
+    input_tokens: inputT,
+    output_tokens: outputT,
     model_used: response.model,
   }
 }
@@ -161,9 +171,13 @@ async function callOllama(config: ModelConfig, prompt: string): Promise<ModelRes
 
   const data = (await res.json()) as OllamaChatResponse
 
+  const inputT  = data.prompt_eval_count ?? 0
+  const outputT = data.eval_count        ?? 0
   return {
     text: data.message.content,
-    tokens_used: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+    tokens_used: inputT + outputT,
+    input_tokens: inputT,
+    output_tokens: outputT,
     model_used: data.model,
   }
 }

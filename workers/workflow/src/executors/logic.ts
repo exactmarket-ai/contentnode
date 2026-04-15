@@ -96,6 +96,8 @@ export class LogicNodeExecutor extends NodeExecutor {
     return {
       output: result.text,
       tokensUsed: result.tokens_used,
+      inputTokens: result.input_tokens,
+      outputTokens: result.output_tokens,
       modelUsed: result.model_used,
     }
   }
