@@ -12,6 +12,11 @@ declare module 'fastify' {
       role: string
     }
   }
+  // Allow route config to declare skipAuth for documentation purposes
+  // (actual auth skipping is done by URL pattern in the preHandler hook)
+  interface FastifyContextConfig {
+    skipAuth?: boolean
+  }
 }
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? ''
@@ -19,7 +24,9 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? ''
 const DEV_MODE = !CLERK_SECRET_KEY || CLERK_SECRET_KEY === 'sk_test_...'
 
 async function authPluginFn(app: FastifyInstance) {
-  app.decorateRequest('auth', null)
+  app.decorateRequest('auth', {
+    getter() { return null as unknown as { agencyId: string; userId: string; role: string } },
+  })
 
   // CRITICAL #3: Prevent starting in production without a real Clerk secret key
   if (process.env.NODE_ENV === 'production' && DEV_MODE) {
