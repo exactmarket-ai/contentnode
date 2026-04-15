@@ -38,6 +38,27 @@
   }
 }
 
+/* ── Markdown content rendering ─────────────────────────────────────────────── */
+
+/* Shared base — used by prose-run (run history) and prose-panel (config panels) */
+.prose-run, .prose-panel {
+  color: hsl(var(--foreground));
+}
+.prose-run h1, .prose-panel h1 { font-size: 1em; font-weight: 700; margin: 0.6em 0 0.2em; line-height: 1.3; }
+.prose-run h2, .prose-panel h2 { font-size: 0.95em; font-weight: 700; margin: 0.5em 0 0.2em; line-height: 1.3; }
+.prose-run h3, .prose-panel h3 { font-size: 0.9em; font-weight: 600; margin: 0.4em 0 0.15em; line-height: 1.3; }
+.prose-run p,  .prose-panel p  { margin: 0.3em 0; }
+.prose-run ul, .prose-panel ul { margin: 0.3em 0; padding-left: 1.2em; list-style: disc; }
+.prose-run li, .prose-panel li { margin: 0.15em 0; }
+.prose-run hr, .prose-panel hr { border: none; border-top: 1px solid hsl(var(--border)); margin: 0.5em 0; }
+.prose-run strong, .prose-panel strong { font-weight: 700; }
+.prose-run em,     .prose-panel em     { font-style: italic; }
+.prose-run code,   .prose-panel code   { font-family: monospace; background: hsl(var(--muted)); padding: 0 0.25em; border-radius: 3px; font-size: 0.9em; }
+.prose-run del,    .prose-panel del    { text-decoration: line-through; opacity: 0.6; }
+/* First/last child margins collapsed */
+.prose-run > *:first-child, .prose-panel > *:first-child { margin-top: 0; }
+.prose-run > *:last-child,  .prose-panel > *:last-child  { margin-bottom: 0; }
+
 /* ── React Flow ──────────────────────────────────────────────────────────────── */
 
 /* Strip all default node wrapper styling — cards manage their own appearance */

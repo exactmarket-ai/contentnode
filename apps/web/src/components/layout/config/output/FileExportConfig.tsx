@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { downloadDocx } from '@/lib/downloadDocx'
 import { stripMarkdown } from '@/lib/utils'
 import { FieldGroup } from '../shared'
+import { MarkdownContent } from '@/components/ui/markdown-content'
 
 export function FileExportOutput({
   nodeRunStatus,
@@ -77,9 +78,9 @@ export function FileExportOutput({
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="max-h-64 overflow-auto rounded-lg border border-border bg-muted/30 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">
-        {content}
-      </pre>
+      <div className="max-h-64 overflow-auto rounded-lg border border-border bg-muted/30 p-3">
+        <MarkdownContent content={content} className="text-[11px] leading-relaxed text-foreground prose-panel" />
+      </div>
     </div>
   )
 }

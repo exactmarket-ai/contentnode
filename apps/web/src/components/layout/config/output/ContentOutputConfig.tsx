@@ -8,6 +8,7 @@ import { cn, stripMarkdown } from '@/lib/utils'
 import { downloadDocx } from '@/lib/downloadDocx'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { FieldGroup } from '../shared'
+import { MarkdownContent } from '@/components/ui/markdown-content'
 
 const OUTPUT_TYPES = [
   { value: 'blog-post',      label: 'Blog Post' },
@@ -296,7 +297,7 @@ export function DisplayNodeOutput({
         </div>
       </div>
       <div className="rounded-lg border border-border bg-muted/30 p-3 max-h-[60vh] overflow-y-auto">
-        <pre className="whitespace-pre-wrap text-xs text-foreground font-sans leading-relaxed">{content}</pre>
+        <MarkdownContent content={content} className="text-xs text-foreground leading-relaxed prose-panel" />
       </div>
     </div>
   )

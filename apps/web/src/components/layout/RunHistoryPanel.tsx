@@ -3,6 +3,7 @@ import * as Icons from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { apiFetch } from '@/lib/api'
 import { cn, stripMarkdown } from '@/lib/utils'
+import { MarkdownContent } from '@/components/ui/markdown-content'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,11 +148,14 @@ function RunCard({ run, index, total }: { run: RunRecord; index: number; total: 
           {/* Preview / expanded */}
           <div
             className={cn(
-              'mt-2 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap font-mono bg-muted/40 rounded p-2',
+              'mt-2 bg-muted/40 rounded p-2',
               !expanded && 'max-h-[80px] overflow-hidden relative'
             )}
           >
-            {content}
+            <MarkdownContent
+              content={content}
+              className="text-[11px] leading-relaxed text-foreground prose-run"
+            />
             {!expanded && (
               <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white/90 to-transparent pointer-events-none" />
             )}
