@@ -251,7 +251,12 @@ export function CampaignCreationModal({
 
   function selectTemplate(template: CampaignTemplate) {
     setSelectedTemplate(template)
-    setSlotAssignments({}) // start blank — all slots auto-created on save
+    // Default each slot to '__template__' so users see what will be created
+    const assignments: Record<number, string> = {}
+    template.slots.forEach((slot, i) => {
+      assignments[i] = slot.workflowTemplateId ? '__template__' : '__none__'
+    })
+    setSlotAssignments(assignments)
     setStep(2)
   }
 
@@ -326,7 +331,7 @@ export function CampaignCreationModal({
         for (let i = 0; i < selectedTemplate.slots.length; i++) {
           const slot = selectedTemplate.slots[i]
           const current = resolvedAssignments[i]
-          if (slot.workflowTemplateId && (!current || current === '__none__' || current === '')) {
+          if (slot.workflowTemplateId && (!current || current === '__none__' || current === '' || current === '__template__')) {
             const createdId = await createWorkflowFromTemplate(i, slot.workflowTemplateId)
             if (createdId) resolvedAssignments[i] = createdId
           }
@@ -528,7 +533,10 @@ export function CampaignCreationModal({
                       const assigned = slotAssignments[i]
                       const assignedWorkflow = workflows.find((w) => w.id === assigned)
                       const needsSetup = slot.setupFields && slot.setupFields.length > 0
-                      const isUnassigned = !assigned || assigned === '__none__'
+                      const isUnassigned = !assigned || assigned === '__none__' || assigned === '__template__'
+                      const templateName = slot.workflowTemplateId
+                        ? WORKFLOW_TEMPLATES.find((t) => t.id === slot.workflowTemplateId)?.name ?? slot.label
+                        : slot.label
 
                       function setSlotFieldValue(nodeId: string, field: string, value: string) {
                         setSetupValues((prev) => ({
@@ -557,27 +565,26 @@ export function CampaignCreationModal({
                                     value={assigned ?? '__none__'}
                                     onValueChange={(v) => setSlotAssignments((prev) => ({ ...prev, [i]: v }))}
                                   >
-                                    <SelectTrigger className="w-36 h-7 text-xs">
+                                    <SelectTrigger className="w-44 h-7 text-xs">
                                       <SelectValue placeholder="Skip slot" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                      {slot.workflowTemplateId && (
+                                        <SelectItem value="__template__">
+                                          ✦ {templateName}
+                                        </SelectItem>
+                                      )}
                                       <SelectItem value="__none__">Skip slot</SelectItem>
-                                      {workflows.map((wf) => (
-                                        <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
-                                      ))}
+                                      {workflows.length > 0 && (
+                                        <>
+                                          <div className="px-2 py-1 text-[10px] text-muted-foreground font-medium">Existing workflows</div>
+                                          {workflows.map((wf) => (
+                                            <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
+                                          ))}
+                                        </>
+                                      )}
                                     </SelectContent>
                                   </Select>
-                                  {slot.workflowTemplateId && isUnassigned && (
-                                    <button
-                                      type="button"
-                                      onClick={() => createWorkflowFromTemplate(i, slot.workflowTemplateId!)}
-                                      className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 border border-emerald-800/50 rounded px-1.5 py-1 transition-colors whitespace-nowrap"
-                                      title={`Create ${slot.label} workflow from template`}
-                                    >
-                                      <Icons.Plus className="w-3 h-3" />
-                                      Create
-                                    </button>
-                                  )}
                                   {!isUnassigned && assignedWorkflow && (
                                     <a
                                       href={`/workflows/${assigned}`}
@@ -595,8 +602,8 @@ export function CampaignCreationModal({
                             </div>
                           </div>
 
-                          {/* Setup fields — shown before the workflow is created */}
-                          {needsSetup && isUnassigned && (
+                          {/* Setup fields — shown when slot will be created from template */}
+                          {needsSetup && (assigned === '__template__' || isUnassigned) && (
                             <div className="border-t border-border bg-muted/30 px-3 py-3 space-y-2.5">
                               <p className="text-[10px] font-medium flex items-center gap-1.5" style={{ color: '#ef4444' }}>
                                 <Icons.Settings className="w-3 h-3" />
