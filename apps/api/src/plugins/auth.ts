@@ -24,9 +24,9 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? ''
 const DEV_MODE = !CLERK_SECRET_KEY || CLERK_SECRET_KEY === 'sk_test_...'
 
 async function authPluginFn(app: FastifyInstance) {
-  app.decorateRequest('auth', {
-    getter() { return null as unknown as { agencyId: string; userId: string; role: string } },
-  })
+  // Use null initial value (not getter pattern) so req.auth = {...} works in strict-mode ESM.
+  // The getter pattern creates a read-only prototype property that throws on assignment in strict mode.
+  app.decorateRequest('auth', null as any)
 
   // CRITICAL #3: Prevent starting in production without a real Clerk secret key
   if (process.env.NODE_ENV === 'production' && DEV_MODE) {

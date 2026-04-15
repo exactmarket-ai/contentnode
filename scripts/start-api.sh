@@ -10,5 +10,8 @@ echo "REDIS_URL set: $([ -n "$REDIS_URL" ] && echo yes || echo NO)"
 echo "Syncing database schema..."
 pnpm --filter @contentnode/database db:push:safe
 
+echo "Applying database functions..."
+pnpm --filter @contentnode/database apply-functions
+
 echo "Starting API server..."
 exec node --import tsx/esm apps/api/src/index.ts
