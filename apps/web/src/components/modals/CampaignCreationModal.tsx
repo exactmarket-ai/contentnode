@@ -280,9 +280,9 @@ export function CampaignCreationModal({
     setStep(2)
   }
 
-  async function createWorkflowFromTemplate(slotIndex: number, workflowTemplateId: string) {
+  async function createWorkflowFromTemplate(slotIndex: number, workflowTemplateId: string): Promise<string | null> {
     const tpl = WORKFLOW_TEMPLATES.find((t) => t.id === workflowTemplateId)
-    if (!tpl) return
+    if (!tpl) return null
     setCreatingSlots((prev) => ({ ...prev, [slotIndex]: true }))
     try {
       // 1. Create the workflow record
@@ -326,8 +326,9 @@ export function CampaignCreationModal({
       // 4. Add new workflow to local list and assign to slot
       setWorkflows((prev) => [...prev, { id: wf.id, name: wf.name, status: wf.status, connectivityMode: wf.connectivityMode }])
       setSlotAssignments((prev) => ({ ...prev, [slotIndex]: wf.id }))
+      return wf.id as string
     } catch {
-      // non-fatal — slot stays unassigned
+      return null
     } finally {
       setCreatingSlots((prev) => ({ ...prev, [slotIndex]: false }))
     }
@@ -344,6 +345,19 @@ export function CampaignCreationModal({
     setSaving(true)
     setError('')
     try {
+      // Auto-create any unassigned template slots before building the campaign
+      const resolvedAssignments = { ...slotAssignments }
+      if (selectedTemplate && selectedTemplate.id !== 'custom') {
+        for (let i = 0; i < selectedTemplate.slots.length; i++) {
+          const slot = selectedTemplate.slots[i]
+          const current = resolvedAssignments[i]
+          if (slot.workflowTemplateId && (!current || current === '__none__' || current === '')) {
+            const createdId = await createWorkflowFromTemplate(i, slot.workflowTemplateId)
+            if (createdId) resolvedAssignments[i] = createdId
+          }
+        }
+      }
+
       const res = await apiFetch('/api/v1/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -361,7 +375,7 @@ export function CampaignCreationModal({
       const slotWorkflows =
         selectedTemplate && selectedTemplate.id !== 'custom'
           ? selectedTemplate.slots
-              .map((slot, i) => ({ workflowId: slotAssignments[i] ?? '', role: slot.role, order: i }))
+              .map((slot, i) => ({ workflowId: resolvedAssignments[i] ?? '', role: slot.role, order: i }))
               .filter((w) => w.workflowId && w.workflowId !== '__none__')
           : []
       const slottedIds = new Set(slotWorkflows.map((w) => w.workflowId))
