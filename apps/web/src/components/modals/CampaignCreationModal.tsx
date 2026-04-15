@@ -223,6 +223,7 @@ export function CampaignCreationModal({
   const [slotAssignments, setSlotAssignments] = useState<Record<number, string>>({})
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<string[]>(preselectedWorkflowIds)
   const [creatingSlots, setCreatingSlots] = useState<Record<number, boolean>>({})
+  const [suggestingSlots, setSuggestingSlots] = useState<Record<number, boolean>>({})
   // setupValues: slot index → nodeId → field → value
   const [setupValues, setSetupValues] = useState<Record<number, Record<string, Record<string, string>>>>({})
   // Vertical selection (required for content templates that use GTM/DG vert sections)
@@ -311,6 +312,39 @@ export function CampaignCreationModal({
       return null
     } finally {
       setCreatingSlots((prev) => ({ ...prev, [slotIndex]: false }))
+    }
+  }
+
+  async function handleSuggest(slotIndex: number, setupFields: SetupField[]) {
+    setSuggestingSlots((prev) => ({ ...prev, [slotIndex]: true }))
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/setup-suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          verticalId: selectedVerticalId,
+          fields: setupFields.map((sf) => ({ nodeId: sf.nodeId, field: sf.field, label: sf.label, placeholder: sf.placeholder })),
+        }),
+      })
+      const { data } = await res.json()
+      const suggestions = (data?.suggestions ?? {}) as Record<string, string>
+      // Map field-name → value into setupValues structure (nodeId → field → value)
+      for (const sf of setupFields) {
+        const val = suggestions[sf.field]
+        if (val) {
+          setSetupValues((prev) => ({
+            ...prev,
+            [slotIndex]: {
+              ...prev[slotIndex],
+              [sf.nodeId]: { ...(prev[slotIndex]?.[sf.nodeId] ?? {}), [sf.field]: val },
+            },
+          }))
+        }
+      }
+    } catch {
+      // Silently fail — fields stay blank
+    } finally {
+      setSuggestingSlots((prev) => ({ ...prev, [slotIndex]: false }))
     }
   }
 
@@ -605,10 +639,25 @@ export function CampaignCreationModal({
                           {/* Setup fields — shown when slot will be created from template */}
                           {needsSetup && (assigned === '__template__' || isUnassigned) && (
                             <div className="border-t border-border bg-muted/30 px-3 py-3 space-y-2.5">
-                              <p className="text-[10px] font-medium flex items-center gap-1.5" style={{ color: '#ef4444' }}>
-                                <Icons.Settings className="w-3 h-3" />
-                                Configure before creating — these values will be baked into the workflow
-                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-[10px] font-medium flex items-center gap-1.5 flex-1" style={{ color: '#ef4444' }}>
+                                  <Icons.Settings className="w-3 h-3" />
+                                  Configure before creating — these values will be baked into the workflow
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSuggest(i, slot.setupFields!)}
+                                  disabled={suggestingSlots[i]}
+                                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-violet-600 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50 transition-colors border border-violet-200 bg-violet-50/60"
+                                  title="AI magic: auto-fill from client brain"
+                                >
+                                  {suggestingSlots[i]
+                                    ? <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                                    : <Icons.Wand2 className="w-3 h-3" />
+                                  }
+                                  {suggestingSlots[i] ? 'Thinking…' : 'AI Fill'}
+                                </button>
+                              </div>
                               {slot.setupFields!.map((sf) => (
                                 <div key={`${sf.nodeId}-${sf.field}`} className="space-y-1">
                                   <label className="text-[10px] text-muted-foreground">{sf.label}</label>

@@ -3318,6 +3318,105 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     }
   )
 
+  // POST /:clientId/setup-suggest — AI magic: suggest setup field values from client brain
+  app.post<{ Params: { clientId: string } }>(
+    '/:clientId/setup-suggest',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { clientId } = req.params
+      const { verticalId, fields } = req.body as {
+        verticalId?: string
+        fields: Array<{ nodeId: string; field: string; label: string; placeholder?: string }>
+      }
+
+      if (!fields || fields.length === 0) return reply.code(400).send({ error: 'fields is required' })
+
+      const client = await prisma.client.findFirst({
+        where: { id: clientId, agencyId },
+        select: {
+          name: true,
+          industry: true,
+          brandBuilders: { take: 1, orderBy: { createdAt: 'desc' }, select: { dataJson: true } },
+          brandProfiles: { take: 1, orderBy: { createdAt: 'desc' }, select: { editedJson: true, extractedJson: true } },
+        },
+      })
+      if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+      // Load relevant brain docs (GTM framework + demand gen base — highest signal for keywords/topics)
+      const brainDocs = await prisma.clientBrainAttachment.findMany({
+        where: {
+          clientId, agencyId,
+          summaryStatus: 'ready',
+          source: { in: ['gtm_framework', 'demand_gen', 'client'] },
+          ...(verticalId && verticalId !== '__company__' ? { verticalId } : {}),
+        },
+        select: { filename: true, summary: true, source: true },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+      })
+
+      const brandProfile = client.brandProfiles[0]
+      const brandBuilder = client.brandBuilders[0]
+      const brandData = brandProfile?.editedJson ?? brandProfile?.extractedJson ?? brandBuilder?.dataJson
+
+      const contextParts: string[] = [
+        `CLIENT: ${client.name}`,
+        `INDUSTRY: ${client.industry ?? 'not specified'}`,
+      ]
+      if (brandData) {
+        const b = brandData as Record<string, unknown>
+        const audience = b.target_audience ?? b.audience
+        const positioning = b.positioning ?? b.value_proposition ?? b.tagline
+        if (positioning) contextParts.push(`POSITIONING: ${JSON.stringify(positioning)}`)
+        if (audience) contextParts.push(`TARGET AUDIENCE: ${JSON.stringify(audience)}`)
+      }
+      if (brainDocs.length > 0) {
+        contextParts.push('\nKNOWLEDGE BASE:')
+        for (const doc of brainDocs) {
+          if (doc.summary?.trim()) {
+            contextParts.push(`--- ${doc.filename} (${doc.source}) ---\n${doc.summary.trim()}`)
+          }
+        }
+      }
+
+      const fieldLines = fields.map((f, idx) =>
+        `${idx + 1}. field="${f.field}" label="${f.label}"${f.placeholder ? ` example="${f.placeholder}"` : ''}`
+      ).join('\n')
+
+      const result = await callModel(
+        {
+          provider: 'anthropic',
+          model: 'claude-haiku-4-5-20251001',
+          api_key_ref: 'ANTHROPIC_API_KEY',
+          max_tokens: 400,
+          temperature: 0.4,
+        },
+        `You are helping set up a content workflow for a marketing agency client.
+
+${contextParts.join('\n')}
+
+FIELDS TO FILL:
+${fieldLines}
+
+Based on the client context above, suggest the best value for each field.
+Return ONLY a valid JSON object mapping field names to suggested string values.
+Be specific and use real details from the context — do not use generic placeholders.
+If a field asks for URLs that aren't clearly present in the context, omit it or return an empty string.
+Example format: {"field1":"value1","field2":"value2"}`,
+      )
+
+      let suggestions: Record<string, string> = {}
+      try {
+        const text = result.text.trim().replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim()
+        suggestions = JSON.parse(text)
+      } catch {
+        // Return empty suggestions rather than erroring — UI will handle gracefully
+      }
+
+      return reply.send({ data: { suggestions } })
+    }
+  )
+
   // DELETE attachment
   app.delete<{ Params: { clientId: string; attachmentId: string } }>(
     '/:clientId/brain/attachments/:attachmentId',
