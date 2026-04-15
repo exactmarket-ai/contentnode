@@ -3049,15 +3049,14 @@ Structure:
   },
 
   // ─── DEMO TEMPLATES ────────────────────────────────────────────────────────
-  // Temporary demo templates for showing the detection-humanization pipeline.
-  // Default detection service is 'local' (no API key required).
-  // For real scores set service to 'gptzero' and configure GPTZERO_API_KEY.
+  // Demo templates for showing the detection-humanization pipeline.
+  // All detection nodes use GPTZero (requires GPTZERO_API_KEY env var).
 
   {
     id: 'demo-detection-loop',
     name: 'Demo: Detection Loop (10 Passes, No Humanizer)',
     description:
-      'Demonstration: Claude Sonnet rewrites a document and immediately runs AI detection. If the score exceeds 30%, the detection output (including flagged sentences) is fed directly back to Claude for a smarter rewrite — up to 10 passes. No humanizer. Watch the score improve live as Claude learns from its own detection feedback. Uses local scoring by default — switch service to gptzero and set GPTZERO_API_KEY for real scores.',
+      'Demonstration: Claude Sonnet rewrites a document and immediately runs AI detection via GPTZero. If the score exceeds 30%, the detection output (including flagged sentences) is fed directly back to Claude for a smarter rewrite — up to 10 passes. No humanizer. Watch the real GPTZero score improve live as Claude learns from its own detection feedback.',
     category: 'general',
     icon: 'RefreshCw',
     nodes: [
@@ -3120,7 +3119,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
           subtype: 'detection',
           config: {
             subtype: 'detection',
-            service: 'local',
+            service: 'gptzero',
             threshold: 30,
             max_retries: 10,
           },
@@ -3219,7 +3218,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
           subtype: 'detection',
           config: {
             subtype: 'detection',
-            service: 'local',
+            service: 'gptzero',
             threshold: 100,
             max_retries: 0,
           },
@@ -3267,7 +3266,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
           subtype: 'detection',
           config: {
             subtype: 'detection',
-            service: 'local',
+            service: 'gptzero',
             threshold: 100,
             max_retries: 0,
           },
@@ -3315,7 +3314,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
           subtype: 'detection',
           config: {
             subtype: 'detection',
-            service: 'local',
+            service: 'gptzero',
             threshold: 100,
             max_retries: 0,
           },
@@ -3422,7 +3421,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
           subtype: 'detection',
           config: {
             subtype: 'detection',
-            service: 'local',
+            service: 'gptzero',
             threshold: 100,
             max_retries: 0,
           },
@@ -3470,7 +3469,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
           subtype: 'detection',
           config: {
             subtype: 'detection',
-            service: 'local',
+            service: 'gptzero',
             threshold: 100,
             max_retries: 0,
           },
@@ -3518,7 +3517,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
           subtype: 'detection',
           config: {
             subtype: 'detection',
-            service: 'local',
+            service: 'gptzero',
             threshold: 100,
             max_retries: 0,
           },
