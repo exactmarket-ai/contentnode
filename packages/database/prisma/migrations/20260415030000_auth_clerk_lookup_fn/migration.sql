@@ -3,6 +3,9 @@
 -- so SECURITY DEFINER is required to bypass FORCE ROW LEVEL SECURITY on the users table.
 -- Without this, the query would see 0 rows and every unauthenticated user would get 403.
 
+-- Drop first so we can rename the parameter without PostgreSQL complaining.
+DROP FUNCTION IF EXISTS get_user_by_clerk_id(TEXT);
+
 CREATE OR REPLACE FUNCTION get_user_by_clerk_id(p_clerk_id TEXT)
 RETURNS TABLE(agency_id TEXT, role TEXT)
 LANGUAGE sql
