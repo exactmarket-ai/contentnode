@@ -181,14 +181,59 @@ interface DetectionLoop {
   detectionNodeId: string
   branchNodeId: string | null  // null = detection node itself acts as branch via pass/fail edges
   humanizerNodeId: string
+  /** Node the humanizer's back-edge points to — detectionNodeId OR any ancestor */
+  loopBackNodeId: string
+  /** Ordered node IDs to re-execute each iteration: [loopBackNodeId, …, detectionNodeId] */
+  loopPathNodeIds: string[]
 }
 
 /**
- * Finds (detection → conditional-branch → humanizer → detection) cycles.
- * Returns one entry per detected loop.
+ * Finds detection loops. Supports two patterns:
+ *   1. Detection → ConditionalBranch → Humanizer → (Detection OR any ancestor)
+ *   2. Detection -fail-> Humanizer → (Detection OR any ancestor)   [no branch node]
+ * The back-edge from humanizer may point to any ancestor of the detection node,
+ * not just the detection node itself (e.g. Humanizer → AI Generate → Detection).
  */
 function findDetectionLoops(nodes: GraphNode[], edges: GraphEdge[]): DetectionLoop[] {
   const loops: DetectionLoop[] = []
+
+  // Build adjacency maps
+  const backward = new Map<string, string[]>()
+  const forward  = new Map<string, string[]>()
+  for (const n of nodes) { backward.set(n.id, []); forward.set(n.id, []) }
+  for (const e of edges) {
+    backward.get(e.targetNodeId)?.push(e.sourceNodeId)
+    forward.get(e.sourceNodeId)?.push(e.targetNodeId)
+  }
+
+  /** All ancestor IDs of nodeId (BFS via reverse edges). */
+  function getAncestors(nodeId: string): Set<string> {
+    const visited = new Set<string>()
+    const queue = [nodeId]
+    while (queue.length) {
+      const cur = queue.shift()!
+      for (const anc of backward.get(cur) ?? []) {
+        if (!visited.has(anc)) { visited.add(anc); queue.push(anc) }
+      }
+    }
+    return visited
+  }
+
+  /** BFS shortest forward path [fromId, …, toId]. */
+  function findForwardPath(fromId: string, toId: string): string[] {
+    if (fromId === toId) return [fromId]
+    const queue: string[][] = [[fromId]]
+    const visited = new Set<string>([fromId])
+    while (queue.length) {
+      const path = queue.shift()!
+      for (const next of forward.get(path[path.length - 1]) ?? []) {
+        const newPath = [...path, next]
+        if (next === toId) return newPath
+        if (!visited.has(next)) { visited.add(next); queue.push(newPath) }
+      }
+    }
+    return [fromId, toId] // fallback: just the two endpoints
+  }
 
   const detectionNodes = nodes.filter((n) => {
     const cfg = (n.config ?? {}) as Record<string, unknown>
@@ -196,54 +241,54 @@ function findDetectionLoops(nodes: GraphNode[], edges: GraphEdge[]): DetectionLo
   })
 
   for (const detNode of detectionNodes) {
-    // Downstream from detection → should reach a conditional-branch
     const detOutEdges = edges.filter((e) => e.sourceNodeId === detNode.id)
+    const ancestors = getAncestors(detNode.id)
 
+    /** Try to find a humanizer back-edge and register the loop. Returns true on success. */
+    const tryRegister = (humNode: GraphNode, branchNodeId: string | null): boolean => {
+      const humOutEdges = edges.filter((e) => e.sourceNodeId === humNode.id)
+      for (const humEdge of humOutEdges) {
+        const target = humEdge.targetNodeId
+        if (target === detNode.id || ancestors.has(target)) {
+          loops.push({
+            detectionNodeId: detNode.id,
+            branchNodeId,
+            humanizerNodeId: humNode.id,
+            loopBackNodeId: target,
+            loopPathNodeIds: findForwardPath(target, detNode.id),
+          })
+          return true
+        }
+      }
+      return false
+    }
+
+    // Pattern 1: Detection → ConditionalBranch → Humanizer → (detection or ancestor)
     for (const detEdge of detOutEdges) {
       const branchNode = nodes.find((n) => n.id === detEdge.targetNodeId)
       if (!branchNode) continue
       const branchCfg = (branchNode.config ?? {}) as Record<string, unknown>
       if (branchCfg.subtype !== 'conditional-branch') continue
 
-      // From branch → find a humanizer
       const branchOutEdges = edges.filter((e) => e.sourceNodeId === branchNode.id)
-
       for (const branchEdge of branchOutEdges) {
         const humNode = nodes.find((n) => n.id === branchEdge.targetNodeId)
         if (!humNode) continue
         const humCfg = (humNode.config ?? {}) as Record<string, unknown>
         if (humCfg.subtype !== 'humanizer' && humCfg.subtype !== 'humanizer-pro') continue
-
-        // From humanizer → back to detection = confirmed loop
-        const loopBack = edges.find(
-          (e) => e.sourceNodeId === humNode.id && e.targetNodeId === detNode.id,
-        )
-        if (loopBack) {
-          loops.push({
-            detectionNodeId: detNode.id,
-            branchNodeId: branchNode.id,
-            humanizerNodeId: humNode.id,
-          })
-        }
+        tryRegister(humNode, branchNode.id)
       }
     }
 
-    // Simplified loop: Detection -fail-> Humanizer -> Detection (no branch node)
-    const failEdge = detOutEdges.find((e) => e.label === 'fail')
-    if (failEdge && !loops.some((l) => l.detectionNodeId === detNode.id)) {
-      const humNode = nodes.find((n) => n.id === failEdge.targetNodeId)
-      if (humNode) {
-        const humCfg = (humNode.config ?? {}) as Record<string, unknown>
-        if (humCfg.subtype === 'humanizer' || humCfg.subtype === 'humanizer-pro') {
-          const loopBack = edges.find(
-            (e) => e.sourceNodeId === humNode.id && e.targetNodeId === detNode.id,
-          )
-          if (loopBack) {
-            loops.push({
-              detectionNodeId: detNode.id,
-              branchNodeId: null,
-              humanizerNodeId: humNode.id,
-            })
+    // Pattern 2: Detection -fail-> Humanizer → (detection or ancestor) — no branch node
+    if (!loops.some((l) => l.detectionNodeId === detNode.id)) {
+      const failEdge = detOutEdges.find((e) => e.label === 'fail')
+      if (failEdge) {
+        const humNode = nodes.find((n) => n.id === failEdge.targetNodeId)
+        if (humNode) {
+          const humCfg = (humNode.config ?? {}) as Record<string, unknown>
+          if (humCfg.subtype === 'humanizer' || humCfg.subtype === 'humanizer-pro') {
+            tryRegister(humNode, null)
           }
         }
       }
@@ -503,12 +548,17 @@ export class WorkflowRunner {
       ...detectionLoops.filter((l) => l.branchNodeId !== null).map((l) => l.humanizerNodeId),
     ])
 
-    // Back-edges for simplified loops (Detection -fail-> Humanizer): excluded from topo sort
-    const skipEdgeKeys = new Set<string>(
-      detectionLoops
+    // Back-edges for simplified loops excluded from topo sort:
+    // (a) The Detection -fail-> Humanizer forward edge (so Humanizer doesn't depend on Detection)
+    // (b) The Humanizer → loopBackNodeId back-edge when loopBack is upstream (not Detection itself)
+    const skipEdgeKeys = new Set<string>([
+      ...detectionLoops
         .filter((l) => l.branchNodeId === null)
         .map((l) => `${l.detectionNodeId}:${l.humanizerNodeId}:fail`),
-    )
+      ...detectionLoops
+        .filter((l) => l.branchNodeId === null && l.loopBackNodeId !== l.detectionNodeId)
+        .map((l) => `${l.humanizerNodeId}:${l.loopBackNodeId}:`),
+    ])
 
     // Map from detection node ID → its loop definition
     const loopByDetectionNode = new Map<string, DetectionLoop>()
@@ -1115,6 +1165,30 @@ export class WorkflowRunner {
         await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'humanizer', undefined, humResult.inputTokens, humResult.outputTokens)
       }
 
+      // If back-edge goes to an upstream node (e.g. Humanizer → AI Generate → Detection),
+      // re-execute each intermediate node in the path using the humanized text as input.
+      let redetInput: unknown = humanizedText
+      const intermediateNodeIds = loop.loopPathNodeIds.slice(0, -1) // all except detection itself
+      for (const pathNodeId of intermediateNodeIds) {
+        const pathNode = allNodes.find((n) => n.id === pathNodeId)
+        if (!pathNode) continue
+        const pathCfg = (pathNode.config ?? {}) as Record<string, unknown>
+        const pathCtx: NodeExecutionContext = { ...detCtx, nodeId: pathNodeId }
+        const pathExec = getExecutor(pathNode.type, pathCfg)
+        const pathResult = await pathExec.execute(redetInput, pathCfg, pathCtx)
+        redetInput = pathResult.output
+        nodeOutputs.set(pathNodeId, redetInput)
+        runOutput.nodeStatuses[pathNodeId] = {
+          status: 'passed',
+          output: redetInput,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          tokensUsed: pathResult.tokensUsed,
+          modelUsed: pathResult.modelUsed,
+        }
+        await this.persistOutput(runOutput)
+      }
+
       // Mark detection as running again
       runOutput.nodeStatuses[loop.detectionNodeId] = {
         ...runOutput.nodeStatuses[loop.detectionNodeId],
@@ -1122,8 +1196,8 @@ export class WorkflowRunner {
       }
       await this.persistOutput(runOutput)
 
-      // Re-run detection on humanized content
-      const redetResult = await detExec.execute(humanizedText, detCfg, detCtx)
+      // Re-run detection on humanized content (or on the output of intermediate nodes)
+      const redetResult = await detExec.execute(redetInput, detCfg, detCtx)
       currentDetOutput = redetResult.output as Record<string, unknown>
       const newScore = (currentDetOutput.overall_score as number) ?? 0
 

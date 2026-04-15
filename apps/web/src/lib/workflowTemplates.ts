@@ -3047,4 +3047,512 @@ Structure:
       { id: 'e-up-s3-out',   source: 'up-seg3',  target: 'up-out' },
     ],
   },
+
+  // ─── DEMO TEMPLATES ────────────────────────────────────────────────────────
+  // Temporary demo templates for showing the detection-humanization pipeline.
+  // Default detection service is 'local' (no API key required).
+  // For real scores set service to 'gptzero' and configure GPTZERO_API_KEY.
+
+  {
+    id: 'demo-detection-loop',
+    name: 'Demo: Detection Loop (10 Passes)',
+    description:
+      'Demonstration: a document is rewritten by Claude Sonnet, then humanized and AI-scored in a loop up to 10 times. Each pass where the score exceeds 50% sends the content back through the humanizer. Watch the detection score drop round by round. Uses local scoring by default — switch service to gptzero and add GPTZERO_API_KEY for real GPTZero scores.',
+    category: 'general',
+    icon: 'RefreshCw',
+    nodes: [
+      {
+        id: 'dl-src-doc',
+        type: 'source',
+        position: { x: 80, y: 160 },
+        data: {
+          label: 'Source Document',
+          subtype: 'file-upload',
+          config: { subtype: 'file-upload' },
+        },
+      },
+      {
+        id: 'dl-src-inst',
+        type: 'source',
+        position: { x: 80, y: 320 },
+        data: {
+          label: 'Writing Instructions',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: 'Rewrite this content in a natural, engaging voice. Keep all key facts intact but vary the sentence structure and rhythm.',
+          },
+        },
+      },
+      {
+        id: 'dl-ai',
+        type: 'logic',
+        position: { x: 360, y: 220 },
+        data: {
+          label: 'AI Rewrite — Claude Sonnet',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'rewrite',
+            prompt: 'Rewrite the provided content to be engaging and natural-sounding. Preserve all key facts. Use varied sentence lengths, active voice, and conversational phrasing where appropriate.',
+            model_config: { provider: 'anthropic', model: 'claude-sonnet-4-6', temperature: 0.7 },
+          },
+        },
+      },
+      {
+        id: 'dl-hum',
+        type: 'logic',
+        position: { x: 660, y: 220 },
+        data: {
+          label: 'Humanize (Undetectable AI)',
+          subtype: 'humanizer-pro',
+          config: {
+            subtype: 'humanizer-pro',
+            humanizer_service: 'undetectable',
+            mode: 'executive-natural',
+            naturalness: 70, energy: 55, precision: 75, formality: 65,
+            boldness: 60, compression: 55, personality: 45, safety: 80,
+            targeted_rewrite: true,
+          },
+        },
+      },
+      {
+        id: 'dl-det',
+        type: 'logic',
+        position: { x: 960, y: 220 },
+        data: {
+          label: 'AI Detect — score ≤ 50 = pass',
+          subtype: 'detection',
+          config: {
+            subtype: 'detection',
+            service: 'local',
+            threshold: 50,
+            max_retries: 10,
+          },
+        },
+      },
+      {
+        id: 'dl-out',
+        type: 'output',
+        position: { x: 1260, y: 220 },
+        data: {
+          label: 'Final Content',
+          subtype: 'display',
+          config: { subtype: 'display' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-dl-1', source: 'dl-src-doc',  target: 'dl-ai' },
+      { id: 'e-dl-2', source: 'dl-src-inst', target: 'dl-ai' },
+      { id: 'e-dl-3', source: 'dl-ai',  target: 'dl-hum' },
+      { id: 'e-dl-4', source: 'dl-hum', target: 'dl-det' },
+      { id: 'e-dl-5', source: 'dl-det', target: 'dl-out', sourceHandle: 'pass' },
+      { id: 'e-dl-6', source: 'dl-det', target: 'dl-hum', sourceHandle: 'fail' },
+    ],
+  },
+
+  {
+    id: 'demo-llm-rotation',
+    name: 'Demo: LLM Rotation Gauntlet (3 Rounds)',
+    description:
+      'Demonstration: the same source content passes through three AI rewrite rounds — Claude Sonnet → Claude Haiku → Claude Opus — each followed by humanization and detection scoring. Compare how different models score on the AI detector. All three round scores appear in the run output. Humanizer mode is identical each round; only the LLM changes.',
+    category: 'general',
+    icon: 'Shuffle',
+    nodes: [
+      {
+        id: 'lr-src-doc',
+        type: 'source',
+        position: { x: 80, y: 180 },
+        data: {
+          label: 'Source Document',
+          subtype: 'file-upload',
+          config: { subtype: 'file-upload' },
+        },
+      },
+      {
+        id: 'lr-src-inst',
+        type: 'source',
+        position: { x: 80, y: 340 },
+        data: {
+          label: 'Topic / Brief',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: 'Rewrite this content to read naturally and evade AI detection. Use varied sentence rhythm, a first-person perspective where suitable, and specific concrete details.',
+          },
+        },
+      },
+      // ─── Round 1: Claude Sonnet ─────────────────────────────────────────
+      {
+        id: 'lr-r1-ai',
+        type: 'logic',
+        position: { x: 320, y: 220 },
+        data: {
+          label: 'Round 1 — Claude Sonnet',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'rewrite',
+            prompt: 'Round 1 (Sonnet): Produce a natural, human-sounding version of this content. Use conversational language, varied sentence lengths, and rhetorical questions.',
+            model_config: { provider: 'anthropic', model: 'claude-sonnet-4-6', temperature: 0.7 },
+          },
+        },
+      },
+      {
+        id: 'lr-r1-hum',
+        type: 'logic',
+        position: { x: 600, y: 120 },
+        data: {
+          label: 'Humanize R1',
+          subtype: 'humanizer-pro',
+          config: {
+            subtype: 'humanizer-pro',
+            humanizer_service: 'undetectable',
+            mode: 'executive-natural',
+            naturalness: 70, energy: 55, precision: 75, formality: 65,
+            boldness: 60, compression: 55, personality: 45, safety: 80,
+            targeted_rewrite: true,
+          },
+        },
+      },
+      {
+        id: 'lr-r1-det',
+        type: 'logic',
+        position: { x: 880, y: 120 },
+        data: {
+          label: 'Detect R1 — Sonnet score',
+          subtype: 'detection',
+          config: {
+            subtype: 'detection',
+            service: 'local',
+            threshold: 100,
+            max_retries: 0,
+          },
+        },
+      },
+      // ─── Round 2: Claude Haiku ──────────────────────────────────────────
+      {
+        id: 'lr-r2-ai',
+        type: 'logic',
+        position: { x: 600, y: 380 },
+        data: {
+          label: 'Round 2 — Claude Haiku',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'rewrite',
+            prompt: 'Round 2 (Haiku): Take the provided content and produce a more casual, energetic version. Use short punchy sentences mixed with longer flowing ones. Add personal anecdotes or hypotheticals.',
+            model_config: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', temperature: 0.75 },
+          },
+        },
+      },
+      {
+        id: 'lr-r2-hum',
+        type: 'logic',
+        position: { x: 880, y: 380 },
+        data: {
+          label: 'Humanize R2',
+          subtype: 'humanizer-pro',
+          config: {
+            subtype: 'humanizer-pro',
+            humanizer_service: 'undetectable',
+            mode: 'executive-natural',
+            naturalness: 70, energy: 55, precision: 75, formality: 65,
+            boldness: 60, compression: 55, personality: 45, safety: 80,
+            targeted_rewrite: true,
+          },
+        },
+      },
+      {
+        id: 'lr-r2-det',
+        type: 'logic',
+        position: { x: 1160, y: 380 },
+        data: {
+          label: 'Detect R2 — Haiku score',
+          subtype: 'detection',
+          config: {
+            subtype: 'detection',
+            service: 'local',
+            threshold: 100,
+            max_retries: 0,
+          },
+        },
+      },
+      // ─── Round 3: Claude Opus ───────────────────────────────────────────
+      {
+        id: 'lr-r3-ai',
+        type: 'logic',
+        position: { x: 880, y: 620 },
+        data: {
+          label: 'Round 3 — Claude Opus',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'rewrite',
+            prompt: 'Round 3 (Opus): Final polish. Make this content feel genuinely human-crafted. Inject personality, strategic imperfections, and natural thought progressions. Vary tone from analytical to conversational.',
+            model_config: { provider: 'anthropic', model: 'claude-opus-4-6', temperature: 0.8 },
+          },
+        },
+      },
+      {
+        id: 'lr-r3-hum',
+        type: 'logic',
+        position: { x: 1160, y: 620 },
+        data: {
+          label: 'Humanize R3',
+          subtype: 'humanizer-pro',
+          config: {
+            subtype: 'humanizer-pro',
+            humanizer_service: 'undetectable',
+            mode: 'executive-natural',
+            naturalness: 70, energy: 55, precision: 75, formality: 65,
+            boldness: 60, compression: 55, personality: 45, safety: 80,
+            targeted_rewrite: true,
+          },
+        },
+      },
+      {
+        id: 'lr-r3-det',
+        type: 'logic',
+        position: { x: 1440, y: 620 },
+        data: {
+          label: 'Detect R3 — Opus score',
+          subtype: 'detection',
+          config: {
+            subtype: 'detection',
+            service: 'local',
+            threshold: 100,
+            max_retries: 0,
+          },
+        },
+      },
+      {
+        id: 'lr-out',
+        type: 'output',
+        position: { x: 1720, y: 620 },
+        data: {
+          label: 'Best Result (Round 3)',
+          subtype: 'display',
+          config: { subtype: 'display' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-lr-1',  source: 'lr-src-doc',  target: 'lr-r1-ai' },
+      { id: 'e-lr-2',  source: 'lr-src-inst',  target: 'lr-r1-ai' },
+      { id: 'e-lr-3',  source: 'lr-r1-ai',     target: 'lr-r1-hum' },
+      // R1 humanizer → R1 detection (for scoring) AND → R2 AI Gen (feed next round)
+      { id: 'e-lr-4',  source: 'lr-r1-hum',    target: 'lr-r1-det' },
+      { id: 'e-lr-5',  source: 'lr-r1-hum',    target: 'lr-r2-ai' },
+      { id: 'e-lr-6',  source: 'lr-r2-ai',     target: 'lr-r2-hum' },
+      // R2 humanizer → R2 detection (for scoring) AND → R3 AI Gen
+      { id: 'e-lr-7',  source: 'lr-r2-hum',    target: 'lr-r2-det' },
+      { id: 'e-lr-8',  source: 'lr-r2-hum',    target: 'lr-r3-ai' },
+      { id: 'e-lr-9',  source: 'lr-r3-ai',     target: 'lr-r3-hum' },
+      { id: 'e-lr-10', source: 'lr-r3-hum',    target: 'lr-r3-det' },
+      { id: 'e-lr-11', source: 'lr-r3-det',    target: 'lr-out' },
+    ],
+  },
+
+  {
+    id: 'demo-full-sweep',
+    name: 'Demo: Full Variation Sweep (LLM + Humanizer)',
+    description:
+      'Demonstration: three rounds each with a different Claude model AND a different humanizer voice. Round 1: Sonnet + Executive Natural. Round 2: Haiku + Conversational. Round 3: Opus + Founder Voice. Compare how each LLM/humanizer combination scores on the AI detector — ideal for showing the full tool chain to a client.',
+    category: 'general',
+    icon: 'Layers',
+    nodes: [
+      {
+        id: 'sw-src-doc',
+        type: 'source',
+        position: { x: 80, y: 180 },
+        data: {
+          label: 'Source Document',
+          subtype: 'file-upload',
+          config: { subtype: 'file-upload' },
+        },
+      },
+      {
+        id: 'sw-src-inst',
+        type: 'source',
+        position: { x: 80, y: 340 },
+        data: {
+          label: 'Topic / Brief',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: 'Rewrite this content to pass AI detection. Make it feel genuinely human — personal, specific, and varied in rhythm.',
+          },
+        },
+      },
+      // ─── Round 1: Sonnet + Executive Natural ────────────────────────────
+      {
+        id: 'sw-r1-ai',
+        type: 'logic',
+        position: { x: 320, y: 220 },
+        data: {
+          label: 'R1 — Sonnet (Executive)',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'rewrite',
+            prompt: 'Round 1 — Executive tone. Rewrite with authority and clarity. Use precise language, strategic emphasis, and confident assertions. Avoid hedging.',
+            model_config: { provider: 'anthropic', model: 'claude-sonnet-4-6', temperature: 0.7 },
+          },
+        },
+      },
+      {
+        id: 'sw-r1-hum',
+        type: 'logic',
+        position: { x: 600, y: 120 },
+        data: {
+          label: 'Humanize R1 — Executive Natural',
+          subtype: 'humanizer-pro',
+          config: {
+            subtype: 'humanizer-pro',
+            humanizer_service: 'undetectable',
+            mode: 'executive-natural',
+            naturalness: 70, energy: 55, precision: 75, formality: 65,
+            boldness: 60, compression: 55, personality: 45, safety: 80,
+            targeted_rewrite: true,
+          },
+        },
+      },
+      {
+        id: 'sw-r1-det',
+        type: 'logic',
+        position: { x: 880, y: 120 },
+        data: {
+          label: 'Detect R1 — Executive score',
+          subtype: 'detection',
+          config: {
+            subtype: 'detection',
+            service: 'local',
+            threshold: 100,
+            max_retries: 0,
+          },
+        },
+      },
+      // ─── Round 2: Haiku + Conversational ────────────────────────────────
+      {
+        id: 'sw-r2-ai',
+        type: 'logic',
+        position: { x: 600, y: 380 },
+        data: {
+          label: 'R2 — Haiku (Conversational)',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'rewrite',
+            prompt: "Round 2 — Conversational tone. Take this and make it casual and approachable. Write like you're explaining to a smart friend — relaxed, energetic, and relatable. Short punchy sentences are fine.",
+            model_config: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', temperature: 0.8 },
+          },
+        },
+      },
+      {
+        id: 'sw-r2-hum',
+        type: 'logic',
+        position: { x: 880, y: 380 },
+        data: {
+          label: 'Humanize R2 — Conversational',
+          subtype: 'humanizer-pro',
+          config: {
+            subtype: 'humanizer-pro',
+            humanizer_service: 'undetectable',
+            mode: 'conversational',
+            naturalness: 85, energy: 65, precision: 50, formality: 25,
+            boldness: 50, compression: 45, personality: 70, safety: 70,
+            targeted_rewrite: true,
+          },
+        },
+      },
+      {
+        id: 'sw-r2-det',
+        type: 'logic',
+        position: { x: 1160, y: 380 },
+        data: {
+          label: 'Detect R2 — Conversational score',
+          subtype: 'detection',
+          config: {
+            subtype: 'detection',
+            service: 'local',
+            threshold: 100,
+            max_retries: 0,
+          },
+        },
+      },
+      // ─── Round 3: Opus + Founder Voice ──────────────────────────────────
+      {
+        id: 'sw-r3-ai',
+        type: 'logic',
+        position: { x: 880, y: 620 },
+        data: {
+          label: 'R3 — Opus (Founder Voice)',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            task_type: 'rewrite',
+            prompt: "Round 3 — Founder voice. Rewrite with passion and vision. Share the 'why' behind every point. Be bold, direct, and willing to challenge conventional thinking. Personal stories and strong opinions are welcome.",
+            model_config: { provider: 'anthropic', model: 'claude-opus-4-6', temperature: 0.85 },
+          },
+        },
+      },
+      {
+        id: 'sw-r3-hum',
+        type: 'logic',
+        position: { x: 1160, y: 620 },
+        data: {
+          label: 'Humanize R3 — Founder Voice',
+          subtype: 'humanizer-pro',
+          config: {
+            subtype: 'humanizer-pro',
+            humanizer_service: 'undetectable',
+            mode: 'founder-voice',
+            naturalness: 80, energy: 80, precision: 55, formality: 35,
+            boldness: 85, compression: 50, personality: 80, safety: 55,
+            targeted_rewrite: true,
+          },
+        },
+      },
+      {
+        id: 'sw-r3-det',
+        type: 'logic',
+        position: { x: 1440, y: 620 },
+        data: {
+          label: 'Detect R3 — Founder score',
+          subtype: 'detection',
+          config: {
+            subtype: 'detection',
+            service: 'local',
+            threshold: 100,
+            max_retries: 0,
+          },
+        },
+      },
+      {
+        id: 'sw-out',
+        type: 'output',
+        position: { x: 1720, y: 620 },
+        data: {
+          label: 'Best Result (Round 3)',
+          subtype: 'display',
+          config: { subtype: 'display' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-sw-1',  source: 'sw-src-doc',  target: 'sw-r1-ai' },
+      { id: 'e-sw-2',  source: 'sw-src-inst',  target: 'sw-r1-ai' },
+      { id: 'e-sw-3',  source: 'sw-r1-ai',     target: 'sw-r1-hum' },
+      { id: 'e-sw-4',  source: 'sw-r1-hum',    target: 'sw-r1-det' },
+      { id: 'e-sw-5',  source: 'sw-r1-hum',    target: 'sw-r2-ai' },
+      { id: 'e-sw-6',  source: 'sw-r2-ai',     target: 'sw-r2-hum' },
+      { id: 'e-sw-7',  source: 'sw-r2-hum',    target: 'sw-r2-det' },
+      { id: 'e-sw-8',  source: 'sw-r2-hum',    target: 'sw-r3-ai' },
+      { id: 'e-sw-9',  source: 'sw-r3-ai',     target: 'sw-r3-hum' },
+      { id: 'e-sw-10', source: 'sw-r3-hum',    target: 'sw-r3-det' },
+      { id: 'e-sw-11', source: 'sw-r3-det',    target: 'sw-out' },
+    ],
+  },
 ]
