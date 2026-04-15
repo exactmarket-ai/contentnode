@@ -136,7 +136,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
       <button
         onClick={() => setCollapsed((v) => !v)}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+        className="absolute right-0 top-2 z-10 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
       >
         {collapsed
           ? <Icons.ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
