@@ -26,6 +26,8 @@ export interface NodeExecutionContext {
   nodeLabel?: string
   workflowId: string
   clientId?: string | null
+  /** Which vertical this workflow is operating in — drives tier 2 + tier 4 brain context */
+  verticalId?: string | null
   /** Client brand profile — null if not yet populated */
   clientProfile?: ClientProfileContext | null
   /** Clerk user ID of the user who triggered this run (from WorkflowRun.input) */

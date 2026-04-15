@@ -16,6 +16,9 @@ export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
 export const QUEUE_CAMPAIGN_BRAIN_PROCESS = 'campaign-brain-process'
 export const QUEUE_CLIENT_BRAIN_PROCESS = 'client-brain-process'
+export const QUEUE_AGENCY_BRAIN_PROCESS = 'agency-brain-process'
+export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
+export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +98,27 @@ export interface ClientBrainProcessJobData {
   agencyId: string
   attachmentId: string
   clientId: string
+  url?: string
+}
+
+export interface AgencyBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  url?: string
+}
+
+export interface VerticalBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  verticalId: string
+  url?: string
+}
+
+export interface ClientVerticalBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  clientId: string
+  verticalId: string
   url?: string
 }
 

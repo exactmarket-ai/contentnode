@@ -603,6 +603,7 @@ export class WorkflowRunner {
             nodeLabel: node.label ?? undefined,
             workflowId: workflow.id,
             clientId: workflow.clientId ?? null,
+            verticalId: (workflow as Record<string, unknown>).verticalId as string | null ?? null,
             userId: callerClerkId ?? null,
             userRole: callerRole ?? null,
             resolvedPermissions: callerPermissions,

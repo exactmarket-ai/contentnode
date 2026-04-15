@@ -43,6 +43,7 @@ model Agency {
   jobs               Job[]
   clientDemandGen      ClientDemandGen[]
   clientDemandGenBase  ClientDemandGenBase[]
+  clientGTMAssessments ClientGTMAssessment[]
   clientFrameworks   ClientFramework[]
   clientVerticals    ClientVertical[]
   verticals          Vertical[]
@@ -54,9 +55,13 @@ model Agency {
   brandAttachments   ClientBrandAttachment[]
   manualUsageEntries ManualUsageEntry[]
   campaigns          Campaign[]
+  agencyBrainAttachments         AgencyBrainAttachment[]
+  verticalBrainAttachments       VerticalBrainAttachment[]
+  clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
+  brainContext        String? @db.Text @map("brain_context")
 
   @@map("agencies")
 }
@@ -109,6 +114,7 @@ model Client {
   divisions    Division[]
   demandGen       ClientDemandGen[]
   demandGenBase   ClientDemandGenBase?
+  gtmAssessment   ClientGTMAssessment?
   frameworks      ClientFramework[]
   clientVerticals ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
@@ -120,6 +126,7 @@ model Client {
   manualUsageEntries ManualUsageEntry[]
   campaigns          Campaign[]
   brainAttachments   ClientBrainAttachment[]
+  clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   brainContext       String?  @db.Text @map("brain_context")
 
   @@unique([agencyId, slug])
@@ -143,6 +150,10 @@ model Vertical {
   clientVerticals      ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
   frameworkResearch    ClientFrameworkResearch[]
+  brainAttachments     VerticalBrainAttachment[]
+  clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
+  workflows            Workflow[]
+  brainContext         String? @db.Text @map("brain_context")
 
   @@index([agencyId])
   @@map("verticals")
@@ -205,6 +216,24 @@ model ClientDemandGenBase {
   @@unique([clientId])
   @@index([agencyId])
   @@map("client_demand_gen_base")
+}
+
+// ClientGTMAssessment — structured prospect / client GTM intake assessment
+// ─────────────────────────────────────────────
+model ClientGTMAssessment {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  clientId  String   @map("client_id")
+  data      Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId])
+  @@index([agencyId])
+  @@map("client_gtm_assessments")
 }
 
 // ─────────────────────────────────────────────
@@ -367,12 +396,14 @@ model Workflow {
   templateDescription String? @map("template_description")
   isLocked         Boolean   @default(false) @map("is_locked")
   defaultAssigneeId String?   @map("default_assignee_id")
+  verticalId        String?   @map("vertical_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  agency          Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  defaultAssignee User?    @relation("WorkflowDefaultAssignee", fields: [defaultAssigneeId], references: [id])
+  agency          Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  defaultAssignee User?     @relation("WorkflowDefaultAssignee", fields: [defaultAssigneeId], references: [id])
+  vertical        Vertical? @relation(fields: [verticalId], references: [id], onDelete: SetNull)
   nodes            Node[]
   edges            Edge[]
   runs             WorkflowRun[]
@@ -381,6 +412,7 @@ model Workflow {
 
   @@index([agencyId])
   @@index([clientId])
+  @@index([verticalId])
   @@map("workflows")
 }
 
@@ -1051,6 +1083,7 @@ model CompanyProfile {
   crawledFrom      String?   @map("crawled_from")
   lastCrawledAt    DateTime? @map("last_crawled_at")
   crawledSnapshot  Json      @default("{}") @map("crawled_snapshot")
+  sources          Json      @default("[]") @map("sources")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1109,6 +1142,7 @@ model ClientProfile {
   crawledFrom      String?   @map("crawled_from")
   lastCrawledAt    DateTime? @map("last_crawled_at")
   crawledSnapshot  Json      @default("{}") @map("crawled_snapshot")
+  sources          Json      @default("[]") @map("sources")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1399,4 +1433,105 @@ model CampaignBrainAttachment {
   @@index([campaignId])
   @@index([agencyId])
   @@map("campaign_brain_attachments")
+}
+
+// ─────────────────────────────────────────────
+// AgencyBrainAttachment — tier 1: agency-wide knowledge
+// Methodology, playbooks, team expertise, agency voice.
+// Always included in context. Never contains client data.
+// ─────────────────────────────────────────────
+model AgencyBrainAttachment {
+  id               String   @id @default(cuid())
+  agencyId         String   @map("agency_id")
+  filename         String
+  storageKey       String?  @map("storage_key")
+  sourceUrl        String?  @map("source_url")
+  mimeType         String   @default("") @map("mime_type")
+  sizeBytes        Int      @default(0) @map("size_bytes")
+  // pending | processing | ready | failed
+  extractionStatus String   @default("pending") @map("extraction_status")
+  extractedText    String?  @db.Text @map("extracted_text")
+  // pending | processing | ready | failed
+  summaryStatus    String   @default("pending") @map("summary_status")
+  summary          String?  @db.Text
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  // file | url | note
+  uploadMethod     String   @default("file") @map("upload_method")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@map("agency_brain_attachments")
+}
+
+// ─────────────────────────────────────────────
+// VerticalBrainAttachment — tier 2: vertical-level knowledge
+// Industry research, trends, weekly briefs.
+// Included for all clients tagged to this vertical.
+// One copy per vertical — no duplication across clients.
+// ─────────────────────────────────────────────
+model VerticalBrainAttachment {
+  id               String   @id @default(cuid())
+  agencyId         String   @map("agency_id")
+  verticalId       String   @map("vertical_id")
+  filename         String
+  storageKey       String?  @map("storage_key")
+  sourceUrl        String?  @map("source_url")
+  mimeType         String   @default("") @map("mime_type")
+  sizeBytes        Int      @default(0) @map("size_bytes")
+  // pending | processing | ready | failed
+  extractionStatus String   @default("pending") @map("extraction_status")
+  extractedText    String?  @db.Text @map("extracted_text")
+  // pending | processing | ready | failed
+  summaryStatus    String   @default("pending") @map("summary_status")
+  summary          String?  @db.Text
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  // file | url | note
+  uploadMethod     String   @default("file") @map("upload_method")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([verticalId])
+  @@map("vertical_brain_attachments")
+}
+
+// ─────────────────────────────────────────────
+// ClientVerticalBrainAttachment — tier 4: client × vertical knowledge
+// Client-specific knowledge for a specific vertical.
+// Hard firewall: never shared with other clients.
+// e.g. GE Aerospace ≠ GE Appliances — same client, different vertical brains.
+// ─────────────────────────────────────────────
+model ClientVerticalBrainAttachment {
+  id               String   @id @default(cuid())
+  agencyId         String   @map("agency_id")
+  clientId         String   @map("client_id")
+  verticalId       String   @map("vertical_id")
+  filename         String
+  storageKey       String?  @map("storage_key")
+  sourceUrl        String?  @map("source_url")
+  mimeType         String   @default("") @map("mime_type")
+  sizeBytes        Int      @default(0) @map("size_bytes")
+  // pending | processing | ready | failed
+  extractionStatus String   @default("pending") @map("extraction_status")
+  extractedText    String?  @db.Text @map("extracted_text")
+  // pending | processing | ready | failed
+  summaryStatus    String   @default("pending") @map("summary_status")
+  summary          String?  @db.Text
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  // file | url | note
+  uploadMethod     String   @default("file") @map("upload_method")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@index([clientId, verticalId])
+  @@map("client_vertical_brain_attachments")
 }

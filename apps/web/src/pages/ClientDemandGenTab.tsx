@@ -2,10 +2,42 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { DemandPilot } from '@/components/pilot/DemandPilot'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function uid() { return Math.random().toString(36).slice(2) }
+
+// Check whether a section object has any non-empty string values (ignores auto-generated id fields)
+function hasData(obj: unknown, key = ''): boolean {
+  if (key === 'id') return false
+  if (typeof obj === 'string') return obj.trim().length > 0
+  if (Array.isArray(obj)) return obj.some((item) => hasData(item))
+  if (typeof obj === 'object' && obj !== null)
+    return Object.entries(obj as Record<string, unknown>).some(([k, v]) => hasData(v, k))
+  return false
+}
+
+// Recursively add uid() to array items that don't have an id field
+function applyAiSuggestion(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (typeof item === 'object' && item !== null) {
+        const { id: _id, ...rest } = item as Record<string, unknown>
+        return { id: uid(), ...rest }
+      }
+      return item
+    })
+  }
+  if (typeof value === 'object' && value !== null) {
+    const result: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = applyAiSuggestion(v)
+    }
+    return result
+  }
+  return value
+}
 
 // ── Default data ──────────────────────────────────────────────────────────────
 
@@ -143,7 +175,7 @@ function GtmRef({ children }: { children: React.ReactNode }) {
 
 // ── Section components ────────────────────────────────────────────────────────
 
-function S1({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => void) => void }) {
+function S1({ dg, set }: { dg: DemandGenBaseData; set: (fn: (d: DemandGenBaseData) => void) => void }) {
   const channels = dg.s1.channels
   const assets = dg.s1.assets
 
@@ -195,7 +227,7 @@ function S1({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
-function S2({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => void) => void }) {
+function S2({ dg, set }: { dg: DemandGenBaseData; set: (fn: (d: DemandGenBaseData) => void) => void }) {
   const offers = dg.s2.offers
   const proofPoints = dg.s2.proofPoints
 
@@ -245,7 +277,7 @@ function S2({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
-function S3({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => void) => void }) {
+function S3({ dg, set }: { dg: DemandGenBaseData; set: (fn: (d: DemandGenBaseData) => void) => void }) {
   const personas = dg.s3.personas
 
   return (
@@ -286,7 +318,7 @@ function S3({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
-function S4({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => void) => void }) {
+function S4({ dg, set }: { dg: DemandGenBaseData; set: (fn: (d: DemandGenBaseData) => void) => void }) {
   const goals = dg.s4.goals
 
   return (
@@ -327,7 +359,7 @@ function S4({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
-function S5({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => void) => void }) {
+function S5({ dg, set }: { dg: DemandGenBaseData; set: (fn: (d: DemandGenBaseData) => void) => void }) {
   const stages = dg.s5.stages
 
   return (
@@ -372,7 +404,7 @@ function S5({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
-function S6({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => void) => void }) {
+function S6({ dg, set }: { dg: DemandGenBaseData; set: (fn: (d: DemandGenBaseData) => void) => void }) {
   const stories = dg.s6.customerStories
   const faqs = dg.s6.faqs
 
@@ -436,7 +468,7 @@ function S6({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => vo
   )
 }
 
-function S7({ dg, set }: { dg: DemandGenData; set: (fn: (d: DemandGenData) => void) => void }) {
+function S7({ dg, set }: { dg: DemandGenBaseData; set: (fn: (d: DemandGenBaseData) => void) => void }) {
   const findings = dg.s7.findings
 
   const SOURCE_TYPES = ['G2 / Capterra', 'Google Reviews', 'Reddit', 'LinkedIn', 'News / Press', 'Competitor', 'Search Intent', 'Other']
@@ -871,7 +903,16 @@ function IntakeSection({ clientId, verticalId }: { clientId: string; verticalId:
 // ── Base layer default data ───────────────────────────────────────────────────
 
 function defaultDemandGenBase() {
+  const dg = defaultDemandGen()
   return {
+    // S1–S7 — company-level demand gen (also appears per-vertical when a vertical is selected)
+    s1: dg.s1,
+    s2: dg.s2,
+    s3: dg.s3,
+    s4: dg.s4,
+    s5: dg.s5,
+    s6: dg.s6,
+    s7: dg.s7,
     // B1 — Revenue & Growth Goals (company-wide)
     b1: {
       fundingStage: '',
@@ -1055,14 +1096,11 @@ function SB3({ base, setBase }: { base: DemandGenBaseData; setBase: (fn: (d: Dem
 
 // ── Nav sidebar ───────────────────────────────────────────────────────────────
 
-const BASE_SECTIONS_NAV = [
+const ALL_SECTIONS_NAV = [
+  { num: '00', short: 'Feed the Brain' },
   { num: 'B1', short: 'Revenue & Goals' },
   { num: 'B2', short: 'Sales Process' },
   { num: 'B3', short: 'Budget & Resources' },
-]
-
-const SECTIONS_NAV = [
-  { num: '00', short: 'Feed the Brain' },
   { num: '01', short: 'Current Marketing Reality' },
   { num: '02', short: 'Offer Clarity' },
   { num: '03', short: 'ICP + Buying Psychology' },
@@ -1142,78 +1180,61 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
   const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
   const [verticalsLoading, setVerticalsLoading] = useState(true)
 
-  // Per-vertical state
-  const [dg, setDgRaw] = useState<DemandGenData | null>(null)
+  // Unified state — all sections (B1, B2, B3, S1–S7) at the selected level
+  const [data, setDataRaw] = useState<DemandGenBaseData | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const latestDgRef = useRef<DemandGenData | null>(null)
+  const latestDataRef = useRef<DemandGenBaseData | null>(null)
 
-  // Company-wide base state
-  const [dgBase, setDgBaseRaw] = useState<DemandGenBaseData | null>(null)
-  const [baseSaveStatus, setBaseSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const baseSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const latestBaseRef = useRef<DemandGenBaseData | null>(null)
-
-  const [activeSection, setActiveSection] = useState('B1')
+  const [activeSection, setActiveSection] = useState('00')
 
   // Load verticals assigned to this client
   useEffect(() => {
     apiFetch(`/api/v1/clients/${clientId}/verticals`)
       .then((r) => r.json())
-      .then(({ data }) => {
-        const list: Vertical[] = [...(data ?? [])].sort((a: Vertical, b: Vertical) => a.name.localeCompare(b.name))
+      .then(({ data: d }) => {
+        const list: Vertical[] = [...(d ?? [])].sort((a: Vertical, b: Vertical) => a.name.localeCompare(b.name))
         setVerticals(list)
       })
       .catch(() => {})
       .finally(() => setVerticalsLoading(false))
   }, [clientId])
 
-  // Load company-wide base data on mount
+  // Load unified data when level changes (Company or a specific vertical)
   useEffect(() => {
-    apiFetch(`/api/v1/clients/${clientId}/demand-gen/base`)
+    setDataRaw(null)
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    const url = selectedVertical
+      ? `/api/v1/clients/${clientId}/demand-gen/${selectedVertical.id}`
+      : `/api/v1/clients/${clientId}/demand-gen/base`
+    apiFetch(url)
       .then((r) => r.json())
-      .then(({ data }) => {
-        const loaded = data ? { ...defaultDemandGenBase(), ...(data as Partial<DemandGenBaseData>) } : defaultDemandGenBase()
-        setDgBaseRaw(loaded)
-        latestBaseRef.current = loaded
+      .then(({ data: d }) => {
+        const loaded = d ? { ...defaultDemandGenBase(), ...(d as Partial<DemandGenBaseData>) } : defaultDemandGenBase()
+        setDataRaw(loaded)
+        latestDataRef.current = loaded
       })
       .catch(() => {
         const def = defaultDemandGenBase()
-        setDgBaseRaw(def)
-        latestBaseRef.current = def
-      })
-  }, [clientId])
-
-  // Load per-vertical demand gen data when vertical selected
-  useEffect(() => {
-    if (!selectedVertical) { setDgRaw(null); return }
-    setDgRaw(null)
-    apiFetch(`/api/v1/clients/${clientId}/demand-gen/${selectedVertical.id}`)
-      .then((r) => r.json())
-      .then(({ data }) => {
-        const loaded = data ? { ...defaultDemandGen(), ...(data as Partial<DemandGenData>) } : defaultDemandGen()
-        setDgRaw(loaded)
-        latestDgRef.current = loaded
-      })
-      .catch(() => {
-        const def = defaultDemandGen()
-        setDgRaw(def)
-        latestDgRef.current = def
+        setDataRaw(def)
+        latestDataRef.current = def
       })
   }, [clientId, selectedVertical])
 
-  // Auto-save vertical data (debounced 1.5s)
-  const scheduleSave = useCallback(() => {
-    if (!selectedVertical) return
+  // Auto-save (debounced 1.5s) — captures the current level at call time
+  const scheduleSave = useCallback((vertId: string | null) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSaveStatus('saving')
     saveTimer.current = setTimeout(async () => {
-      if (!latestDgRef.current || !selectedVertical) return
+      if (!latestDataRef.current) return
+      const url = vertId
+        ? `/api/v1/clients/${clientId}/demand-gen/${vertId}`
+        : `/api/v1/clients/${clientId}/demand-gen/base`
       try {
-        await apiFetch(`/api/v1/clients/${clientId}/demand-gen/${selectedVertical.id}`, {
+        await apiFetch(url, {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(latestDgRef.current),
+          body: JSON.stringify(latestDataRef.current),
         })
         setSaveStatus('saved')
         setTimeout(() => setSaveStatus('idle'), 2000)
@@ -1221,49 +1242,18 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
         setSaveStatus('error')
       }
     }, 1500)
-  }, [clientId, selectedVertical])
-
-  // Auto-save base data (debounced 1.5s)
-  const scheduleBaseSave = useCallback(() => {
-    if (baseSaveTimer.current) clearTimeout(baseSaveTimer.current)
-    setBaseSaveStatus('saving')
-    baseSaveTimer.current = setTimeout(async () => {
-      if (!latestBaseRef.current) return
-      try {
-        await apiFetch(`/api/v1/clients/${clientId}/demand-gen/base`, {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(latestBaseRef.current),
-        })
-        setBaseSaveStatus('saved')
-        setTimeout(() => setBaseSaveStatus('idle'), 2000)
-      } catch {
-        setBaseSaveStatus('error')
-      }
-    }, 1500)
   }, [clientId])
 
-  const set = useCallback((fn: (d: DemandGenData) => void) => {
-    setDgRaw((prev) => {
-      if (!prev) return prev
-      const next = JSON.parse(JSON.stringify(prev)) as DemandGenData
-      fn(next)
-      latestDgRef.current = next
-      scheduleSave()
-      return next
-    })
-  }, [scheduleSave])
-
-  const setBase = useCallback((fn: (d: DemandGenBaseData) => void) => {
-    setDgBaseRaw((prev) => {
+  const set = useCallback((fn: (d: DemandGenBaseData) => void) => {
+    setDataRaw((prev) => {
       if (!prev) return prev
       const next = JSON.parse(JSON.stringify(prev)) as DemandGenBaseData
       fn(next)
-      latestBaseRef.current = next
-      scheduleBaseSave()
+      latestDataRef.current = next
+      scheduleSave(selectedVertical?.id ?? null)
       return next
     })
-  }, [scheduleBaseSave])
+  }, [scheduleSave, selectedVertical])
 
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -1273,12 +1263,21 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
   }
 
   // Determine which save status to show — prefer saving/error over idle
-  const activeSaveStatus = (() => {
-    if (saveStatus === 'saving' || baseSaveStatus === 'saving') return 'saving'
-    if (saveStatus === 'error' || baseSaveStatus === 'error') return 'error'
-    if (saveStatus === 'saved' || baseSaveStatus === 'saved') return 'saved'
-    return 'idle'
-  })()
+  const activeSaveStatus = saveStatus
+
+  // Compute filled / empty section keys for demandPILOT
+  const SECTION_KEYS = ['b1', 'b2', 'b3', 's1', 's2', 's3', 's4', 's5', 's6', 's7']
+  const filledSections = data
+    ? SECTION_KEYS.filter((k) => hasData((data as Record<string, unknown>)[k]))
+    : []
+  const emptySections = SECTION_KEYS.filter((k) => !filledSections.includes(k))
+
+  // Apply AI-filled section data (called from demandPILOT suggestion cards)
+  const handleApplySection = useCallback((sectionKey: string, filled: Record<string, unknown>) => {
+    set((d) => {
+      (d as Record<string, unknown>)[sectionKey] = applyAiSuggestion(filled)
+    })
+  }, [set])
 
   if (verticalsLoading) {
     return (
@@ -1299,34 +1298,8 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
-          {/* Company-wide group */}
-          <div className="px-4 pt-2 pb-1">
-            <span className="text-[9px] font-extrabold uppercase tracking-widest text-muted-foreground/50">Company-Wide</span>
-          </div>
-          {BASE_SECTIONS_NAV.map((s) => (
-            <button
-              key={s.num}
-              onClick={() => scrollTo(s.num)}
-              className={cn(
-                'flex w-full items-center gap-2 px-4 py-2 text-left text-xs transition-colors',
-                activeSection === s.num
-                  ? 'bg-orange-50 text-orange-700 font-medium'
-                  : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-              )}
-            >
-              <span className={cn('text-[10px] font-bold', activeSection === s.num ? 'text-orange-400' : 'text-muted-foreground/50')}>
-                {s.num}
-              </span>
-              {s.short}
-            </button>
-          ))}
-
-          {/* Divider + vertical-specific group */}
-          <div className="mx-4 my-3 border-t border-border" />
-          <div className="px-4 pb-1 flex items-center justify-between">
-            <span className="text-[9px] font-extrabold uppercase tracking-widest text-muted-foreground/50">Vertical-Specific</span>
-          </div>
-          <div className="px-3 pb-2">
+          {/* Vertical selector — top of nav */}
+          <div className="px-3 pb-3 pt-2">
             <VerticalSelector
               verticals={verticals}
               selected={selectedVertical}
@@ -1334,7 +1307,9 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
               onSelectCompany={() => setSelectedVertical(null)}
             />
           </div>
-          {SECTIONS_NAV.map((s) => (
+
+          {/* All sections — flat list */}
+          {ALL_SECTIONS_NAV.map((s) => (
             <button
               key={s.num}
               onClick={() => scrollTo(s.num)}
@@ -1373,75 +1348,63 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-8 py-8 space-y-16">
+      {/* Content + demandPILOT */}
+      <div className="flex flex-col flex-1 min-h-0">
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-8 py-8 space-y-16">
 
-          {/* ── Company-wide base sections (always shown) ── */}
-          {dgBase ? (
-            <>
-              {([
-                ['B1', <SB1 base={dgBase} setBase={setBase} />],
-                ['B2', <SB2 base={dgBase} setBase={setBase} />],
-                ['B3', <SB3 base={dgBase} setBase={setBase} />],
-              ] as [string, React.ReactNode][]).map(([num, content]) => (
-                <div key={num} ref={(el) => { sectionRefs.current[num] = el }}>
-                  {content}
+            {!data ? (
+              <div className="flex h-32 items-center justify-center">
+                <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+                {/* Section 00 — Feed the Brain (always first) */}
+                <div ref={(el) => { sectionRefs.current['00'] = el }}>
+                  <IntakeSection clientId={clientId} verticalId={selectedVertical?.id ?? null} />
                 </div>
-              ))}
-            </>
-          ) : (
-            <div className="flex h-32 items-center justify-center">
-              <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          )}
 
-          {/* ── Divider before vertical sections ── */}
-          <div className="relative flex items-center py-2">
-            <div className="flex-1 border-t border-border" />
-            <span className="mx-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/40">Vertical-Specific</span>
-            <div className="flex-1 border-t border-border" />
+                {/* B1, B2, B3 */}
+                {([
+                  ['B1', <SB1 base={data} setBase={set} />],
+                  ['B2', <SB2 base={data} setBase={set} />],
+                  ['B3', <SB3 base={data} setBase={set} />],
+                ] as [string, React.ReactNode][]).map(([num, content]) => (
+                  <div key={num} ref={(el) => { sectionRefs.current[num] = el }}>
+                    {content}
+                  </div>
+                ))}
+
+                {/* S1–S7 */}
+                {([
+                  ['01', <S1 dg={data} set={set} />],
+                  ['02', <S2 dg={data} set={set} />],
+                  ['03', <S3 dg={data} set={set} />],
+                  ['04', <S4 dg={data} set={set} />],
+                  ['05', <S5 dg={data} set={set} />],
+                  ['06', <S6 dg={data} set={set} />],
+                  ['07', <S7 dg={data} set={set} />],
+                ] as [string, React.ReactNode][]).map(([num, content]) => (
+                  <div key={num} ref={(el) => { sectionRefs.current[num] = el }}>
+                    {content}
+                  </div>
+                ))}
+              </>
+            )}
+
           </div>
-
-          {/* ── Feed the Brain (section 00) — always shown for Company and verticals ── */}
-          <div ref={(el) => { sectionRefs.current['00'] = el }}>
-            <IntakeSection clientId={clientId} verticalId={selectedVertical?.id ?? null} />
-          </div>
-
-          {/* ── Per-vertical sections (01–07) ── */}
-          {!selectedVertical ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
-              <Icons.TrendingUp className="h-8 w-8 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Select a vertical above to fill in vertical-specific demand gen strategy</p>
-              <p className="text-xs text-muted-foreground/60">
-                {verticals.length === 0
-                  ? 'No verticals assigned — go to Structure tab to add one'
-                  : 'Company-wide data above applies to all verticals'}
-              </p>
-            </div>
-          ) : !dg ? (
-            <div className="flex h-32 items-center justify-center">
-              <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <>
-              {([
-                ['01', <S1 dg={dg} set={set} />],
-                ['02', <S2 dg={dg} set={set} />],
-                ['03', <S3 dg={dg} set={set} />],
-                ['04', <S4 dg={dg} set={set} />],
-                ['05', <S5 dg={dg} set={set} />],
-                ['06', <S6 dg={dg} set={set} />],
-                ['07', <S7 dg={dg} set={set} />],
-              ] as [string, React.ReactNode][]).map(([num, content]) => (
-                <div key={num} ref={(el) => { sectionRefs.current[num] = el }}>
-                  {content}
-                </div>
-              ))}
-            </>
-          )}
-
         </div>
+
+        {/* demandPILOT — anchored to bottom, expands to 40vh */}
+        <DemandPilot
+          clientId={clientId}
+          selectedVertical={selectedVertical}
+          data={data as Record<string, unknown> | null}
+          filledSections={filledSections}
+          emptySections={emptySections}
+          onApplySection={handleApplySection}
+          onScrollToSection={(num) => scrollTo(num)}
+        />
       </div>
     </div>
   )

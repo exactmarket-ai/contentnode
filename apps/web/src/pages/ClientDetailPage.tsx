@@ -16,6 +16,7 @@ import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
 import { CampaignsTab } from './CampaignsTab'
 import { ClientBrainTab } from './ClientBrainTab'
+import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -2789,6 +2790,7 @@ interface ClientProfile {
   confidenceMap: Record<string, string>
   crawledFrom: string | null
   crawledSnapshot: Record<string, unknown>
+  sources: Array<{ url: string; label: string; addedAt?: string }>
   updatedAt: string
 }
 
@@ -3115,8 +3117,15 @@ function ProfileTab({ clientId, clientName }: { clientId: string; clientName: st
       clearTimeout(stepTimer)
       const json = await res.json()
       if (!res.ok) { setAutofillStep('error'); setAutofillError(json.error ?? 'Auto-fill failed'); return }
-      setProfile(json.data); setDraft(json.data); setAutofillStep('done')
-      setList((prev) => prev.map((p) => p.id === json.data.id ? { ...p, label: json.data.label, crawledFrom: json.data.crawledFrom } : p))
+      const filled = json.data as ClientProfile
+      // Auto-add the crawled URL as a source if not already listed
+      const existingSources: Array<{ url: string; label: string; addedAt?: string }> = filled.sources ?? []
+      if (url && !existingSources.some((s) => s.url === url)) {
+        const hostname = (() => { try { return new URL(url).hostname } catch { return url } })()
+        filled.sources = [...existingSources, { url, label: hostname, addedAt: new Date().toISOString().slice(0, 10) }]
+      }
+      setProfile(filled); setDraft(filled); setAutofillStep('done')
+      setList((prev) => prev.map((p) => p.id === filled.id ? { ...p, label: filled.label, crawledFrom: filled.crawledFrom } : p))
     } catch {
       clearTimeout(stepTimer); setAutofillStep('error'); setAutofillError('Could not reach server — check your connection')
     }
@@ -3482,6 +3491,12 @@ function ProfileTab({ clientId, clientName }: { clientId: string; clientName: st
         </ProfileField>
       </ProfileSection>
 
+      {/* Sources & Citations */}
+      <ProfileSourcesSection
+        sources={d.sources ?? []}
+        onChange={(updated) => set('sources', updated)}
+      />
+
       {/* Manual Overrides */}
       <ProfileSection title="Manual Overrides" icon={Icons.ShieldCheck}>
         <p className="text-[10px] text-muted-foreground">
@@ -3599,6 +3614,7 @@ interface CompanyProfile {
   headquartersAddress: string | null
   crawledFrom: string | null
   crawledSnapshot: Record<string, unknown>
+  sources: Array<{ url: string; label: string; addedAt?: string }>
   updatedAt: string
 }
 
@@ -3633,6 +3649,101 @@ function CompanySection({ title, icon: Icon, children }: { title: string; icon: 
         <h3 className="text-xs font-semibold">{title}</h3>
       </div>
       {children}
+    </div>
+  )
+}
+
+// ── Shared Sources & Citations section (used by both Profile and Company Profile tabs) ──
+
+type SourceEntry = { url: string; label: string; addedAt?: string }
+
+function ProfileSourcesSection({ sources, onChange }: {
+  sources: SourceEntry[]
+  onChange: (updated: SourceEntry[]) => void
+}) {
+  const [newUrl, setNewUrl] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+
+  const addSource = () => {
+    const url = newUrl.trim()
+    if (!url) return
+    const label = newLabel.trim() || (() => { try { return new URL(url).hostname } catch { return url } })()
+    if (sources.some((s) => s.url === url)) { setNewUrl(''); setNewLabel(''); return }
+    onChange([...sources, { url, label, addedAt: new Date().toISOString().slice(0, 10) }])
+    setNewUrl('')
+    setNewLabel('')
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Icons.Link className="h-3.5 w-3.5 text-muted-foreground" />
+        <h3 className="text-xs font-semibold">Sources & Citations</h3>
+        <span className="text-[10px] text-muted-foreground ml-1">— included in .docx exports</span>
+      </div>
+      {sources.length > 0 && (
+        <div className="space-y-1.5">
+          {sources.map((s, i) => (
+            <div key={i} className="flex items-center gap-2 group">
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground shrink-0 w-4 text-right">{i + 1}.</span>
+                <div className="flex-1 min-w-0">
+                  <input
+                    value={s.label}
+                    onChange={(e) => {
+                      const updated = [...sources]
+                      updated[i] = { ...s, label: e.target.value }
+                      onChange(updated)
+                    }}
+                    className="w-full rounded border border-input bg-background px-2 py-0.5 text-xs outline-none focus:border-ring"
+                    placeholder="Label"
+                  />
+                </div>
+                <div className="w-52 shrink-0">
+                  <input
+                    value={s.url}
+                    onChange={(e) => {
+                      const updated = [...sources]
+                      updated[i] = { ...s, url: e.target.value }
+                      onChange(updated)
+                    }}
+                    className="w-full rounded border border-input bg-background px-2 py-0.5 text-xs outline-none focus:border-ring text-muted-foreground"
+                    placeholder="URL"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={() => onChange(sources.filter((_, idx) => idx !== i))}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-opacity"
+              >
+                <Icons.X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <input
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+          placeholder="Label (optional)"
+          className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs outline-none focus:border-ring"
+        />
+        <input
+          value={newUrl}
+          onChange={(e) => setNewUrl(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addSource() }}
+          placeholder="https://…"
+          className="w-52 rounded border border-input bg-background px-2 py-1 text-xs outline-none focus:border-ring"
+        />
+        <button
+          onClick={addSource}
+          disabled={!newUrl.trim()}
+          className="flex items-center gap-1 rounded border border-input bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40"
+        >
+          <Icons.Plus className="h-3.5 w-3.5" /> Add
+        </button>
+      </div>
     </div>
   )
 }
@@ -3758,8 +3869,15 @@ function CompanyProfileTab({ clientId, clientName }: { clientId: string; clientN
       clearTimeout(t)
       const json = await res.json()
       if (!res.ok) { setAutofillStep('error'); setAutofillError(json.error ?? 'Auto-fill failed'); return }
-      setProfile(json.data); setDraft(json.data); setAutofillStep('done')
-      setList((prev) => prev.map((p) => p.id === json.data.id ? { ...p, label: json.data.label, crawledFrom: json.data.crawledFrom } : p))
+      const filled = json.data as CompanyProfile
+      // Auto-add the crawled URL as a source if not already listed
+      const existingSources: Array<{ url: string; label: string; addedAt?: string }> = filled.sources ?? []
+      if (url && !existingSources.some((s) => s.url === url)) {
+        const hostname = (() => { try { return new URL(url).hostname } catch { return url } })()
+        filled.sources = [...existingSources, { url, label: hostname, addedAt: new Date().toISOString().slice(0, 10) }]
+      }
+      setProfile(filled); setDraft(filled); setAutofillStep('done')
+      setList((prev) => prev.map((p) => p.id === filled.id ? { ...p, label: filled.label, crawledFrom: filled.crawledFrom } : p))
     } catch {
       clearTimeout(t); setAutofillStep('error'); setAutofillError('Could not reach server')
     }
@@ -4082,6 +4200,12 @@ function CompanyProfileTab({ clientId, clientName }: { clientId: string; clientN
           </CompanyField>
         </div>
       </CompanySection>
+
+      {/* Sources & Citations */}
+      <ProfileSourcesSection
+        sources={d.sources ?? []}
+        onChange={(updated) => set('sources', updated)}
+      />
           </>
         )}
       </div>
@@ -4787,7 +4911,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'brain', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -4871,20 +4995,24 @@ export function ClientDetailPage() {
     demandgen:     'Demand Gen',
     branding:      'Branding',
     brain:         'Client Brain',
+    'gtm-assessment': 'Company Assessment',
     stakeholders:  'Contacts',
     access:        'Access',
     reviews:       'Reviews',
     insights:      'Insights',
     runs:          'Runs',
     reports:       'Reports & Usage',
-    profile:       'Profile',
-    company:       'Company',
+    profile:       'Company Profiler',
+    company:       'Company Research',
     structure:     'Structure',
   }
 
+  // Tabs that live under the "Research" group
+  const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment']
   // Tabs that live under the "Settings" group
   const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs']
-  const MAIN_TABS: Tab[] = TABS.filter((t) => !SETTINGS_TABS.includes(t))
+  const MAIN_TABS: Tab[] = TABS.filter((t) => !SETTINGS_TABS.includes(t) && !RESEARCH_TABS.includes(t))
+  const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
 
   return (
@@ -4928,6 +5056,19 @@ export function ClientDetailPage() {
             {TAB_LABELS[tab]}
           </button>
         ))}
+        {/* Research group entry point */}
+        <button
+          onClick={() => switchTab('company')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+            inResearch
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Icons.Search className="h-3 w-3" />
+          Research
+        </button>
         {/* Settings group entry point */}
         <button
           onClick={() => switchTab('structure')}
@@ -4942,6 +5083,28 @@ export function ClientDetailPage() {
           Settings
         </button>
       </div>
+
+      {/* Research sub-tab row — only visible when a research tab is active */}
+      {inResearch && (
+        <div className="flex items-center border-b border-border bg-muted/30 px-6 print:hidden">
+          <div className="flex gap-0">
+            {RESEARCH_TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => switchTab(tab)}
+                className={cn(
+                  'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Settings sub-tab row — only visible when a settings tab is active */}
       {inSettings && (
@@ -5019,6 +5182,7 @@ export function ClientDetailPage() {
           </div>
         )}
         {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
+        {activeTab === 'gtm-assessment' && <ClientGTMAssessmentTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}
         {activeTab === 'access' && <AccessTab client={client} />}
         {activeTab === 'reviews' && <ReviewsTab clientId={client.id} clientName={client.name} />}

@@ -14,6 +14,9 @@ import {
   QUEUE_BRAND_ATTACHMENT_PROCESS,
   QUEUE_CAMPAIGN_BRAIN_PROCESS,
   QUEUE_CLIENT_BRAIN_PROCESS,
+  QUEUE_AGENCY_BRAIN_PROCESS,
+  QUEUE_VERTICAL_BRAIN_PROCESS,
+  QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS,
   QUEUE_PROMPT_SUGGEST,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
@@ -26,6 +29,9 @@ import {
   type BrandAttachmentProcessJobData,
   type CampaignBrainProcessJobData,
   type ClientBrainProcessJobData,
+  type AgencyBrainProcessJobData,
+  type VerticalBrainProcessJobData,
+  type ClientVerticalBrainProcessJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns, detectEditPatterns } from './patternDetector.js'
@@ -34,7 +40,12 @@ import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
 import { processBrandAttachment } from './brandExtraction.js'
 import { processCampaignBrainAttachment } from './campaignBrainExtraction.js'
-import { processClientBrainAttachment } from './clientBrainExtraction.js'
+import {
+  processClientBrainAttachment,
+  processAgencyBrainAttachment,
+  processVerticalBrainAttachment,
+  processClientVerticalBrainAttachment,
+} from './clientBrainExtraction.js'
 import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
 import { withAgency } from '@contentnode/database'
 
@@ -236,6 +247,51 @@ const clientBrainProcessWorker = createWorker<ClientBrainProcessJobData>(
   5
 )
 
+// ── agency-brain-process ──────────────────────────────────────────────────────
+const agencyBrainProcessWorker = createWorker<AgencyBrainProcessJobData>(
+  QUEUE_AGENCY_BRAIN_PROCESS,
+  async (job: Job<AgencyBrainProcessJobData>) => {
+    console.log(`[agency-brain-process] job started for attachment=${job.data.attachmentId} agency=${job.data.agencyId}`)
+    try {
+      await processAgencyBrainAttachment(job)
+    } catch (err) {
+      console.error('[agency-brain-process] job failed:', err)
+      throw err
+    }
+  },
+  5
+)
+
+// ── vertical-brain-process ────────────────────────────────────────────────────
+const verticalBrainProcessWorker = createWorker<VerticalBrainProcessJobData>(
+  QUEUE_VERTICAL_BRAIN_PROCESS,
+  async (job: Job<VerticalBrainProcessJobData>) => {
+    console.log(`[vertical-brain-process] job started for attachment=${job.data.attachmentId} vertical=${job.data.verticalId}`)
+    try {
+      await processVerticalBrainAttachment(job)
+    } catch (err) {
+      console.error('[vertical-brain-process] job failed:', err)
+      throw err
+    }
+  },
+  5
+)
+
+// ── client-vertical-brain-process ────────────────────────────────────────────
+const clientVerticalBrainProcessWorker = createWorker<ClientVerticalBrainProcessJobData>(
+  QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS,
+  async (job: Job<ClientVerticalBrainProcessJobData>) => {
+    console.log(`[client-vertical-brain-process] job started for attachment=${job.data.attachmentId} client=${job.data.clientId} vertical=${job.data.verticalId}`)
+    try {
+      await processClientVerticalBrainAttachment(job)
+    } catch (err) {
+      console.error('[client-vertical-brain-process] job failed:', err)
+      throw err
+    }
+  },
+  5
+)
+
 // ── prompt-suggestion ─────────────────────────────────────────────────────────
 const promptSuggestWorker = createWorker<PromptSuggestJobData>(
   QUEUE_PROMPT_SUGGEST,
@@ -284,6 +340,9 @@ async function shutdown() {
     frameworkResearchWorker.close(),
     attachmentProcessWorker.close(),
     brandAttachmentProcessWorker.close(),
+    agencyBrainProcessWorker.close(),
+    verticalBrainProcessWorker.close(),
+    clientVerticalBrainProcessWorker.close(),
     fileCleanupWorker.close(),
   ])
   process.exit(0)

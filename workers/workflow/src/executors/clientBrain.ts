@@ -1,5 +1,6 @@
 import { prisma, withAgency } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+import { assembleLayeredContext } from '../clientBrainExtraction.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section metadata
@@ -114,11 +115,16 @@ export class ClientBrainExecutor extends NodeExecutor {
 
     if (!ctx.clientId) throw new Error('Client Brain node: no client is associated with this workflow')
 
-    // If no vertical is configured, skip vertical-dependent sections gracefully rather than failing.
-    // The node will still emit brand profile + DG base sections if those are selected.
-    const resolvedVerticalId = verticalId || null
+    // Vertical ID: prefer node config, fall back to workflow-level verticalId from context
+    const resolvedVerticalId = verticalId || ctx.verticalId || null
 
     const parts: string[] = []
+
+    // ── Four-tier brain context (Agency / Vertical / Client / Client×Vertical) ─
+    const layeredCtx = await assembleLayeredContext(ctx.agencyId, ctx.clientId, resolvedVerticalId)
+    if (layeredCtx) {
+      parts.push(layeredCtx)
+    }
 
     await withAgency(ctx.agencyId, async () => {
       const [client, vertical] = await Promise.all([

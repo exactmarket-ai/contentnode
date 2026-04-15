@@ -9,6 +9,9 @@ export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
 export const QUEUE_CAMPAIGN_BRAIN_PROCESS = 'campaign-brain-process'
 export const QUEUE_CLIENT_BRAIN_PROCESS = 'client-brain-process'
+export const QUEUE_AGENCY_BRAIN_PROCESS = 'agency-brain-process'
+export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
+export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 
 export interface WorkflowRunJobData {
@@ -63,6 +66,27 @@ export interface ClientBrainProcessJobData {
   url?: string
 }
 
+export interface AgencyBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  url?: string
+}
+
+export interface VerticalBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  verticalId: string
+  url?: string
+}
+
+export interface ClientVerticalBrainProcessJobData {
+  agencyId: string
+  attachmentId: string
+  clientId: string
+  verticalId: string
+  url?: string
+}
+
 export interface PromptSuggestJobData {
   agencyId: string
   clientId: string
@@ -76,6 +100,9 @@ let attachmentProcessQueue: Queue<AttachmentProcessJobData> | null = null
 let brandAttachmentProcessQueue: Queue<BrandAttachmentProcessJobData> | null = null
 let campaignBrainProcessQueue: Queue<CampaignBrainProcessJobData> | null = null
 let clientBrainProcessQueue: Queue<ClientBrainProcessJobData> | null = null
+let agencyBrainProcessQueue: Queue<AgencyBrainProcessJobData> | null = null
+let verticalBrainProcessQueue: Queue<VerticalBrainProcessJobData> | null = null
+let clientVerticalBrainProcessQueue: Queue<ClientVerticalBrainProcessJobData> | null = null
 
 /**
  * Returns the singleton Queue instance for dispatching workflow run jobs.
@@ -156,6 +183,27 @@ export function getClientBrainProcessQueue(): Queue<ClientBrainProcessJobData> {
     clientBrainProcessQueue = new Queue<ClientBrainProcessJobData>(QUEUE_CLIENT_BRAIN_PROCESS, { connection: getRedis() })
   }
   return clientBrainProcessQueue
+}
+
+export function getAgencyBrainProcessQueue(): Queue<AgencyBrainProcessJobData> {
+  if (!agencyBrainProcessQueue) {
+    agencyBrainProcessQueue = new Queue<AgencyBrainProcessJobData>(QUEUE_AGENCY_BRAIN_PROCESS, { connection: getRedis() })
+  }
+  return agencyBrainProcessQueue
+}
+
+export function getVerticalBrainProcessQueue(): Queue<VerticalBrainProcessJobData> {
+  if (!verticalBrainProcessQueue) {
+    verticalBrainProcessQueue = new Queue<VerticalBrainProcessJobData>(QUEUE_VERTICAL_BRAIN_PROCESS, { connection: getRedis() })
+  }
+  return verticalBrainProcessQueue
+}
+
+export function getClientVerticalBrainProcessQueue(): Queue<ClientVerticalBrainProcessJobData> {
+  if (!clientVerticalBrainProcessQueue) {
+    clientVerticalBrainProcessQueue = new Queue<ClientVerticalBrainProcessJobData>(QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS, { connection: getRedis() })
+  }
+  return clientVerticalBrainProcessQueue
 }
 
 let promptSuggestQueue: Queue<PromptSuggestJobData> | null = null

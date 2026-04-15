@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
+import { GTMPilot } from '@/components/pilot/GTMPilot'
 
 // ── Draft context — provides per-field AI drafting to all section components ──
 
@@ -1479,7 +1480,7 @@ function AttachmentRow({ attachment: a, base, brandBase, deletingId, onDelete, o
 
 function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsite, onReadyChange }: {
   clientId: string
-  verticalId: string
+  verticalId: string | null
   websiteStatus: 'none' | 'pending' | 'running' | 'ready' | 'failed'
   onScrapeWebsite: (websiteUrl: string) => Promise<void>
   onReadyChange: (hasReady: boolean) => void
@@ -1494,7 +1495,10 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const base = `/api/v1/clients/${clientId}/framework/${verticalId}/attachments`
+  // Company (no vertical) → client brain; specific vertical → framework brain
+  const base = verticalId
+    ? `/api/v1/clients/${clientId}/framework/${verticalId}/attachments`
+    : `/api/v1/clients/${clientId}/brand-profile/attachments`
   const brandBase = `/api/v1/clients/${clientId}/brand-profile/attachments`
 
   const fetchAttachments = useCallback(() => {
@@ -1572,10 +1576,13 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
   return (
     <div>
       <div className="mb-6">
-        <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-blue-500">Attachments</div>
+        <div className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-blue-500">Brain</div>
         <h2 className="text-xl font-bold text-foreground">Research & Supporting Files</h2>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Upload anything relevant to this vertical — meeting notes, capability decks, audio recordings, strategy docs. These will be used as research context when drafting framework sections.
+          {verticalId
+            ? 'Upload anything relevant to this vertical — meeting notes, capability decks, audio recordings, strategy docs. These will be used as research context when drafting framework sections.'
+            : 'Upload company-wide research — positioning docs, sales decks, strategy notes. These feed into the client brain and inform all verticals.'
+          }
         </p>
       </div>
 
@@ -1617,8 +1624,8 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
         })()}
       </div>
 
-      {/* Website scraping (optional) */}
-      <div className="mb-6 rounded-xl border border-border bg-muted/20 p-4">
+      {/* Website scraping — only for vertical-specific brain */}
+      {verticalId && <div className="mb-6 rounded-xl border border-border bg-muted/20 p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">Website context <span className="text-[10px] font-normal text-muted-foreground ml-1">optional</span></p>
@@ -1648,7 +1655,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
             {websiteStatus === 'ready' ? 'Re-scrape' : 'Scrape Website'}
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Drop zone */}
       <div
@@ -1693,7 +1700,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
         </div>
       ) : attachments.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
-          <p className="text-sm text-muted-foreground">No attachments yet</p>
+          <p className="text-sm text-muted-foreground">No files yet</p>
           <p className="mt-1 text-[11px] text-muted-foreground/70">Uploaded files will appear here and feed into AI research when drafting sections</p>
         </div>
       ) : (
@@ -1787,7 +1794,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
   const [fw, setFwRaw] = useState<FrameworkData | null>(null)
-  const [activeSection, setActiveSection] = useState<string>('attachments')
+  const [activeSection, setActiveSection] = useState<string>('brain')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [verticalsLoading, setVerticalsLoading] = useState(true)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1956,7 +1963,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   })
 
   function renderSection() {
-    if (activeSection === 'attachments' && selectedVertical) {
+    if (activeSection === 'brain' && selectedVertical) {
       return null // rendered directly in JSX with props
     }
     if (!fw) return null
@@ -1994,6 +2001,22 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
     getDraft,
   }
 
+  // ── gtmPILOT: compute filled/empty sections ───────────────────────────────
+  function hasData(obj: unknown, key = ''): boolean {
+    if (key === 'id' || key === '_open') return false
+    if (typeof obj === 'string') return obj.trim().length > 0
+    if (Array.isArray(obj)) return obj.some((item) => hasData(item))
+    if (typeof obj === 'object' && obj !== null)
+      return Object.entries(obj as Record<string, unknown>).some(([k, v]) => hasData(v, k))
+    return false
+  }
+
+  const SECTION_KEYS = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18']
+  const filledSections = fw
+    ? SECTION_KEYS.filter((k) => hasData((fw as Record<string, unknown>)[`s${k}`]))
+    : []
+  const emptySections = SECTION_KEYS.filter((k) => !filledSections.includes(k))
+
   return (
     <DraftContext.Provider value={draftContextValue}>
     <div className="flex h-full flex-col" style={{ minHeight: 0 }}>
@@ -2006,8 +2029,8 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
           : <VerticalSelector
               verticals={verticals}
               selected={selectedVertical}
-              onSelect={(v) => { setSelectedVertical(v); setActiveSection('attachments') }}
-              onSelectCompany={() => { setSelectedVertical(null); setActiveSection('attachments') }}
+              onSelect={(v) => { setSelectedVertical(v); setActiveSection('brain') }}
+              onSelectCompany={() => { setSelectedVertical(null); setActiveSection('brain') }}
             />
         }
         {selectedVertical && (
@@ -2020,23 +2043,23 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
       </div>
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden min-h-0">
 
       {/* Left nav */}
       <div className="w-64 shrink-0 overflow-y-auto border-r border-border bg-card">
         <div className="px-3 py-3">
-          {/* Attachments nav item */}
+          {/* Brain nav item */}
           <button
-            onClick={() => setActiveSection('attachments')}
+            onClick={() => setActiveSection('brain')}
             className={cn(
               'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
-              activeSection === 'attachments'
+              activeSection === 'brain'
                 ? 'bg-blue-50 text-blue-600 font-semibold'
                 : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
             )}
           >
-            <span className="text-muted-foreground">📎</span>
-            <span>Attachments</span>
+            <span>🧠</span>
+            <span>Brain</span>
           </button>
 
           <div className="my-2 border-t border-border/50" />
@@ -2081,23 +2104,23 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        {!selectedVertical ? (
+        {activeSection === 'brain' ? (
+          <div className="mx-auto max-w-4xl">
+            <AttachmentsSection
+              clientId={clientId}
+              verticalId={selectedVertical?.id ?? null}
+              websiteStatus={websiteStatus}
+              onScrapeWebsite={scrapeWebsite}
+              onReadyChange={handleReadyChange}
+            />
+          </div>
+        ) : !selectedVertical ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <div className="text-2xl">📋</div>
             <p className="text-sm font-medium text-foreground">Select a vertical above to fill in its GTM Framework</p>
             <p className="max-w-xs text-xs text-muted-foreground">
               Each vertical gets its own 18-section GTM Framework — e.g. Healthcare, Financial Services, Manufacturing.
             </p>
-          </div>
-        ) : activeSection === 'attachments' ? (
-          <div className="mx-auto max-w-4xl">
-            <AttachmentsSection
-              clientId={clientId}
-              verticalId={selectedVertical.id}
-              websiteStatus={websiteStatus}
-              onScrapeWebsite={scrapeWebsite}
-              onReadyChange={handleReadyChange}
-            />
           </div>
         ) : !fw ? (
           <div className="flex h-full items-center justify-center">
@@ -2111,6 +2134,16 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
       </div>
 
       </div>{/* /Body */}
+
+      {/* gtmPILOT — always visible; handles no-vertical state internally */}
+      <GTMPilot
+        clientId={clientId}
+        verticalId={selectedVertical?.id ?? null}
+        verticalName={selectedVertical?.name ?? null}
+        filledSections={filledSections}
+        emptySections={emptySections}
+        onNavigateToSection={(num) => setActiveSection(num)}
+      />
     </div>
     </DraftContext.Provider>
   )

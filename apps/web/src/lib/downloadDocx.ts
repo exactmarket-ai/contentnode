@@ -85,6 +85,7 @@ interface ClientProfile {
   campaignThemesApproved?: string[]
   crawledFrom?: string | null
   updatedAt?: string
+  sources?: Array<{ url: string; label: string; addedAt?: string }>
 }
 
 function buyerParagraphs(label: string, buyer: Record<string, unknown>): Paragraph[] {
@@ -146,6 +147,23 @@ export async function downloadBrandProfileDocx(profile: ClientProfile, clientNam
     ...bulletList('Approved Campaign Themes', profile.campaignThemesApproved ?? []),
   ]
 
+  const sources = (profile.sources ?? []).filter((s) => s.url?.trim())
+  if (sources.length > 0) {
+    children.push(heading2('Sources & Citations'))
+    sources.forEach((s, i) => {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: `${i + 1}. ${s.label || s.url}`, size: 20 })],
+        spacing: { after: 40 },
+      }))
+      if (s.label && s.url !== s.label) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: `   ${s.url}`, size: 18, color: '555555' })],
+          spacing: { after: 80 },
+        }))
+      }
+    })
+  }
+
   const doc = new Document({
     styles: {
       paragraphStyles: [
@@ -195,6 +213,7 @@ interface CompanyProfile {
   headquartersAddress?: string | null
   crawledFrom?: string | null
   updatedAt?: string
+  sources?: Array<{ url: string; label: string; addedAt?: string }>
 }
 
 export async function downloadCompanyProfileDocx(profile: CompanyProfile, clientName: string) {
@@ -258,6 +277,23 @@ export async function downloadCompanyProfileDocx(profile: CompanyProfile, client
     ...field('Phone', profile.phone),
     ...fieldArea('Headquarters Address', profile.headquartersAddress),
   ]
+
+  const companySources = (profile.sources ?? []).filter((s) => s.url?.trim())
+  if (companySources.length > 0) {
+    children.push(heading2('Sources & Citations'))
+    companySources.forEach((s, i) => {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: `${i + 1}. ${s.label || s.url}`, size: 20 })],
+        spacing: { after: 40 },
+      }))
+      if (s.label && s.url !== s.label) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: `   ${s.url}`, size: 18, color: '555555' })],
+          spacing: { after: 80 },
+        }))
+      }
+    })
+  }
 
   const doc = new Document({
     styles: {
@@ -377,6 +413,267 @@ export async function downloadDeliverableDocx(outputs: DeliverableOutput[], titl
   const a = document.createElement('a')
   a.href = url
   a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.docx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Company Assessment docx ───────────────────────────────────────────────────
+
+function sectionHeading(text: string): Paragraph {
+  return new Paragraph({
+    children: [new TextRun({ text: text.toUpperCase(), bold: true, size: 24, color: '111111' })],
+    spacing: { before: 480, after: 160 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'AAAAAA' } },
+  })
+}
+
+function subHeading(text: string): Paragraph {
+  return new Paragraph({
+    children: [new TextRun({ text, bold: true, size: 20, color: '333333' })],
+    spacing: { before: 200, after: 80 },
+  })
+}
+
+function plainField(label: string, value: string | null | undefined): Paragraph[] {
+  if (!value?.trim()) return []
+  return [new Paragraph({
+    children: [
+      new TextRun({ text: `${label}: `, bold: true, size: 20 }),
+      new TextRun({ text: value.trim(), size: 20 }),
+    ],
+    spacing: { after: 80 },
+  })]
+}
+
+function plainArea(label: string, value: string | null | undefined): Paragraph[] {
+  if (!value?.trim()) return []
+  return [
+    new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20 })], spacing: { after: 40 } }),
+    new Paragraph({ children: [new TextRun({ text: value.trim(), size: 20 })], spacing: { after: 140 } }),
+  ]
+}
+
+function plainList(label: string, raw: string | null | undefined): Paragraph[] {
+  const lines = (raw ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+  if (!lines.length) return []
+  return [
+    new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20 })], spacing: { after: 40 } }),
+    ...lines.map((line) => new Paragraph({
+      children: [new TextRun({ text: `- ${line}`, size: 20 })],
+      spacing: { after: 40 },
+    })),
+    new Paragraph({ spacing: { after: 80 } }),
+  ]
+}
+
+interface AssessmentExport {
+  meta: { scrapedAt?: string; references?: Array<{ url: string; label: string }> }
+  s1: Record<string, unknown>
+  s2: Record<string, unknown>
+  s3: Record<string, unknown>
+  s4: Record<string, unknown>
+  s5: Record<string, unknown>
+  s6: Record<string, unknown>
+  s7: Record<string, unknown>
+  s8: Record<string, unknown>
+}
+
+export async function downloadAssessmentDocx(data: AssessmentExport, clientName: string) {
+  const s1 = data.s1
+  const s2 = data.s2
+  const s3 = data.s3
+  const s4 = data.s4
+  const s5 = data.s5
+  const s6 = data.s6
+  const s7 = data.s7
+  const s8 = data.s8
+
+  const str = (v: unknown) => (typeof v === 'string' ? v : null)
+  const arr = <T,>(v: unknown) => (Array.isArray(v) ? v as T[] : [])
+
+  const children: Paragraph[] = [
+    // Title
+    new Paragraph({
+      children: [new TextRun({ text: 'Company Assessment', bold: true, size: 36, color: '111111' })],
+      spacing: { after: 80 },
+    }),
+    new Paragraph({
+      children: [new TextRun({ text: clientName, size: 22, color: '555555' })],
+      spacing: { after: 60 },
+    }),
+    ...(data.meta.scrapedAt ? [new Paragraph({
+      children: [new TextRun({ text: `Generated ${new Date(data.meta.scrapedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, size: 18, color: '888888' })],
+      spacing: { after: 400 },
+    })] : [new Paragraph({ spacing: { after: 400 } })]),
+
+    // Section 1
+    sectionHeading('Section 01 — Company Profile'),
+    ...plainField('Legal Name', str(s1.legalName)),
+    ...plainField('Doing Business As', str(s1.doingBusinessAs)),
+    ...plainField('Founded', str(s1.founded)),
+    ...plainField('Headquarters', str(s1.hq)),
+    ...plainField('Employee Count', str(s1.employeeCount)),
+    ...plainField('Revenue Range', str(s1.revenueRange)),
+    ...plainField('Funding Stage', str(s1.fundingStage)),
+    ...plainField('Investors', str(s1.investors)),
+    ...plainField('Industry', str(s1.industry)),
+    ...plainField('Company Category', str(s1.companyCategory)),
+    ...plainField('Business Type', str(s1.businessType)),
+    ...plainField('Global Reach', str(s1.globalReach)),
+    ...plainArea('About', str(s1.about)),
+    ...plainArea('What They Do', str(s1.whatTheyDo)),
+    ...plainArea('Product / Service Summary', str(s1.productServiceSummary)),
+    ...plainArea('Vision for the Future', str(s1.visionForFuture)),
+    ...plainList('Key Offerings', str(s1.keyOfferings)),
+    ...plainList('Industries Served', str(s1.industriesServedList)),
+    ...plainList('Core Values', str(s1.coreValues)),
+    ...plainList('Key Achievements', str(s1.keyAchievements)),
+    ...plainList('Partners', str(s1.partners)),
+    ...plainList('Milestones', str(s1.milestones)),
+    ...plainArea('Leadership Message', str(s1.leadershipMessage)),
+    ...arr<Record<string, string>>(s1.keyExecutives).filter((e) => e.name?.trim()).flatMap((e) => [
+      new Paragraph({
+        children: [
+          new TextRun({ text: e.name ?? '', bold: true, size: 20 }),
+          new TextRun({ text: e.title ? ` — ${e.title}` : '', size: 20 }),
+        ],
+        spacing: { after: 40 },
+      }),
+      ...(e.linkedIn ? [new Paragraph({ children: [new TextRun({ text: `  LinkedIn: ${e.linkedIn}`, size: 18 })], spacing: { after: 60 } })] : []),
+    ]),
+    ...plainField('General Inquiries', str(s1.generalInquiries)),
+    ...plainField('Phone', str(s1.phone)),
+    ...plainArea('Headquarters Address', str(s1.headquartersAddress)),
+
+    // Section 2
+    sectionHeading('Section 02 — Competitive Landscape'),
+    ...arr<Record<string, string>>(s2.competitors).filter((c) => c.name?.trim()).flatMap((c, i) => [
+      subHeading(`Competitor ${i + 1}: ${c.name}`),
+      ...plainField('Website', c.website),
+      ...plainArea('Strengths', c.strengths),
+      ...plainArea('Weaknesses', c.weaknesses),
+      ...plainArea('How Client Differs', c.howClientDiffers),
+    ]),
+    ...plainArea('Competitive Position', str(s2.competitivePosition)),
+    ...plainArea('Win / Loss Patterns', str(s2.winLossPatterns)),
+    ...plainArea('Landmines', str(s2.landmines)),
+
+    // Section 3
+    sectionHeading('Section 03 — GTM Positioning'),
+    ...plainArea('Messaging Statement', str(s3.messagingStatement)),
+    ...plainArea('Ideal Customer Profile', str(s3.icp)),
+    ...plainArea('Value Proposition', str(s3.valueProp)),
+    ...plainArea('Key Message 1', str(s3.keyMessage1)),
+    ...plainArea('Key Message 2', str(s3.keyMessage2)),
+    ...plainArea('Key Message 3', str(s3.keyMessage3)),
+    ...plainField('Tone of Voice', str(s3.toneOfVoice)),
+    ...plainField('Current Tagline', str(s3.currentTagline)),
+    ...plainArea('Biggest Positioning Gap', str(s3.biggestPositioningGap)),
+
+    // Section 4
+    sectionHeading('Section 04 — Channel & Partner Strategy'),
+    ...arr<Record<string, string>>(s4.channels).filter((c) => c.name?.trim()).flatMap((c, i) => [
+      subHeading(`Channel ${i + 1}: ${c.name}`),
+      ...plainField('Type', c.type),
+      ...plainField('Status', c.status),
+      ...plainArea('Notes', c.notes),
+    ]),
+    ...plainArea('Partner Types', str(s4.partnerTypes)),
+    ...plainArea('Partner Programs', str(s4.partnerPrograms)),
+    ...plainArea('Channel Gaps', str(s4.channelGaps)),
+    ...plainArea('Go-to-Market Motion', str(s4.goToMarketMotion)),
+
+    // Section 5
+    sectionHeading('Section 05 — Content & Digital Presence'),
+    ...plainField('Website URL', str(s5.websiteUrl)),
+    ...plainArea('Website Strengths', str(s5.websiteStrengths)),
+    ...plainArea('Website Weaknesses', str(s5.websiteWeaknesses)),
+    ...plainArea('Content Types', str(s5.contentTypes)),
+    ...plainField('SEO Maturity', str(s5.seoMaturity)),
+    ...arr<Record<string, string>>(s5.social).filter((s) => s.platform?.trim()).flatMap((s) => [
+      new Paragraph({
+        children: [
+          new TextRun({ text: s.platform ?? '', bold: true, size: 20 }),
+          new TextRun({ text: s.handle ? ` (@${s.handle})` : '', size: 20 }),
+          new TextRun({ text: s.activityLevel ? ` — ${s.activityLevel}` : '', size: 20 }),
+        ],
+        spacing: { after: 60 },
+      }),
+    ]),
+    ...plainArea('Content Gaps', str(s5.contentGaps)),
+
+    // Section 6
+    sectionHeading('Section 06 — Target Segments & Verticals'),
+    ...arr<Record<string, string>>(s6.primaryVerticals).filter((v) => v.name?.trim()).flatMap((v, i) => [
+      subHeading(`Vertical ${i + 1}: ${v.name}`),
+      ...plainArea('Why Good Fit', v.whyGoodFit),
+      ...plainField('Current Penetration', v.currentPenetration),
+      ...plainArea('Expansion Potential', v.expansionPotential),
+    ]),
+    ...plainArea('Geographies', str(s6.geographies)),
+    ...plainField('Customer Size Range', str(s6.customerSizeRange)),
+    ...plainArea('Top Use Cases', str(s6.topUseCases)),
+    ...plainArea('Underserved Segments', str(s6.underservedSegments)),
+
+    // Section 7
+    sectionHeading('Section 07 — Brand & Visual Identity'),
+    ...plainArea('Brand Attributes', str(s7.brandAttributes)),
+    ...plainArea('Tone Adjectives', str(s7.toneAdjectives)),
+    ...plainArea('Brand Personality', str(s7.brandPersonality)),
+    ...plainArea('Existing Guidelines', str(s7.existingGuidelines)),
+    ...plainField('Primary Colors', str(s7.primaryColors)),
+    ...plainArea('Font Notes', str(s7.fontNotes)),
+    ...plainArea('Brand Strengths', str(s7.brandStrengths)),
+    ...plainArea('Brand Weaknesses', str(s7.brandWeaknesses)),
+
+    // Section 8
+    sectionHeading('Section 08 — Goals & Success Metrics'),
+    ...plainArea('90-Day Goals', str(s8.goals90Day)),
+    ...plainArea('12-Month Goals', str(s8.goals12Month)),
+    ...arr<Record<string, string>>(s8.kpis).filter((k) => k.metric?.trim()).flatMap((k, i) => [
+      subHeading(`KPI ${i + 1}: ${k.metric}`),
+      ...plainField('Current Baseline', k.currentBaseline),
+      ...plainField('Target', k.target),
+    ]),
+    ...plainArea('Definition of Success', str(s8.successDefinition)),
+    ...plainArea('Known Blockers', str(s8.knownBlockers)),
+    ...plainArea('Existing Wins', str(s8.existingWins)),
+    ...plainField('Budget Range', str(s8.budgetRange)),
+  ]
+
+  // References
+  const refs = arr<{ url: string; label: string }>(data.meta.references).filter((r) => r.url?.trim())
+  if (refs.length > 0) {
+    children.push(sectionHeading('References'))
+    refs.forEach((r, i) => {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: `${i + 1}. ${r.label || r.url}`, size: 20 })],
+        spacing: { after: 40 },
+      }))
+      if (r.label && r.url !== r.label) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: `   ${r.url}`, size: 18, color: '555555' })],
+          spacing: { after: 80 },
+        }))
+      }
+    })
+  }
+
+  const doc = new Document({
+    styles: {
+      paragraphStyles: [
+        { id: 'Normal', name: 'Normal', run: { font: 'Calibri', size: 20, color: '111111' } },
+      ],
+    },
+    sections: [{ children }],
+  })
+
+  const safeName = clientName.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+  const blob = await Packer.toBlob(doc)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${safeName}_company_assessment.docx`
   a.click()
   URL.revokeObjectURL(url)
 }

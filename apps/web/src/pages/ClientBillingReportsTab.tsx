@@ -67,6 +67,7 @@ interface ClientUsage {
   translationByProvider: ProviderXlate[]
   transcriptionMinutes: number; assemblyaiMinutes: number; assemblyaiCostUsd: number
   videoIntelligenceCalls: number
+  braveSearchQueries: number
   grandTotalCostUsd: number
 }
 
@@ -570,7 +571,7 @@ export function ClientBillingReportsTab({ clientId, clientName }: { clientId: st
     detectionCalls: 0, totalDetectionCostUsd: 0, detectionByService: [],
     totalTranslationChars: 0, totalTranslationCostUsd: 0, translationByProvider: [],
     transcriptionMinutes: 0, assemblyaiMinutes: 0, assemblyaiCostUsd: 0,
-    videoIntelligenceCalls: 0, grandTotalCostUsd: 0,
+    videoIntelligenceCalls: 0, braveSearchQueries: 0, grandTotalCostUsd: 0,
   }
 
   const load = useCallback(async () => {
@@ -787,6 +788,15 @@ export function ClientBillingReportsTab({ clientId, clientName }: { clientId: st
       usage: u.videoIntelligenceCalls > 0 ? `${u.videoIntelligenceCalls} analyses` : '—',
       metric: 'analyses', cost: null, totalCostUsd: 0,
       hasUsage: u.videoIntelligenceCalls > 0,
+    },
+
+    // ── Brave Search (GTM / company profile enrichment) ───────────────────
+    {
+      key: 'brave', icon: Icons.Search, iconColor: '#f97316',
+      category: 'Research Enrichment', service: 'Brave Search API (GTM / Company Autofill)',
+      usage: u.braveSearchQueries > 0 ? `${u.braveSearchQueries} queries` : '—',
+      metric: 'queries (free tier: 2,000/mo)', cost: null, totalCostUsd: 0,
+      hasUsage: u.braveSearchQueries > 0,
     },
   ]
 

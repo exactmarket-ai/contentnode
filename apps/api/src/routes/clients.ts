@@ -2,10 +2,10 @@ import crypto from 'node:crypto'
 import { extname } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma, auditService } from '@contentnode/database'
+import { prisma, auditService, usageEventService } from '@contentnode/database'
 import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
-import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue, getClientBrainProcessQueue } from '../lib/queues.js'
+import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue, getClientBrainProcessQueue, getClientVerticalBrainProcessQueue } from '../lib/queues.js'
 import { markStaleIfBrainChanged } from './templateLibrary.js'
 import { getClerkUserNames } from '../lib/clerk.js'
 
@@ -49,6 +49,550 @@ const TOKEN_TTL_MS = 60 * 24 * 30 * 60 * 1000 // 30 days
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'client'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared company research helper — used by both company-profile autofill
+// and GTM assessment scrape so they always run identical enrichment logic.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CompanyResearchResult {
+  legalName: string; doingBusinessAs: string; founded: string
+  headquarters: string; employees: string; revenueRange: string
+  fundingStage: string; investors: string; productServiceSummary: string
+  messagingStatement: string; valueProp: string
+  keyMessage1: string; keyMessage2: string; keyMessage3: string
+  toneOfVoice: string; currentTagline: string
+  websiteStrengths: string; contentTypes: string
+  brandAttributes: string; toneAdjectives: string; brandPersonality: string
+  industriesServed: string; geographies: string; goToMarketMotion: string
+  // fields used only by company profile
+  about: string; industry: string; globalReach: string
+  companyCategory: string; businessType: string
+  coreValues: string[]; keyAchievements: string[]
+  leadershipMessage: string
+  leadershipTeam: Array<{ name: string; title: string; location: string; linkedin: string }>
+  whatTheyDo: string; keyOfferings: string[]; partners: string[]
+  milestones: string[]; visionForFuture: string
+  generalInquiries: string; phone: string; headquartersAddress: string
+  socialProfiles: Record<string, string>   // platform → URL
+  competitorNames: string                  // comma-separated list from search
+  // metadata
+  _sources: Array<{ url: string; label: string }>
+}
+
+async function researchCompanyFromUrl(
+  url: string,
+  clientName: string,
+  apiKey: string,
+  usageCtx?: { agencyId: string; clientId: string; userId?: string },
+): Promise<CompanyResearchResult> {
+  // ── HTML helpers ───────────────────────────────────────────────────────────
+  const stripHtml = (html: string) =>
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<h[1-3][^>]*>/gi, '\n## ').replace(/<\/h[1-3]>/gi, '\n')
+      .replace(/<li[^>]*>/gi, '\n- ').replace(/<\/li>/gi, '')
+      .replace(/<p[^>]*>/gi, '\n').replace(/<\/p>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+
+  const fetchPage = async (pageUrl: string): Promise<string> => {
+    try {
+      const res = await fetch(pageUrl, { headers: { 'User-Agent': 'ContentNode-ResearchBot/1.0' }, signal: AbortSignal.timeout(12000) })
+      if (!res.ok) return ''
+      return stripHtml(await res.text())
+    } catch { return '' }
+  }
+
+  // ── Crawl homepage + discover high-value sub-pages ─────────────────────────
+  const base = (() => { try { const u = new URL(url); return `${u.protocol}//${u.host}` } catch { return '' } })()
+
+  const homepageHtml = await (async () => {
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'ContentNode-ResearchBot/1.0' }, signal: AbortSignal.timeout(15000) })
+      if (!res.ok) return ''
+      return await res.text()
+    } catch { return '' }
+  })()
+
+  if (!homepageHtml) throw new Error(`Could not fetch ${url} — check the URL and try again`)
+
+  const internalLinks = Array.from(homepageHtml.matchAll(/href=["']([^"']+)["']/gi))
+    .map((m) => {
+      const href = m[1]
+      if (href.startsWith('http')) return href
+      if (href.startsWith('/') && base) return `${base}${href}`
+      return null
+    })
+    .filter((h): h is string => !!h && h.startsWith(base))
+    .map((h) => h.split('#')[0].replace(/\/$/, '').toLowerCase())
+
+  const pageScore = (u: string) => {
+    const p = u.replace(base, '').toLowerCase()
+    if (/\/(partner|ecosystem|alliance|integration|reseller|technology-partner)/.test(p)) return 10
+    if (/\/(about|about-us|company|who-we-are|our-story|mission|history|story|since|founded)/.test(p)) return 9
+    if (/\/(team|leadership|management|executives|founders|people|our-team)/.test(p)) return 8
+    if (/\/(customer|client|case-stud|success-stor|trusted-by|who-we-serve)/.test(p)) return 7
+    if (/\/(product|solution|platform|service|offering|feature)/.test(p)) return 6
+    if (/\/(press|news|milestone|award|achievement)/.test(p)) return 5
+    if (/\/(contact|contact-us|office|location|reach-us|get-in-touch)/.test(p)) return 5
+    return 0
+  }
+
+  const subPages = [...new Set(internalLinks)]
+    .filter((u) => u !== url.replace(/\/$/, '').toLowerCase() && u !== base)
+    .sort((a, b) => pageScore(b) - pageScore(a))
+    .filter((u) => pageScore(u) > 0)
+    .slice(0, 5)
+
+  const copyrightYears = Array.from(homepageHtml.matchAll(/©\s*(\d{4})\s*[-–]\s*(\d{4})|©\s*(\d{4})/g))
+    .flatMap((m) => [m[1], m[2], m[3]].filter(Boolean).map(Number))
+  const earliestCopyright = copyrightYears.length > 0 ? Math.min(...copyrightYears) : null
+
+  const subTexts = await Promise.all(subPages.map((u) => fetchPage(u).then((t) => ({ url: u, text: t.slice(0, 4000) }))))
+
+  // ── Extract social media profiles from homepage HTML ──────────────────────
+  const socialProfileMap: Record<string, string> = {}
+  const socialPatterns: Array<[string, RegExp]> = [
+    ['LinkedIn',    /https?:\/\/(?:www\.)?linkedin\.com\/company\/[^\s"'<>?#)]+/i],
+    ['Twitter/X',   /https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[^\s"'<>?#)/]+/i],
+    ['Facebook',    /https?:\/\/(?:www\.)?facebook\.com\/[^\s"'<>?#)/]+/i],
+    ['Instagram',   /https?:\/\/(?:www\.)?instagram\.com\/[^\s"'<>?#)/]+/i],
+    ['YouTube',     /https?:\/\/(?:www\.)?youtube\.com\/(?:c\/|channel\/|@)?[^\s"'<>?#)/]+/i],
+    ['TikTok',      /https?:\/\/(?:www\.)?tiktok\.com\/@[^\s"'<>?#)/]+/i],
+  ]
+  for (const [platform, regex] of socialPatterns) {
+    const match = homepageHtml.match(regex)
+    if (match) socialProfileMap[platform] = match[0].replace(/[)'"]+$/, '')
+  }
+
+  // Track sources for references section
+  const _sources: Array<{ url: string; label: string }> = [
+    { url, label: new URL(url).hostname.replace(/^www\./, '') },
+    ...subTexts.filter((s) => s.text.length > 100).map((s) => ({
+      url: s.url,
+      label: s.url.replace(base, '') || '/',
+    })),
+  ]
+  // Add social profiles to sources
+  for (const [platform, profileUrl] of Object.entries(socialProfileMap)) {
+    _sources.push({ url: profileUrl, label: platform })
+  }
+
+  const researchedCompanyName = (() => {
+    const titleMatch = homepageHtml.match(/<title[^>]*>([^<]{2,80})<\/title>/i)
+    if (titleMatch) {
+      const title = titleMatch[1].replace(/&amp;/g, '&').replace(/&#\d+;/g, '').trim()
+      const name = title.split(/\s*[-–—|·•:]\s*/)[0].trim()
+      if (name.length >= 2) return name
+    }
+    try { return new URL(url).hostname.replace(/^www\./, '').split('.')[0] } catch { return clientName }
+  })()
+
+  const homepageText = stripHtml(homepageHtml).slice(0, 6000)
+  let combinedContent = `=== Homepage (${url}) ===\n${homepageText}\n\n`
+  for (const { url: subUrl, text } of subTexts) {
+    if (text.length > 100) {
+      const pageName = subUrl.replace(base, '') || '/'
+      combinedContent += `=== Page: ${pageName} ===\n${text}\n\n`
+    }
+  }
+
+  const sourcesSummary = `company website (${subPages.length + 1} pages)`
+
+  // ── Claude extraction from website ─────────────────────────────────────────
+  const prompt = `You are a senior business analyst building a thorough company backgrounder from multiple intelligence sources.
+
+Company name: ${clientName}
+Main URL: ${url}
+Sources: ${sourcesSummary}${earliestCopyright ? `\nEarliest copyright year found in page footer: ${earliestCopyright} (use as a founding year hint if no explicit date is found)` : ''}
+
+---
+RESEARCH CONTENT (multiple sources):
+${combinedContent}
+---
+
+INSTRUCTIONS:
+- Read ALL sources. Use the MOST RELEVANT source/page for each field.
+- "legalName" → the full registered legal name (e.g. "Dizzion, Inc." not just "Dizzion"). Look at footer, About page, legal/privacy pages, press releases.
+- "doingBusinessAs" → trade name or brand name if different from legal name; otherwise same as legalName
+- "founded" → look for "Founded in", "Since", "Established in", "In [year] we", then fall back to earliest copyright year hint
+- "employees" → look for headcount numbers on website pages, About page, or press releases
+- "revenueRange" → look for revenue figures in press releases, About page, investor relations. Express as range if possible (e.g. "$50M–$100M"). Leave empty if not found on site.
+- "fundingStage" → look for funding mentions (Series A/B/C, bootstrapped, PE-backed, public/NYSE/NASDAQ, acquired). Check About, press, or investor pages.
+- "leadershipTeam" → use content from pages labeled /team, /leadership, /management, /executives, or /founders
+- "partners" → use content from pages labeled /partners, /ecosystem, /integrations, /alliances. Also look for: "Powered by", "Built on", "Works with", "Certified by", partner logos.
+- "whatTheyDo", "keyOfferings", "industriesServed" → use product/solution/services pages
+- "generalInquiries", "phone", "headquartersAddress" → use pages labeled /contact, /contact-us, or /about
+- Be thorough — extract more rather than less. Do NOT skip a field just because it wasn't on the homepage.
+
+Return ONLY valid JSON with no markdown, no explanation:
+
+{
+  "legalName": "full registered legal company name",
+  "doingBusinessAs": "brand/trade name if different from legal name, otherwise same",
+  "about": "2-4 sentence company overview based on all pages",
+  "founded": "year or date founded",
+  "headquarters": "city, state/country",
+  "industry": "primary industry",
+  "globalReach": "description of geographic presence and market reach",
+  "companyCategory": "e.g. Enterprise Software, SaaS, Professional Services",
+  "businessType": "e.g. B2B, B2C, B2G, Mixed",
+  "employees": "headcount or range",
+  "revenueRange": "revenue range if mentioned on site (e.g. $50M-$100M), empty string if not found",
+  "fundingStage": "e.g. Series B, PE-backed, Bootstrapped, Public — empty string if not found",
+  "coreValues": ["value 1", "value 2"],
+  "keyAchievements": ["achievement 1", "achievement 2"],
+  "leadershipMessage": "direct quote or summary from CEO/leadership if found",
+  "leadershipTeam": [{ "name": "Full Name", "title": "Job Title", "location": "", "linkedin": "" }],
+  "whatTheyDo": "detailed paragraph describing their core business, model, and differentiation",
+  "keyOfferings": ["product/service 1", "product/service 2"],
+  "industriesServed": ["industry 1", "industry 2"],
+  "partners": ["Partner A", "Technology X"],
+  "milestones": ["milestone 1", "milestone 2"],
+  "visionForFuture": "their stated vision, mission, or strategic direction",
+  "website": "${url}",
+  "generalInquiries": "email for general contact if found",
+  "phone": "main phone number if found",
+  "headquartersAddress": "full street address if found",
+  "messagingStatement": "one-sentence summary of who they help and how",
+  "valueProp": "primary reason buyers choose them",
+  "keyMessage1": "first core talking point",
+  "keyMessage2": "second core talking point",
+  "keyMessage3": "third core talking point",
+  "toneOfVoice": "e.g. Confident, technical, empathetic",
+  "currentTagline": "tagline if present on site",
+  "brandAttributes": "3-5 adjectives describing the brand",
+  "toneAdjectives": "adjectives describing tone",
+  "brandPersonality": "if this brand were a person, how would they speak",
+  "contentTypes": "types of content found on site (blog, case studies, webinars, etc.)",
+  "websiteStrengths": "what the site does well",
+  "geographies": "geographic markets served",
+  "goToMarketMotion": "product-led / sales-led / partner-led / community-led"
+}
+
+Use empty string "" or empty array [] for any field not found. Never invent information.`
+
+  const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 5000, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let extracted: Record<string, any> = {}
+  if (aiRes.ok) {
+    const aiBody = await aiRes.json() as { content: Array<{ text: string }> }
+    const text = aiBody.content?.[0]?.text ?? ''
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) { try { extracted = JSON.parse(m[0]) } catch { /* continue to enrichment */ } }
+  }
+
+  // ── External enrichment via Brave Search API + DDG Instant Answer ────────
+  // DDG HTML search is blocked by CAPTCHA from all server/cloud IPs.
+  // Solution: Brave Search API returns real JSON snippets without bot-blocking.
+  // Key insight: use the website DOMAIN as the search anchor (e.g. "thrivenextgen.com")
+  // rather than the extracted page-title name — the domain is consistent across
+  // all data sources (LinkedIn, ZoomInfo, Glassdoor, Craft.co, Pitchbook) even when
+  // the company trades under different names on different platforms.
+  const braveKey = process.env.BRAVE_SEARCH_API_KEY ?? ''
+  // The website domain (e.g. "thrivenextgen.com") is our universal company identifier
+  const websiteDomain = base ? new URL(url).hostname.replace(/^www\./, '') : ''
+  // Short search name: prefer clientName (user-typed) over extracted page title
+  const searchName = clientName.trim() || researchedCompanyName
+
+  const enrich: {
+    founded?: string; headquarters?: string; employees?: string
+    phone?: string; generalInquiries?: string; headquartersAddress?: string
+    fundingStage?: string; revenueRange?: string; investors?: string
+  } = {}
+  const enrichSources: Array<{ url: string; label: string }> = []
+
+  // Helper: Brave Search API → returns combined title + description text from top results
+  let _braveCallCount = 0
+  const _braveStartMs = Date.now()
+  const braveSearch = async (query: string, count = 5): Promise<string> => {
+    const res = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}&text_decorations=0&result_filter=web`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Accept-Encoding': 'gzip',
+          'X-Subscription-Token': braveKey,
+        },
+        signal: AbortSignal.timeout(10000),
+      },
+    )
+    if (!res.ok) return ''
+    _braveCallCount++
+    const data = await res.json() as {
+      web?: { results?: Array<{ title?: string; url?: string; description?: string; extra_snippets?: string[] }> }
+    }
+    return (data.web?.results ?? [])
+      .map((r) => [r.title, r.url, r.description, ...(r.extra_snippets ?? [])].filter(Boolean).join(' | '))
+      .join('\n')
+      .slice(0, 4000)
+  }
+
+  // Helper: call Claude Haiku to extract a JSON object from search snippets
+  const haikuExtract = async (prompt: string, maxTokens = 200): Promise<Record<string, string>> => {
+    const hRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, temperature: 0,
+        messages: [{ role: 'user', content: prompt }] }),
+    })
+    if (!hRes.ok) return {}
+    const body = await hRes.json() as { content: Array<{ text: string }> }
+    const m = (body.content?.[0]?.text ?? '').match(/\{[\s\S]*\}/)
+    if (!m) return {}
+    try { return JSON.parse(m[0]) as Record<string, string> } catch { return {} }
+  }
+
+  await Promise.allSettled([
+
+    // ── Layer A: DDG Instant Answer JSON API (Wikipedia infobox) ─────────
+    // This is an actual JSON API — no bot-blocking — works from any server.
+    // Only returns data for companies with a Wikipedia page.
+    (async () => {
+      type DDGItem = { label?: string; value?: unknown }
+      type DDGResponse = { AbstractText?: string; Infobox?: { content?: DDGItem[] } }
+      const ddgRes = await fetch(
+        `https://api.duckduckgo.com/?q=${encodeURIComponent(researchedCompanyName)}&format=json&no_html=1&skip_disambig=1`,
+        { headers: { 'User-Agent': 'ContentNode-ResearchBot/1.0' }, signal: AbortSignal.timeout(8000) }
+      )
+      if (!ddgRes.ok) return
+      const d = await ddgRes.json() as DDGResponse
+      const facts: Record<string, string> = {}
+      for (const item of (d.Infobox?.content ?? [])) {
+        if (typeof item.label === 'string' && typeof item.value === 'string' && item.value.trim())
+          facts[item.label.toLowerCase()] = item.value.trim()
+      }
+      if (facts['founded']) enrich.founded = facts['founded']
+
+      // Leadership from DDG "Key people" infobox
+      const keyPeople = facts['key people'] ?? facts['founders'] ?? ''
+      if (keyPeople) {
+        const ddgMembers: Array<{ name: string; title: string; location: string; linkedin: string }> = []
+        for (const entry of keyPeople.split(/,(?![^(]*\))/)) {
+          const m2 = entry.trim().match(/^(.+?)\s*\(([^)]+)\)$/)
+          if (m2) ddgMembers.push({ name: m2[1].trim(), title: m2[2].trim(), location: '', linkedin: '' })
+          else if (entry.trim()) ddgMembers.push({ name: entry.trim(), title: '', location: '', linkedin: '' })
+        }
+        if (ddgMembers.length > 0) {
+          const claudeTeam = Array.isArray(extracted.leadershipTeam) ? extracted.leadershipTeam : []
+          const existingNames = new Set(claudeTeam.map((m: { name?: string }) => (m.name ?? '').toLowerCase()))
+          for (const m2 of ddgMembers) {
+            if (!existingNames.has(m2.name.toLowerCase())) claudeTeam.push(m2)
+          }
+          extracted.leadershipTeam = claudeTeam
+        }
+      }
+
+      const empKey = Object.keys(facts).find((k) => k.includes('employee'))
+      if (empKey) enrich.employees = facts[empKey]
+      if (!enrich.employees && d.AbstractText) {
+        const empMatch = d.AbstractText.match(/(\d[\d,]+)\s+employees/i) ?? d.AbstractText.match(/workforce of\s+([\d,]+)/i)
+        if (empMatch) enrich.employees = empMatch[1]
+      }
+      const hqMatch = d.AbstractText?.match(/headquartered in ([^.]+)/i)
+      if (hqMatch) {
+        enrich.headquarters = hqMatch[1]
+          .replace(/,?\s*(U\.?S\.?A?\.?|United States|United Kingdom|England)\.?$/i, '')
+          .trim()
+      }
+      if (enrich.founded || enrich.headquarters || enrich.employees)
+        enrichSources.push({ url: `https://duckduckgo.com/?q=${encodeURIComponent(researchedCompanyName)}`, label: 'Wikipedia / DuckDuckGo Instant Answer' })
+    })(),
+
+    // ── Layers B–F: Brave Search API (requires BRAVE_SEARCH_API_KEY) ──────
+    // Brave returns real JSON snippets without CAPTCHA. Free tier: 2,000 req/month.
+    // All queries use the website domain as anchor (e.g. "thrivenextgen.com") rather
+    // than the page-title name, because ZoomInfo, LinkedIn, Glassdoor, Craft.co, and
+    // Pitchbook all reference the company's website URL in their public profiles.
+    ...(braveKey ? [
+
+      // ── Layer B: Company facts — employees, founded, revenue, funding ─────
+      // Domain-anchored so it finds the company across LinkedIn, Glassdoor,
+      // ZoomInfo, Craft.co, and Pitchbook even when names differ per platform.
+      (async () => {
+        const text = await braveSearch(`"${websiteDomain}" employees founded revenue funding`)
+        if (!text) return
+        const p = await haikuExtract(
+          `Search result snippets about the company at ${websiteDomain}.\nExtract only (empty string if not clearly stated — do NOT guess):\n- "founded": year founded, e.g. "2000"\n- "employees": headcount or range, e.g. "1,820" or "1,001–5,000"\n- "revenueRange": annual revenue, e.g. "$100M–$500M" or "$189.7M"\n- "fundingStage": e.g. "PE Growth", "Privately Held", "Series B", "Bootstrapped"\n- "investors": top investors/backers comma-separated\n- "headquarters": city and state/country\n- "headquartersAddress": full street address if shown\nReturn ONLY JSON: {"founded":"","employees":"","revenueRange":"","fundingStage":"","investors":"","headquarters":"","headquartersAddress":""}\n\n${text}`,
+          300,
+        )
+        if (p.founded?.trim()            && !enrich.founded)            enrich.founded            = p.founded.trim()
+        if (p.employees?.trim()          && !enrich.employees)          enrich.employees          = p.employees.trim()
+        if (p.revenueRange?.trim()       && !enrich.revenueRange)       enrich.revenueRange       = p.revenueRange.trim()
+        if (p.fundingStage?.trim()       && !enrich.fundingStage)       enrich.fundingStage       = p.fundingStage.trim()
+        if (p.investors?.trim()          && !enrich.investors)          enrich.investors          = p.investors.trim()
+        if (p.headquarters?.trim()       && !enrich.headquarters)       enrich.headquarters       = p.headquarters.trim()
+        if (p.headquartersAddress?.trim() && !enrich.headquartersAddress) enrich.headquartersAddress = p.headquartersAddress.trim()
+        if (Object.values(p).some((v) => v?.trim()))
+          enrichSources.push({ url: `https://www.zoominfo.com/pic/${searchName.toLowerCase().replace(/\s+/g, '-')}`, label: 'ZoomInfo / Glassdoor / Craft.co' })
+      })(),
+
+      // ── Layer C: Pitchbook — deal type, financing rounds, investors ───────
+      (async () => {
+        const text = await braveSearch(`pitchbook "${websiteDomain}" OR "${searchName}" funding investors deal`)
+        if (!text) return
+        const p = await haikuExtract(
+          `Pitchbook search snippets for the company at ${websiteDomain} (also known as "${searchName}").\nExtract only (empty string if not clearly stated):\n- "fundingStage": deal type, e.g. "PE Growth", "Series B", "Bootstrapped", "Public"\n- "investors": top investors/PE backers comma-separated\n- "founded": year founded\n- "employees": employee count\nReturn ONLY JSON: {"fundingStage":"","investors":"","founded":"","employees":""}\n\n${text}`,
+          200,
+        )
+        if (p.fundingStage?.trim() && !enrich.fundingStage) enrich.fundingStage = p.fundingStage.trim()
+        if (p.investors?.trim()    && !enrich.investors)    enrich.investors    = p.investors.trim()
+        if (p.founded?.trim()      && !enrich.founded)      enrich.founded      = p.founded.trim()
+        if (p.employees?.trim()    && !enrich.employees)    enrich.employees    = p.employees.trim()
+        if (Object.values(p).some((v) => v?.trim()))
+          enrichSources.push({ url: `https://pitchbook.com/search?q=${encodeURIComponent(searchName)}`, label: 'Pitchbook' })
+      })(),
+
+      // ── Layer D: Crunchbase — funding rounds, investors ───────────────────
+      (async () => {
+        const text = await braveSearch(`crunchbase "${websiteDomain}" OR "${searchName}" funding investors`)
+        if (!text) return
+        const p = await haikuExtract(
+          `Crunchbase snippets for the company at ${websiteDomain}.\nExtract only:\n- "fundingStage": funding stage\n- "investors": investors comma-separated\n- "founded": year\nReturn ONLY JSON: {"fundingStage":"","investors":"","founded":""}\n\n${text}`,
+          150,
+        )
+        if (p.fundingStage?.trim() && !enrich.fundingStage) enrich.fundingStage = p.fundingStage.trim()
+        if (p.investors?.trim()    && !enrich.investors)    enrich.investors    = p.investors.trim()
+        if (p.founded?.trim()      && !enrich.founded)      enrich.founded      = p.founded.trim()
+        if (Object.values(p).some((v) => v?.trim()))
+          enrichSources.push({ url: `https://www.crunchbase.com/textsearch?q=${encodeURIComponent(searchName)}`, label: 'Crunchbase' })
+      })(),
+
+      // ── Layer E: LinkedIn — employee range, HQ, industry, type ──────────
+      (async () => {
+        const linkedinUrl = Object.values(socialProfileMap).find((u) => u.includes('linkedin')) ?? ''
+        const text = await braveSearch(`linkedin "${websiteDomain}" OR "${searchName}" employees headquarters industry founded`)
+        if (!text) return
+        const p = await haikuExtract(
+          `LinkedIn company page snippets for ${websiteDomain}.\nExtract only:\n- "employees": LinkedIn range, e.g. "1,001–5,000 employees"\n- "headquarters": city/state\n- "industry": e.g. "IT Services and IT Consulting"\n- "founded": year\n- "fundingStage": company type, e.g. "Privately Held", "Public Company"\nReturn ONLY JSON: {"employees":"","headquarters":"","industry":"","founded":"","fundingStage":""}\n\n${text}`,
+          200,
+        )
+        if (p.employees?.trim()    && !enrich.employees)    enrich.employees    = p.employees.trim()
+        if (p.headquarters?.trim() && !enrich.headquarters) enrich.headquarters = p.headquarters.trim()
+        if (p.founded?.trim()      && !enrich.founded)      enrich.founded      = p.founded.trim()
+        if (p.fundingStage?.trim() && !enrich.fundingStage) enrich.fundingStage = p.fundingStage.trim()
+        if (p.industry?.trim() && !(extracted.industry as string | undefined)?.trim())
+          extracted.industry = p.industry.trim()
+        if (Object.values(p).some((v) => v?.trim()))
+          enrichSources.push({ url: linkedinUrl || `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(searchName)}`, label: 'LinkedIn' })
+      })(),
+
+      // ── Layer F: Competitors — for S2 competitive landscape ───────────────
+      (async () => {
+        const text = await braveSearch(`"${searchName}" competitors alternatives similar companies`)
+        if (!text) return
+        const p = await haikuExtract(
+          `Search snippets about competitors of "${searchName}".\nExtract a list of up to 6 direct competitor company names mentioned (empty string if none found).\n- "competitors": comma-separated list of competitor names\nReturn ONLY JSON: {"competitors":""}\n\n${text}`,
+          150,
+        )
+        if (p.competitors?.trim()) {
+          extracted.competitorNames = p.competitors.trim()
+          enrichSources.push({ url: `https://www.google.com/search?q=${encodeURIComponent(searchName + ' competitors')}`, label: 'Competitor Research' })
+        }
+      })(),
+
+    ] : []),  // ← Layers B–F skipped entirely when BRAVE_SEARCH_API_KEY not set
+
+  ])
+
+  // Record Brave Search API usage (non-blocking — never throws)
+  if (_braveCallCount > 0 && usageCtx) {
+    void usageEventService.record({
+      agencyId:       usageCtx.agencyId,
+      clientId:       usageCtx.clientId,
+      userId:         usageCtx.userId,
+      toolType:       'content',
+      toolSubtype:    'web_search',
+      provider:       'brave',
+      model:          'brave-search-api',
+      isOnline:       true,
+      inputMediaCount: _braveCallCount,
+      durationMs:     Date.now() - _braveStartMs,
+      status:         'success',
+    })
+  }
+
+  // Apply enriched data (website extraction takes precedence; enrich fills gaps)
+  if (enrich.fundingStage && !extracted.fundingStage) extracted.fundingStage = enrich.fundingStage
+  if (enrich.revenueRange  && !extracted.revenueRange)  extracted.revenueRange  = enrich.revenueRange
+  if (enrich.investors && !extracted.investors) extracted.investors = enrich.investors
+
+  // Enriched sources override Claude's website extraction for factual fields
+  if (enrich.founded)             extracted.founded             = enrich.founded
+  if (enrich.headquarters)        extracted.headquarters        = enrich.headquarters
+  if (enrich.employees)           extracted.employees           = enrich.employees
+  if (enrich.phone)               extracted.phone               = enrich.phone
+  if (enrich.generalInquiries)    extracted.generalInquiries    = enrich.generalInquiries
+  if (enrich.headquartersAddress) extracted.headquartersAddress = enrich.headquartersAddress
+
+  // Append enrichment sources (deduplicated)
+  for (const src of enrichSources) {
+    if (!_sources.some((s) => s.label === src.label)) _sources.push(src)
+  }
+
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  const arr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
+
+  return {
+    legalName:             str(extracted.legalName) || researchedCompanyName,
+    doingBusinessAs:       str(extracted.doingBusinessAs),
+    founded:               str(extracted.founded),
+    headquarters:          str(extracted.headquarters),
+    employees:             str(extracted.employees),
+    revenueRange:          str(extracted.revenueRange),
+    fundingStage:          str(extracted.fundingStage),
+    investors:             str(extracted.investors) || str(enrich.investors),
+    productServiceSummary: str(extracted.whatTheyDo) || str(extracted.about),
+    messagingStatement:    str(extracted.messagingStatement),
+    valueProp:             str(extracted.valueProp) || str(extracted.visionForFuture),
+    keyMessage1:           str(extracted.keyMessage1),
+    keyMessage2:           str(extracted.keyMessage2),
+    keyMessage3:           str(extracted.keyMessage3),
+    toneOfVoice:           str(extracted.toneOfVoice),
+    currentTagline:        str(extracted.currentTagline),
+    websiteStrengths:      str(extracted.websiteStrengths),
+    contentTypes:          str(extracted.contentTypes),
+    brandAttributes:       str(extracted.brandAttributes),
+    toneAdjectives:        str(extracted.toneAdjectives),
+    brandPersonality:      str(extracted.brandPersonality),
+    industriesServed:      arr(extracted.industriesServed).join(', '),
+    geographies:           str(extracted.geographies) || str(extracted.globalReach),
+    goToMarketMotion:      str(extracted.goToMarketMotion) || str(extracted.businessType),
+    // Company profile fields
+    about:                 str(extracted.about),
+    industry:              str(extracted.industry),
+    globalReach:           str(extracted.globalReach),
+    companyCategory:       str(extracted.companyCategory),
+    businessType:          str(extracted.businessType),
+    coreValues:            arr(extracted.coreValues),
+    keyAchievements:       arr(extracted.keyAchievements),
+    leadershipMessage:     str(extracted.leadershipMessage),
+    leadershipTeam:        Array.isArray(extracted.leadershipTeam) ? extracted.leadershipTeam : [],
+    whatTheyDo:            str(extracted.whatTheyDo),
+    keyOfferings:          arr(extracted.keyOfferings),
+    partners:              arr(extracted.partners),
+    milestones:            arr(extracted.milestones),
+    visionForFuture:       str(extracted.visionForFuture),
+    generalInquiries:      str(extracted.generalInquiries),
+    phone:                 str(extracted.phone),
+    headquartersAddress:   str(extracted.headquartersAddress),
+    socialProfiles:        socialProfileMap,
+    competitorNames:       str(extracted.competitorNames),
+    _sources,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -846,6 +1390,13 @@ export async function clientRoutes(app: FastifyInstance) {
     const totalMusicSecs    = Object.values(musicByProvider).reduce((s, v) => s + v.secs, 0)
     const totalMusicCostUsd = Object.values(musicByProvider).reduce((s, v) => s + v.costUsd, 0)
 
+    // ── Brave Search API usage (direct UsageEvent query — not tied to runs) ──
+    const braveEvents = await prisma.usageEvent.findMany({
+      where: { agencyId, clientId, provider: 'brave' },
+      select: { inputMediaCount: true },
+    })
+    const braveSearchQueries = braveEvents.reduce((s, e) => s + (e.inputMediaCount ?? 1), 0)
+
     // Grand total estimated cost across ALL services
     const grandTotalCostUsd =
       totalTokensCostUsd + totalHumCostUsd + totalDetectionCostUsd +
@@ -922,6 +1473,9 @@ export async function clientRoutes(app: FastifyInstance) {
 
         // ── Video intelligence (Google Gemini) ─────────────────────────────
         videoIntelligenceCalls,
+
+        // ── Brave Search API (GTM / company profile enrichment) ────────────
+        braveSearchQueries,
 
         // ── Grand total ────────────────────────────────────────────────────
         grandTotalCostUsd,
@@ -1327,6 +1881,7 @@ export async function clientRoutes(app: FastifyInstance) {
     manualOverrides:             z.array(z.record(z.unknown())).optional(),
     confidenceMap:               z.record(z.string()).optional(),
     crawledFrom:                 z.string().optional(),
+    sources:                     z.array(z.object({ url: z.string(), label: z.string(), addedAt: z.string().optional() })).optional(),
   })
 
   // ── PUT /:id/profiles/:profileId — update specific brand profile ─────────────
@@ -1366,6 +1921,7 @@ export async function clientRoutes(app: FastifyInstance) {
       manualOverrides:            jsonSafe(data.manualOverrides),
       confidenceMap:              jsonSafe(data.confidenceMap),
       crawledFrom:                data.crawledFrom,
+      sources:                    jsonSafe(data.sources),
     }
 
     const profile = await prisma.clientProfile.update({ where: { id: profileId }, data: profileData })
@@ -1417,7 +1973,7 @@ export async function clientRoutes(app: FastifyInstance) {
       approvedVisualThemes: jsonSafe(data.approvedVisualThemes), avoidVisual: jsonSafe(data.avoidVisual),
       currentPositioning: data.currentPositioning, campaignThemesApproved: jsonSafe(data.campaignThemesApproved),
       manualOverrides: jsonSafe(data.manualOverrides), confidenceMap: jsonSafe(data.confidenceMap),
-      crawledFrom: data.crawledFrom,
+      crawledFrom: data.crawledFrom, sources: jsonSafe(data.sources),
     }
     let profile = await prisma.clientProfile.findFirst({ where: { clientId, agencyId, status: 'active' }, orderBy: { updatedAt: 'desc' } })
     if (profile) {
@@ -1682,6 +2238,7 @@ Rules:
     phone:               z.string().optional(),
     headquartersAddress: z.string().optional(),
     crawledFrom:         z.string().optional(),
+    sources:             z.array(z.object({ url: z.string(), label: z.string(), addedAt: z.string().optional() })).optional(),
   })
 
   // ── PUT /:id/company-profiles/:profileId — update specific company profile ────
@@ -1708,7 +2265,7 @@ Rules:
       milestones: js(d.milestones), visionForFuture: d.visionForFuture,
       website: d.website, generalInquiries: d.generalInquiries,
       phone: d.phone, headquartersAddress: d.headquartersAddress,
-      crawledFrom: d.crawledFrom,
+      crawledFrom: d.crawledFrom, sources: js(d.sources),
     }
     const profile = await prisma.companyProfile.update({ where: { id: profileId }, data })
     return reply.send({ data: profile })
@@ -1760,7 +2317,7 @@ Rules:
       milestones: js(d.milestones), visionForFuture: d.visionForFuture,
       website: d.website, generalInquiries: d.generalInquiries,
       phone: d.phone, headquartersAddress: d.headquartersAddress,
-      crawledFrom: d.crawledFrom,
+      crawledFrom: d.crawledFrom, sources: js(d.sources),
     }
     let profile = await prisma.companyProfile.findFirst({ where: { clientId, agencyId, status: 'active' }, orderBy: { updatedAt: 'desc' } })
     if (profile) {
@@ -1786,341 +2343,33 @@ Rules:
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(500).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
-    // ── Helper: fetch one URL and strip HTML to plain text ─────────────────
-    const stripHtml = (html: string) =>
-      html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        // Preserve heading text with markers so Claude understands page structure
-        .replace(/<h[1-3][^>]*>/gi, '\n## ').replace(/<\/h[1-3]>/gi, '\n')
-        .replace(/<li[^>]*>/gi, '\n- ').replace(/<\/li>/gi, '')
-        .replace(/<p[^>]*>/gi, '\n').replace(/<\/p>/gi, '\n')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-        .replace(/[ \t]{2,}/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim()
-
-    const fetchPage = async (pageUrl: string): Promise<string> => {
-      try {
-        const res = await fetch(pageUrl, {
-          headers: { 'User-Agent': 'ContentNode-ResearchBot/1.0' },
-          signal: AbortSignal.timeout(12000),
-        })
-        if (!res.ok) return ''
-        return stripHtml(await res.text())
-      } catch {
-        return ''
-      }
-    }
-
-    // ── Crawl homepage + discover high-value sub-pages ──────────────────────
-    const base = (() => { try { const u = new URL(url); return `${u.protocol}//${u.host}` } catch { return '' } })()
-
-    const homepageHtml = await (async () => {
-      try {
-        const res = await fetch(url, { headers: { 'User-Agent': 'ContentNode-ResearchBot/1.0' }, signal: AbortSignal.timeout(15000) })
-        if (!res.ok) return ''
-        return await res.text()
-      } catch { return '' }
-    })()
-
-    if (!homepageHtml) return reply.code(422).send({ error: `Could not fetch ${url} — check the URL and try again` })
-
-    // Extract all internal links from the homepage
-    const internalLinks = Array.from(homepageHtml.matchAll(/href=["']([^"']+)["']/gi))
-      .map((m) => {
-        const href = m[1]
-        if (href.startsWith('http')) return href
-        if (href.startsWith('/') && base) return `${base}${href}`
-        return null
-      })
-      .filter((h): h is string => !!h && h.startsWith(base))
-      .map((h) => h.split('#')[0].replace(/\/$/, '').toLowerCase())
-
-    // Score links by how likely they contain useful backgrounder info
-    const pageScore = (u: string) => {
-      const p = u.replace(base, '').toLowerCase()
-      if (/\/(partner|ecosystem|alliance|integration|reseller|technology-partner)/.test(p)) return 10
-      if (/\/(about|about-us|company|who-we-are|our-story|mission|history|story|since|founded)/.test(p)) return 9
-      if (/\/(team|leadership|management|executives|founders|people|our-team)/.test(p)) return 8
-      if (/\/(customer|client|case-stud|success-stor|trusted-by|who-we-serve)/.test(p)) return 7
-      if (/\/(product|solution|platform|service|offering|feature)/.test(p)) return 6
-      if (/\/(press|news|milestone|award|achievement)/.test(p)) return 5
-      if (/\/(contact|contact-us|office|location|reach-us|get-in-touch)/.test(p)) return 5
-      return 0
-    }
-
-    // Pick top 4 sub-pages to crawl in addition to homepage
-    const subPages = [...new Set(internalLinks)]
-      .filter((u) => u !== url.replace(/\/$/, '').toLowerCase() && u !== base)
-      .sort((a, b) => pageScore(b) - pageScore(a))
-      .filter((u) => pageScore(u) > 0)
-      .slice(0, 5)
-
-    // Extract earliest copyright year from raw HTML as a founding-date hint
-    const copyrightYears = Array.from(homepageHtml.matchAll(/©\s*(\d{4})\s*[-–]\s*(\d{4})|©\s*(\d{4})/g))
-      .flatMap((m) => [m[1], m[2], m[3]].filter(Boolean).map(Number))
-    const earliestCopyright = copyrightYears.length > 0 ? Math.min(...copyrightYears) : null
-
-    // ── External intelligence sources (run in parallel with sub-page crawl) ──
-    const subTexts = await Promise.all(subPages.map((u) => fetchPage(u).then((t) => ({ url: u, text: t.slice(0, 4000) }))))
-
-    // Derive the actual company name from the page title or domain — NOT client.name,
-    // which is the agency's client record name and may differ from the researched company
-    const researchedCompanyName = (() => {
-      const titleMatch = homepageHtml.match(/<title[^>]*>([^<]{2,80})<\/title>/i)
-      if (titleMatch) {
-        const title = titleMatch[1].replace(/&amp;/g, '&').replace(/&#\d+;/g, '').trim()
-        // Take the part before any separator (dash, pipe, colon, bullet)
-        const name = title.split(/\s*[-–—|·•:]\s*/)[0].trim()
-        if (name.length >= 2) return name
-      }
-      // Fall back to domain name (microsoft from microsoft.com)
-      try { return new URL(url).hostname.replace(/^www\./, '').split('.')[0] } catch { return client.name }
-    })()
-
-    const homepageText = stripHtml(homepageHtml).slice(0, 6000)
-
-    // Assemble multi-page content with clear section labels
-    let combinedContent = `=== Homepage (${url}) ===\n${homepageText}\n\n`
-    for (const { url: subUrl, text } of subTexts) {
-      if (text.length > 100) {
-        const pageName = subUrl.replace(base, '') || '/'
-        combinedContent += `=== Page: ${pageName} ===\n${text}\n\n`
-      }
-    }
-
-    if (combinedContent.trim().length < 100) {
-      return reply.code(422).send({ error: 'Could not extract readable content from that URL' })
-    }
-
-    const sourcesSummary = `company website (${subPages.length + 1} pages)`
-
-    const prompt = `You are a senior business analyst building a thorough company backgrounder from multiple intelligence sources.
-
-Company name: ${client.name}
-Industry: ${client.industry ?? 'unknown'}
-Main URL: ${url}
-Sources: ${sourcesSummary}${earliestCopyright ? `\nEarliest copyright year found in page footer: ${earliestCopyright} (use as a founding year hint if no explicit date is found)` : ''}
-
----
-RESEARCH CONTENT (multiple sources):
-${combinedContent}
----
-
-INSTRUCTIONS:
-- Read ALL sources. The section labeled "=== Source: Wikipedia ===" is the most reliable for factual data like founding date, employee count, and HQ — prefer it over the company's own website for these facts.
-- Use the MOST RELEVANT source/page for each field:
-  • "about", "headquarters", "globalReach", "coreValues" → use Wikipedia first, then /about, /about-us, /company, /our-story pages
-  • "founded" → use Wikipedia first, then look for "Founded in", "Since", "Established in", "In [year] we" on website pages, then fall back to earliest copyright year hint
-  • "employees" → use Wikipedia infobox first, then website
-  • "leadershipTeam", "leadershipMessage" → use content from pages labeled /team, /leadership, /management, /executives, or /founders — include every named person with title
-  • "partners" → use content from pages labeled /partners, /ecosystem, /integrations, /alliances, or /marketplace. Also look for: "Powered by", "Built on", "Works with", "Certified by", partner logos, co-marketing mentions, "Platinum/Gold/Silver partner" tiers, AppExchange/marketplace listings. List each distinct partner or technology as a separate item.
-  • "keyAchievements", "milestones" → use press/news/awards pages plus Wikipedia notable events
-  • "whatTheyDo", "keyOfferings", "industriesServed" → use product/solution/services pages
-  • "visionForFuture" → use about, company, or mission pages
-  • "generalInquiries", "phone", "headquartersAddress" → use pages labeled /contact, /contact-us, or /about — look for email addresses, phone numbers, and mailing/office addresses
-- Be thorough — extract more rather than less. Do NOT skip a field just because it wasn't on the homepage.
-
-Return ONLY valid JSON with no markdown, no explanation:
-
-{
-  "about": "2-4 sentence company overview based on all pages",
-  "founded": "year or date founded",
-  "headquarters": "city, country",
-  "industry": "primary industry",
-  "globalReach": "description of geographic presence and market reach",
-  "companyCategory": "e.g. Enterprise Software, SaaS, Professional Services",
-  "businessType": "e.g. B2B, B2C, B2G, Mixed",
-  "employees": "headcount or range",
-  "coreValues": ["value 1", "value 2", "..."],
-  "keyAchievements": ["achievement 1", "achievement 2", "..."],
-  "leadershipMessage": "direct quote or summary of message from CEO/leadership if found",
-  "leadershipTeam": [
-    { "name": "Full Name", "title": "Job Title", "location": "City or empty string", "linkedin": "linkedin URL or empty string" }
-  ],
-  "whatTheyDo": "detailed paragraph describing their core business, model, and differentiation",
-  "keyOfferings": ["product/service 1", "product/service 2", "..."],
-  "industriesServed": ["industry 1", "industry 2", "..."],
-  "partners": ["Partner Company A", "Partner Company B", "Technology X", "..."],
-  "milestones": ["milestone 1", "milestone 2", "..."],
-  "visionForFuture": "their stated vision, mission, or strategic direction",
-  "website": "${url}",
-  "generalInquiries": "email address for general contact if found",
-  "phone": "main phone number if found",
-  "headquartersAddress": "full street address if found"
-}
-
-Use empty string "" or empty array [] for any field not found. Never invent information.`
-
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
-        temperature: 0,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-
-    if (!aiRes.ok) {
-      const errBody = await aiRes.json().catch(() => ({}))
-      req.log.error({ status: aiRes.status, errBody }, '[autofill] Anthropic API error')
-      return reply.code(502).send({ error: `AI service error ${aiRes.status}`, detail: errBody })
-    }
-
-    const aiBody = await aiRes.json() as { content: Array<{ text: string }> }
-    const text = aiBody.content?.[0]?.text ?? ''
-    const match = text.match(/\{[\s\S]*\}/)
-    if (!match) return reply.code(422).send({ error: 'AI could not extract company data — try a different URL' })
-
-    let extracted: Record<string, unknown>
-    try { extracted = JSON.parse(match[0]) } catch { return reply.code(422).send({ error: 'AI returned malformed data' }) }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const js = (v: unknown) => v as any
+    // ── Use shared research helper (same logic as GTM Assessment scrape) ──────
+    const r = await researchCompanyFromUrl(url, client.name, apiKey, { agencyId, clientId, userId: req.auth.userId })
 
     const existingCompanyProfile = await prisma.companyProfile.findFirst({ where: { id: profileId, clientId, agencyId } })
     if (!existingCompanyProfile) return reply.code(404).send({ error: 'Company profile not found' })
 
-    const snapshot = js(extracted)
     const hostname = (() => { try { return new URL(url).hostname } catch { return url } })()
-
-    // ── Enrich founded / headquarters / employees from external sources ────────
-    // Priority: DDG/Wikipedia (always wins for known companies) → web search → Claude's website extraction
-
-    const enrich: { founded?: string; headquarters?: string; employees?: string; phone?: string; generalInquiries?: string; headquartersAddress?: string } = {}
-
-    // Step 1: DDG Instant Answer — Wikipedia-backed structured data, reliable for any company with a Wikipedia page
-    try {
-      type DDGItem = { label?: string; value?: unknown }
-      type DDGResponse = { AbstractText?: string; Infobox?: { content?: DDGItem[] } }
-      const ddgRes = await fetch(
-        `https://api.duckduckgo.com/?q=${encodeURIComponent(researchedCompanyName)}&format=json&no_html=1&skip_disambig=1`,
-        { headers: { 'User-Agent': 'ContentNode-ResearchBot/1.0' }, signal: AbortSignal.timeout(8000) }
-      )
-      if (ddgRes.ok) {
-        const d = await ddgRes.json() as DDGResponse
-        const facts: Record<string, string> = {}
-        for (const item of (d.Infobox?.content ?? [])) {
-          if (typeof item.label === 'string' && typeof item.value === 'string' && item.value.trim())
-            facts[item.label.toLowerCase()] = item.value.trim()
-        }
-        if (facts['founded']) enrich.founded = facts['founded']
-
-        // Parse "Key people" from DDG infobox and merge with Claude's website extraction
-        const keyPeople = facts['key people'] ?? facts['founders'] ?? ''
-        if (keyPeople) {
-          const ddgMembers: Array<{ name: string; title: string; location: string; linkedin: string }> = []
-          for (const entry of keyPeople.split(/,(?![^(]*\))/)) {
-            const m = entry.trim().match(/^(.+?)\s*\(([^)]+)\)$/)
-            if (m) ddgMembers.push({ name: m[1].trim(), title: m[2].trim(), location: '', linkedin: '' })
-            else if (entry.trim()) ddgMembers.push({ name: entry.trim(), title: '', location: '', linkedin: '' })
-          }
-          if (ddgMembers.length > 0) {
-            const claudeTeam = Array.isArray(extracted.leadershipTeam) ? extracted.leadershipTeam as Array<{ name?: string; title?: string; location?: string; linkedin?: string }> : []
-            const existingNames = new Set(claudeTeam.map((m) => (m.name ?? '').toLowerCase()))
-            for (const m of ddgMembers) {
-              if (!existingNames.has(m.name.toLowerCase())) claudeTeam.push(m)
-            }
-            extracted.leadershipTeam = claudeTeam
-          }
-        }
-        // Fuzzy match for employee count — label varies ("Number of employees", "Employees", etc.)
-        const empKey = Object.keys(facts).find((k) => k.includes('employee'))
-        if (empKey) enrich.employees = facts[empKey]
-        // Also try extracting from AbstractText (e.g. "with 228,000 employees")
-        if (!enrich.employees && d.AbstractText) {
-          const empMatch = d.AbstractText.match(/(\d[\d,]+)\s+employees/i) ?? d.AbstractText.match(/workforce of\s+([\d,]+)/i)
-          if (empMatch) enrich.employees = empMatch[1]
-        }
-        // Grab everything after "headquartered in" up to the period, strip trailing country
-        const hqMatch = d.AbstractText?.match(/headquartered in ([^.]+)/i)
-        if (hqMatch) {
-          enrich.headquarters = hqMatch[1]
-            .replace(/,?\s*(U\.?S\.?A?\.?|United States|United Kingdom|England)\.?$/i, '')
-            .trim()
-        }
-      }
-    } catch { /* DDG lookup failed — continue with other sources */ }
-
-    // Step 2: Web search + Haiku — for companies not in Wikipedia, searches the open web
-    const stillNeeded = (['founded', 'headquarters', 'employees', 'phone', 'generalInquiries', 'headquartersAddress'] as const).filter((f) => !enrich[f] && (!extracted[f] || extracted[f] === ''))
-    if (stillNeeded.length > 0) {
-      try {
-        const needsContact = stillNeeded.some((f) => ['phone', 'generalInquiries', 'headquartersAddress'].includes(f))
-        const q = needsContact
-          ? `"${researchedCompanyName}" headquarters address street phone number`
-          : stillNeeded.length === 1 && stillNeeded[0] === 'employees'
-            ? `${researchedCompanyName} number of employees headcount workforce 2024 2025`
-            : `${researchedCompanyName} company founded headquarters employees`
-        const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
-          signal: AbortSignal.timeout(12000),
-        })
-        if (res.ok) {
-          const text = (await res.text())
-            .replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
-            .replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s{2,}/g, ' ').trim()
-            .slice(0, 4000)
-          if (text.length > 100) {
-            const extractRes = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-              body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
-                max_tokens: 300,
-                temperature: 0,
-                messages: [{ role: 'user', content: `From this web search text about "${researchedCompanyName}", extract these fields (leave empty string if not found — do NOT guess):\n- "phone": main company phone number (not a support line 1-800 number if possible)\n- "generalInquiries": general contact email address (skip if only a contact form exists)\n- "headquartersAddress": full street address including street name, city, state, zip code\n- "founded": year or date founded\n- "headquarters": city and state/country\n- "employees": headcount or range\nOnly extract fields from this list: ${stillNeeded.join(', ')}.\nReturn ONLY JSON: {${stillNeeded.map((f) => `"${f}":"value or empty string"`).join(',')}}\n\n${text}` }],
-              }),
-            })
-            if (extractRes.ok) {
-              const body = await extractRes.json() as { content: Array<{ text: string }> }
-              const m = (body.content?.[0]?.text ?? '').match(/\{[\s\S]*\}/)
-              if (m) {
-                const p = JSON.parse(m[0]) as Record<string, string>
-                if (!enrich.founded          && p.founded)          enrich.founded          = p.founded
-                if (!enrich.headquarters     && p.headquarters)     enrich.headquarters     = p.headquarters
-                if (!enrich.employees        && p.employees)        enrich.employees        = p.employees
-                if (!enrich.phone            && p.phone)            enrich.phone            = p.phone
-                if (!enrich.generalInquiries && p.generalInquiries) enrich.generalInquiries = p.generalInquiries
-                if (!enrich.headquartersAddress && p.headquartersAddress) enrich.headquartersAddress = p.headquartersAddress
-              }
-            }
-          }
-        }
-      } catch { /* continue */ }
-    }
-
-    // Apply: external sources win over Claude's website extraction
-    if (enrich.founded)             extracted.founded             = enrich.founded
-    if (enrich.headquarters)        extracted.headquarters        = enrich.headquarters
-    if (enrich.employees)           extracted.employees           = enrich.employees
-    if (enrich.phone)               extracted.phone               = enrich.phone
-    if (enrich.generalInquiries)    extracted.generalInquiries    = enrich.generalInquiries
-    if (enrich.headquartersAddress) extracted.headquartersAddress = enrich.headquartersAddress
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const js = (v: unknown) => v as any
 
     const companyData = {
-      label:              existingCompanyProfile.label ?? hostname,
-      about:              js(extracted.about), founded: js(extracted.founded),
-      headquarters:       js(extracted.headquarters), industry: js(extracted.industry),
-      globalReach:        js(extracted.globalReach), companyCategory: js(extracted.companyCategory),
-      businessType:       js(extracted.businessType), employees: js(extracted.employees),
-      coreValues:         js(extracted.coreValues ?? []), keyAchievements: js(extracted.keyAchievements ?? []),
-      leadershipMessage:  js(extracted.leadershipMessage), leadershipTeam: js(extracted.leadershipTeam ?? []),
-      whatTheyDo:         js(extracted.whatTheyDo), keyOfferings: js(extracted.keyOfferings ?? []),
-      industriesServed:   js(extracted.industriesServed ?? []), partners: js(extracted.partners ?? []),
-      milestones:         js(extracted.milestones ?? []), visionForFuture: js(extracted.visionForFuture),
-      website:            js(extracted.website), generalInquiries: js(extracted.generalInquiries),
-      phone:              js(extracted.phone), headquartersAddress: js(extracted.headquartersAddress),
-      crawledFrom: url, lastCrawledAt: new Date(), crawledSnapshot: snapshot,
+      label:             existingCompanyProfile.label ?? hostname,
+      about:             r.about,              founded:           r.founded,
+      headquarters:      r.headquarters,       industry:          r.industry,
+      globalReach:       r.globalReach,        companyCategory:   r.companyCategory,
+      businessType:      r.businessType,       employees:         r.employees,
+      coreValues:        js(r.coreValues),     keyAchievements:   js(r.keyAchievements),
+      leadershipMessage: r.leadershipMessage,  leadershipTeam:    js(r.leadershipTeam),
+      whatTheyDo:        r.whatTheyDo,         keyOfferings:      js(r.keyOfferings),
+      industriesServed:  js(r.industriesServed.split(', ').filter(Boolean)),
+      partners:          js(r.partners),       milestones:        js(r.milestones),
+      visionForFuture:   r.visionForFuture,    website:           url,
+      generalInquiries:  r.generalInquiries,   phone:             r.phone,
+      headquartersAddress: r.headquartersAddress,
+      crawledFrom: url, lastCrawledAt: new Date(), crawledSnapshot: js(r),
     }
     const profile = await prisma.companyProfile.update({ where: { id: profileId }, data: companyData })
-
     return reply.send({ data: profile })
     } catch (err) {
       req.log.error({ err, profileId: req.params.profileId, clientId: req.params.id }, '[autofill] unhandled error')
@@ -2146,8 +2395,9 @@ Use empty string "" or empty array [] for any field not found. Never invent info
   // ── POST /:id/verticals — assign a vertical to a client
   app.post<{ Params: { id: string } }>('/:id/verticals', async (req, reply) => {
     const { agencyId } = req.auth
-    const { verticalId } = req.body as { verticalId?: string }
-    if (!verticalId) return reply.code(400).send({ error: 'verticalId is required' })
+    const parsed = z.object({ verticalId: z.string().min(1) }).safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'verticalId is required' })
+    const { verticalId } = parsed.data
 
     const [client, vertical] = await Promise.all([
       prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } }),
@@ -2207,7 +2457,8 @@ Use empty string "" or empty array [] for any field not found. Never invent info
     const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
     if (!client) return reply.code(404).send({ error: 'Client not found' })
     const body = req.body as Record<string, unknown>
-    if (!body || typeof body !== 'object') return reply.code(400).send({ error: 'Invalid body' })
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return reply.code(400).send({ error: 'Invalid body' })
+    if (JSON.stringify(body).length > 5 * 1024 * 1024) return reply.code(400).send({ error: 'Body too large' })
     const record = await prisma.clientDemandGenBase.upsert({
       where: { clientId: req.params.id },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2217,6 +2468,129 @@ Use empty string "" or empty array [] for any field not found. Never invent info
     })
     return reply.send({ data: record.data })
   })
+
+  // ── POST /:id/demand-gen/ai-fill — AI assistant: fill a section using brain context
+  app.post<{ Params: { id: string }; Body: { section: string; current: unknown; verticalId?: string; verticalName?: string } }>(
+    '/:id/demand-gen/ai-fill',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const clientId = req.params.id
+      const aiBody = z.object({
+        section:      z.string().min(1).max(100),
+        current:      z.unknown().optional(),
+        verticalId:   z.string().optional(),
+        verticalName: z.string().max(200).optional(),
+      }).safeParse(req.body)
+      if (!aiBody.success) return reply.code(400).send({ error: 'section is required' })
+      const { section, current, verticalId, verticalName } = aiBody.data
+
+      const client = await prisma.client.findFirst({
+        where: { id: clientId, agencyId },
+        select: {
+          name: true, industry: true, brainContext: true,
+          brandProfiles: { take: 1, orderBy: { createdAt: 'desc' }, select: { editedJson: true, extractedJson: true } },
+          brandBuilders: { take: 1, orderBy: { createdAt: 'desc' }, select: { dataJson: true } },
+        },
+      })
+      if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+      const [brainDocs, gtm, dgBase] = await Promise.all([
+        prisma.clientBrainAttachment.findMany({
+          where: { clientId, agencyId, summaryStatus: 'ready' },
+          select: { filename: true, summary: true, source: true },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        prisma.clientGTMAssessment.findUnique({ where: { clientId } }),
+        prisma.clientDemandGenBase.findUnique({ where: { clientId } }),
+      ])
+
+      const brandProfile = client.brandProfiles[0]
+      const brandBuilder = client.brandBuilders[0]
+      const brandData = brandProfile?.editedJson ?? brandProfile?.extractedJson ?? brandBuilder?.dataJson
+
+      const ctx: string[] = [`CLIENT: ${client.name}`]
+      if (client.industry) ctx.push(`INDUSTRY: ${client.industry}`)
+      if (verticalName) ctx.push(`VERTICAL: ${verticalName}`)
+      if (brandData) {
+        const b = brandData as Record<string, unknown>
+        if (b.positioning ?? b.value_proposition) ctx.push(`POSITIONING: ${JSON.stringify(b.positioning ?? b.value_proposition)}`)
+        if (b.target_audience ?? b.audience) ctx.push(`TARGET AUDIENCE: ${JSON.stringify(b.target_audience ?? b.audience)}`)
+      }
+      if (client.brainContext?.trim()) ctx.push(`\nCLIENT BRAIN:\n${client.brainContext.trim()}`)
+      if (brainDocs.length > 0) {
+        ctx.push('\nKNOWLEDGE BASE:')
+        for (const doc of brainDocs) {
+          if (doc.summary?.trim()) ctx.push(`[${doc.source}] ${doc.filename}:\n${doc.summary.trim()}`)
+        }
+      }
+      if (gtm?.data) ctx.push(`\nGTM ASSESSMENT:\n${JSON.stringify(gtm.data).slice(0, 2000)}`)
+      if (dgBase?.data) ctx.push(`\nEXISTING DEMAND GEN (company level):\n${JSON.stringify(dgBase.data).slice(0, 1500)}`)
+
+      // Also pull vertical brain if verticalId provided
+      if (verticalId) {
+        const [vertical, verticalAttachments] = await Promise.all([
+          prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { brainContext: true } }),
+          prisma.verticalBrainAttachment.findMany({ where: { verticalId, agencyId, summaryStatus: 'ready' }, select: { filename: true, summary: true }, orderBy: { createdAt: 'desc' }, take: 4 }),
+        ])
+        if (vertical?.brainContext?.trim()) ctx.push(`\nVERTICAL BRAIN:\n${vertical.brainContext.trim()}`)
+        for (const doc of verticalAttachments) {
+          if (doc.summary?.trim()) ctx.push(`[vertical] ${doc.filename}:\n${doc.summary.trim()}`)
+        }
+      }
+
+      const sectionLabels: Record<string, string> = {
+        b1: 'Revenue & Growth Goals (funding stage, runway, growth targets)',
+        b2: 'Sales Process & CRM (methodology, CRM, cycle, stages, follow-up)',
+        b3: 'Marketing Budget & Resources (budget, team, agencies, tech stack)',
+        s1: 'Current Marketing Reality (active channels, existing assets)',
+        s2: 'Offer Clarity (offers with outcome/guarantee, proof points)',
+        s3: 'ICP + Buying Psychology (personas: triggers, failed solutions, objections, values)',
+        s4: 'Revenue Goals + Constraints (campaign targets, lead volumes, budgets, close rates)',
+        s5: 'Sales Process Alignment (demand gen view: method, CRM, pipeline handoffs)',
+        s6: 'Hidden Gold (customer stories, FAQs)',
+        s7: 'External Intelligence (market findings from reviews, Reddit, competitors)',
+      }
+
+      const result = await callModel(
+        {
+          provider: 'anthropic',
+          model: 'claude-haiku-4-5-20251001',
+          api_key_ref: 'ANTHROPIC_API_KEY',
+          max_tokens: 1800,
+          temperature: 0.4,
+        },
+        `You are a demand generation strategist filling out a client intake form.
+
+${ctx.join('\n')}
+
+TASK: Fill the "${section.toUpperCase()}" section — ${sectionLabels[section] ?? section}.
+
+CURRENT DATA (to be filled — empty fields need values, filled fields should be preserved):
+${JSON.stringify(current, null, 2)}
+
+Return ONLY a valid JSON object in EXACTLY the same structure as the current data above.
+Rules:
+- Preserve any fields that already have non-empty values — do not overwrite existing content.
+- Fill empty string fields with specific, realistic values derived from the client context.
+- For arrays with one empty item: replace with 1–3 filled items (do not exceed 3).
+- Do NOT include "id" fields in your response — they will be added automatically.
+- Apply demand gen industry standards appropriate for this client's industry and stage.
+- Be specific. Use real-sounding data from context. No generic placeholders like "Company Name".
+- If you cannot infer a value from context, leave it as an empty string.
+
+Return ONLY the JSON. No explanation, no markdown fences.`,
+      )
+
+      let suggestion: unknown = current
+      try {
+        const text = result.text.trim().replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim()
+        suggestion = JSON.parse(text)
+      } catch { /* return current as fallback */ }
+
+      return reply.send({ data: { suggestion } })
+    }
+  )
 
   // ── GET /:id/demand-gen/:verticalId — return demand gen data for a client+vertical
   app.get<{ Params: { id: string; verticalId: string } }>('/:id/demand-gen/:verticalId', async (req, reply) => {
@@ -2255,6 +2629,639 @@ Use empty string "" or empty array [] for any field not found. Never invent info
       update: { data: body as any },
     })
     return reply.send({ data: record.data })
+  })
+
+  // ── GET /:id/gtm-assessment — return GTM assessment data for a client
+  app.get<{ Params: { id: string } }>('/:id/gtm-assessment', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const record = await prisma.clientGTMAssessment.findUnique({ where: { clientId: req.params.id } })
+    return reply.send({ data: record?.data ?? null })
+  })
+
+  // ── PUT /:id/gtm-assessment — upsert GTM assessment data for a client
+  app.put<{ Params: { id: string } }>('/:id/gtm-assessment', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const body = req.body as Record<string, unknown>
+    if (!body || typeof body !== 'object') return reply.code(400).send({ error: 'Invalid body' })
+    const record = await prisma.clientGTMAssessment.upsert({
+      where: { clientId: req.params.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      create: { agencyId, clientId: req.params.id, data: body as any },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      update: { data: body as any },
+    })
+    return reply.send({ data: record.data })
+  })
+
+  // ── POST /:id/gtm-assessment/draft — AI-draft a single field using form data + client brain
+  app.post<{ Params: { id: string } }>('/:id/gtm-assessment/draft', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { sectionNum, sectionTitle, fieldLabel, currentValue, formData } =
+      (req.body ?? {}) as {
+        sectionNum?: string; sectionTitle?: string
+        fieldLabel?: string; currentValue?: string
+        formData?: Record<string, unknown>
+      }
+
+    if (!sectionNum || !fieldLabel) return reply.code(400).send({ error: 'sectionNum and fieldLabel are required' })
+
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { name: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    // Flatten form data into readable key: value lines (skip empty strings, ids, arrays-of-objects)
+    function flattenFormData(obj: Record<string, unknown>, prefix = ''): string[] {
+      const lines: string[] = []
+      for (const [k, v] of Object.entries(obj)) {
+        if (k === 'id') continue
+        const key = prefix ? `${prefix} > ${k}` : k
+        if (typeof v === 'string' && v.trim()) {
+          lines.push(`${key}: ${v.trim()}`)
+        } else if (Array.isArray(v)) {
+          v.forEach((item, i) => {
+            if (item && typeof item === 'object') {
+              lines.push(...flattenFormData(item as Record<string, unknown>, `${key}[${i + 1}]`))
+            }
+          })
+        } else if (v && typeof v === 'object') {
+          lines.push(...flattenFormData(v as Record<string, unknown>, key))
+        }
+      }
+      return lines
+    }
+
+    const formLines = formData ? flattenFormData(formData) : []
+
+    // Pull ready brain attachments for context
+    const brainDocs = await prisma.clientBrainAttachment.findMany({
+      where: {
+        clientId: req.params.id,
+        agencyId,
+        summaryStatus: 'ready',
+        source: { in: ['client', 'gtm_framework', 'demand_gen', 'branding'] },
+      },
+      select: { filename: true, summary: true },
+      orderBy: { createdAt: 'asc' },
+      take: 12,
+    })
+
+    // Need at least something to work with — form data alone is enough
+    if (formLines.length === 0 && brainDocs.length === 0) {
+      return reply.code(422).send({ error: 'Fill in at least a few fields or upload files to the Client Brain first.' })
+    }
+
+    const brainBlock = brainDocs
+      .filter((d) => d.summary?.trim())
+      .map((d) => `--- ${d.filename} ---\n${d.summary}`)
+      .join('\n\n')
+
+    const result = await callModel(
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        api_key_ref: 'ANTHROPIC_API_KEY',
+        max_tokens: 500,
+        temperature: 0.3,
+      },
+      `You are filling in a Company Assessment for a prospective client.
+
+CLIENT: ${client.name}
+SECTION: ${sectionNum} — ${sectionTitle ?? ''}
+FIELD TO FILL: ${fieldLabel}
+
+${formLines.length > 0 ? `ASSESSMENT DATA ALREADY FILLED IN (use this as primary context):
+${formLines.join('\n')}
+
+` : ''}${brainBlock ? `ADDITIONAL CONTEXT (from uploaded documents):
+${brainBlock}
+
+` : ''}${currentValue ? `CURRENT VALUE (may be partial):\n${currentValue}\n\n` : ''}Fill in "${fieldLabel}" using the context above. Rules:
+- Be concise and data-based. Prefer short phrases, numbers, and bullets over prose.
+- For list fields: return one item per line, no bullets or numbers, max 5 items.
+- For single-value fields: one short phrase or sentence, max 15 words.
+- No preamble, no label, no explanation. Return ONLY the value.`,
+    )
+
+    return reply.send({ data: { draft: result.text.trim() } })
+  })
+
+  // ── POST /:id/gtm-assessment/scrape — scrape a website and extract assessment data
+  // Uses researchCompanyFromUrl() — same 3-layer pipeline as company-profiles autofill
+  app.post<{ Params: { id: string } }>('/:id/gtm-assessment/scrape', async (req, reply) => {
+    try {
+    const { agencyId } = req.auth
+    const { url } = (req.body ?? {}) as { url?: string }
+    if (!url?.trim()) return reply.code(400).send({ error: 'url is required' })
+
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { name: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return reply.code(500).send({ error: 'ANTHROPIC_API_KEY not configured' })
+
+    const clientId = req.params.id
+    const r = await researchCompanyFromUrl(url, client.name, apiKey, { agencyId, clientId, userId: req.auth.userId })
+
+    const uid = () => Math.random().toString(36).slice(2)
+    const partial = {
+      meta: {
+        scrapedAt: new Date().toISOString(),
+        references: r._sources,
+      },
+      s1: {
+        legalName:             r.legalName,
+        doingBusinessAs:       r.doingBusinessAs,
+        founded:               r.founded,
+        hq:                    r.headquarters,
+        employeeCount:         r.employees,
+        revenueRange:          r.revenueRange,
+        fundingStage:          r.fundingStage,
+        investors:             r.investors,
+        industry:              r.industry,
+        companyCategory:       r.companyCategory,
+        businessType:          r.businessType,
+        globalReach:           r.globalReach,
+        about:                 r.about,
+        whatTheyDo:            r.whatTheyDo,
+        productServiceSummary: r.productServiceSummary,
+        visionForFuture:       r.visionForFuture,
+        leadershipMessage:     r.leadershipMessage,
+        keyOfferings:          r.keyOfferings.join('\n'),
+        industriesServedList:  r.industriesServed,
+        coreValues:            r.coreValues.join('\n'),
+        keyAchievements:       r.keyAchievements.join('\n'),
+        partners:              r.partners.join('\n'),
+        milestones:            r.milestones.join('\n'),
+        generalInquiries:      r.generalInquiries,
+        phone:                 r.phone,
+        headquartersAddress:   r.headquartersAddress,
+        ...(r.leadershipTeam.length > 0 ? {
+          keyExecutives: r.leadershipTeam.map((m) => ({
+            id: uid(), name: m.name, title: m.title, linkedIn: m.linkedin,
+          })),
+        } : {}),
+      },
+      // S2 — seed competitor names from search if found
+      ...(r.competitorNames ? {
+        s2: {
+          competitors: r.competitorNames.split(',').slice(0, 6).map((name) => ({
+            id: uid(), name: name.trim(), website: '', strengths: '', weaknesses: '', howClientDiffers: '',
+          })).filter((c) => c.name),
+        },
+      } : {}),
+      s3: {
+        messagingStatement: r.messagingStatement,
+        valueProp:          r.valueProp,
+        keyMessage1:        r.keyMessage1,
+        keyMessage2:        r.keyMessage2,
+        keyMessage3:        r.keyMessage3,
+        toneOfVoice:        r.toneOfVoice,
+        currentTagline:     r.currentTagline,
+      },
+      s4: {
+        goToMarketMotion: r.goToMarketMotion,
+      },
+      s5: {
+        websiteStrengths: r.websiteStrengths,
+        contentTypes:     r.contentTypes,
+        // Social profiles found in website footer/header links
+        ...(Object.keys(r.socialProfiles).length > 0 ? {
+          social: Object.entries(r.socialProfiles).map(([platform, profileUrl]) => ({
+            id: uid(), platform, handle: profileUrl, activityLevel: '',
+          })),
+        } : {}),
+      },
+      s6: {
+        geographies: r.geographies,
+      },
+      s7: {
+        brandAttributes:  r.brandAttributes,
+        toneAdjectives:   r.toneAdjectives,
+        brandPersonality: r.brandPersonality,
+      },
+    }
+
+    return reply.send({
+      data: partial,
+      meta: {
+        braveEnabled: !!process.env.BRAVE_SEARCH_API_KEY,
+        socialProfilesFound: Object.keys(r.socialProfiles).length,
+      },
+    })
+    } catch (err) {
+      req.log.error({ err }, '[gtm-assessment/scrape] unhandled error')
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  // ── POST /:id/gtm-assessment/save-to-brain — format and save assessment as a brain document
+  app.post<{ Params: { id: string } }>('/:id/gtm-assessment/save-to-brain', async (req, reply) => {
+    const { agencyId } = req.auth
+    const body = (req.body ?? {}) as Record<string, unknown>
+
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { name: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    // Flatten the assessment into a readable text document
+    function flattenSection(obj: Record<string, unknown>, sectionTitle: string): string {
+      const lines: string[] = [`\n## ${sectionTitle}\n`]
+      const scan = (o: Record<string, unknown>, prefix = '') => {
+        for (const [k, v] of Object.entries(o)) {
+          if (k === 'id') continue
+          const label = prefix ? `${prefix} > ${k}` : k
+          if (typeof v === 'string' && v.trim()) lines.push(`**${label}:** ${v.trim()}`)
+          else if (Array.isArray(v)) v.forEach((item, i) => { if (item && typeof item === 'object') scan(item as Record<string, unknown>, `${k} ${i + 1}`) })
+          else if (v && typeof v === 'object') scan(v as Record<string, unknown>, label)
+        }
+      }
+      scan(obj)
+      return lines.join('\n')
+    }
+
+    const sectionMap: Record<string, string> = {
+      s1: 'Company Snapshot', s2: 'Competitive Landscape', s3: 'Current GTM Positioning',
+      s4: 'Channel & Partner Strategy', s5: 'Content & Digital Presence',
+      s6: 'Target Segments & Verticals', s7: 'Brand & Visual Identity', s8: 'Goals & Success Metrics',
+    }
+
+    const sections = Object.entries(sectionMap)
+      .map(([key, title]) => body[key] ? flattenSection(body[key] as Record<string, unknown>, title) : '')
+      .filter(Boolean)
+      .join('\n')
+
+    const content = `# Company Assessment — ${client.name}\n\nGenerated: ${new Date().toLocaleDateString()}\n${sections}`
+
+    // Store as a text brain attachment (source: client)
+    const encoder = new TextEncoder()
+    const bytes = encoder.encode(content)
+    const filename = `Company Assessment — ${client.name}.md`
+
+    // Use the existing brain attachment upsert pattern — write as a synthetic text file
+    const existing = await prisma.clientBrainAttachment.findFirst({
+      where: { clientId: req.params.id, agencyId, filename, source: 'client' },
+    })
+
+    if (existing) {
+      await prisma.clientBrainAttachment.update({
+        where: { id: existing.id },
+        data: {
+          summary: content,
+          summaryStatus: 'ready',
+          extractionStatus: 'done',
+          sizeBytes: bytes.length,
+        },
+      })
+    } else {
+      await prisma.clientBrainAttachment.create({
+        data: {
+          agencyId,
+          clientId: req.params.id,
+          filename,
+          storageKey: null,
+          mimeType: 'text/markdown',
+          sizeBytes: bytes.length,
+          extractionStatus: 'done',
+          summaryStatus: 'ready',
+          summary: content,
+          source: 'client',
+          uploadMethod: 'assessment',
+        },
+      })
+    }
+
+    return reply.send({ data: { ok: true, filename } })
+  })
+
+  // ── GET /:id/gtm-assessment/report — generate brand-styled HTML report with creative direction
+  app.get<{ Params: { id: string } }>('/:id/gtm-assessment/report', async (req, reply) => {
+    try {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { name: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const assessment = await prisma.clientGTMAssessment.findUnique({ where: { clientId: req.params.id } })
+    if (!assessment) return reply.code(404).send({ error: 'No assessment found for this client' })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d = assessment.data as any
+    const s1 = d?.s1 ?? {}; const s2 = d?.s2 ?? {}; const s3 = d?.s3 ?? {}
+    const s4 = d?.s4 ?? {}; const s5 = d?.s5 ?? {}; const s6 = d?.s6 ?? {}
+    const s7 = d?.s7 ?? {}; const s8 = d?.s8 ?? {}
+    const refs: Array<{ url: string; label: string }> = Array.isArray(d?.meta?.references) ? d.meta.references : []
+    const scrapedAt: string | undefined = d?.meta?.scrapedAt
+
+    // ── Parse brand colors from s7.primaryColors ──────────────────────────────
+    const rawColors = (s7.primaryColors ?? '') as string
+    const colorMatches = [...rawColors.matchAll(/#[0-9A-Fa-f]{3,6}/g)].map((m) => m[0])
+    const primaryColor   = colorMatches[0] ?? '#1A2E5E'
+    const accentColor    = colorMatches[1] ?? '#4F8EF7'
+    const bgColor        = '#F8F9FB'
+    const textColor      = '#1C1C2E'
+
+    // ── Generate Creative Direction appendix via Claude ───────────────────────
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    let creativeDirection = ''
+    if (apiKey) {
+      const snap = [
+        s1.legalName && `Company: ${s1.legalName}`,
+        s1.founded && `Founded: ${s1.founded}`,
+        s3.messagingStatement && `Positioning: ${s3.messagingStatement}`,
+        s3.valueProp && `Value Prop: ${s3.valueProp}`,
+        s7.brandAttributes && `Brand Attributes: ${s7.brandAttributes}`,
+        s7.toneAdjectives && `Tone: ${s7.toneAdjectives}`,
+        s7.brandPersonality && `Brand Personality: ${s7.brandPersonality}`,
+        s7.primaryColors && `Brand Colors: ${s7.primaryColors}`,
+        s7.fontNotes && `Fonts: ${s7.fontNotes}`,
+        s8.goals90Day && `90-Day Goal: ${s8.goals90Day}`,
+        s8.goals12Month && `12-Month Goal: ${s8.goals12Month}`,
+      ].filter(Boolean).join('\n')
+
+      try {
+        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6', max_tokens: 2500, temperature: 0.3,
+            messages: [{ role: 'user', content: `You are a senior creative director producing a presentation design brief for an agency's internal team.
+
+Based on this Company Assessment data, generate slide-by-slide creative direction for a 12-15 slide executive presentation. The presentation should follow a professional GTM strategy deck structure and visually reflect the brand's identity.
+
+ASSESSMENT SUMMARY:
+${snap}
+
+Write detailed creative direction for EACH slide. For every slide include:
+1. Slide title and purpose (1 line)
+2. Layout recommendation (e.g. "full-bleed left panel with headline right", "2-column split", "data-card grid")
+3. Visual direction: imagery style, iconography, color usage from brand palette
+4. Copy guidance: tone, length, key messages to feature
+5. Design notes: spacing, emphasis, call-to-action if any
+
+Use the brand attributes and personality to inform the visual and tonal direction throughout. Be specific and actionable — your team should be able to open PowerPoint/Figma and start designing immediately from these notes.
+
+Output as clean HTML using <h3> for slide titles, <ul> for bullet points. Do not use markdown. Do not wrap in code blocks. Start directly with <h3>Slide 1: ...</h3>.` }],
+          }),
+        })
+        if (aiRes.ok) {
+          const body = await aiRes.json() as { content: Array<{ text: string }> }
+          creativeDirection = body.content?.[0]?.text ?? ''
+        }
+      } catch { /* continue without creative direction */ }
+    }
+
+    const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    const val = (v: unknown) => v && String(v).trim() ? esc(v) : '<span style="color:#aaa">—</span>'
+    const row = (label: string, value: unknown) => value && String(value).trim()
+      ? `<tr><td style="font-weight:600;padding:6px 12px 6px 0;vertical-align:top;white-space:nowrap;color:#555;width:38%;font-size:13px">${esc(label)}</td><td style="padding:6px 0;font-size:13px">${val(value)}</td></tr>`
+      : ''
+    const section = (num: string, title: string, content: string) => `
+<div class="section" style="page-break-before:always">
+  <div class="section-header" style="background:${primaryColor};color:#fff;padding:18px 32px;margin:-32px -32px 24px -32px;display:flex;align-items:center;gap:12px">
+    <span style="font-size:11px;font-weight:700;opacity:.65;letter-spacing:.12em;text-transform:uppercase">Section ${num}</span>
+    <span style="font-size:20px;font-weight:700">${esc(title)}</span>
+  </div>
+  <div style="padding:0 4px">${content}</div>
+</div>`
+
+    const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company Assessment — ${esc(s1.legalName || client.name)}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+  body { font-family: ${s7.fontNotes && s7.fontNotes.toLowerCase().includes('mont') ? 'Montserrat, ' : ''}${s7.fontNotes && s7.fontNotes.toLowerCase().includes('inter') ? 'Inter, ' : ''}system-ui, -apple-system, sans-serif; color: ${textColor}; background: ${bgColor}; font-size: 14px; line-height: 1.6 }
+  .page { max-width: 900px; margin: 0 auto; background: #fff; min-height: 100vh }
+  .cover { background: ${primaryColor}; color: #fff; padding: 80px 60px 60px; min-height: 360px; display: flex; flex-direction: column; justify-content: flex-end }
+  .cover-tag { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .65; margin-bottom: 12px }
+  .cover-title { font-size: 38px; font-weight: 800; line-height: 1.15; margin-bottom: 8px }
+  .cover-sub { font-size: 16px; opacity: .75; margin-bottom: 40px }
+  .cover-meta { display: flex; gap: 40px }
+  .cover-meta-item { display: flex; flex-direction: column; gap: 2px }
+  .cover-meta-label { font-size: 10px; font-weight: 700; opacity: .55; letter-spacing: .1em; text-transform: uppercase }
+  .cover-meta-value { font-size: 13px; font-weight: 600 }
+  .toc { padding: 40px 60px; border-bottom: 1px solid #eee }
+  .toc h2 { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; margin-bottom: 16px }
+  .toc-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px dotted #e8e8e8; font-size: 13px }
+  .toc-num { font-size: 11px; font-weight: 700; color: ${primaryColor}; width: 24px }
+  .section { padding: 32px 32px 40px; border-bottom: 1px solid #eee }
+  table { width: 100%; border-collapse: collapse }
+  .key-msg { background: ${bgColor}; border-left: 3px solid ${accentColor}; padding: 10px 14px; margin: 6px 0; border-radius: 0 6px 6px 0; font-size: 13px }
+  .competitor-card { border: 1px solid #e8e8e8; border-radius: 8px; padding: 14px 16px; margin: 10px 0 }
+  .competitor-name { font-weight: 700; font-size: 14px; color: ${primaryColor}; margin-bottom: 8px }
+  .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; background: ${accentColor}22; color: ${primaryColor}; margin-right: 6px }
+  .kpi-row td { padding: 8px 12px; font-size: 13px }
+  .kpi-row:nth-child(odd) td { background: ${bgColor} }
+  .goal-box { background: ${primaryColor}0D; border: 1px solid ${primaryColor}22; border-radius: 8px; padding: 14px 16px; margin: 8px 0 }
+  .goal-label { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: ${primaryColor}; margin-bottom: 6px }
+  .creative-dir { background: #f0f4ff; border-radius: 10px; padding: 24px 28px; margin-top: 8px }
+  .creative-dir h3 { font-size: 14px; font-weight: 700; color: ${primaryColor}; margin: 20px 0 6px; padding-top: 16px; border-top: 1px solid #d0d8f0 }
+  .creative-dir h3:first-child { border-top: none; padding-top: 0; margin-top: 0 }
+  .creative-dir ul { padding-left: 20px; margin: 4px 0 }
+  .creative-dir li { margin: 3px 0; font-size: 13px; color: #333 }
+  .print-btn { position: fixed; top: 20px; right: 20px; background: ${primaryColor}; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 12px ${primaryColor}44; z-index: 999 }
+  @media print { .print-btn { display: none } body { background: #fff } .page { box-shadow: none } .section { page-break-inside: avoid } }
+</style>
+</head>
+<body>
+<button class="print-btn" onclick="window.print()">⬇ Save as PDF</button>
+<div class="page">
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="cover-tag">Company Assessment</div>
+    <div class="cover-title">${esc(s1.legalName || s1.doingBusinessAs || client.name)}</div>
+    ${s3.messagingStatement ? `<div class="cover-sub">${esc(s3.messagingStatement)}</div>` : ''}
+    <div class="cover-meta">
+      <div class="cover-meta-item"><span class="cover-meta-label">Prepared</span><span class="cover-meta-value">${date}</span></div>
+      ${s1.hq ? `<div class="cover-meta-item"><span class="cover-meta-label">Headquarters</span><span class="cover-meta-value">${esc(s1.hq)}</span></div>` : ''}
+      ${s1.employeeCount ? `<div class="cover-meta-item"><span class="cover-meta-label">Team Size</span><span class="cover-meta-value">${esc(s1.employeeCount)}</span></div>` : ''}
+      ${s1.fundingStage ? `<div class="cover-meta-item"><span class="cover-meta-label">Stage</span><span class="cover-meta-value">${esc(s1.fundingStage)}</span></div>` : ''}
+    </div>
+  </div>
+
+  <!-- Table of Contents -->
+  <div class="toc">
+    <h2>Contents</h2>
+    ${['Company Snapshot','Competitive Landscape','GTM Positioning','Channel & Partner Strategy','Content & Digital Presence','Target Segments & Verticals','Brand & Visual Identity','Goals & Success Metrics','Creative Direction',...(refs.length > 0 ? ['References'] : [])].map((t, i) => `<div class="toc-item"><span class="toc-num">${String(i + 1).padStart(2, '0')}</span><span>${t}</span></div>`).join('')}
+  </div>
+
+  ${section('01', 'Company Snapshot', `
+    <table>
+      ${row('Legal Name', s1.legalName)}
+      ${row('DBA', s1.doingBusinessAs)}
+      ${row('Founded', s1.founded)}
+      ${row('Headquarters', s1.hq)}
+      ${row('Employees', s1.employeeCount)}
+      ${row('Revenue Range', s1.revenueRange)}
+      ${row('Funding Stage', s1.fundingStage)}
+    </table>
+    ${s1.productServiceSummary ? `<p style="margin-top:16px;font-size:14px;line-height:1.7;color:#333">${esc(s1.productServiceSummary)}</p>` : ''}
+    ${Array.isArray(s1.keyExecutives) && s1.keyExecutives.filter((e: { name?: string }) => e.name).length > 0 ? `
+      <p style="margin-top:20px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Key Executives</p>
+      <table>${s1.keyExecutives.filter((e: { name?: string }) => e.name).map((e: { name?: string; title?: string }) => `<tr><td style="padding:4px 12px 4px 0;font-weight:600;font-size:13px">${esc(e.name)}</td><td style="padding:4px 0;font-size:13px;color:#555">${esc(e.title)}</td></tr>`).join('')}</table>
+    ` : ''}
+  `)}
+
+  ${section('02', 'Competitive Landscape', `
+    ${s2.competitivePosition ? `<p style="font-size:14px;line-height:1.7;margin-bottom:16px">${esc(s2.competitivePosition)}</p>` : ''}
+    ${Array.isArray(s2.competitors) && s2.competitors.filter((c: { name?: string }) => c.name).length > 0 ? s2.competitors.filter((c: { name?: string }) => c.name).map((c: { name?: string; website?: string; strengths?: string; weaknesses?: string; howClientDiffers?: string }) => `
+      <div class="competitor-card">
+        <div class="competitor-name">${esc(c.name)}${c.website ? ` <span style="font-size:11px;font-weight:400;color:#999">${esc(c.website)}</span>` : ''}</div>
+        ${c.strengths ? `<div style="font-size:13px;margin-bottom:4px"><strong>Strengths:</strong> ${esc(c.strengths)}</div>` : ''}
+        ${c.weaknesses ? `<div style="font-size:13px;margin-bottom:4px"><strong>Weaknesses:</strong> ${esc(c.weaknesses)}</div>` : ''}
+        ${c.howClientDiffers ? `<div style="font-size:13px;color:${primaryColor};font-weight:600;margin-top:6px">How client differs: ${esc(c.howClientDiffers)}</div>` : ''}
+      </div>
+    `).join('') : ''}
+    ${row('Win/Loss Patterns', s2.winLossPatterns)}
+    ${s2.landmines ? `<p style="margin-top:12px;background:#fff8f0;border-left:3px solid #f97316;padding:10px 14px;font-size:13px"><strong>Landmines:</strong> ${esc(s2.landmines)}</p>` : ''}
+  `)}
+
+  ${section('03', 'Current GTM Positioning', `
+    ${s3.messagingStatement ? `<div style="font-size:17px;font-weight:700;color:${primaryColor};line-height:1.4;margin-bottom:16px">"${esc(s3.messagingStatement)}"</div>` : ''}
+    <table>
+      ${row('ICP', s3.icp)}
+      ${row('Value Proposition', s3.valueProp)}
+      ${row('Tone of Voice', s3.toneOfVoice)}
+      ${row('Current Tagline', s3.currentTagline)}
+      ${row('Biggest Positioning Gap', s3.biggestPositioningGap)}
+    </table>
+    ${(s3.keyMessage1 || s3.keyMessage2 || s3.keyMessage3) ? `
+      <p style="margin-top:16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px">Key Messages</p>
+      ${s3.keyMessage1 ? `<div class="key-msg">${esc(s3.keyMessage1)}</div>` : ''}
+      ${s3.keyMessage2 ? `<div class="key-msg">${esc(s3.keyMessage2)}</div>` : ''}
+      ${s3.keyMessage3 ? `<div class="key-msg">${esc(s3.keyMessage3)}</div>` : ''}
+    ` : ''}
+  `)}
+
+  ${section('04', 'Channel & Partner Strategy', `
+    <table>
+      ${row('GTM Motion', s4.goToMarketMotion)}
+      ${row('Partner Types', s4.partnerTypes)}
+      ${row('Partner Programs', s4.partnerPrograms)}
+      ${row('Channel Gaps', s4.channelGaps)}
+    </table>
+    ${Array.isArray(s4.channels) && s4.channels.filter((c: { name?: string }) => c.name).length > 0 ? `
+      <p style="margin-top:16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Channels</p>
+      <table style="border:1px solid #eee;border-radius:6px;overflow:hidden">
+        <thead><tr style="background:${bgColor}"><th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:700;color:#666">Channel</th><th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:700;color:#666">Type</th><th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:700;color:#666">Status</th><th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:700;color:#666">Notes</th></tr></thead>
+        <tbody>${s4.channels.filter((c: { name?: string }) => c.name).map((c: { name?: string; type?: string; status?: string; notes?: string }) => `<tr style="border-top:1px solid #eee"><td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(c.name)}</td><td style="padding:8px 12px;font-size:13px">${esc(c.type)}</td><td style="padding:8px 12px;font-size:13px">${c.status ? `<span class="badge">${esc(c.status)}</span>` : ''}</td><td style="padding:8px 12px;font-size:13px;color:#555">${esc(c.notes)}</td></tr>`).join('')}</tbody>
+      </table>
+    ` : ''}
+  `)}
+
+  ${section('05', 'Content & Digital Presence', `
+    <table>
+      ${row('Website', s5.websiteUrl || s1.websiteUrl)}
+      ${row('Website Strengths', s5.websiteStrengths)}
+      ${row('Website Weaknesses', s5.websiteWeaknesses)}
+      ${row('Content Types', s5.contentTypes)}
+      ${row('SEO Maturity', s5.seoMaturity)}
+      ${row('Content Gaps', s5.contentGaps)}
+    </table>
+    ${Array.isArray(s5.social) && s5.social.filter((s: { platform?: string }) => s.platform).length > 0 ? `
+      <p style="margin-top:16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Social Presence</p>
+      <table>${s5.social.filter((s: { platform?: string }) => s.platform).map((s: { platform?: string; handle?: string; activityLevel?: string }) => `<tr><td style="padding:5px 12px 5px 0;font-weight:600;font-size:13px;width:30%">${esc(s.platform)}</td><td style="padding:5px 12px 5px 0;font-size:13px;color:#555">${esc(s.handle)}</td><td style="padding:5px 0;font-size:13px">${s.activityLevel ? `<span class="badge">${esc(s.activityLevel)}</span>` : ''}</td></tr>`).join('')}</table>
+    ` : ''}
+  `)}
+
+  ${section('06', 'Target Segments & Verticals', `
+    <table>
+      ${row('Geographies', s6.geographies)}
+      ${row('Customer Size Range', s6.customerSizeRange)}
+      ${row('Top Use Cases', s6.topUseCases)}
+      ${row('Underserved Segments', s6.underservedSegments)}
+    </table>
+    ${Array.isArray(s6.primaryVerticals) && s6.primaryVerticals.filter((v: { name?: string }) => v.name).length > 0 ? `
+      <p style="margin-top:16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Primary Verticals</p>
+      ${s6.primaryVerticals.filter((v: { name?: string }) => v.name).map((v: { name?: string; whyGoodFit?: string; currentPenetration?: string; expansionPotential?: string }) => `
+        <div class="competitor-card">
+          <div class="competitor-name">${esc(v.name)}</div>
+          ${v.whyGoodFit ? `<div style="font-size:13px;margin-bottom:4px"><strong>Why a good fit:</strong> ${esc(v.whyGoodFit)}</div>` : ''}
+          ${v.currentPenetration ? `<div style="font-size:13px;margin-bottom:4px"><strong>Current penetration:</strong> ${esc(v.currentPenetration)}</div>` : ''}
+          ${v.expansionPotential ? `<div style="font-size:13px"><strong>Expansion potential:</strong> ${esc(v.expansionPotential)}</div>` : ''}
+        </div>
+      `).join('')}
+    ` : ''}
+  `)}
+
+  ${section('07', 'Brand & Visual Identity', `
+    <table>
+      ${row('Brand Attributes', s7.brandAttributes)}
+      ${row('Tone Adjectives', s7.toneAdjectives)}
+      ${row('Brand Personality', s7.brandPersonality)}
+      ${row('Brand Guidelines', s7.existingGuidelines)}
+      ${row('Font Notes', s7.fontNotes)}
+      ${row('Brand Strengths', s7.brandStrengths)}
+      ${row('Brand Weaknesses', s7.brandWeaknesses)}
+    </table>
+    ${rawColors ? `
+      <p style="margin-top:16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Brand Colors</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${colorMatches.map((c) => `<div style="display:flex;align-items:center;gap:6px"><div style="width:28px;height:28px;border-radius:6px;background:${c};border:1px solid #ddd"></div><span style="font-size:12px;font-family:monospace;color:#555">${c}</span></div>`).join('')}
+      </div>
+      <p style="margin-top:8px;font-size:13px;color:#555">${esc(rawColors)}</p>
+    ` : ''}
+  `)}
+
+  ${section('08', 'Goals & Success Metrics', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      ${s8.goals90Day ? `<div class="goal-box"><div class="goal-label">90-Day Goals</div><p style="font-size:13px">${esc(s8.goals90Day)}</p></div>` : ''}
+      ${s8.goals12Month ? `<div class="goal-box"><div class="goal-label">12-Month Goals</div><p style="font-size:13px">${esc(s8.goals12Month)}</p></div>` : ''}
+    </div>
+    ${Array.isArray(s8.kpis) && s8.kpis.filter((k: { metric?: string }) => k.metric).length > 0 ? `
+      <p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Key Performance Indicators</p>
+      <table style="border:1px solid #eee;border-radius:6px;overflow:hidden">
+        <thead><tr style="background:${bgColor}"><th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:700;color:#666">Metric</th><th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:700;color:#666">Current Baseline</th><th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:700;color:#666">Target</th></tr></thead>
+        <tbody>${s8.kpis.filter((k: { metric?: string }) => k.metric).map((k: { metric?: string; currentBaseline?: string; target?: string }) => `<tr class="kpi-row"><td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(k.metric)}</td><td style="padding:8px 12px;font-size:13px;color:#555">${esc(k.currentBaseline)}</td><td style="padding:8px 12px;font-size:13px;color:${primaryColor};font-weight:600">${esc(k.target)}</td></tr>`).join('')}</tbody>
+      </table>
+    ` : ''}
+    <table style="margin-top:12px">
+      ${row('How They Define Success', s8.successDefinition)}
+      ${row('Known Blockers', s8.knownBlockers)}
+      ${row('Existing Wins to Build On', s8.existingWins)}
+      ${row('Budget Range', s8.budgetRange)}
+    </table>
+  `)}
+
+  ${creativeDirection ? `
+  <div class="section" style="page-break-before:always">
+    <div class="section-header" style="background:${accentColor};color:#fff;padding:18px 32px;margin:-32px -32px 24px -32px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:11px;font-weight:700;opacity:.65;letter-spacing:.12em;text-transform:uppercase">Appendix A</span>
+      <span style="font-size:20px;font-weight:700">Creative Direction</span>
+    </div>
+    <p style="font-size:13px;color:#666;margin-bottom:16px">Slide-by-slide design and copy brief for your internal team. Use this to build the executive presentation from this Company Assessment.</p>
+    <div class="creative-dir">${creativeDirection}</div>
+  </div>
+  ` : ''}
+
+  ${refs.length > 0 ? `
+  <div class="section" style="page-break-before:always">
+    <div class="section-header" style="background:#64748b;color:#fff;padding:18px 32px;margin:-32px -32px 24px -32px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:11px;font-weight:700;opacity:.65;letter-spacing:.12em;text-transform:uppercase">${creativeDirection ? 'Appendix B' : 'Appendix A'}</span>
+      <span style="font-size:20px;font-weight:700">References</span>
+    </div>
+    ${scrapedAt ? `<p style="font-size:12px;color:#888;margin-bottom:16px">Sources crawled and enriched during the Scrape & Fill run on ${new Date(scrapedAt).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.</p>` : '<p style="font-size:12px;color:#888;margin-bottom:16px">Sources crawled and enriched during the last Scrape &amp; Fill run.</p>'}
+    <ol style="padding-left:20px;margin:0;space-y:8px">
+      ${refs.map((r) => `<li style="margin-bottom:10px;font-size:13px"><span style="font-weight:600;color:#333">${esc(r.label)}</span><br><a href="${esc(r.url)}" style="color:#3b82f6;font-size:12px;word-break:break-all">${esc(r.url)}</a></li>`).join('')}
+    </ol>
+  </div>
+  ` : ''}
+
+</div>
+</body>
+</html>`
+
+    return reply.type('text/html').send(html)
+    } catch (err) {
+      req.log.error({ err }, '[gtm-assessment/report] unhandled error')
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) })
+    }
   })
 
   // ── PUT /:id/framework/:verticalId — upsert GTM framework for client+vertical
@@ -2816,7 +3823,7 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     const { filename, file, mimetype } = data
 
     const allowedExts = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm'])
-    const fileExt = filename.slice(filename.lastIndexOf('.')).toLowerCase()
+    const fileExt = extname(filename).toLowerCase()
     if (!allowedExts.has(fileExt)) {
       file.resume()
       return reply.code(400).send({ error: `Unsupported file type "${fileExt}". Accepted: PDF, DOCX, TXT, MD, CSV, JSON, HTML, MP4, MOV, MP3, M4A, WAV` })
@@ -3111,7 +4118,7 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
     if (!data) return reply.code(400).send({ error: 'No file uploaded' })
 
     const { filename, file, mimetype } = data
-    const fileExt = filename.slice(filename.lastIndexOf('.')).toLowerCase()
+    const fileExt = extname(filename).toLowerCase()
     if (!ALLOWED_CLIENT_BRAIN_EXTS.has(fileExt)) {
       return reply.code(400).send({ error: `File type ${fileExt} not supported. Allowed: ${[...ALLOWED_CLIENT_BRAIN_EXTS].join(', ')}` })
     }
@@ -3327,6 +4334,109 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
       return reply.send({ data: { text: attachment.extractedText ?? '', filename: attachment.filename } })
     }
   )
+
+  // ── Client × Vertical Brain ───────────────────────────────────────────────────
+
+  // GET attachments for a specific (client, vertical) pair
+  app.get<{ Params: { clientId: string; verticalId: string } }>('/:clientId/brain/vertical/:verticalId/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId, verticalId } = req.params
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const attachments = await prisma.clientVerticalBrainAttachment.findMany({
+      where: { agencyId, clientId, verticalId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true, sourceUrl: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true, uploadMethod: true,
+      },
+    })
+    return reply.send({ data: attachments })
+  })
+
+  // POST upload file for (client, vertical) pair
+  app.post<{ Params: { clientId: string; verticalId: string } }>('/:clientId/brain/vertical/:verticalId/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId, verticalId } = req.params
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const { filename, file, mimetype } = data
+    const fileExt = extname(filename).toLowerCase()
+    if (!ALLOWED_CLIENT_BRAIN_EXTS.has(fileExt)) {
+      return reply.code(400).send({ error: `File type ${fileExt} not supported. Allowed: ${[...ALLOWED_CLIENT_BRAIN_EXTS].join(', ')}` })
+    }
+
+    const storageKey = `client-vertical-brain/${agencyId}/${clientId}/${verticalId}/${crypto.randomUUID()}${fileExt}`
+    const chunks: Buffer[] = []
+    for await (const chunk of file) chunks.push(chunk)
+    const buffer = Buffer.concat(chunks)
+    const { Readable } = await import('node:stream')
+    await uploadStream(storageKey, Readable.from(buffer), mimetype)
+
+    const uploader = await prisma.user.findFirst({ where: { clerkUserId: req.auth.userId, agencyId }, select: { id: true } })
+
+    const attachment = await prisma.clientVerticalBrainAttachment.create({
+      data: {
+        agencyId, clientId, verticalId, filename, storageKey, mimeType: mimetype,
+        sizeBytes: buffer.byteLength, uploadMethod: 'file',
+        uploadedByUserId: uploader?.id ?? req.auth.userId,
+      },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true,
+        extractionStatus: true, summaryStatus: true, createdAt: true,
+      },
+    })
+
+    await getClientVerticalBrainProcessQueue().add('process', { agencyId, attachmentId: attachment.id, clientId, verticalId })
+    return reply.code(201).send({ data: attachment })
+  })
+
+  // POST from URL for (client, vertical) pair
+  app.post<{ Params: { clientId: string; verticalId: string }; Body: { url: string } }>('/:clientId/brain/vertical/:verticalId/attachments/from-url', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId, verticalId } = req.params
+    const { url } = req.body
+    if (!url) return reply.code(400).send({ error: 'url is required' })
+
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const uploader = await prisma.user.findFirst({ where: { clerkUserId: req.auth.userId, agencyId }, select: { id: true } })
+    let hostname = url
+    try { hostname = new URL(url).hostname } catch {}
+
+    const attachment = await prisma.clientVerticalBrainAttachment.create({
+      data: {
+        agencyId, clientId, verticalId, filename: hostname, sourceUrl: url, mimeType: 'text/html',
+        sizeBytes: 0, uploadMethod: 'url',
+        uploadedByUserId: uploader?.id ?? req.auth.userId,
+      },
+      select: {
+        id: true, filename: true, mimeType: true, sizeBytes: true, sourceUrl: true,
+        extractionStatus: true, summaryStatus: true, createdAt: true,
+      },
+    })
+
+    await getClientVerticalBrainProcessQueue().add('process', { agencyId, attachmentId: attachment.id, clientId, verticalId, url })
+    return reply.code(201).send({ data: attachment })
+  })
+
+  // DELETE a (client, vertical) brain attachment
+  app.delete<{ Params: { clientId: string; verticalId: string; attachmentId: string } }>('/:clientId/brain/vertical/:verticalId/attachments/:attachmentId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId, verticalId, attachmentId } = req.params
+    const attachment = await prisma.clientVerticalBrainAttachment.findFirst({ where: { id: attachmentId, agencyId, clientId, verticalId } })
+    if (!attachment) return reply.code(404).send({ error: 'Attachment not found' })
+    await prisma.clientVerticalBrainAttachment.delete({ where: { id: attachmentId } })
+    if (attachment.storageKey) {
+      try { await deleteObject(attachment.storageKey) } catch {}
+    }
+    return reply.send({ data: { ok: true } })
+  })
 
   // POST /:clientId/setup-suggest — AI magic: suggest setup field values from client brain
   app.post<{ Params: { clientId: string } }>(
