@@ -8,7 +8,7 @@ echo "DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo yes || echo NO)"
 echo "REDIS_URL set: $([ -n "$REDIS_URL" ] && echo yes || echo NO)"
 
 echo "Syncing database schema..."
-pnpm --filter @contentnode/database db:push
+pnpm --filter @contentnode/database db:push:safe
 
 echo "Starting API server..."
 exec node --import tsx/esm apps/api/src/index.ts
