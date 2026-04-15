@@ -103,12 +103,12 @@ export async function campaignRoutes(app: FastifyInstance) {
 
     if (!campaign) return reply.code(404).send({ error: 'Campaign not found' })
 
-    // Attach latest run per workflow — scoped to this campaign only so
-    // historical failures from other campaigns don't bleed into the display.
+    // Attach latest run per workflow — any run for that workflow counts so
+    // a manual re-run that fixes a failure shows up as Done in the campaign.
     const workflowIds = campaign.workflows.map((cw) => cw.workflowId)
     const latestRuns = workflowIds.length > 0
       ? await prisma.workflowRun.findMany({
-          where: { workflowId: { in: workflowIds }, agencyId, campaignId: campaign.id },
+          where: { workflowId: { in: workflowIds }, agencyId },
           orderBy: { createdAt: 'desc' },
           select: {
             id: true, workflowId: true, status: true,
