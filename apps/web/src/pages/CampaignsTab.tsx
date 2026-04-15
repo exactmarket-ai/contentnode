@@ -1234,10 +1234,21 @@ function CampaignCard({
 
 // ─── Main tab component ───────────────────────────────────────────────────────
 
+function formatDateGroup(dateStr: string): string {
+  const d = new Date(dateStr)
+  const today = new Date()
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1)
+  if (d.toDateString() === today.toDateString()) return 'Today'
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 export function CampaignsTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
+  const todayStr = new Date().toDateString()
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(() => new Set([todayStr]))
 
   const loadCampaigns = useCallback(() => {
     if (!clientId) return
@@ -1296,13 +1307,60 @@ export function CampaignsTab({ clientId, clientName }: { clientId: string; clien
             Create First Campaign
           </Button>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {campaigns.map((campaign) => (
-            <CampaignCard key={campaign.id} campaign={campaign} onRefresh={loadCampaigns} />
-          ))}
-        </div>
-      )}
+      ) : (() => {
+        // Group by creation date, newest first
+        const groups: Record<string, Campaign[]> = {}
+        for (const c of campaigns) {
+          const key = new Date(c.createdAt).toDateString()
+          if (!groups[key]) groups[key] = []
+          groups[key].push(c)
+        }
+        const sortedKeys = Object.keys(groups).sort(
+          (a, b) => new Date(b).getTime() - new Date(a).getTime()
+        )
+        return (
+          <div className="space-y-2">
+            {sortedKeys.map((key) => {
+              const isExpanded = expandedDates.has(key)
+              const toggle = () => setExpandedDates((prev) => {
+                const next = new Set(prev)
+                isExpanded ? next.delete(key) : next.add(key)
+                return next
+              })
+              return (
+                <div key={key}>
+                  {/* Date header */}
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    className="flex items-center gap-2 w-full py-1.5 px-0 text-left group"
+                  >
+                    <Icons.ChevronRight className={cn(
+                      'w-3.5 h-3.5 text-muted-foreground/60 transition-transform shrink-0',
+                      isExpanded && 'rotate-90'
+                    )} />
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {formatDateGroup(key)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/50">
+                      {groups[key].length} campaign{groups[key].length !== 1 ? 's' : ''}
+                    </span>
+                    <div className="flex-1 h-px bg-border/50 ml-1" />
+                  </button>
+                  {/* Campaign cards */}
+                  {isExpanded && (
+                    <div className="space-y-3 mt-1">
+                      {groups[key].map((campaign) => (
+                        <CampaignCard key={campaign.id} campaign={campaign} onRefresh={loadCampaigns} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* Create modal */}
       {showCreate && (
