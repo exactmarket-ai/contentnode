@@ -11,7 +11,7 @@ echo "Syncing database schema..."
 pnpm --filter @contentnode/database db:push:safe
 
 echo "Applying database functions..."
-pnpm --filter @contentnode/database apply-functions
+pnpm --filter @contentnode/database apply-functions || echo "Warning: apply-functions failed — existing function will be used"
 
 echo "Starting API server..."
 exec node --import tsx/esm apps/api/src/index.ts
