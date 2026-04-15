@@ -224,6 +224,8 @@ export function CampaignCreationModal({
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<string[]>(preselectedWorkflowIds)
   const [creatingSlots, setCreatingSlots] = useState<Record<number, boolean>>({})
   const [suggestingSlots, setSuggestingSlots] = useState<Record<number, boolean>>({})
+  // suggestingFields: "${slotIndex}-${nodeId}-${field}" → boolean
+  const [suggestingFields, setSuggestingFields] = useState<Record<string, boolean>>({})
   // setupValues: slot index → nodeId → field → value
   const [setupValues, setSetupValues] = useState<Record<number, Record<string, Record<string, string>>>>({})
   // Vertical selection (required for content templates that use GTM/DG vert sections)
@@ -360,6 +362,37 @@ export function CampaignCreationModal({
       // Silently fail — fields stay blank
     } finally {
       setSuggestingSlots((prev) => ({ ...prev, [slotIndex]: false }))
+    }
+  }
+
+  async function handleSuggestField(slotIndex: number, sf: SetupField) {
+    const key = `${slotIndex}-${sf.nodeId}-${sf.field}`
+    setSuggestingFields((prev) => ({ ...prev, [key]: true }))
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/setup-suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          verticalId: selectedVerticalId,
+          fields: [{ nodeId: sf.nodeId, field: sf.field, label: sf.label, placeholder: sf.placeholder }],
+        }),
+      })
+      const { data } = await res.json()
+      const suggestions = (data?.suggestions ?? {}) as Record<string, string>
+      const val = suggestions[sf.field]
+      if (val) {
+        setSetupValues((prev) => ({
+          ...prev,
+          [slotIndex]: {
+            ...prev[slotIndex],
+            [sf.nodeId]: { ...(prev[slotIndex]?.[sf.nodeId] ?? {}), [sf.field]: val },
+          },
+        }))
+      }
+    } catch {
+      // Silently fail — field stays as-is
+    } finally {
+      setSuggestingFields((prev) => ({ ...prev, [key]: false }))
     }
   }
 
@@ -673,9 +706,26 @@ export function CampaignCreationModal({
                                   {suggestingSlots[i] ? 'Thinking…' : 'AI Fill'}
                                 </button>
                               </div>
-                              {slot.setupFields!.map((sf) => (
+                              {slot.setupFields!.map((sf) => {
+                                const fieldKey = `${i}-${sf.nodeId}-${sf.field}`
+                                const isSuggestingField = suggestingFields[fieldKey]
+                                return (
                                 <div key={`${sf.nodeId}-${sf.field}`} className="space-y-1">
-                                  <label className="text-[10px] text-muted-foreground">{sf.label}</label>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <label className="text-[10px] text-muted-foreground">{sf.label}</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSuggestField(i, sf)}
+                                      disabled={isSuggestingField}
+                                      className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium text-violet-500 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-40 transition-colors"
+                                      title="Suggest from client brain"
+                                    >
+                                      {isSuggestingField
+                                        ? <Icons.Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                        : <Icons.Wand2 className="w-2.5 h-2.5" />
+                                      }
+                                    </button>
+                                  </div>
                                   {sf.type === 'textarea' ? (
                                     <textarea
                                       className="w-full text-xs bg-background/60 border border-border/60 rounded px-2 py-1.5 resize-none outline-none focus:border-amber-600/50 transition-colors placeholder:text-muted-foreground/40"
@@ -697,7 +747,7 @@ export function CampaignCreationModal({
                                     <p className="text-[9px] text-muted-foreground/60">{sf.hint}</p>
                                   )}
                                 </div>
-                              ))}
+                              )})}
                             </div>
                           )}
 
