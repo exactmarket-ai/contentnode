@@ -442,6 +442,7 @@ export async function runRoutes(app: FastifyInstance) {
       pendingTranscriptionSessionId?: string
       pendingReviewNodeId?: string
       pendingReviewContent?: string
+      detectionState?: Record<string, { retryCount: number; lastScore: number; scoreHistory: number[] }>
     }
 
     return reply.send({
@@ -461,6 +462,7 @@ export async function runRoutes(app: FastifyInstance) {
         pendingSessionId: output.pendingTranscriptionSessionId ?? null,
         pendingReviewNodeId: output.pendingReviewNodeId ?? null,
         pendingReviewContent: output.pendingReviewContent ?? null,
+        detectionState: output.detectionState ?? null,
         editedContent: run.editedContent ?? null,
         assigneeId: run.assigneeId ?? null,
         internalNotes: run.internalNotes ?? null,

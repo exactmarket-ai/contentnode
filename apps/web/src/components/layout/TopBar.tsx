@@ -58,10 +58,21 @@ export async function pollRunUntilTerminal(runId: string) {
         pendingReviewNodeId?: string | null
         pendingReviewContent?: string | null
         errorMessage?: string | null
+        detectionState?: Record<string, { retryCount: number; lastScore: number; scoreHistory: number[] }> | null
       }
     }
     const data = body.data
     console.log('[run] poll', i + 1, '— status:', data.status)
+
+    if (data.detectionState) {
+      const history: Record<string, number[]> = {}
+      for (const [nodeId, ds] of Object.entries(data.detectionState)) {
+        if (Array.isArray(ds.scoreHistory) && ds.scoreHistory.length > 0) {
+          history[nodeId] = ds.scoreHistory
+        }
+      }
+      if (Object.keys(history).length > 0) store.setDetectionScoreHistory(history)
+    }
 
     if (data.nodeStatuses) {
       const nodeStatuses = data.nodeStatuses as Parameters<typeof store.setNodeRunStatuses>[0]

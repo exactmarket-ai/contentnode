@@ -73,8 +73,8 @@ export interface NodeStatus {
 export interface RunOutput {
   nodeStatuses: Record<string, NodeStatus>
   finalOutput?: unknown
-  /** Retry tracking per detection node */
-  detectionState?: Record<string, { retryCount: number; lastScore: number }>
+  /** Retry tracking per detection node — scoreHistory[0] is initial score, each retry appends */
+  detectionState?: Record<string, { retryCount: number; lastScore: number; scoreHistory: number[] }>
   /** ID of a TranscriptSession awaiting speaker assignment before the run can proceed */
   pendingTranscriptionSessionId?: string
   /** ID of the feedback node whose portal access is being set up */
@@ -275,21 +275,21 @@ function findDetectionLoops(nodes: GraphNode[], edges: GraphEdge[]): DetectionLo
         const humNode = nodes.find((n) => n.id === branchEdge.targetNodeId)
         if (!humNode) continue
         const humCfg = (humNode.config ?? {}) as Record<string, unknown>
-        if (humCfg.subtype !== 'humanizer' && humCfg.subtype !== 'humanizer-pro') continue
+        const isRewriter = humCfg.subtype === 'humanizer' || humCfg.subtype === 'humanizer-pro' || humCfg.subtype === 'ai-generate'
+        if (!isRewriter) continue
         tryRegister(humNode, branchNode.id)
       }
     }
 
-    // Pattern 2: Detection -fail-> Humanizer → (detection or ancestor) — no branch node
+    // Pattern 2: Detection -fail-> (Humanizer or AI Gen) → (detection or ancestor)
     if (!loops.some((l) => l.detectionNodeId === detNode.id)) {
       const failEdge = detOutEdges.find((e) => e.label === 'fail')
       if (failEdge) {
         const humNode = nodes.find((n) => n.id === failEdge.targetNodeId)
         if (humNode) {
           const humCfg = (humNode.config ?? {}) as Record<string, unknown>
-          if (humCfg.subtype === 'humanizer' || humCfg.subtype === 'humanizer-pro') {
-            tryRegister(humNode, null)
-          }
+          const isRewriter = humCfg.subtype === 'humanizer' || humCfg.subtype === 'humanizer-pro' || humCfg.subtype === 'ai-generate'
+          if (isRewriter) tryRegister(humNode, null)
         }
       }
     }
@@ -1128,22 +1128,30 @@ export class WorkflowRunner {
     }
 
     const humNode = allNodes.find((n) => n.id === loop.humanizerNodeId)!
-    const branchNode = allNodes.find((n) => n.id === loop.branchNodeId)!
     const humCfg = (humNode.config ?? {}) as Record<string, unknown>
     const humCtx: NodeExecutionContext = { ...detCtx, nodeId: humNode.id }
-    const humExec = new HumanizerNodeExecutor()
+    // Use generic executor so both humanizer and ai-generate nodes work as rewriters
+    const humExec = getExecutor(humNode.type, humCfg)
     const detExec = new DetectionNodeExecutor()
 
     let currentDetOutput = detOutput
     let retryCount = 0
     let lastScore = score
     let noImprovementCount = 0
+    // Score history: initial score from first wave detection run, then one entry per retry
+    const scoreHistory: number[] = [score]
+
+    // Persist initial score so frontend can show it immediately
+    if (!runOutput.detectionState) runOutput.detectionState = {}
+    runOutput.detectionState[loop.detectionNodeId] = { retryCount: 0, lastScore: score, scoreHistory }
+    await this.persistOutput(runOutput)
 
     while (retryCount < maxRetries) {
       retryCount++
 
-      // Run humanizer (don't persist 'running' status — doing so can cause re-runs
-      // if the workflow pauses between the 'running' write and the subsequent 'passed' write)
+      // Run rewriter node (humanizer or AI Gen).
+      // Don't persist 'running' status here — doing so can cause re-runs
+      // if the workflow pauses between the 'running' write and the subsequent 'passed' write.
       const humResult = await humExec.execute(currentDetOutput, humCfg, humCtx)
       const humanizedText = humResult.output as string
 
@@ -1159,10 +1167,10 @@ export class WorkflowRunner {
         wordsProcessed: humWordCount,
       }
       nodeOutputs.set(humNode.id, humanizedText)
-      await this.persistOutput(runOutput)  // save humanizer 'passed' before detection re-runs
+      await this.persistOutput(runOutput)  // save rewriter 'passed' before detection re-runs
 
       if (humResult.tokensUsed) {
-        await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'humanizer', undefined, humResult.inputTokens, humResult.outputTokens)
+        await this.recordTokenUsage(humResult.tokensUsed, humResult.modelUsed ?? 'rewriter', undefined, humResult.inputTokens, humResult.outputTokens)
       }
 
       // If back-edge goes to an upstream node (e.g. Humanizer → AI Generate → Detection),
@@ -1203,6 +1211,10 @@ export class WorkflowRunner {
 
       nodeOutputs.set(loop.detectionNodeId, currentDetOutput)
 
+      // Append score to history and persist immediately for live UI updates
+      scoreHistory.push(newScore)
+      runOutput.detectionState![loop.detectionNodeId] = { retryCount, lastScore: newScore, scoreHistory }
+
       // Check for no improvement (false positive warning)
       if (newScore >= lastScore) {
         noImprovementCount++
@@ -1226,20 +1238,19 @@ export class WorkflowRunner {
       }
       lastScore = newScore
 
-      // Update detection status
+      // Update detection status and persist so frontend gets live score updates
       runOutput.nodeStatuses[loop.detectionNodeId] = {
         ...runOutput.nodeStatuses[loop.detectionNodeId],
         status: 'passed',
         output: currentDetOutput,
         completedAt: new Date().toISOString(),
       }
+      await this.persistOutput(runOutput)
 
       if (newScore <= threshold) break
     }
 
-    // Persist retry state
-    if (!runOutput.detectionState) runOutput.detectionState = {}
-    runOutput.detectionState[loop.detectionNodeId] = { retryCount, lastScore }
+    // Final state already persisted in the loop; just ensure retryCount is current
 
     const passed = ((currentDetOutput.overall_score as number) ?? 0) <= threshold
     const route = passed ? 'pass' : 'fail'

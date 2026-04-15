@@ -642,6 +642,8 @@ interface WorkflowState {
   insightConfirmations: InsightConfirmation[]
   /** True when the graph has unsaved changes (nodes/edges modified since last save or load) */
   graphDirty: boolean
+  /** Score history per detection node — maps nodeId → [initial, retry1, retry2, ...] */
+  detectionScoreHistory: Record<string, number[]>
   /** Active canvas tool — select (default) or hand/pan */
   canvasTool: 'select' | 'hand'
   /** ReactFlow instance — stored so palette/context menu can convert screen → flow coords */
@@ -664,6 +666,7 @@ interface WorkflowState {
   setRunStatus: (status: RunStatus) => void
   setRunError: (error: string | null) => void
   setNodeRunStatuses: (statuses: Record<string, NodeRunStatus>) => void
+  setDetectionScoreHistory: (history: Record<string, number[]>) => void
   setFinalOutput: (output: unknown) => void
 
   // Actions — metadata
@@ -728,6 +731,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   runStatus: 'idle',
   runError: null,
   nodeRunStatuses: {},
+  detectionScoreHistory: {},
   finalOutput: null,
   hasBeenRun: false,
   pendingTranscriptionSessionId: null,
@@ -910,6 +914,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setRunError: (error) => set({ runError: error }),
 
   setNodeRunStatuses: (statuses) => set((state) => ({ nodeRunStatuses: { ...state.nodeRunStatuses, ...statuses } })),
+  setDetectionScoreHistory: (history) => set((state) => ({
+    detectionScoreHistory: { ...state.detectionScoreHistory, ...history },
+  })),
   setFinalOutput: (output) => set({ finalOutput: output }),
 
   // Metadata actions

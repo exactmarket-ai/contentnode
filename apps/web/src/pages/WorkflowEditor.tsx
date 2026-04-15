@@ -12,6 +12,7 @@ import { HumanReviewPanel } from '@/components/review/HumanReviewPanel'
 import { RunHistoryPanel } from '@/components/layout/RunHistoryPanel'
 import { AlignmentToolbar } from '@/components/canvas/AlignmentToolbar'
 import { RunNamingPanel } from '@/components/canvas/RunNamingPanel'
+import { DetectionScoreHUD } from '@/components/canvas/DetectionScoreHUD'
 import { NodePilot } from '@/components/pilot/NodePilot'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
@@ -452,6 +453,9 @@ export function WorkflowEditor() {
 
             {/* Run naming panel — slides up while run is in progress */}
             <RunNamingPanel />
+
+            {/* Detection score HUD — shows live AI detection scores during and after runs */}
+            <DetectionScoreHUD />
 
             {/* Persistent OFFLINE badge on canvas */}
             {connectivity_mode === 'offline' && (

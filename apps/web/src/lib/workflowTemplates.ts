@@ -3055,9 +3055,9 @@ Structure:
 
   {
     id: 'demo-detection-loop',
-    name: 'Demo: Detection Loop (10 Passes)',
+    name: 'Demo: Detection Loop (10 Passes, No Humanizer)',
     description:
-      'Demonstration: a document is rewritten by Claude Sonnet, then humanized and AI-scored in a loop up to 10 times. Each pass where the score exceeds 50% sends the content back through the humanizer. Watch the detection score drop round by round. Uses local scoring by default — switch service to gptzero and add GPTZERO_API_KEY for real GPTZero scores.',
+      'Demonstration: Claude Sonnet rewrites a document and immediately runs AI detection. If the score exceeds 30%, the detection output (including flagged sentences) is fed directly back to Claude for a smarter rewrite — up to 10 passes. No humanizer. Watch the score improve live as Claude learns from its own detection feedback. Uses local scoring by default — switch service to gptzero and set GPTZERO_API_KEY for real scores.',
     category: 'general',
     icon: 'RefreshCw',
     nodes: [
@@ -3080,53 +3080,48 @@ Structure:
           subtype: 'text-input',
           config: {
             subtype: 'text-input',
-            text: 'Rewrite this content in a natural, engaging voice. Keep all key facts intact but vary the sentence structure and rhythm.',
+            text: 'Rewrite this content to read naturally and evade AI detection. Get the AI detection score below 30%.',
           },
         },
       },
       {
         id: 'dl-ai',
         type: 'logic',
-        position: { x: 360, y: 220 },
+        position: { x: 380, y: 220 },
         data: {
           label: 'AI Rewrite — Claude Sonnet',
           subtype: 'ai-generate',
           config: {
             subtype: 'ai-generate',
             task_type: 'rewrite',
-            prompt: 'Rewrite the provided content to be engaging and natural-sounding. Preserve all key facts. Use varied sentence lengths, active voice, and conversational phrasing where appropriate.',
-            model_config: { provider: 'anthropic', model: 'claude-sonnet-4-6', temperature: 0.7 },
-          },
-        },
-      },
-      {
-        id: 'dl-hum',
-        type: 'logic',
-        position: { x: 660, y: 220 },
-        data: {
-          label: 'Humanize (Undetectable AI)',
-          subtype: 'humanizer-pro',
-          config: {
-            subtype: 'humanizer-pro',
-            humanizer_service: 'undetectable',
-            mode: 'executive-natural',
-            naturalness: 70, energy: 55, precision: 75, formality: 65,
-            boldness: 60, compression: 55, personality: 45, safety: 80,
-            targeted_rewrite: true,
+            prompt: `You are rewriting content to pass AI detection (target: score below 30%).
+
+If you receive a JSON object, extract the "content" field — that is the text to rewrite. The "overall_score" tells you how AI-detectable the content currently is (higher = worse). The "flagged_sentences" are the most AI-detectable phrases — rewrite these specifically.
+
+Rewriting guidelines:
+- Replace formal AI-typical structures with natural, conversational phrasing
+- Vary sentence length drastically — mix very short punchy sentences with longer flowing ones
+- Add specific concrete details, first-person perspective, or rhetorical questions
+- Use contractions, informal transitions (honestly, look, here's the thing), and colloquialisms
+- Avoid parallel structure and lists — break them into flowing prose
+- Each pass must be meaningfully different from the previous version
+
+Return ONLY the rewritten text. No preamble, no explanation.`,
+            model_config: { provider: 'anthropic', model: 'claude-sonnet-4-6', temperature: 0.85 },
           },
         },
       },
       {
         id: 'dl-det',
         type: 'logic',
-        position: { x: 960, y: 220 },
+        position: { x: 720, y: 220 },
         data: {
-          label: 'AI Detect — score ≤ 50 = pass',
+          label: 'AI Detect — score ≤ 30 = pass',
           subtype: 'detection',
           config: {
             subtype: 'detection',
             service: 'local',
-            threshold: 50,
+            threshold: 30,
             max_retries: 10,
           },
         },
@@ -3134,7 +3129,7 @@ Structure:
       {
         id: 'dl-out',
         type: 'output',
-        position: { x: 1260, y: 220 },
+        position: { x: 1060, y: 220 },
         data: {
           label: 'Final Content',
           subtype: 'display',
@@ -3145,10 +3140,9 @@ Structure:
     edges: [
       { id: 'e-dl-1', source: 'dl-src-doc',  target: 'dl-ai' },
       { id: 'e-dl-2', source: 'dl-src-inst', target: 'dl-ai' },
-      { id: 'e-dl-3', source: 'dl-ai',  target: 'dl-hum' },
-      { id: 'e-dl-4', source: 'dl-hum', target: 'dl-det' },
-      { id: 'e-dl-5', source: 'dl-det', target: 'dl-out', sourceHandle: 'pass' },
-      { id: 'e-dl-6', source: 'dl-det', target: 'dl-hum', sourceHandle: 'fail' },
+      { id: 'e-dl-3', source: 'dl-ai',  target: 'dl-det' },
+      { id: 'e-dl-4', source: 'dl-det', target: 'dl-out', sourceHandle: 'pass' },
+      { id: 'e-dl-5', source: 'dl-det', target: 'dl-ai',  sourceHandle: 'fail' },
     ],
   },
 
