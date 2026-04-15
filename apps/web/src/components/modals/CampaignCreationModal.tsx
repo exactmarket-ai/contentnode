@@ -275,7 +275,13 @@ export function CampaignCreationModal({
       const { data: wf } = await wRes.json()
       if (!wRes.ok || !wf?.id) throw new Error('Failed to create workflow')
 
-      // 2. Inject user-supplied setup values + vertical into template nodes before saving
+      // 2. Randomize node IDs so two workflows from the same template never collide
+      //    (Node.id is a global PK — reusing template IDs causes a DB constraint failure)
+      const idMap: Record<string, string> = {}
+      for (const node of tpl.nodes) {
+        idMap[node.id] = `${node.id}-${Math.random().toString(36).slice(2, 9)}`
+      }
+
       const slotSetup = setupValues[slotIndex] ?? {}
       const patchedNodes = tpl.nodes.map((node) => {
         const nodeOverrides = slotSetup[node.id] ?? {}
@@ -287,22 +293,31 @@ export function CampaignCreationModal({
           ? { verticalId: resolvedVertId, verticalName: resolvedVertName }
           : {}
         const merged = { ...nodeOverrides, ...verticalOverrides }
-        if (Object.keys(merged).length === 0) return node
         return {
           ...node,
+          id: idMap[node.id],
           data: {
             ...node.data,
-            config: { ...node.data.config, ...merged },
+            config: Object.keys(merged).length > 0 ? { ...node.data.config, ...merged } : node.data.config,
           },
         }
       })
 
+      // Remap edge source/target to the new node IDs
+      const patchedEdges = tpl.edges.map((edge) => ({
+        ...edge,
+        id: `${edge.id}-${Math.random().toString(36).slice(2, 9)}`,
+        source: idMap[edge.source] ?? edge.source,
+        target: idMap[edge.target] ?? edge.target,
+      }))
+
       // 3. Apply template nodes + edges via the graph endpoint
-      await apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
+      const graphRes = await apiFetch(`/api/v1/workflows/${wf.id}/graph`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodes: patchedNodes, edges: tpl.edges }),
+        body: JSON.stringify({ nodes: patchedNodes, edges: patchedEdges }),
       })
+      if (!graphRes.ok) throw new Error('Failed to save workflow graph')
 
       // 4. Add new workflow to local list and assign to slot
       setWorkflows((prev) => [...prev, { id: wf.id, name: wf.name, status: wf.status, connectivityMode: wf.connectivityMode }])
