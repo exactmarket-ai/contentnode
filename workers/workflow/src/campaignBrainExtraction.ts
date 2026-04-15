@@ -4,7 +4,7 @@ import { join, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import PDFParser from 'pdf2json'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { prisma, withAgency } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
@@ -56,15 +56,30 @@ async function extractTextFromBuffer(buffer: Buffer, filename: string, mimeType:
     const result = await mammoth.extractRawText({ buffer })
     return result.value
   }
-  if (ext === '.xlsx' || ext === '.xls' ||
-      mimeType.includes('spreadsheetml') || mimeType.includes('ms-excel')) {
-    const workbook = XLSX.read(buffer, { type: 'buffer' })
+  if (ext === '.xlsx' || mimeType.includes('spreadsheetml')) {
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(buffer)
     const lines: string[] = []
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName]
-      const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false })
-      if (csv.trim()) lines.push(`## ${sheetName}\n${csv}`)
-    }
+    workbook.eachSheet((worksheet) => {
+      const rows: string[] = []
+      worksheet.eachRow({ includeEmpty: false }, (row) => {
+        const values = (row.values as ExcelJS.CellValue[]).slice(1)
+        const csvRow = values.map((cell): string => {
+          if (cell == null) return ''
+          if (cell instanceof Date) return cell.toISOString().split('T')[0]
+          if (typeof cell === 'object') {
+            const c = cell as Record<string, unknown>
+            if ('result' in c) return String(c.result ?? '')
+            if ('richText' in c) return (c.richText as Array<{text: string}>).map(r => r.text).join('')
+            if ('text' in c) return String(c.text ?? '')
+            return ''
+          }
+          return String(cell)
+        }).join(',')
+        if (csvRow.replace(/,/g, '').trim()) rows.push(csvRow)
+      })
+      if (rows.length > 0) lines.push(`## ${worksheet.name}\n${rows.join('\n')}`)
+    })
     return lines.join('\n\n')
   }
   if (ext === '.pdf' || mimeType === 'application/pdf') {

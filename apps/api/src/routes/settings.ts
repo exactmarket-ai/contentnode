@@ -52,7 +52,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
   // ── Agency Brain ──────────────────────────────────────────────────────────────
 
-  const ALLOWED_BRAIN_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+  const ALLOWED_BRAIN_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
 
   // GET synthesised context
   app.get('/brain/context', async (req, reply) => {

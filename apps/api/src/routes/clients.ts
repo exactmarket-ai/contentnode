@@ -3822,7 +3822,7 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
 
     const { filename, file, mimetype } = data
 
-    const allowedExts = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm'])
+    const allowedExts = new Set(['.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm'])
     const fileExt = extname(filename).toLowerCase()
     if (!allowedExts.has(fileExt)) {
       file.resume()
@@ -4063,7 +4063,7 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
 
   // ── Client Brain ──────────────────────────────────────────────────────────────
 
-  const ALLOWED_CLIENT_BRAIN_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+  const ALLOWED_CLIENT_BRAIN_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
 
   // GET context
   app.get<{ Params: { clientId: string } }>('/:clientId/brain/context', async (req, reply) => {

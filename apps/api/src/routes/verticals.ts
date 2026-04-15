@@ -67,7 +67,7 @@ export async function verticalRoutes(app: FastifyInstance) {
 
   // ── Vertical Brain ────────────────────────────────────────────────────────────
 
-  const ALLOWED_BRAIN_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
+  const ALLOWED_BRAIN_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.json', '.html', '.htm'])
 
   // GET synthesised context
   app.get<{ Params: { id: string } }>('/:id/brain/context', async (req, reply) => {
