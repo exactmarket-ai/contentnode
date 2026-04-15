@@ -227,7 +227,7 @@ export async function runRoutes(app: FastifyInstance) {
 
     // Verify the user exists in our DB — Clerk user IDs won't match unless seeded.
     // Fall back to null (anonymous trigger) if the user record isn't found.
-    const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
+    const dbUserRecord = await prisma.user.findFirst({ where: { clerkUserId: userId, agencyId }, select: { id: true } })
 
     // ── Server-side permission enforcement ─────────────────────────────────
     // Resolve the calling user's permissions and validate every node in the graph.
@@ -292,7 +292,7 @@ export async function runRoutes(app: FastifyInstance) {
       data: {
         workflowId,
         agencyId,
-        triggeredBy: userExists ? userId : null,
+        triggeredBy: dbUserRecord?.id ?? null,
         status: 'pending',
         input: { ...(body.input ?? {}), resolvedPermissions, triggeredByClerkId: userId } as Prisma.InputJsonValue,
         output: initialOutput as Prisma.InputJsonValue,
@@ -357,7 +357,7 @@ export async function runRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: 'Cannot run an archived workflow' })
     }
 
-    const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
+    const dbUserRecord = await prisma.user.findFirst({ where: { clerkUserId: userId, agencyId }, select: { id: true } })
 
     const batchId = randomUUID()
     const queue = getWorkflowRunsQueue()
@@ -369,7 +369,7 @@ export async function runRoutes(app: FastifyInstance) {
         data: {
           workflowId,
           agencyId,
-          triggeredBy: userExists ? userId : null,
+          triggeredBy: dbUserRecord?.id ?? null,
           status: 'pending',
           batchId,
           batchIndex: i,
@@ -859,13 +859,13 @@ export async function runRoutes(app: FastifyInstance) {
       }
     }
 
-    const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
+    const dbUserRecord = await prisma.user.findFirst({ where: { clerkUserId: userId, agencyId }, select: { id: true } })
 
     const newRun = await prisma.workflowRun.create({
       data: {
         workflowId: sourceRun.workflowId,
         agencyId,
-        triggeredBy: userExists ? userId : null,
+        triggeredBy: dbUserRecord?.id ?? null,
         status: 'pending',
         parentRunId: sourceRunId,
         reentryFromNodeId: startNodeId,
