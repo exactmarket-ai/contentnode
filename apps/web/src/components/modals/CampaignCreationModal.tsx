@@ -202,15 +202,6 @@ interface CampaignCreationModalProps {
   preselectedWorkflowIds?: string[]
 }
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-function autoMatch(slot: TemplateSlot, workflows: Workflow[]): string {
-  const match = workflows.find((wf) =>
-    slot.keywords.some((kw) => wf.name.toLowerCase().includes(kw.toLowerCase()))
-  )
-  return match?.id ?? ''
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CampaignCreationModal({
@@ -258,25 +249,9 @@ export function CampaignCreationModal({
       .catch(() => {})
   }, [clientId])
 
-  // Re-run auto-match once workflows arrive (they may load after template is picked)
-  useEffect(() => {
-    if (!selectedTemplate || selectedTemplate.id === 'custom') return
-    setSlotAssignments((prev) => {
-      const next = { ...prev }
-      selectedTemplate.slots.forEach((slot, i) => {
-        if (!next[i]) next[i] = autoMatch(slot, workflows)
-      })
-      return next
-    })
-  }, [workflows]) // eslint-disable-line react-hooks/exhaustive-deps
-
   function selectTemplate(template: CampaignTemplate) {
     setSelectedTemplate(template)
-    const assignments: Record<number, string> = {}
-    template.slots.forEach((slot, i) => {
-      assignments[i] = autoMatch(slot, workflows)
-    })
-    setSlotAssignments(assignments)
+    setSlotAssignments({}) // start blank — all slots auto-created on save
     setStep(2)
   }
 
