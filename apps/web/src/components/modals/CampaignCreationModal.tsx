@@ -149,9 +149,8 @@ const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
     produces: ['Blog post', 'Social content pack', 'Blog → social repurpose'],
     requiresVertical: true,
     slots: [
-      { role: 'blog',    label: 'Blog Post',            keywords: ['blog', 'post', 'article'],            description: 'SEO blog post targeting a keyword',        workflowTemplateId: 'dg-blog-post' },
-      { role: 'social',  label: 'Social Content Pack',  keywords: ['social', 'content pack', 'linkedin'],  description: 'LinkedIn, short-form, and Instagram posts', workflowTemplateId: 'dg-social-pack' },
-      { role: 'social',  label: 'Blog → Social Repurpose', keywords: ['repurpose', 'blog to social'],      description: 'Distribute one blog across all channels',   workflowTemplateId: 'dg-blog-to-social' },
+      { role: 'blog',   label: 'Blog Post + Social Pack', keywords: ['blog', 'post', 'article', 'repurpose'], description: 'Blog post + LinkedIn, Twitter, and Instagram in one run', workflowTemplateId: 'dg-blog-social-full' },
+      { role: 'social', label: 'Social Content Pack',   keywords: ['social', 'content pack', 'linkedin'],  description: 'Standalone brain-driven social content',              workflowTemplateId: 'dg-social-pack' },
     ],
   },
   {

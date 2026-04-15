@@ -2496,6 +2496,171 @@ Use the brand voice from the context.`,
     ],
   },
 
+  {
+    id: 'dg-blog-social-full',
+    name: 'Blog Post + Social Pack',
+    description: 'Writes a full blog post from the client brain, then repurposes it into LinkedIn angles, a Twitter thread, and an Instagram caption — all in one workflow.',
+    category: 'demand_gen',
+    icon: 'Layers',
+    nodes: [
+      {
+        id: 'bsf-brain',
+        type: 'client_brain',
+        position: { x: 80, y: 200 },
+        data: {
+          label: 'Client Brain',
+          subtype: 'client-brain',
+          config: {
+            subtype: 'client-brain',
+            verticalId: '', verticalName: '', clientName: '',
+            gtmSections: ['02', '08'],
+            dgBaseSections: ['B1'],
+            dgVertSections: ['S3'],
+            includeBrand: true,
+          },
+        },
+      },
+      {
+        id: 'bsf-write',
+        type: 'logic',
+        position: { x: 360, y: 200 },
+        data: {
+          label: 'Write Blog Post',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `You are a senior content strategist writing a blog post for the client described in the brain context.
+
+Target keyword: [set in Additional Instructions below]
+
+Structure:
+## [Title — include the keyword, make it specific and intriguing]
+
+**Hook (100 words):** Open with the problem or tension this post resolves. Reference something the ICP experiences regularly. No "In today's world..." openers.
+
+**The Setup (150 words):** Explain why this matters now and what most people get wrong about it.
+
+**The Core (400-500 words):** 3-4 substantive sections, each with a subheading. Use the client's messaging framework and ICP pain points to make the content specific. Include one concrete example or scenario.
+
+**The Takeaway (100 words):** Summarise the actionable insight. One clear thing the reader should do.
+
+**CTA (50 words):** Soft transition to the client's offer. Match the tone — no hard sell.
+
+Rules:
+- No filler phrases ("It's important to note", "In conclusion", "In this post I will")
+- Every sentence earns its place
+- Use the client's language, not generic industry speak
+- Total: 800–900 words`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bsf-blog-out',
+        type: 'output',
+        position: { x: 640, y: 0 },
+        data: {
+          label: 'Blog Post',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', output_type: 'blog-post' },
+        },
+      },
+      {
+        id: 'bsf-linkedin',
+        type: 'logic',
+        position: { x: 640, y: 180 },
+        data: {
+          label: 'LinkedIn Angles',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `From the blog post provided, extract 3 LinkedIn post angles. Each angle should stand alone — not a summary of the post, but one idea from it developed into a complete LinkedIn post.
+
+For each:
+- Different hook style (stat, tension, question)
+- 150–250 words
+- Ends with a specific engagement question
+- Signals the client's expertise without being promotional
+
+Use the brand voice from the brain context.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bsf-twitter',
+        type: 'logic',
+        position: { x: 640, y: 360 },
+        data: {
+          label: 'Twitter / X Thread',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Turn the blog post into a Twitter/X thread.
+
+Format:
+1/ Hook tweet — the most counterintuitive or surprising idea from the post. Under 240 chars.
+2/-6/ One idea per tweet. Each self-contained. No "as I mentioned" callbacks. Under 240 chars each.
+7/ Summary tweet — the single most actionable takeaway.
+8/ CTA tweet — soft. "Full breakdown here: [link]" or similar.
+
+Style: punchy, specific, no corporate tone. Sounds like a practitioner sharing hard-won insight.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bsf-ig',
+        type: 'logic',
+        position: { x: 640, y: 540 },
+        data: {
+          label: 'Instagram Caption',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: `Write an Instagram caption repurposing the key idea from this blog post.
+
+- First line: visual hook — a statement that makes someone stop scrolling
+- 3-4 conversational sentences developing the idea
+- Warmer and more personal than LinkedIn
+- 3-5 hashtags at the end
+- 120–160 words
+
+Use the brand voice from the context.`,
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'bsf-social-out',
+        type: 'output',
+        position: { x: 920, y: 360 },
+        data: {
+          label: 'Social Repurpose Pack',
+          subtype: 'content-output',
+          config: { subtype: 'content-output', output_type: 'custom' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-bsf-brain-write',   source: 'bsf-brain',   target: 'bsf-write' },
+      { id: 'e-bsf-write-blog-out',source: 'bsf-write',   target: 'bsf-blog-out' },
+      { id: 'e-bsf-write-li',      source: 'bsf-write',   target: 'bsf-linkedin' },
+      { id: 'e-bsf-write-tw',      source: 'bsf-write',   target: 'bsf-twitter' },
+      { id: 'e-bsf-write-ig',      source: 'bsf-write',   target: 'bsf-ig' },
+      { id: 'e-bsf-brain-li',      source: 'bsf-brain',   target: 'bsf-linkedin' },
+      { id: 'e-bsf-brain-tw',      source: 'bsf-brain',   target: 'bsf-twitter' },
+      { id: 'e-bsf-brain-ig',      source: 'bsf-brain',   target: 'bsf-ig' },
+      { id: 'e-bsf-li-out',        source: 'bsf-linkedin', target: 'bsf-social-out' },
+      { id: 'e-bsf-tw-out',        source: 'bsf-twitter',  target: 'bsf-social-out' },
+      { id: 'e-bsf-ig-out',        source: 'bsf-ig',       target: 'bsf-social-out' },
+    ],
+  },
+
   // ─────────────────────────────────────────────────────────────────────────
   // RETENTION TEMPLATES
   // ─────────────────────────────────────────────────────────────────────────
