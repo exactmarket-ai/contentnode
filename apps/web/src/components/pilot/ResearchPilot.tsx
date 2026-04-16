@@ -72,17 +72,29 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
   const [loading, setLoading]   = useState(false)
   const [input, setInput]       = useState('')
 
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef  = useRef<HTMLTextAreaElement>(null)
+  const scrollRef          = useRef<HTMLDivElement>(null)
+  const inputRef           = useRef<HTMLTextAreaElement>(null)
+  const newAssistantRef    = useRef<HTMLDivElement>(null)
+  const prevMsgCountRef    = useRef(0)
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 80)
   }, [open])
 
+  // Scroll to bottom when loading dots appear (user just sent)
   useEffect(() => {
-    if (scrollRef.current) {
+    if (loading && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
+  }, [loading])
+
+  // Scroll to top of new assistant message when it arrives
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1]
+    if (!loading && lastMsg?.role === 'assistant' && messages.length > prevMsgCountRef.current) {
+      newAssistantRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }
+    prevMsgCountRef.current = messages.length
   }, [messages, loading])
 
   const sendMessage = useCallback(async (overrideText?: string) => {
@@ -229,9 +241,15 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
             </button>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} />
-        ))}
+        {messages.map((msg, i) => {
+          const isLastAssistant =
+            msg.role === 'assistant' && i === messages.length - 1
+          return (
+            <div key={i} ref={isLastAssistant ? newAssistantRef : null}>
+              <MessageBubble msg={msg} />
+            </div>
+          )
+        })}
         {loading && (
           <div className="flex gap-2 items-start">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600">
