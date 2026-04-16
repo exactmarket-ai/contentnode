@@ -23,12 +23,12 @@ interface Assessment {
 // ─── Dimension metadata ───────────────────────────────────────────────────────
 
 const DIMENSIONS = [
-  { key: 'website_messaging',     label: 'Website & Messaging Audit',       icon: Icons.Globe },
-  { key: 'social_outbound',       label: 'Social Media & Outbound Content', icon: Icons.Share2 },
-  { key: 'positioning_segment',   label: 'Positioning & Segment Analysis',  icon: Icons.Target },
-  { key: 'analyst_context',       label: 'Industry & Analyst Context',      icon: Icons.BarChart3 },
-  { key: 'competitive_landscape', label: 'Competitive Landscape',           icon: Icons.Swords },
-  { key: 'growth_signals',        label: 'Growth Opportunity Signals',      icon: Icons.TrendingUp },
+  { key: 'website_messaging',     label: 'Website & Messaging Audit',       weight: 20, icon: Icons.Globe },
+  { key: 'social_outbound',       label: 'Social Media & Outbound Content', weight: 10, icon: Icons.Share2 },
+  { key: 'positioning_segment',   label: 'Positioning & Segment Analysis',  weight: 20, icon: Icons.Target },
+  { key: 'analyst_context',       label: 'Industry & Analyst Context',      weight: 15, icon: Icons.BarChart3 },
+  { key: 'competitive_landscape', label: 'Competitive Landscape',           weight: 15, icon: Icons.Swords },
+  { key: 'growth_signals',        label: 'Growth Opportunity Signals',      weight: 20, icon: Icons.TrendingUp },
 ]
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
           <div key={d.key} className="flex items-center gap-3 rounded-lg border border-border px-4 py-2.5">
             <d.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="text-xs text-foreground">{d.label}</span>
+            <span className="ml-auto text-xs font-medium text-muted-foreground">{d.weight}%</span>
           </div>
         ))}
       </div>
