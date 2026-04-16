@@ -5,6 +5,7 @@ import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
 import { GTMPilot } from '@/components/pilot/GTMPilot'
 import { downloadGTMFrameworkDocx, DEFAULT_DOC_STYLE, type DocStyleConfig } from '@/lib/downloadDocx'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ── Draft context — provides per-field AI drafting to all section components ──
 
@@ -47,6 +48,106 @@ export const SECTIONS = [
   { num: '17', short: 'Regulatory + Compliance',        usedIn: 'Brochure · eBook · Deck · Cheat Sheet · BDR Email 3' },
   { num: '18', short: 'CTAs + Next Steps',              usedIn: 'All 8 assets' },
 ]
+
+// ── GTM variable mapper — produces {varId: value} for docxtemplater fill ─────
+
+function buildGtmVariableValues(
+  fw: ReturnType<typeof defaultFramework>,
+  clientName: string,
+  verticalName: string,
+): Record<string, string> {
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+  const list = (arr: unknown[] | undefined, fn: (item: any) => string): string =>
+    Array.isArray(arr) ? arr.map(fn).filter(Boolean).join('\n\n') : ''
+
+  return {
+    // Meta
+    client_name:   clientName,
+    vertical_name: verticalName,
+    agency_name:   '',
+    document_date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+
+    // §01 Vertical Overview
+    s01_positioning_statement: str(fw.s01?.positioningStatement),
+    s01_tagline_options:       str(fw.s01?.taglineOptions),
+    s01_how_to_use:            str(fw.s01?.howToUse),
+    s01_what_is_not:           str(fw.s01?.whatIsNot),
+    s01_platform_name:         str(fw.s01?.platformName),
+    s01_platform_benefit:      str(fw.s01?.platformBenefit),
+
+    // §02 Customer Definition
+    s02_industry:          str(fw.s02?.industry),
+    s02_company_size:      str(fw.s02?.companySize),
+    s02_geography:         str(fw.s02?.geography),
+    s02_it_posture:        str(fw.s02?.itPosture),
+    s02_compliance_status: str(fw.s02?.complianceStatus),
+    s02_contract_profile:  str(fw.s02?.contractProfile),
+
+    // §03 Market Pressures (mapped to s03 founding-style vars)
+    s03_founding_story:    str(fw.s03?.marketPressureNarrative),
+    s03_key_milestones:    list(fw.s03?.statsTable, (s) => s.stat ? `${s.stat} — ${s.context} (${s.source}, ${s.year})` : ''),
+    s03_unique_capability: str(fw.s03?.additionalContext),
+
+    // §04 Core Challenges
+    s04_trigger_events: list(fw.s04?.challenges, (c) => c.name ? `${c.name}: ${c.whyExists}` : ''),
+    s04_pain_points:    list(fw.s04?.challenges, (c) => str(c.consequence)),
+
+    // §05 Solutions + Service Stack
+    s05_business_outcomes: list(fw.s05?.pillars, (p) => p.pillar ? `${p.pillar}: ${p.valueProp}` : ''),
+    s05_core_capabilities: list(fw.s05?.serviceStack, (s) => s.service ? `${s.service}: ${s.whatItDelivers}` : ''),
+
+    // §06 Why [Client]
+    s06_differentiators: list(fw.s06?.differentiators, (d) => d.label ? `${d.label}: ${d.position}` : ''),
+    s06_win_themes:      list(fw.s06?.differentiators, (d) => str(d.label)),
+
+    // §07 Segments + Buyer Profiles
+    s07_ideal_customer_profile: list(fw.s07?.segments, (s) => s.name ? `${s.name}: ${s.primaryBuyerTitles}` : ''),
+    s07_target_accounts:        str(fw.s02?.secondaryTargets),
+
+    // §08 Messaging Framework
+    s08_persona_names:       list(fw.s07?.segments, (s) => str(s.name)),
+    s08_persona_goals:       str(fw.s08?.solution),
+    s08_persona_pain_points: str(fw.s08?.problems),
+
+    // §09 / §10 Objection Handling
+    s09_objections:          list(fw.s10?.objections, (o) => str(o.objection)),
+    s09_objection_responses: list(fw.s10?.objections, (o) => o.objection ? `${o.objection} → ${o.response}` : ''),
+
+    // §10 Proof Points + Case Studies
+    s10_proof_points:      list(fw.s09?.proofPoints, (p) => p.text ? `${p.text} (${p.source})` : ''),
+    s10_case_study_results: list(fw.s09?.caseStudies, (c) => str(c.headlineStat) || str(c.outcomes)),
+
+    // §11 Brand Voice
+    s11_pricing_model: str(fw.s11?.toneTarget),
+    s11_pricing_tiers: str(fw.s11?.vocabularyLevel),
+
+    // §12 Competitive Differentiation
+    s12_competitor_names:        list(fw.s12?.competitors, (c) => str(c.type)),
+    s12_competitive_positioning: list(fw.s12?.competitors, (c) => c.type ? `${c.type}: ${c.counter}` : ''),
+
+    // §13 Customer Quotes + Testimonials
+    s13_discovery_questions: list(fw.s15?.faqs, (f) => str(f.question)),
+    s13_sales_stages:        list(fw.s13?.quotes, (q) => q.quoteText ? `"${q.quoteText}" — ${q.attribution}` : ''),
+
+    // §14 Campaign Themes
+    s14_email_templates: list(fw.s14?.campaigns, (c) => c.theme ? `${c.theme}: ${c.keyMessage}` : ''),
+    s14_call_scripts:    list(fw.s14?.campaigns, (c) => str(c.targetAudience)),
+
+    // §15 FAQs
+    s15_marketing_channels: list(fw.s16?.funnelStages, (f) => str(f.assets)),
+    s15_content_themes:     list(fw.s14?.campaigns, (c) => str(c.theme)),
+
+    // §16 Content Funnel
+    s16_partner_program: str(fw.s16?.ctaSequencing),
+
+    // §17 Regulatory
+    s17_kpis: list(fw.s17?.regulations, (r) => r.requirement ? `${r.requirement}: ${r.capability}` : ''),
+
+    // §18 CTAs + Next Steps
+    s18_ctas:            list(fw.s18?.ctas, (c) => c.ctaName ? `${c.ctaName}: ${c.description}` : ''),
+    s18_campaign_themes: list(fw.s18?.campaignThemes, (c) => c.campaignName ? `${c.campaignName}: ${c.description}` : ''),
+  }
+}
 
 // ── Default framework data ───────────────────────────────────────────────────
 
@@ -1895,7 +1996,14 @@ function VerticalSelector({ verticals, selected, onSelect, onSelectCompany }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+interface AttachedTemplate {
+  id: string
+  name: string
+  assignmentId: string
+}
+
 export function ClientFrameworkTab({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const { canManageTemplates } = useCurrentUser()
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
   const [fw, setFwRaw] = useState<FrameworkData | null>(null)
@@ -1904,9 +2012,12 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   const [verticalsLoading, setVerticalsLoading] = useState(true)
   const [downloadingDocx, setDownloadingDocx] = useState(false)
   const [docStyle, setDocStyle] = useState<DocStyleConfig>(DEFAULT_DOC_STYLE)
+  const [attachedTemplate, setAttachedTemplate] = useState<AttachedTemplate | null>(null)
+  const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestFwRef = useRef<FrameworkData | null>(null)
   const contentScrollRef = useRef<HTMLDivElement>(null)
+  const templateInputRef = useRef<HTMLInputElement>(null)
 
   // Research + draft state
   const [websiteStatus, setWebsiteStatus] = useState<'none' | 'pending' | 'running' | 'ready' | 'failed'>('none')
@@ -1934,6 +2045,19 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
       .then((json) => { if (json?.data) setDocStyle({ ...DEFAULT_DOC_STYLE, ...json.data }) })
       .catch(() => {})
   }, [clientId])
+
+  // Load attached template when vertical changes
+  useEffect(() => {
+    if (!selectedVertical) { setAttachedTemplate(null); return }
+    setAttachedTemplate(null)
+    apiFetch(`/api/v1/doc-templates/resolve?docType=gtm&clientId=${clientId}&verticalId=${selectedVertical.id}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        const t = json?.data
+        if (t?.id) setAttachedTemplate({ id: t.id, name: t.name, assignmentId: t.assignmentId })
+      })
+      .catch(() => {})
+  }, [clientId, selectedVertical])
 
   // Load framework when vertical selected
   useEffect(() => {
@@ -2012,6 +2136,90 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   const handleReadyChange = useCallback((hasReady: boolean) => {
     setHasReadyAttachment(hasReady)
   }, [])
+
+  const handleTemplateUpload = useCallback(async (file: File) => {
+    if (!selectedVertical) return
+    if (!file.name.toLowerCase().endsWith('.docx')) { alert('Only .docx files are supported'); return }
+    setUploadingTemplate(true)
+    try {
+      // 1. Upload and analyse
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('name', file.name.replace(/\.docx$/i, ''))
+      fd.append('docType', 'gtm')
+      const uploadRes = await apiFetch('/api/v1/doc-templates', { method: 'POST', body: fd })
+      if (!uploadRes.ok) { const b = await uploadRes.json().catch(() => ({})); alert('Upload failed: ' + ((b as any).error ?? uploadRes.status)); return }
+      const { data: tmpl } = await uploadRes.json()
+
+      // 2. Auto-confirm AI suggestions so template is immediately usable
+      if (tmpl.suggestions?.length) {
+        await apiFetch(`/api/v1/doc-templates/${tmpl.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ confirmedVars: tmpl.suggestions }),
+        })
+      }
+
+      // 3. Process (bake {{vars}} into docx XML) — only if there are confirmed vars
+      if (tmpl.suggestions?.length) {
+        await apiFetch(`/api/v1/doc-templates/${tmpl.id}/process`, { method: 'POST' })
+      }
+
+      // 4. Assign to this vertical + client scope
+      const assignRes = await apiFetch(`/api/v1/doc-templates/${tmpl.id}/assignments`, {
+        method: 'POST',
+        body: JSON.stringify({ clientId, verticalId: selectedVertical.id, docType: 'gtm' }),
+      })
+      if (!assignRes.ok) { alert('Template uploaded but could not be assigned.'); return }
+      const { data: assignment } = await assignRes.json()
+
+      setAttachedTemplate({ id: tmpl.id, name: tmpl.name, assignmentId: assignment.id })
+    } catch (err) {
+      alert('Failed: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setUploadingTemplate(false)
+      if (templateInputRef.current) templateInputRef.current.value = ''
+    }
+  }, [selectedVertical, clientId])
+
+  const removeTemplate = useCallback(async () => {
+    if (!attachedTemplate) return
+    await apiFetch(`/api/v1/doc-templates/assignments/${attachedTemplate.assignmentId}`, { method: 'DELETE' })
+    setAttachedTemplate(null)
+  }, [attachedTemplate])
+
+  const handleDownload = useCallback(async () => {
+    if (!fw || !selectedVertical) return
+    setDownloadingDocx(true)
+    try {
+      if (attachedTemplate) {
+        const variables = buildGtmVariableValues(fw, clientName, selectedVertical.name)
+        const res = await apiFetch(`/api/v1/doc-templates/${attachedTemplate.id}/fill`, {
+          method: 'POST',
+          body: JSON.stringify({
+            variables,
+            filename: `${clientName} GTM Framework - ${selectedVertical.name}.docx`,
+          }),
+        })
+        if (!res.ok) { alert('Download failed'); return }
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${clientName} GTM Framework - ${selectedVertical.name}.docx`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      } else {
+        await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, docStyle)
+      }
+    } catch (err) {
+      console.error('[GTM Download] failed:', err)
+      alert('Download failed: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setDownloadingDocx(false)
+    }
+  }, [fw, selectedVertical, attachedTemplate, clientName, docStyle])
 
   const requestDraft = useCallback(async (fieldId: string, sectionNum: string, sectionTitle: string, fieldLabel: string, current: string) => {
     if (!selectedVertical || draftingField) return
@@ -2161,37 +2369,93 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
             {saveStatus === 'error'  && <span className="text-red-500">Save failed</span>}
           </span>
         )}
-        {selectedVertical && fw && (
-          <button
-            onClick={async () => {
-              setDownloadingDocx(true)
-              try {
-                await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, docStyle)
-              } catch (err) {
-                console.error('[GTM Download] failed:', err)
-                alert('Download failed: ' + (err instanceof Error ? err.message : String(err)))
-              } finally {
-                setDownloadingDocx(false)
-              }
-            }}
-            disabled={downloadingDocx}
-            className={cn(
-              'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
-              downloadingDocx ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
+
+        {/* ── Template controls ─────────────────────────────────────────── */}
+        {selectedVertical && (
+          <>
+            {/* Hidden file input */}
+            <input
+              ref={templateInputRef}
+              type="file"
+              accept=".docx"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleTemplateUpload(f) }}
+            />
+
+            {/* Attached template pill */}
+            {attachedTemplate && (
+              <div
+                className="flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-[11px]"
+                style={{ maxWidth: 180 }}
+                title={attachedTemplate.name}
+              >
+                <svg className="h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="truncate text-muted-foreground">{attachedTemplate.name}</span>
+                {canManageTemplates && (
+                  <button
+                    onClick={removeTemplate}
+                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-red-500"
+                    title="Remove template"
+                  >
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             )}
-          >
-            {downloadingDocx ? (
-              <svg className="h-3 w-3 animate-spin text-muted-foreground" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-            ) : (
-              <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
+
+            {/* Upload template button — managers and above only */}
+            {canManageTemplates && (
+              <button
+                onClick={() => !uploadingTemplate && templateInputRef.current?.click()}
+                disabled={uploadingTemplate}
+                className={cn(
+                  'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
+                  uploadingTemplate ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
+                )}
+              >
+                {uploadingTemplate ? (
+                  <svg className="h-3 w-3 animate-spin text-muted-foreground" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l4-4m0 0l4 4m-4-4v12" />
+                  </svg>
+                )}
+                <span>{uploadingTemplate ? 'Uploading…' : 'Upload .docx template'}</span>
+              </button>
             )}
-            <span>{downloadingDocx ? 'Generating…' : 'Download docx'}</span>
-          </button>
+
+            {/* Download button */}
+            {fw && (
+              <button
+                onClick={handleDownload}
+                disabled={downloadingDocx}
+                className={cn(
+                  'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
+                  downloadingDocx ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
+                )}
+                title={attachedTemplate ? 'Download using attached template' : 'Download as plain docx'}
+              >
+                {downloadingDocx ? (
+                  <svg className="h-3 w-3 animate-spin text-muted-foreground" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                )}
+                <span>{downloadingDocx ? 'Generating…' : 'Download .docx'}</span>
+              </button>
+            )}
+          </>
         )}
       </div>
 

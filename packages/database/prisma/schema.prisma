@@ -57,6 +57,8 @@ model Agency {
   campaigns          Campaign[]
   scheduledTasks     ScheduledTask[]
   clientDocStyles    ClientDocStyle[]
+  docTemplates       DocTemplate[]
+  docTemplateAssignments DocTemplateAssignment[]
   agencyBrainAttachments         AgencyBrainAttachment[]
   verticalBrainAttachments       VerticalBrainAttachment[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
@@ -1621,4 +1623,52 @@ model ScheduledTask {
   @@index([clientId])
   @@index([agencyId, enabled, nextRunAt])
   @@map("scheduled_tasks")
+}
+
+// ─────────────────────────────────────────────
+// DocTemplate — uploaded Word template with AI variable suggestions
+// ─────────────────────────────────────────────
+model DocTemplate {
+  id            String   @id @default(cuid())
+  agencyId      String   @map("agency_id")
+  name          String
+  docType       String   @default("gtm") @map("doc_type")
+  originalKey   String   @map("original_key")
+  processedKey  String?  @map("processed_key")
+  htmlPreview   String?  @db.Text @map("html_preview")
+  suggestions   Json     @default("[]")
+  confirmedVars Json     @default("[]") @map("confirmed_vars")
+  status        String   @default("pending")
+  errorMessage  String?  @map("error_message")
+  sizeBytes     Int      @default(0) @map("size_bytes")
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  agency      Agency                  @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  assignments DocTemplateAssignment[]
+
+  @@index([agencyId])
+  @@map("doc_templates")
+}
+
+// ─────────────────────────────────────────────
+// DocTemplateAssignment — maps a template to a scope (client / vertical / doc type / agency default)
+// ─────────────────────────────────────────────
+model DocTemplateAssignment {
+  id            String   @id @default(cuid())
+  agencyId      String   @map("agency_id")
+  templateId    String   @map("template_id")
+  clientId      String?  @map("client_id")
+  verticalId    String?  @map("vertical_id")
+  docType       String?  @map("doc_type")
+  agencyDefault Boolean  @default(false) @map("agency_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  agency   Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  template DocTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([templateId])
+  @@map("doc_template_assignments")
 }

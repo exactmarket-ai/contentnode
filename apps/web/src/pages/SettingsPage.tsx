@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { formatBytes } from '@/components/layout/config/shared'
+import { DocTemplateEditor } from './DocTemplateEditor'
 
 interface AgencySettings {
   id: string
@@ -837,6 +838,175 @@ function PromptsSection() {
   )
 }
 
+// ── DocTemplateSection ────────────────────────────────────────────────────────
+
+interface DocTemplate {
+  id: string
+  name: string
+  docType: string
+  status: string
+  sizeBytes: number
+  confirmedVars: { variableId: string }[]
+  processedKey?: string | null
+  createdAt: string
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  gtm: 'GTM Framework',
+  demand_gen: 'Demand Gen',
+  branding: 'Branding',
+  custom: 'Custom',
+}
+
+function DocTemplateSection() {
+  const [templates, setTemplates] = useState<DocTemplate[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver]   = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const uploadRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await apiFetch('/api/v1/doc-templates')
+      if (r.ok) { const { data } = await r.json(); setTemplates(data ?? []) }
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleUpload = useCallback(async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.docx')) { alert('Only .docx files are supported'); return }
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('name', file.name.replace(/\.docx$/i, ''))
+      fd.append('docType', 'gtm')
+      const r = await apiFetch('/api/v1/doc-templates', { method: 'POST', body: fd })
+      if (!r.ok) { const b = await r.json().catch(() => ({})); alert('Upload failed: ' + ((b as any).error ?? r.status)); return }
+      const { data } = await r.json()
+      await load()
+      setEditingId(data.id)
+    } catch (err) {
+      alert('Upload failed: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setUploading(false)
+    }
+  }, [load])
+
+  const deleteTemplate = useCallback(async (id: string) => {
+    if (!confirm('Delete this template?')) return
+    await apiFetch(`/api/v1/doc-templates/${id}`, { method: 'DELETE' })
+    setTemplates((prev) => prev.filter((t) => t.id !== id))
+    if (editingId === id) setEditingId(null)
+  }, [editingId])
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, { label: string; bg: string; color: string }> = {
+      pending:   { label: 'Pending',   bg: '#f5f5f5', color: '#6b7280' },
+      analyzing: { label: 'Analyzing', bg: '#fef9c3', color: '#854d0e' },
+      ready:     { label: 'Ready',     bg: '#dcfce7', color: '#166534' },
+      error:     { label: 'Error',     bg: '#fee2e2', color: '#991b1b' },
+    }
+    const s = map[status] ?? map.pending
+    return <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+  }
+
+  return (
+    <>
+      {editingId && (
+        <DocTemplateEditor
+          templateId={editingId}
+          onClose={() => setEditingId(null)}
+          onSaved={load}
+        />
+      )}
+
+      <section>
+        <div className="flex items-center gap-2 mb-1">
+          <Icons.LayoutTemplate className="h-4 w-4" style={{ color: '#b4b2a9' }} />
+          <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Document Templates</h2>
+        </div>
+        <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
+          Upload a polished Word document as a template. AI suggests where variable placeholders should go.
+          Open the editor to confirm placements directly in the rendered document.
+        </p>
+
+        {/* Drop / click zone */}
+        <input
+          ref={uploadRef}
+          type="file"
+          accept=".docx"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = '' }}
+        />
+        <div
+          className="flex items-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 text-sm transition-colors cursor-pointer mb-4"
+          style={{ borderColor: dragOver ? '#a200ee' : '#e8e7e1', backgroundColor: dragOver ? '#fdf5ff' : 'transparent' }}
+          onClick={() => !uploading && uploadRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={(e) => { e.preventDefault(); setDragOver(false) }}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f) }}
+        >
+          {uploading
+            ? <Icons.Loader2 className="h-4 w-4 animate-spin" style={{ color: '#a200ee' }} />
+            : <Icons.Upload className="h-4 w-4" style={{ color: dragOver ? '#a200ee' : '#b4b2a9' }} />}
+          <span style={{ color: uploading ? '#a200ee' : dragOver ? '#a200ee' : '#6b6a62' }}>
+            {uploading ? 'Uploading and analyzing…' : dragOver ? 'Drop to upload' : 'Drop a .docx here or click to browse'}
+          </span>
+        </div>
+
+        {/* Template list */}
+        {loading ? (
+          <div className="flex items-center gap-2 py-3 text-[13px]" style={{ color: '#b4b2a9' }}>
+            <Icons.Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </div>
+        ) : templates.length === 0 ? (
+          <p className="text-[13px] py-2" style={{ color: '#b4b2a9' }}>No templates yet. Drop a .docx above to get started.</p>
+        ) : (
+          <div className="space-y-2">
+            {templates.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center gap-3 rounded-xl px-4 py-3"
+                style={{ border: '1px solid #e8e7e1', backgroundColor: '#fff' }}
+              >
+                <Icons.FileType className="h-4 w-4 shrink-0" style={{ color: '#a200ee' }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium truncate" style={{ color: '#1a1a14' }}>{t.name}</p>
+                  <p className="text-[11px]" style={{ color: '#b4b2a9' }}>
+                    {DOC_TYPE_LABELS[t.docType] ?? t.docType}
+                    {' · '}{t.confirmedVars?.length ?? 0} variables
+                    {t.processedKey ? ' · Ready' : ''}
+                  </p>
+                </div>
+                {statusBadge(t.status)}
+                <button
+                  onClick={() => setEditingId(t.id)}
+                  className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium border"
+                  style={{ borderColor: '#e8e7e1', color: '#374151' }}
+                >
+                  <Icons.Pencil className="h-3 w-3" /> Edit
+                </button>
+                <button
+                  onClick={() => deleteTemplate(t.id)}
+                  className="shrink-0 rounded p-1 hover:text-red-500"
+                  style={{ color: '#b4b2a9' }}
+                  title="Delete"
+                >
+                  <Icons.Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -918,6 +1088,9 @@ export function SettingsPage() {
 
           {/* ── Style Templates ──────────────────────────────────────────── */}
           <DocStyleSection />
+
+          {/* ── Document Templates ───────────────────────────────────────── */}
+          <DocTemplateSection />
 
           {/* ── File Library ─────────────────────────────────────────────── */}
           <LibrarySection />

@@ -12,8 +12,9 @@ export interface CurrentUser {
   createdAt: string
 }
 
-const ADMIN_ROLES  = new Set(['owner', 'super_admin', 'admin', 'org_admin'])
-const OWNER_ROLES  = new Set(['owner', 'super_admin'])
+const ADMIN_ROLES            = new Set(['owner', 'super_admin', 'admin', 'org_admin'])
+const OWNER_ROLES            = new Set(['owner', 'super_admin'])
+const TEMPLATE_MANAGER_ROLES = new Set(['owner', 'super_admin', 'admin', 'org_admin', 'manager', 'editor'])
 
 let cached: CurrentUser | null = null
 
@@ -40,12 +41,14 @@ export function useCurrentUser() {
       .finally(() => setLoading(false))
   }, [])
 
-  const role      = user?.role ?? ''
-  const isOwner   = OWNER_ROLES.has(role)
-  const isAdmin   = ADMIN_ROLES.has(role)
-  const isManager = role === 'manager' || isAdmin
-  const isLead    = role === 'lead' || isManager
-  const isMember  = !!user
+  const role               = user?.role ?? ''
+  const isOwner            = OWNER_ROLES.has(role)
+  const isAdmin            = ADMIN_ROLES.has(role)
+  const isEditor           = role === 'editor' || isAdmin
+  const isManager          = role === 'manager' || isEditor
+  const isLead             = role === 'lead' || isManager
+  const isMember           = !!user
+  const canManageTemplates = TEMPLATE_MANAGER_ROLES.has(role)
 
-  return { user, loading, isOwner, isAdmin, isManager, isLead, isMember, setUser }
+  return { user, loading, isOwner, isAdmin, isEditor, isManager, isLead, isMember, canManageTemplates, setUser }
 }
