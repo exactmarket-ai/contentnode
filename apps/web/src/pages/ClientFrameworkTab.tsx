@@ -1753,6 +1753,78 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
           ))}
         </div>
       )}
+
+      {/* Scheduled research results for this vertical */}
+      {verticalId && <ScheduledResearchSection clientId={clientId} verticalId={verticalId} />}
+    </div>
+  )
+}
+
+interface ScheduledEntry {
+  id: string
+  filename: string
+  summary: string | null
+  summaryStatus: string
+  extractedText: string | null
+  createdAt: string
+}
+
+function ScheduledResearchSection({ clientId, verticalId }: { clientId: string; verticalId: string }) {
+  const [entries, setEntries] = useState<ScheduledEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${clientId}/brain/scheduled?verticalId=${verticalId}`)
+      .then((r) => r.json())
+      .then(({ data }) => setEntries(data ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [clientId, verticalId])
+
+  if (loading || entries.length === 0) return null
+
+  return (
+    <div className="mt-6">
+      <div className="mb-2 flex items-center gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Research Intelligence</p>
+        <span className="rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-purple-600">Scheduled</span>
+      </div>
+      <div className="space-y-2">
+        {entries.map((e) => {
+          const isOpen = expanded.has(e.id)
+          const label = e.filename.replace(/^\[Scheduled\]\s*/, '')
+          return (
+            <div key={e.id} className="rounded-lg border border-border bg-card overflow-hidden">
+              <div
+                className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-muted/20 transition-colors"
+                onClick={() => setExpanded((prev) => { const s = new Set(prev); s.has(e.id) ? s.delete(e.id) : s.add(e.id); return s })}
+              >
+                <span className="text-[11px] text-muted-foreground shrink-0 w-3">{isOpen ? '▼' : '▶'}</span>
+                <span className="text-lg shrink-0">🔬</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{label}</p>
+                  <p className="text-[10px] text-muted-foreground">{new Date(e.createdAt).toLocaleDateString()}</p>
+                </div>
+                <span className="shrink-0 text-[10px] text-green-600 font-medium">✓ Ready</span>
+              </div>
+              {isOpen && e.extractedText && (
+                <div className="border-t border-border px-4 pb-4 pt-3">
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground/80" style={{ fontFamily: 'inherit' }}>
+                    {e.extractedText}
+                  </pre>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(e.extractedText ?? '')}
+                    className="mt-3 flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    Copy
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
