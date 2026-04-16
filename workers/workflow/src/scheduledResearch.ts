@@ -205,14 +205,14 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
         taskId,
       })
 
+      // Always write to brain (idempotent upsert) so re-runs fix any stale vertical routing
+      await writeToBrain(agencyId, task.scope, task.clientId, task.verticalId, task.label, output)
+
       const newHash = createHash('sha256').update(output).digest('hex')
       const changed = task.lastOutputHash !== newHash
       let changeSummary: string | null = null
 
       if (changed) {
-        // Write updated research to brain
-        await writeToBrain(agencyId, task.scope, task.clientId, task.verticalId, task.label, output)
-
         // Generate change summary (skip on first run — no previous hash)
         if (task.lastOutputHash) {
           // Fetch previous content for comparison

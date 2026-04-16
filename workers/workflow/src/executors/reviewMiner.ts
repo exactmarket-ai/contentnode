@@ -180,15 +180,15 @@ export class ReviewMinerExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
-    const companySlug = (config.companySlug as string | undefined)?.trim() ?? ''
-    const companyName = (config.companyName as string | undefined)?.trim() ?? companySlug
+    const companyName = (config.companyName as string | undefined)?.trim() ?? ''
+    const companySlug = (config.companySlug as string | undefined)?.trim() || companyName
     const platforms = (config.platforms as string[]) ?? ['trustpilot']
     const competitors = ((config.competitors as string | undefined) ?? '')
       .split('\n').map((s) => s.trim()).filter(Boolean)
     const maxReviews = Math.min(50, Math.max(5, (config.maxReviewsPerSource as number) ?? 20))
     const synthesisType = (config.synthesisType as string) ?? 'themes'
 
-    if (!companySlug) throw new Error('Review Miner: company slug/URL is required')
+    if (!companySlug) throw new Error('Review Miner: company name is required')
 
     // ── Scrape all sources in parallel ───────────────────────────────────────
     const scrapeJobs: Array<Promise<{ platform: string; company: string; reviews: string[]; url: string }>> = []
