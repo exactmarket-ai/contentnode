@@ -8,7 +8,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
-import { useWorkflowStore, PALETTE_NODES } from '@/store/workflowStore'
+import { useWorkflowStore, PALETTE_NODES, OFFLINE_COMPATIBLE_SUBTYPES } from '@/store/workflowStore'
 import { SourceNode } from './nodes/SourceNode'
 import { LogicNode } from './nodes/LogicNode'
 import { OutputNode } from './nodes/OutputNode'
@@ -169,6 +169,10 @@ export function WorkflowCanvas() {
 
     const def = PALETTE_NODES.find((n) => n.subtype === subtype)
     if (!def) return
+
+    // Block online-only nodes in offline workflows
+    const { workflow } = useWorkflowStore.getState()
+    if (workflow.connectivity_mode === 'offline' && !OFFLINE_COMPATIBLE_SUBTYPES.has(subtype)) return
 
     const newId = nextId()
     const isGroup = def.type === 'group'

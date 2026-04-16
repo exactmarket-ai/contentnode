@@ -33,6 +33,7 @@ export function AiGenerateConfig({
 }) {
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
   const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
+  const isOffline = useWorkflowStore((s) => s.workflow.connectivity_mode === 'offline')
   const [copied, setCopied] = useState(false)
   const [showPromptPicker, setShowPromptPicker] = useState(false)
   const [loadedTemplate, setLoadedTemplate] = useState<PromptTemplate | null>(null)
@@ -124,68 +125,93 @@ export function AiGenerateConfig({
       </FieldGroup>
 
       {/* Model override */}
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Model Override</Label>
-        <p className="text-xs text-muted-foreground/60">Inherited: {inheritedLabel}</p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={overrideEnabled}
-            onChange={(e) =>
-              onChange(
-                'model_config',
-                e.target.checked
-                  ? { provider: 'anthropic', model: 'claude-sonnet-4-5' }
-                  : null,
-              )
-            }
-            className="accent-blue-500"
-          />
-          <span className="text-xs">Override model for this node</span>
-        </label>
-
-        {overrideEnabled && (
-          <div className="space-y-2 rounded-md border border-border p-2.5">
-            <FieldGroup label="Provider">
-              <Select
-                value={overrideProvider}
-                onValueChange={(v) =>
-                  onChange('model_config', {
-                    provider: v,
-                    model: defaultModelForProvider(v),
-                  })
-                }
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
-                  <SelectItem value="openai" className="text-xs">OpenAI</SelectItem>
-                  <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
-                </SelectContent>
-              </Select>
-            </FieldGroup>
-            <FieldGroup label="Model">
-              <Select
-                value={overrideModel}
-                onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelsForProvider(overrideProvider).map((m) => (
-                    <SelectItem key={m.value} value={m.value} className="text-xs">
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FieldGroup>
+      {isOffline ? (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Model</Label>
+          <div className="flex items-center gap-2 rounded-md border border-amber-200/60 bg-amber-50/80 px-2.5 py-2">
+            <Icons.WifiOff className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <span className="text-[11px] text-amber-700">Offline mode — Ollama (local) only</span>
           </div>
-        )}
-      </div>
+          <FieldGroup label="Model">
+            <Select
+              value={overrideModel}
+              onValueChange={(v) =>
+                onChange('model_config', { provider: 'ollama', model: v })
+              }
+            >
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {modelsForProvider('ollama').map((m) => (
+                  <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldGroup>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Model Override</Label>
+          <p className="text-xs text-muted-foreground/60">Inherited: {inheritedLabel}</p>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={overrideEnabled}
+              onChange={(e) =>
+                onChange(
+                  'model_config',
+                  e.target.checked
+                    ? { provider: 'anthropic', model: 'claude-sonnet-4-5' }
+                    : null,
+                )
+              }
+              className="accent-blue-500"
+            />
+            <span className="text-xs">Override model for this node</span>
+          </label>
+
+          {overrideEnabled && (
+            <div className="space-y-2 rounded-md border border-border p-2.5">
+              <FieldGroup label="Provider">
+                <Select
+                  value={overrideProvider}
+                  onValueChange={(v) =>
+                    onChange('model_config', {
+                      provider: v,
+                      model: defaultModelForProvider(v),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
+                    <SelectItem value="openai" className="text-xs">OpenAI</SelectItem>
+                    <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldGroup>
+              <FieldGroup label="Model">
+                <Select
+                  value={overrideModel}
+                  onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelsForProvider(overrideProvider).map((m) => (
+                      <SelectItem key={m.value} value={m.value} className="text-xs">
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FieldGroup>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Temperature */}
       <div className="space-y-1.5">

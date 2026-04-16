@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { PALETTE_NODES, type NodeCategory, type PaletteNodeDef, useWorkflowStore } from '@/store/workflowStore'
+import { PALETTE_NODES, OFFLINE_COMPATIBLE_SUBTYPES, type NodeCategory, type PaletteNodeDef, useWorkflowStore } from '@/store/workflowStore'
 import { InsightsSidebar } from '@/components/insights/InsightsSidebar'
 import { NODE_SPEC, getNodeSpec } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
@@ -216,6 +216,8 @@ function NodesPalette() {
   const [search, setSearch] = useState('')
   const [collapsedCats, setCollapsedCats] = useState<Set<NodeCategory>>(readCollapsed)
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
+  const connectivityMode = useWorkflowStore((s) => s.workflow.connectivity_mode)
+  const isOffline = connectivityMode === 'offline'
   const { usage, track } = useNodeUsage()
 
   const toggleCat = useCallback((cat: NodeCategory) => {
@@ -227,7 +229,11 @@ function NodesPalette() {
     })
   }, [])
 
-  const filtered = PALETTE_NODES.filter(
+  const availableNodes = isOffline
+    ? PALETTE_NODES.filter((n) => OFFLINE_COMPATIBLE_SUBTYPES.has(n.subtype))
+    : PALETTE_NODES
+
+  const filtered = availableNodes.filter(
     (n) =>
       n.label.toLowerCase().includes(search.toLowerCase()) ||
       n.description.toLowerCase().includes(search.toLowerCase())
@@ -238,7 +244,7 @@ function NodesPalette() {
 
   // Frequently used: used ≥ threshold times, sorted by count desc, capped
   const frequent = !search
-    ? PALETTE_NODES
+    ? availableNodes
         .filter((n) => (usage[n.subtype] ?? 0) >= FREQUENT_THRESHOLD)
         .sort((a, b) => (usage[b.subtype] ?? 0) - (usage[a.subtype] ?? 0))
         .slice(0, FREQUENT_MAX)
@@ -246,6 +252,14 @@ function NodesPalette() {
 
   return (
     <>
+      {isOffline && (
+        <div className="flex items-center gap-2 border-b border-amber-200/60 bg-amber-50/80 px-3 py-2">
+          <Icons.WifiOff className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <span className="text-[11px] font-medium text-amber-700 leading-tight">
+            Offline mode — only local nodes available
+          </span>
+        </div>
+      )}
       <ClientIndicator />
       <ClientTemplatesSection />
 
@@ -359,6 +373,7 @@ function CollapsedToolbar({ onExpand, onShowInsights }: { onExpand: () => void; 
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
   const canvasTool = useWorkflowStore((s) => s.canvasTool)
   const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
+  const isOffline = useWorkflowStore((s) => s.workflow.connectivity_mode === 'offline')
   const [openCat, setOpenCat] = useState<NodeCategory | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
   const submenuRef = useRef<HTMLDivElement>(null)
@@ -483,7 +498,7 @@ function CollapsedToolbar({ onExpand, onShowInsights }: { onExpand: () => void; 
 
           {/* Node list */}
           <div className="max-h-[60vh] overflow-y-auto py-1.5 px-2 space-y-1">
-            {sortedByLabel(PALETTE_NODES.filter((n) => n.category === openCat)).map((def) => (
+            {sortedByLabel(PALETTE_NODES.filter((n) => n.category === openCat && (!isOffline || OFFLINE_COMPATIBLE_SUBTYPES.has(n.subtype)))).map((def) => (
               <PaletteItem
                 key={def.subtype}
                 def={def}

@@ -1,9 +1,11 @@
+import * as Icons from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { FieldGroup } from '../shared'
+import { useWorkflowStore } from '@/store/workflowStore'
 
 const DETECTION_SERVICES = [
   { value: 'gptzero',      label: 'GPTZero' },
@@ -22,7 +24,8 @@ export function DetectionConfig({
   onChange: (k: string, v: unknown) => void
   nodeRunStatus?: { output?: unknown; warning?: string }
 }) {
-  const service = (config.service as string) ?? 'gptzero'
+  const isOffline = useWorkflowStore((s) => s.workflow.connectivity_mode === 'offline')
+  const service = isOffline ? 'local' : ((config.service as string) ?? 'gptzero')
   const threshold = (config.threshold as number) ?? 20
   const maxRetries = (config.max_retries as number) ?? 3
   const apiKeyRef = (config.api_key_ref as string) ?? ''
@@ -36,16 +39,23 @@ export function DetectionConfig({
   return (
     <>
       {/* Service */}
-      <FieldGroup label="Detection Service">
-        <Select value={service} onValueChange={(v) => onChange('service', v)}>
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {DETECTION_SERVICES.map((s) => (
-              <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </FieldGroup>
+      {isOffline ? (
+        <div className="flex items-center gap-2 rounded-md border border-amber-200/60 bg-amber-50/80 px-2.5 py-2">
+          <Icons.WifiOff className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <span className="text-[11px] text-amber-700">Offline mode — local detection only</span>
+        </div>
+      ) : (
+        <FieldGroup label="Detection Service">
+          <Select value={service} onValueChange={(v) => onChange('service', v)}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {DETECTION_SERVICES.map((s) => (
+                <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FieldGroup>
+      )}
 
       {/* Threshold */}
       <div className="space-y-1.5">

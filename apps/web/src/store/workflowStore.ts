@@ -71,6 +71,28 @@ export interface PaletteNodeDef {
   requiresManualInput?: boolean
 }
 
+/**
+ * Subtypes that work without any internet connection.
+ * When a workflow's connectivity_mode is 'offline', only these nodes are
+ * shown in the palette and droppable on the canvas.
+ *
+ * Rules:
+ *  - ai-generate: restricted to Ollama provider (enforced in AiGenerateConfig)
+ *  - detection:   restricted to local service  (enforced in DetectionConfig)
+ */
+export const OFFLINE_COMPATIBLE_SUBTYPES = new Set([
+  // Source — DB reads or local file input
+  'text-input', 'file-upload', 'workflow-output',
+  'client-brain', 'gtm-framework', 'brand-context',
+  // Logic — local processing or local AI
+  'ai-generate', 'transform', 'condition', 'merge', 'human-review',
+  'detection', 'conditional-branch',
+  // Output — local rendering
+  'file-export', 'display', 'content-output',
+  // Canvas utility
+  'group',
+])
+
 export const PALETTE_NODES: PaletteNodeDef[] = [
   // Source
   {
