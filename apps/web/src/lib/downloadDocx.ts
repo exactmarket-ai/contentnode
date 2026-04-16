@@ -741,8 +741,13 @@ const GTM_GRAY = '6b7280'
 function styledTable(headers: string[], rows: string[][], widths?: number[], primaryColor = GTM_PURPLE): Table {
   const totalCols = headers.length
   const pcts = widths ?? headers.map(() => Math.floor(100 / totalCols))
-  // derive a light tint (fallback to GTM_PURPLE_LIGHT)
-  const lightColor = primaryColor === GTM_PURPLE ? GTM_PURPLE_LIGHT : primaryColor + '22'
+  // derive a proper 6-digit light tint by blending 85% toward white
+  const lighten = (hex: string) => {
+    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16)
+    const blend = (c: number) => Math.round(c + (255 - c) * 0.85).toString(16).padStart(2, '0')
+    return blend(r) + blend(g) + blend(b)
+  }
+  const lightColor = lighten(primaryColor)
 
   const headerRow = new TableRow({
     tableHeader: true,
