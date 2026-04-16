@@ -5138,14 +5138,19 @@ function TaskConfigFields({ type, config, onChange }: {
   return null
 }
 
-function AddTaskModal({ clientId, onClose, onCreated }: {
-  clientId: string; onClose: () => void; onCreated: (t: ScheduledTask) => void
+function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
+  clientId: string
+  onClose: () => void
+  onCreated?: (t: ScheduledTask) => void
+  onUpdated?: (t: ScheduledTask) => void
+  editTask?: ScheduledTask
 }) {
-  const [type, setType] = useState<ScheduledTaskType>('web_scrape')
-  const [label, setLabel] = useState('')
-  const [frequency, setFrequency] = useState<ScheduledTaskFrequency>('weekly')
-  const [config, setConfig] = useState<Record<string, unknown>>({})
-  const [verticalId, setVerticalId] = useState<string>('__client__')
+  const isEdit = !!editTask
+  const [type, setType] = useState<ScheduledTaskType>(editTask?.type ?? 'web_scrape')
+  const [label, setLabel] = useState(editTask?.label ?? '')
+  const [frequency, setFrequency] = useState<ScheduledTaskFrequency>(editTask?.frequency ?? 'weekly')
+  const [config, setConfig] = useState<Record<string, unknown>>(editTask?.config ?? {})
+  const [verticalId, setVerticalId] = useState<string>(editTask?.verticalId ?? '__client__')
   const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -5162,22 +5167,40 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
     setSaving(true); setError(null)
     const isVertical = verticalId !== '__client__'
     try {
-      const res = await apiFetch('/api/v1/scheduled-tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: label.trim(),
-          type,
-          scope: isVertical ? 'vertical' : 'client',
-          frequency,
-          clientId,
-          ...(isVertical ? { verticalId } : {}),
-          config,
-        }),
-      })
-      const { data, error: err } = await res.json()
-      if (!res.ok) { setError(err ?? 'Failed to create task'); return }
-      onCreated(data)
+      if (isEdit && editTask) {
+        // PATCH — type and scope are immutable
+        const res = await apiFetch(`/api/v1/scheduled-tasks/${editTask.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            label: label.trim(),
+            frequency,
+            config,
+            verticalId: isVertical ? verticalId : null,
+          }),
+        })
+        const { data, error: err } = await res.json()
+        if (!res.ok) { setError(err ?? 'Failed to update task'); return }
+        onUpdated?.(data)
+      } else {
+        // POST — create new
+        const res = await apiFetch('/api/v1/scheduled-tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            label: label.trim(),
+            type,
+            scope: isVertical ? 'vertical' : 'client',
+            frequency,
+            clientId,
+            ...(isVertical ? { verticalId } : {}),
+            config,
+          }),
+        })
+        const { data, error: err } = await res.json()
+        if (!res.ok) { setError(err ?? 'Failed to create task'); return }
+        onCreated?.(data)
+      }
       onClose()
     } catch { setError('Network error') }
     finally { setSaving(false) }
@@ -5190,7 +5213,7 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
         <div className="rounded-t-xl px-6 py-5" style={{ backgroundColor: '#a200ee' }}>
           <div className="flex items-center gap-2">
             <Icons.CalendarClock className="h-5 w-5 text-white/80" />
-            <h2 className="text-base font-semibold text-white">Add Scheduled Task</h2>
+            <h2 className="text-base font-semibold text-white">{isEdit ? 'Edit Scheduled Task' : 'Add Scheduled Task'}</h2>
             <button onClick={onClose} className="ml-auto rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
               <Icons.X className="h-4 w-4" />
             </button>
@@ -5214,31 +5237,33 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
             </select>
           </div>
 
-          {/* Type selector */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Task type</p>
-            <div className="grid grid-cols-2 gap-2">
-              {(Object.entries(TASK_TYPE_META) as [ScheduledTaskType, typeof TASK_TYPE_META[ScheduledTaskType]][]).map(([t, meta]) => {
-                const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
-                const active = type === t
-                return (
-                  <button key={t} onClick={() => { setType(t); setConfig({}) }}
-                    style={{
-                      border: active ? '1px solid #a200ee' : '1px solid #e5e7eb',
-                      backgroundColor: active ? '#fdf5ff' : '#f9fafb',
-                      color: active ? '#7c00cc' : '#111827',
-                      borderRadius: 8, padding: '10px 12px',
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      textAlign: 'left', fontSize: 12, cursor: 'pointer',
-                      transition: 'border-color 0.15s',
-                    }}>
-                    <Icon className={cn('h-3.5 w-3.5 shrink-0', meta.color)} />
-                    <span className="font-medium">{meta.label}</span>
-                  </button>
-                )
-              })}
+          {/* Type selector — hidden when editing (type is immutable) */}
+          {!isEdit && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Task type</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.entries(TASK_TYPE_META) as [ScheduledTaskType, typeof TASK_TYPE_META[ScheduledTaskType]][]).map(([t, meta]) => {
+                  const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+                  const active = type === t
+                  return (
+                    <button key={t} onClick={() => { setType(t); setConfig({}) }}
+                      style={{
+                        border: active ? '1px solid #a200ee' : '1px solid #e5e7eb',
+                        backgroundColor: active ? '#fdf5ff' : '#f9fafb',
+                        color: active ? '#7c00cc' : '#111827',
+                        borderRadius: 8, padding: '10px 12px',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        textAlign: 'left', fontSize: 12, cursor: 'pointer',
+                        transition: 'border-color 0.15s',
+                      }}>
+                      <Icon className={cn('h-3.5 w-3.5 shrink-0', meta.color)} />
+                      <span className="font-medium">{meta.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Label + frequency */}
           <div className="grid grid-cols-2 gap-4">
@@ -5278,7 +5303,7 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
           <button onClick={onClose} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer' }}>Cancel</button>
           <button onClick={save} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 12, fontWeight: 600, color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="h-3.5 w-3.5" />}
-            Create Task
+            {isEdit ? 'Save Changes' : 'Create Task'}
           </button>
         </div>
       </div>
@@ -5290,6 +5315,7 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null)
   const [running, setRunning] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -5422,6 +5448,9 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
                       title="Run now">
                       {running.has(task.id) ? '…' : '▶'}
                     </button>
+                    <button onClick={() => setEditingTask(task)} className="rounded p-1 text-muted-foreground hover:text-foreground" title="Edit">
+                      <Icons.Pencil className="h-3.5 w-3.5" />
+                    </button>
                     <button onClick={() => del(task.id)} className="rounded p-1 text-muted-foreground hover:text-red-500" title="Delete">
                       <Icons.Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -5438,6 +5467,18 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
           clientId={clientId}
           onClose={() => setShowAdd(false)}
           onCreated={(t) => setTasks((prev) => [t, ...prev])}
+        />
+      )}
+
+      {editingTask && (
+        <AddTaskModal
+          clientId={clientId}
+          editTask={editingTask}
+          onClose={() => setEditingTask(null)}
+          onUpdated={(t) => {
+            setTasks((prev) => prev.map((x) => x.id === t.id ? t : x))
+            setEditingTask(null)
+          }}
         />
       )}
     </div>

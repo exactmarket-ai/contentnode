@@ -12,7 +12,7 @@ const createBody = z.object({
   type: z.enum(['web_scrape', 'review_miner', 'audience_signal', 'seo_intent', 'research_brief']),
   frequency: z.enum(['daily', 'weekly', 'monthly']),
   clientId: z.string().optional(),
-  verticalId: z.string().optional(),
+  verticalId: z.string().nullish(),
   config: z.record(z.unknown()).default({}),
 })
 
@@ -95,7 +95,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     if (config !== undefined) updateData.config = config
     if (enabled !== undefined) updateData.enabled = enabled
     if (clientId !== undefined) updateData.clientId = clientId
-    if (verticalId !== undefined) updateData.verticalId = verticalId
+    if (verticalId !== undefined) updateData.verticalId = verticalId ?? null
 
     const task = await prisma.scheduledTask.update({
       where: { id },
