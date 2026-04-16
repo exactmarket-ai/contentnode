@@ -83,7 +83,7 @@ function AssessmentList({ assessments, onNew }: { assessments: Assessment[]; onN
         </Button>
       </div>
       {assessments.map((a) => (
-        <div key={a.id} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3 hover:border-blue-300 transition-colors group cursor-pointer">
+        <div key={a.id} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
             <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
           </div>
@@ -94,7 +94,6 @@ function AssessmentList({ assessments, onNew }: { assessments: Assessment[]; onN
           <div className="flex items-center gap-3 shrink-0">
             <span className="text-[10px] text-muted-foreground">{relTime(a.createdAt)}</span>
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">In progress</span>
-            <Icons.ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
           </div>
         </div>
       ))}
