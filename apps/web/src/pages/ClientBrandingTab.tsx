@@ -561,7 +561,7 @@ function ScheduledResearchSection({ clientId, verticalId }: { clientId: string; 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    apiFetch(`/api/v1/clients/${clientId}/brain/scheduled?verticalId=${verticalId}`)
+    apiFetch(`/api/v1/clients/${clientId}/brain/scheduled?brandVerticalId=${verticalId}`)
       .then((r) => r.json())
       .then(({ data }) => setEntries(data ?? []))
       .catch(() => {})

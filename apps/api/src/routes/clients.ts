@@ -4349,18 +4349,36 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
   })
 
   // GET /:clientId/brain/scheduled — scheduled task results for a client, optionally filtered by vertical
-  app.get<{ Params: { clientId: string }; Querystring: { verticalId?: string } }>(
+  // Accepts verticalId (ClientVertical) OR brandVerticalId (ClientBrandVertical, resolved by name match)
+  app.get<{ Params: { clientId: string }; Querystring: { verticalId?: string; brandVerticalId?: string } }>(
     '/:clientId/brain/scheduled',
     async (req, reply) => {
       const { agencyId } = req.auth
       const { clientId } = req.params
-      const { verticalId } = req.query
+      const { verticalId, brandVerticalId } = req.query
       const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
       if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+      // Resolve brandVerticalId → ClientVertical id by name match
+      let resolvedVerticalId = verticalId
+      if (brandVerticalId && !verticalId) {
+        const bv = await prisma.clientBrandVertical.findFirst({
+          where: { id: brandVerticalId, clientId, agencyId },
+          select: { name: true },
+        })
+        if (bv) {
+          const cv = await prisma.clientVertical.findFirst({
+            where: { clientId, agencyId, name: bv.name },
+            select: { id: true },
+          })
+          resolvedVerticalId = cv?.id
+        }
+      }
+
       const entries = await prisma.clientBrainAttachment.findMany({
         where: {
           clientId, agencyId, source: 'scheduled',
-          ...(verticalId ? { verticalId } : {}),
+          ...(resolvedVerticalId ? { verticalId: resolvedVerticalId } : {}),
         },
         orderBy: { createdAt: 'desc' },
         select: { id: true, filename: true, summary: true, summaryStatus: true, extractedText: true, createdAt: true, verticalId: true },
