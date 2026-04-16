@@ -1,7 +1,7 @@
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   AlignmentType, BorderStyle, Table, TableRow, TableCell,
-  WidthType, ShadingType,
+  WidthType, ShadingType, TableBorders,
   Header, Footer, PageNumber, ImageRun,
 } from 'docx'
 import { stripMarkdown } from './utils'
@@ -735,55 +735,60 @@ export async function downloadAssessmentDocx(data: AssessmentExport, clientName:
 
 const GTM_PURPLE = '7c3aed'
 const GTM_PURPLE_LIGHT = 'ede9fe'
-const GTM_GRAY = '6b7280'
 
-/** Creates a styled table with themed header row. widths are percentages (must sum to 100). */
+/** Creates a clean styled table. Header row uses solid primary color with white text.
+ *  Data rows alternate subtle off-white. No outer borders — thin row dividers only. */
 function styledTable(headers: string[], rows: string[][], widths?: number[], primaryColor = GTM_PURPLE): Table {
   const totalCols = headers.length
   const pcts = widths ?? headers.map(() => Math.floor(100 / totalCols))
-  // derive a proper 6-digit light tint by blending 85% toward white
-  const lighten = (hex: string) => {
-    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16)
-    const blend = (c: number) => Math.round(c + (255 - c) * 0.85).toString(16).padStart(2, '0')
-    return blend(r) + blend(g) + blend(b)
-  }
-  const lightColor = lighten(primaryColor)
+
+  const none  = { style: BorderStyle.NONE,   size: 0, color: 'auto' }
+  const divider = { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' }
 
   const headerRow = new TableRow({
     tableHeader: true,
     children: headers.map((h, i) =>
       new TableCell({
         width: { size: pcts[i], type: WidthType.PERCENTAGE },
-        shading: { type: ShadingType.SOLID, color: lightColor, fill: lightColor },
+        shading: { type: ShadingType.SOLID, color: primaryColor, fill: primaryColor },
+        borders: { top: none, bottom: none, left: none, right: none },
         children: [new Paragraph({
-          children: [new TextRun({ text: h, bold: true, size: 18, color: primaryColor })],
-          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: h, bold: true, size: 19, color: 'FFFFFF' })],
+          spacing: { before: 80, after: 80 },
         })],
       })
     ),
   })
 
-  const dataRows = rows.map((cells) =>
+  const dataRows = rows.map((cells, ri) =>
     new TableRow({
       children: cells.map((cell, i) =>
         new TableCell({
           width: { size: pcts[i] ?? pcts[pcts.length - 1], type: WidthType.PERCENTAGE },
+          shading: ri % 2 === 1
+            ? { type: ShadingType.SOLID, color: 'f8fafc', fill: 'f8fafc' }
+            : { type: ShadingType.SOLID, color: 'FFFFFF', fill: 'FFFFFF' },
+          borders: { top: none, bottom: divider, left: none, right: none },
           children: [new Paragraph({
-            children: [new TextRun({ text: cell ?? '', size: 18 })],
-            spacing: { before: 40, after: 40 },
+            children: [new TextRun({ text: cell ?? '', size: 19, color: '1e293b' })],
+            spacing: { before: 72, after: 72, line: 276 },
           })],
         })
       ),
     })
   )
 
+  // Cast needed: docx types omit insideH/insideV but the runtime supports them
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tableBorders = new TableBorders({ top: none, bottom: none, left: none, right: none, insideH: divider, insideV: none } as any) as any
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [headerRow, ...dataRows],
+    borders: tableBorders,
   })
 }
 
-/** GTM section heading with themed border-bottom. Adds a page break before (except first). */
+/** GTM section heading — primary color text, thin accent line underneath. */
 function gtmSectionHeading(num: string, title: string, usedIn: string, addPageBreak: boolean, primaryColor = GTM_PURPLE): (Paragraph | Table)[] {
   const items: Paragraph[] = []
   if (addPageBreak) {
@@ -791,17 +796,17 @@ function gtmSectionHeading(num: string, title: string, usedIn: string, addPageBr
   }
   items.push(
     new Paragraph({
-      children: [new TextRun({ text: `${num} ${title}`, bold: true, size: 26, color: primaryColor })],
+      children: [new TextRun({ text: `${num}  ${title}`, bold: true, size: 28, color: primaryColor })],
       heading: HeadingLevel.HEADING_1,
-      spacing: { before: 240, after: usedIn ? 60 : 120 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: primaryColor } },
+      spacing: { before: 280, after: usedIn ? 60 : 140 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: 'e2e8f0' } },
     })
   )
   if (usedIn) {
     items.push(
       new Paragraph({
-        children: [new TextRun({ text: `Used in: ${usedIn}`, italics: true, size: 16, color: GTM_GRAY })],
-        spacing: { after: 120 },
+        children: [new TextRun({ text: `Used in: ${usedIn}`, italics: true, size: 17, color: 'a0aec0' })],
+        spacing: { after: 140 },
       })
     )
   }
@@ -812,30 +817,30 @@ function gtmField(label: string, value: string | null | undefined): Paragraph[] 
   if (!value?.trim()) return []
   return [new Paragraph({
     children: [
-      new TextRun({ text: `${label}: `, bold: true, size: 20 }),
-      new TextRun({ text: value.trim(), size: 20 }),
+      new TextRun({ text: `${label}: `, bold: true, size: 20, color: '374151' }),
+      new TextRun({ text: value.trim(), size: 20, color: '1e293b' }),
     ],
-    spacing: { after: 80 },
+    spacing: { after: 100, line: 276 },
   })]
 }
 
 function gtmArea(label: string, value: string | null | undefined): Paragraph[] {
   if (!value?.trim()) return []
   return [
-    new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20 })], spacing: { after: 40 } }),
-    new Paragraph({ children: [new TextRun({ text: value.trim(), size: 20 })], spacing: { after: 120 } }),
+    new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20, color: '374151' })], spacing: { after: 48 } }),
+    new Paragraph({ children: [new TextRun({ text: value.trim(), size: 20, color: '1e293b' })], spacing: { after: 140, line: 276 } }),
   ]
 }
 
 function gtmSubHeading(text: string): Paragraph {
   return new Paragraph({
-    children: [new TextRun({ text, bold: true, size: 22, color: '111111' })],
-    spacing: { before: 160, after: 60 },
+    children: [new TextRun({ text, bold: true, size: 22, color: '1e293b' })],
+    spacing: { before: 180, after: 72 },
   })
 }
 
 function gtmSpacer(): Paragraph {
-  return new Paragraph({ spacing: { after: 120 } })
+  return new Paragraph({ spacing: { after: 140 } })
 }
 
 export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string, docStyle?: DocStyleConfig): Promise<void> {
@@ -883,12 +888,12 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
         spacing: { after: 80 },
       }),
       new Paragraph({
-        children: [new TextRun({ text: verticalName, size: 28, color: GTM_GRAY, font: { name: bodyFont } })],
+        children: [new TextRun({ text: verticalName, size: 28, color: '94a3b8', font: { name: bodyFont } })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 120 },
       }),
       new Paragraph({
-        children: [new TextRun({ text: dateStr, size: 20, color: GTM_GRAY, font: { name: bodyFont } })],
+        children: [new TextRun({ text: dateStr, size: 20, color: '94a3b8', font: { name: bodyFont } })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 600 },
       }),
@@ -1227,17 +1232,17 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── Build document with header + footer ─────────────────────────────────────
   const footerPageChildren: TextRun[] = [
-    new TextRun({ text: footerText, size: 16, color: GTM_GRAY }),
+    new TextRun({ text: footerText, size: 16, color: '94a3b8' }),
     new TextRun({ text: '\t', size: 16 }),
-    new TextRun({ text: footerAgencyName, size: 16, color: GTM_GRAY }),
+    new TextRun({ text: footerAgencyName, size: 16, color: '94a3b8' }),
   ]
   if (style.pageNumbers) {
     footerPageChildren.push(
       new TextRun({ text: '\t', size: 16 }),
-      new TextRun({ text: 'Page ', size: 16, color: GTM_GRAY }),
-      new TextRun({ children: [PageNumber.CURRENT], size: 16, color: GTM_GRAY }),
-      new TextRun({ text: ' of ', size: 16, color: GTM_GRAY }),
-      new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: GTM_GRAY }),
+      new TextRun({ text: 'Page ', size: 16, color: '94a3b8' }),
+      new TextRun({ children: [PageNumber.CURRENT], size: 16, color: '94a3b8' }),
+      new TextRun({ text: ' of ', size: 16, color: '94a3b8' }),
+      new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: '94a3b8' }),
     )
   }
 
@@ -1247,14 +1252,16 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
         {
           id: 'Normal',
           name: 'Normal',
-          run: { font: { name: bodyFont }, size: 20, color: '111111' },
+          run: { font: { name: bodyFont }, size: 21, color: '1e293b' },
+          paragraph: { spacing: { line: 276, after: 100 } },
         },
         {
           id: 'Heading1',
           name: 'Heading 1',
           basedOn: 'Normal',
           next: 'Normal',
-          run: { bold: true, size: 26, color: primaryHex, font: { name: headingFont } },
+          run: { bold: true, size: 28, color: primaryHex, font: { name: headingFont } },
+          paragraph: { spacing: { before: 280, after: 140 } },
         },
       ],
     },
@@ -1268,9 +1275,9 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
             children: [
               new Paragraph({
                 children: [
-                  new TextRun({ text: `${clientName} | ${verticalName}`, size: 18, color: GTM_GRAY }),
+                  new TextRun({ text: `${clientName} | ${verticalName}`, size: 18, color: '94a3b8' }),
                   new TextRun({ text: '\t', size: 18 }),
-                  new TextRun({ text: 'GTM Framework', size: 18, color: GTM_GRAY }),
+                  new TextRun({ text: 'GTM Framework', size: 18, color: '94a3b8' }),
                 ],
                 alignment: AlignmentType.LEFT,
                 border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'e5e7eb' } },
