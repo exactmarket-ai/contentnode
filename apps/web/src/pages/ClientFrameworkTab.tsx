@@ -54,7 +54,7 @@ function defaultFramework() {
   return {
     sectionOwners: {} as Record<string, string>,
     sectionNotes: {} as Record<string, string>,
-    s01: { positioningStatement: '', taglineOptions: '', howToUse: '', whatIsNot: '' },
+    s01: { positioningStatement: '', taglineOptions: '', howToUse: '', whatIsNot: '', platformName: '', platformBenefit: '' },
     s02: {
       industry: '', companySize: '', geography: '', itPosture: '',
       complianceStatus: '', contractProfile: '',
@@ -536,6 +536,36 @@ function S01({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
   return (
     <div>
       <FwSectionHeader num="01" title="Vertical Overview" />
+
+      {/* Vertical Context table */}
+      <div className="mb-6 overflow-hidden rounded-md border border-border">
+        {/* Header row */}
+        <div className="bg-muted/50 px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+          Vertical Context
+        </div>
+        {/* Platform name row */}
+        <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+          <span className="w-36 shrink-0 text-sm font-medium text-foreground">Platform name:</span>
+          <input
+            type="text"
+            value={s.platformName}
+            onChange={(e) => u('platformName', e.target.value)}
+            placeholder="e.g. Salesforce, HubSpot…"
+            className="flex-1 rounded border border-border bg-background px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        {/* Platform benefit row */}
+        <div className="border-t border-border px-4 py-3">
+          <textarea
+            value={s.platformBenefit}
+            onChange={(e) => u('platformBenefit', e.target.value)}
+            rows={4}
+            placeholder={`How does ${s.platformName || '[Platform name]'} specifically benefit this vertical? What operational outcomes does it enable?`}
+            className="w-full resize-y rounded border border-border bg-background px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+      </div>
+
       <FwField>
         <FwLabel>One-Line Positioning Statement</FwLabel>
         <FwHelp>{clientName} is the [role] for [target] that need [outcome] without [pain point].</FwHelp>
