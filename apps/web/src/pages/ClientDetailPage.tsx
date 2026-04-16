@@ -5206,6 +5206,33 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
     finally { setSaving(false) }
   }
 
+  const saveAs = async () => {
+    if (!label.trim()) { setError('Label is required'); return }
+    setSaving(true); setError(null)
+    const isVertical = verticalId !== '__client__'
+    const effectiveType = editTask?.type ?? type
+    try {
+      const res = await apiFetch('/api/v1/scheduled-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: label.trim(),
+          type: effectiveType,
+          scope: isVertical ? 'vertical' : 'client',
+          frequency,
+          clientId,
+          ...(isVertical ? { verticalId } : {}),
+          config,
+        }),
+      })
+      const { data, error: err } = await res.json()
+      if (!res.ok) { setError(err ?? 'Failed to create task'); return }
+      onCreated?.(data)
+      onClose()
+    } catch { setError('Network error') }
+    finally { setSaving(false) }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="w-[520px] max-h-[90vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -5301,6 +5328,12 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
 
         <div className="flex items-center justify-end gap-2 px-6 py-4" style={{ borderTop: '1px solid #e5e7eb', backgroundColor: '#ffffff' }}>
           <button onClick={onClose} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer' }}>Cancel</button>
+          {isEdit && (
+            <button onClick={saveAs} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #a200ee', backgroundColor: '#ffffff', fontSize: 12, fontWeight: 600, color: '#a200ee', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Copy className="h-3.5 w-3.5" />}
+              Save As New
+            </button>
+          )}
           <button onClick={save} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 12, fontWeight: 600, color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="h-3.5 w-3.5" />}
             {isEdit ? 'Save Changes' : 'Create Task'}
