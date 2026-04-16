@@ -791,7 +791,7 @@ function gtmSectionHeading(num: string, title: string, usedIn: string, addPageBr
   }
   items.push(
     new Paragraph({
-      children: [new TextRun({ text: `§${num} ${title}`, bold: true, size: 26, color: primaryColor })],
+      children: [new TextRun({ text: `${num} ${title}`, bold: true, size: 26, color: primaryColor })],
       heading: HeadingLevel.HEADING_1,
       spacing: { before: 240, after: usedIn ? 60 : 120 },
       border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: primaryColor } },
