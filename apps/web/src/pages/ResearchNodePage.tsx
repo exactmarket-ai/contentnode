@@ -2,13 +2,13 @@
  * ResearchNodePage.tsx
  *
  * researchNODE — Market Positioning & Competitive Assessment tool.
- * Accessible from the primary left navigation (super admin gated).
- * researchPILOT anchored at the bottom, same pattern as GTMPilot.
+ * Assessments are persisted to the database via /api/v1/prospect-assessments.
  */
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { apiFetch } from '@/lib/api'
 import { ResearchPilot } from '@/components/pilot/ResearchPilot'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -16,8 +16,12 @@ import { ResearchPilot } from '@/components/pilot/ResearchPilot'
 interface Assessment {
   id: string
   name: string
-  url: string
+  url: string | null
+  industry: string | null
+  status: string
+  totalScore: number | null
   createdAt: string
+  updatedAt: string
 }
 
 // ─── Dimension metadata ───────────────────────────────────────────────────────
@@ -30,6 +34,24 @@ const DIMENSIONS = [
   { key: 'competitive_landscape', label: 'Competitive Landscape',           weight: 15, icon: Icons.Swords },
   { key: 'growth_signals',        label: 'Growth Opportunity Signals',      weight: 20, icon: Icons.TrendingUp },
 ]
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function relTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60000) return 'just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  return `${Math.floor(diff / 86400000)}d ago`
+}
+
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  not_started: { label: 'Not started', color: 'bg-zinc-100 text-zinc-600' },
+  researching:  { label: 'Researching', color: 'bg-blue-100 text-blue-700' },
+  scoring:      { label: 'Scoring',     color: 'bg-amber-100 text-amber-700' },
+  complete:     { label: 'Complete',    color: 'bg-emerald-100 text-emerald-700' },
+  archived:     { label: 'Archived',    color: 'bg-zinc-100 text-zinc-500' },
+}
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
@@ -64,65 +86,94 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 
 // ─── Assessment list ──────────────────────────────────────────────────────────
 
-function AssessmentList({ assessments, onNew, onDelete }: { assessments: Assessment[]; onNew: () => void; onDelete: (id: string) => void }) {
-  const relTime = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime()
-    if (diff < 60000) return 'just now'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-    return `${Math.floor(diff / 86400000)}d ago`
-  }
-
+function AssessmentList({
+  assessments,
+  onNew,
+  onDelete,
+}: {
+  assessments: Assessment[]
+  onNew: () => void
+  onDelete: (id: string) => void
+}) {
   return (
     <div className="p-6 space-y-3">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-muted-foreground">{assessments.length} assessment{assessments.length !== 1 ? 's' : ''}</p>
+        <p className="text-xs text-muted-foreground">
+          {assessments.length} assessment{assessments.length !== 1 ? 's' : ''}
+        </p>
         <Button size="sm" className="gap-1.5" onClick={onNew}>
           <Icons.Plus className="h-3.5 w-3.5" />
           New Assessment
         </Button>
       </div>
-      {assessments.map((a) => (
-        <div key={a.id} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-            <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
+
+      {assessments.map((a) => {
+        const sc = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.not_started
+        return (
+          <div key={a.id} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
+              {a.url && <p className="text-[11px] text-muted-foreground truncate">{a.url}</p>}
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-[10px] text-muted-foreground">{relTime(a.createdAt)}</span>
+              {a.totalScore != null && (
+                <span className="text-[10px] font-semibold text-foreground">{a.totalScore.toFixed(1)}</span>
+              )}
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sc.color}`}>
+                {sc.label}
+              </span>
+              <button
+                onClick={() => onDelete(a.id)}
+                title="Delete assessment"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
+              >
+                <Icons.Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
-            {a.url && <p className="text-[11px] text-muted-foreground truncate">{a.url}</p>}
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <span className="text-[10px] text-muted-foreground">{relTime(a.createdAt)}</span>
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">In progress</span>
-            <button
-              onClick={() => onDelete(a.id)}
-              title="Delete assessment"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
-            >
-              <Icons.Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
 
 // ─── New Assessment modal ─────────────────────────────────────────────────────
 
-function NewAssessmentModal({ onClose, onCreate }: { onClose: () => void; onCreate: (a: Assessment) => void }) {
-  const [name, setName] = useState('')
-  const [url,  setUrl]  = useState('')
+function NewAssessmentModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void
+  onCreate: (a: Assessment) => void
+}) {
+  const [name,    setName]    = useState('')
+  const [url,     setUrl]     = useState('')
+  const [saving,  setSaving]  = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!name.trim()) return
-    onCreate({
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      url: url.trim(),
-      createdAt: new Date().toISOString(),
-    })
-    onClose()
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/api/v1/prospect-assessments', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), url: url.trim() || null }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? `Error ${res.status}`)
+      onCreate(json.data)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create assessment')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -144,7 +195,7 @@ function NewAssessmentModal({ onClose, onCreate }: { onClose: () => void; onCrea
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              onKeyDown={(e) => e.key === 'Enter' && void handleCreate()}
               placeholder="e.g. Thrive NextGen"
               autoFocus
               className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
@@ -155,20 +206,24 @@ function NewAssessmentModal({ onClose, onCreate }: { onClose: () => void; onCrea
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              onKeyDown={(e) => e.key === 'Enter' && void handleCreate()}
               placeholder="https://…"
               className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
             />
           </div>
         </div>
 
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
         <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-[11px] text-zinc-600 leading-relaxed">
-          Assessment workflows are coming soon. For now, use <strong className="text-zinc-800">researchPILOT</strong> to guide your research manually across the 6 dimensions.
+          Use <strong className="text-zinc-800">researchPILOT</strong> to guide your research across the 6 dimensions once the assessment is created.
         </div>
 
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={!name.trim()} onClick={handleCreate}>Create Assessment</Button>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button size="sm" disabled={!name.trim() || saving} onClick={() => void handleCreate()}>
+            {saving ? 'Creating…' : 'Create Assessment'}
+          </Button>
         </div>
       </div>
     </div>
@@ -179,13 +234,30 @@ function NewAssessmentModal({ onClose, onCreate }: { onClose: () => void; onCrea
 
 export function ResearchNodePage() {
   const [assessments, setAssessments] = useState<Assessment[]>([])
-  const [showNew, setShowNew]         = useState(false)
+  const [loading,     setLoading]     = useState(true)
+  const [showNew,     setShowNew]     = useState(false)
 
-  const activeAssessment = assessments[assessments.length - 1] ?? null
+  const load = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/v1/prospect-assessments')
+      const { data } = await res.json()
+      setAssessments(data ?? [])
+    } catch (_) {
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const handleCreate = (a: Assessment) => {
-    setAssessments((prev) => [...prev, a])
+  useEffect(() => { void load() }, [load])
+
+  const handleCreate = (a: Assessment) => setAssessments((prev) => [a, ...prev])
+
+  const handleDelete = async (id: string) => {
+    setAssessments((prev) => prev.filter((a) => a.id !== id))
+    await apiFetch(`/api/v1/prospect-assessments/${id}`, { method: 'DELETE' }).catch(() => {})
   }
+
+  const activeAssessment = assessments[0] ?? null
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -211,10 +283,19 @@ export function ResearchNodePage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto min-h-0">
-        {assessments.length === 0
-          ? <EmptyState onNew={() => setShowNew(true)} />
-          : <AssessmentList assessments={assessments} onNew={() => setShowNew(true)} onDelete={(id) => setAssessments((prev) => prev.filter((a) => a.id !== id))} />
-        }
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : assessments.length === 0 ? (
+          <EmptyState onNew={() => setShowNew(true)} />
+        ) : (
+          <AssessmentList
+            assessments={assessments}
+            onNew={() => setShowNew(true)}
+            onDelete={handleDelete}
+          />
+        )}
       </div>
 
       {/* researchPILOT — bottom anchored */}

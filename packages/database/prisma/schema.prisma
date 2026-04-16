@@ -59,6 +59,7 @@ model Agency {
   clientDocStyles    ClientDocStyle[]
   docTemplates       DocTemplate[]
   docTemplateAssignments DocTemplateAssignment[]
+  prospectAssessments ProspectAssessment[]
   agencyBrainAttachments         AgencyBrainAttachment[]
   verticalBrainAttachments       VerticalBrainAttachment[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
@@ -1650,6 +1651,30 @@ model DocTemplate {
 
   @@index([agencyId])
   @@map("doc_templates")
+}
+
+// ─────────────────────────────────────────────
+// ProspectAssessment — agency-level market positioning & competitive assessment
+// ─────────────────────────────────────────────
+model ProspectAssessment {
+  id           String   @id @default(cuid())
+  agencyId     String   @map("agency_id")
+  name         String
+  url          String?
+  industry     String?
+  status       String   @default("not_started")
+  scores       Json?
+  findings     Json?
+  notes        String?  @db.Text
+  totalScore   Float?   @map("total_score")
+  createdById  String?  @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@map("prospect_assessments")
 }
 
 // ─────────────────────────────────────────────
