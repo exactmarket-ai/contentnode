@@ -5007,11 +5007,14 @@ export function ClientDetailPage() {
     structure:     'Structure',
   }
 
+  // Tabs that live under the "Demand Gen" group
+  const DEMAND_GEN_TABS: Tab[] = ['demandgen', 'campaigns']
   // Tabs that live under the "Research" group
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment']
   // Tabs that live under the "Settings" group
   const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs']
-  const MAIN_TABS: Tab[] = TABS.filter((t) => !SETTINGS_TABS.includes(t) && !RESEARCH_TABS.includes(t))
+  const MAIN_TABS: Tab[] = TABS.filter((t) => !SETTINGS_TABS.includes(t) && !RESEARCH_TABS.includes(t) && !DEMAND_GEN_TABS.includes(t))
+  const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
 
@@ -5056,6 +5059,19 @@ export function ClientDetailPage() {
             {TAB_LABELS[tab]}
           </button>
         ))}
+        {/* Demand Gen group entry point */}
+        <button
+          onClick={() => switchTab('demandgen')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+            inDemandGen
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Icons.TrendingUp className="h-3 w-3" />
+          Demand Gen
+        </button>
         {/* Research group entry point */}
         <button
           onClick={() => switchTab('company')}
@@ -5083,6 +5099,28 @@ export function ClientDetailPage() {
           Settings
         </button>
       </div>
+
+      {/* Demand Gen sub-tab row — only visible when a demand gen tab is active */}
+      {inDemandGen && (
+        <div className="flex items-center border-b border-border bg-muted/30 px-6 print:hidden">
+          <div className="flex gap-0">
+            {DEMAND_GEN_TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => switchTab(tab)}
+                className={cn(
+                  'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Research sub-tab row — only visible when a research tab is active */}
       {inResearch && (
