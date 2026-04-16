@@ -15,14 +15,16 @@
     "@contentnode/database": "workspace:*",
     "@contentnode/storage": "workspace:*",
     "@google/generative-ai": "^0.24.1",
+    "@types/jszip": "^3.4.1",
     "bullmq": "^5.12.0",
     "croner": "^10.0.1",
+    "exceljs": "^4.4.0",
     "ioredis": "^5.4.1",
+    "jszip": "^3.10.1",
     "mammoth": "^1.12.0",
     "pdf-parse": "^2.4.5",
     "pdf2json": "^4.0.2",
-    "sharp": "^0.34.5",
-    "exceljs": "^4.4.0"
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

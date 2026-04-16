@@ -255,6 +255,9 @@ importers:
       '@google/generative-ai':
         specifier: ^0.24.1
         version: 0.24.1
+      '@types/jszip':
+        specifier: ^3.4.1
+        version: 3.4.1
       bullmq:
         specifier: ^5.12.0
         version: 5.73.0
@@ -267,6 +270,9 @@ importers:
       ioredis:
         specifier: ^5.4.1
         version: 5.10.1
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       mammoth:
         specifier: ^1.12.0
         version: 1.12.0

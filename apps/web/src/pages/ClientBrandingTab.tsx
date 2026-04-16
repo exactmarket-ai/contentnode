@@ -240,7 +240,9 @@ function ColorArrayInput({ values, onChange }: { values: string[]; onChange: (v:
 function fileIcon(mimeType: string): string {
   if (mimeType.includes('pdf')) return '📄'
   if (mimeType.includes('word') || mimeType.includes('docx')) return '📝'
-  if (mimeType.includes('csv') || mimeType.includes('excel')) return '📊'
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📊'
+  if (mimeType.includes('csv') || mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊'
+  if (mimeType.startsWith('image/')) return '🖼️'
   if (mimeType.includes('json')) return '🗂️'
   if (mimeType.includes('html')) return '🌐'
   if (mimeType.includes('text') || mimeType.includes('markdown')) return '📃'
@@ -786,7 +788,7 @@ function BrandProfileSection({
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv,.json,.html,.htm,.mp4,.mov,.mp3,.m4a,.wav,.webm"
+            accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv,.json,.html,.htm,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp,.svg,.mp4,.mov,.mp3,.m4a,.wav,.webm"
             onChange={(e) => handleFiles(e.target.files)}
           />
           {uploading ? (
@@ -801,7 +803,7 @@ function BrandProfileSection({
                   browse
                 </button>
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · XLSX · TXT · MD · MP4 · MP3 · MOV · WAV</p>
+              <p className="mt-1 text-[10px] text-muted-foreground/60">PDF · DOCX · XLSX · PPT · PPTX · PNG · JPG · GIF · WEBP · SVG · TXT · MD · MP4 · MP3</p>
             </>
           )}
         </div>

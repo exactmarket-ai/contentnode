@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import PDFParser from 'pdf2json'
 import ExcelJS from 'exceljs'
+import JSZip from 'jszip'
 import { prisma, withAgency } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
@@ -96,6 +97,59 @@ async function extractPDF(buffer: Buffer, label: string): Promise<string> {
   }
 }
 
+/** Extract text from PPTX slide XML — no OCR, text nodes only */
+async function extractPPTX(buffer: Buffer): Promise<string> {
+  const zip = await JSZip.loadAsync(buffer)
+  const slideFiles = Object.keys(zip.files)
+    .filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f))
+    .sort((a, b) => {
+      const na = parseInt(a.match(/\d+/)?.[0] ?? '0')
+      const nb = parseInt(b.match(/\d+/)?.[0] ?? '0')
+      return na - nb
+    })
+
+  const slides: string[] = []
+  for (const slideFile of slideFiles) {
+    const xml = await zip.files[slideFile].async('string')
+    // Extract all <a:t> text nodes (DrawingML text runs)
+    const textNodes = [...xml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)].map((m) =>
+      m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    )
+    const slideText = textNodes.join(' ').replace(/\s{2,}/g, ' ').trim()
+    if (slideText) slides.push(slideText)
+  }
+  return slides.join('\n\n')
+}
+
+/** Use Claude vision to describe an image in brand context terms */
+async function describeImageForBrand(buffer: Buffer, mimeType: string, filename: string): Promise<string> {
+  const supportedMime = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
+  type SupportedMime = typeof supportedMime[number]
+  const safeType: SupportedMime = supportedMime.includes(mimeType as SupportedMime)
+    ? (mimeType as SupportedMime)
+    : 'image/jpeg'
+
+  const result = await callModel(
+    {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      api_key_ref: 'ANTHROPIC_API_KEY',
+      max_tokens: 1024,
+      temperature: 0.2,
+      system_prompt: `You are a brand analyst examining a visual asset uploaded to a client's brand profile.
+Describe what you see in terms of:
+- Visual style, color palette, typography if visible
+- Brand tone and personality conveyed by the design
+- Any logos, taglines, or brand marks visible
+- How this asset reflects or defines the brand's identity
+Be specific and concise. Focus on brand-relevant observations only.`,
+    },
+    `Image file: ${filename}\n\nDescribe this image in the context of the client's brand profile.`,
+    [{ base64: buffer.toString('base64'), mediaType: safeType }],
+  )
+  return `[Image: ${filename}]\n${result.text.trim()}`
+}
+
 async function extractText(buffer: Buffer, filename: string, mimeType: string): Promise<string | null> {
   const ext = extname(filename).toLowerCase()
   if (ext === '.docx' || mimeType.includes('wordprocessingml')) {
@@ -133,6 +187,17 @@ async function extractText(buffer: Buffer, filename: string, mimeType: string): 
   }
   if (['.txt', '.md', '.csv', '.json', '.html', '.htm'].includes(ext)) {
     return buffer.toString('utf8')
+  }
+  if (['.ppt', '.pptx'].includes(ext) || mimeType.includes('presentationml')) {
+    return extractPPTX(buffer)
+  }
+  if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext) || mimeType.startsWith('image/')) {
+    // SVG is XML — extract text directly; raster images → Claude vision
+    if (ext === '.svg' || mimeType === 'image/svg+xml') {
+      const svgText = buffer.toString('utf8').replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim()
+      return `[SVG: ${filename}]\n${svgText}`
+    }
+    return describeImageForBrand(buffer, mimeType, filename)
   }
   return null // audio/video — handled separately via transcribeAudio
 }

@@ -3822,11 +3822,11 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
 
     const { filename, file, mimetype } = data
 
-    const allowedExts = new Set(['.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm'])
+    const allowedExts = new Set(['.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.json', '.html', '.htm', '.mp4', '.mov', '.mp3', '.m4a', '.wav', '.webm', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'])
     const fileExt = extname(filename).toLowerCase()
     if (!allowedExts.has(fileExt)) {
       file.resume()
-      return reply.code(400).send({ error: `Unsupported file type "${fileExt}". Accepted: PDF, DOCX, TXT, MD, CSV, JSON, HTML, MP4, MOV, MP3, M4A, WAV` })
+      return reply.code(400).send({ error: `Unsupported file type "${fileExt}". Accepted: PDF, DOCX, XLSX, PPT, PPTX, TXT, MD, CSV, JSON, HTML, PNG, JPG, GIF, WEBP, SVG, MP4, MOV, MP3, WAV` })
     }
 
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
