@@ -692,16 +692,11 @@ function S05({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       <FwHelp>For each pillar, write the vertical-specific value proposition.</FwHelp>
       {fw.s05.pillars.map((p, i) => (
         <FwCard key={i} title={p.pillar} canDelete={false} onDelete={() => {}}>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
             <div><FwLabel>Pillar Name</FwLabel><FwInput value={p.pillar} onChange={(v) => set((d) => { d.s05.pillars[i].pillar = v })} placeholder="Pillar name" fieldId={`s05.pillar.${i}.name`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Pillar Name" /></div>
-            <div className="lg:col-span-2">
-              <FwLabel>Vertical Value Prop</FwLabel>
-              <FwTextarea value={p.valueProp} onChange={(v) => set((d) => { d.s05.pillars[i].valueProp = v })} rows={4} placeholder="What this pillar means for this market specifically…" fieldId={`s05.pillar.${i}.valueProp`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Vertical Value Prop" />
-            </div>
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div><FwLabel>Key Services</FwLabel><FwTextarea value={p.keyServices} onChange={(v) => set((d) => { d.s05.pillars[i].keyServices = v })} rows={3} placeholder="Key services" fieldId={`s05.pillar.${i}.keyServices`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Key Services" /></div>
-            <div><FwLabel>Relevant To</FwLabel><FwTextarea value={p.relevantTo} onChange={(v) => set((d) => { d.s05.pillars[i].relevantTo = v })} rows={3} placeholder="Which sub-segments" fieldId={`s05.pillar.${i}.relevantTo`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Relevant To" /></div>
+            <div><FwLabel>Vertical Value Prop</FwLabel><FwTextarea value={p.valueProp} onChange={(v) => set((d) => { d.s05.pillars[i].valueProp = v })} rows={4} placeholder="What this pillar means for this market specifically…" fieldId={`s05.pillar.${i}.valueProp`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Vertical Value Prop" /></div>
+            <div><FwLabel>Key Services</FwLabel><FwTextarea value={p.keyServices} onChange={(v) => set((d) => { d.s05.pillars[i].keyServices = v })} rows={4} placeholder="Key services" fieldId={`s05.pillar.${i}.keyServices`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Key Services" /></div>
+            <div><FwLabel>Relevant To</FwLabel><FwTextarea value={p.relevantTo} onChange={(v) => set((d) => { d.s05.pillars[i].relevantTo = v })} rows={4} placeholder="Which sub-segments" fieldId={`s05.pillar.${i}.relevantTo`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Relevant To" /></div>
           </div>
         </FwCard>
       ))}
