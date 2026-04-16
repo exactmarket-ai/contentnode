@@ -7,6 +7,7 @@ import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentno
 import { callModel } from '@contentnode/ai'
 import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue, getClientBrainProcessQueue, getClientVerticalBrainProcessQueue } from '../lib/queues.js'
 import { markStaleIfBrainChanged } from './templateLibrary.js'
+import { seedDefaultTasksForClient } from '../lib/defaultScheduledTasks.js'
 import { getClerkUserNames } from '../lib/clerk.js'
 
 const LOGO_MIME: Record<string, string> = {
@@ -694,6 +695,9 @@ export async function clientRoutes(app: FastifyInstance) {
       resourceId: client.id,
       metadata: { name },
     })
+
+    // Seed default (disabled) scheduled task templates for the new client
+    seedDefaultTasksForClient(agencyId, client.id).catch(() => {})
 
     return reply.code(201).send({ data: client })
   })

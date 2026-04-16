@@ -5,6 +5,7 @@ import {
   getScheduledResearchQueue,
   type ScheduledResearchJobData,
 } from '../lib/queues.js'
+import { seedDefaultTasksForAllClients } from '../lib/defaultScheduledTasks.js'
 
 const createBody = z.object({
   label: z.string().min(1).max(120),
@@ -131,6 +132,13 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     )
 
     return reply.send({ data: { queued: true } })
+  })
+
+  // ── POST /api/v1/scheduled-tasks/seed-defaults ───────────────────────────
+  app.post('/seed-defaults', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientsSeeded = await seedDefaultTasksForAllClients(agencyId)
+    return reply.send({ data: { clientsSeeded } })
   })
 
   // ── POST /api/v1/scheduled-tasks/:id/dismiss ─────────────────────────────
