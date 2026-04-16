@@ -79,8 +79,8 @@ function NewAssessmentModal({ onClose }: { onClose: () => void }) {
   const [url,  setUrl]  = useState('')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl p-6 space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-white shadow-2xl p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
@@ -112,7 +112,7 @@ function NewAssessmentModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-[11px] text-muted-foreground leading-relaxed">
+        <div className="rounded-xl border border-border bg-zinc-50 px-4 py-3 text-[11px] text-muted-foreground leading-relaxed">
           Assessment workflows are coming soon. For now, use <strong className="text-foreground">researchPILOT</strong> to guide your research manually across the 6 dimensions.
         </div>
 
