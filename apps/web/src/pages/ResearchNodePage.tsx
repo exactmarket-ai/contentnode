@@ -7,6 +7,8 @@
  * Views:
  *   LIST   — all assessments, create / delete
  *   DETAIL — scoring UI for a single assessment (6 dimensions)
+ *            Phase 3: Run Research (auto-scrape + Claude findings)
+ *            Phase 4: Generate Service Map (agency brain + scores → proposal doc)
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -26,6 +28,7 @@ interface Assessment {
   scores: Record<string, number> | null
   findings: Record<string, string> | null
   notes: string | null
+  serviceMap: string | null
   totalScore: number | null
   createdAt: string
   updatedAt: string
@@ -50,7 +53,6 @@ const STATUS_OPTIONS = [
   { value: 'archived',     label: 'Archived' },
 ]
 
-// Score tier labels
 const TIER_LABELS: Array<{ min: number; label: string; color: string }> = [
   { min: 4.5, label: 'Category Leader',    color: 'text-emerald-700' },
   { min: 3.5, label: 'Strong Performer',   color: 'text-blue-700' },
@@ -99,7 +101,54 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   archived:     { label: 'Archived',    color: 'bg-zinc-100 text-zinc-500' },
 }
 
-// ─── Score input (1-5 stars / numeric selector) ───────────────────────────────
+// ─── Simple markdown renderer (bold + headers + bullets) ──────────────────────
+
+function MarkdownBlock({ text }: { text: string }) {
+  const lines = text.split('\n')
+  return (
+    <div className="space-y-1.5 text-[12px] leading-relaxed text-foreground">
+      {lines.map((line, i) => {
+        if (line.startsWith('## ')) {
+          return <h3 key={i} className="text-sm font-bold text-foreground mt-4 mb-1 first:mt-0">{line.slice(3)}</h3>
+        }
+        if (line.startsWith('### ')) {
+          return <h4 key={i} className="text-xs font-semibold text-foreground mt-3 mb-0.5">{line.slice(4)}</h4>
+        }
+        if (line.startsWith('- ') || line.startsWith('* ')) {
+          return (
+            <div key={i} className="flex gap-2 items-start ml-2">
+              <span className="text-muted-foreground mt-0.5 shrink-0">•</span>
+              <span>{renderInline(line.slice(2))}</span>
+            </div>
+          )
+        }
+        if (/^\d+\. /.test(line)) {
+          const num = line.match(/^(\d+)\. /)?.[1]
+          return (
+            <div key={i} className="flex gap-2 items-start ml-2">
+              <span className="text-muted-foreground shrink-0 font-medium">{num}.</span>
+              <span>{renderInline(line.replace(/^\d+\. /, ''))}</span>
+            </div>
+          )
+        }
+        if (line.trim() === '') return <div key={i} className="h-1" />
+        return <p key={i}>{renderInline(line)}</p>
+      })}
+    </div>
+  )
+}
+
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  if (parts.length === 1) return text
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>
+      : part,
+  )
+}
+
+// ─── Score selector ───────────────────────────────────────────────────────────
 
 function ScoreSelector({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
   return (
@@ -229,7 +278,7 @@ function AssessmentList({
   )
 }
 
-// ─── Assessment detail (scoring UI) ──────────────────────────────────────────
+// ─── Assessment detail ────────────────────────────────────────────────────────
 
 function AssessmentDetail({
   initial,
@@ -240,18 +289,37 @@ function AssessmentDetail({
   onBack: () => void
   onUpdated: (a: Assessment) => void
 }) {
-  const [assessment, setAssessment] = useState<Assessment>(initial)
-  const [scores,     setScores]     = useState<Record<string, number>>(initial.scores ?? {})
-  const [findings,   setFindings]   = useState<Record<string, string>>(initial.findings ?? {})
-  const [notes,      setNotes]      = useState(initial.notes ?? '')
-  const [status,     setStatus]     = useState(initial.status)
-  const [saving,     setSaving]     = useState(false)
-  const [saved,      setSaved]      = useState(false)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [assessment,    setAssessment]    = useState<Assessment>(initial)
+  const [scores,        setScores]        = useState<Record<string, number>>(initial.scores ?? {})
+  const [findings,      setFindings]      = useState<Record<string, string>>(initial.findings ?? {})
+  const [notes,         setNotes]         = useState(initial.notes ?? '')
+  const [status,        setStatus]        = useState(initial.status)
+  const [serviceMap,    setServiceMap]    = useState(initial.serviceMap ?? '')
+  const [saving,        setSaving]        = useState(false)
+  const [saved,         setSaved]         = useState(false)
+  const [researching,   setResearching]   = useState(false)
+  const [researchError, setResearchError] = useState<string | null>(null)
+  const [generatingMap, setGeneratingMap] = useState(false)
+  const [mapError,      setMapError]      = useState<string | null>(null)
+  const [mapOpen,       setMapOpen]       = useState(false)
+  const [copied,        setCopied]        = useState(false)
 
-  // Live weighted total from current scores state
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const serviceMapRef = useRef<HTMLDivElement>(null)
+
   const liveTotal = Object.keys(scores).length > 0 ? calcTotal(scores) : null
   const tier = tierFor(liveTotal)
+  const hasScores = Object.keys(scores).length > 0
+
+  // Sync when parent pushes a new initial (e.g. after run-research returns)
+  useEffect(() => {
+    setAssessment(initial)
+    setScores(initial.scores ?? {})
+    setFindings(initial.findings ?? {})
+    setNotes(initial.notes ?? '')
+    setStatus(initial.status)
+    setServiceMap(initial.serviceMap ?? '')
+  }, [initial.id]) // only re-sync on different assessment, not every update
 
   const save = useCallback(async (
     nextScores: Record<string, number>,
@@ -265,10 +333,10 @@ function AssessmentDetail({
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          scores: Object.keys(nextScores).length > 0 ? nextScores : null,
+          scores:   Object.keys(nextScores).length > 0 ? nextScores : null,
           findings: Object.keys(nextFindings).some(k => nextFindings[k]) ? nextFindings : null,
-          notes: nextNotes.trim() || null,
-          status: nextStatus,
+          notes:    nextNotes.trim() || null,
+          status:   nextStatus,
         }),
       })
       const json = await res.json()
@@ -283,7 +351,6 @@ function AssessmentDetail({
     }
   }, [assessment.id, onUpdated])
 
-  // Debounced auto-save on any change
   const scheduleAutoSave = useCallback((
     nextScores: Record<string, number>,
     nextFindings: Record<string, string>,
@@ -291,9 +358,7 @@ function AssessmentDetail({
     nextStatus: string,
   ) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      void save(nextScores, nextFindings, nextNotes, nextStatus)
-    }, 1200)
+    saveTimer.current = setTimeout(() => void save(nextScores, nextFindings, nextNotes, nextStatus), 1200)
   }, [save])
 
   const handleScoreChange = (key: string, val: number | null) => {
@@ -325,25 +390,86 @@ function AssessmentDetail({
     void save(scores, findings, notes, status)
   }
 
+  // ── Phase 3: Run Research ───────────────────────────────────────────────────
+  const handleRunResearch = async () => {
+    setResearching(true)
+    setResearchError(null)
+    try {
+      const res = await apiFetch(`/api/v1/prospect-assessments/${assessment.id}/run-research`, {
+        method: 'POST',
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setResearchError(json?.error ?? `Error ${res.status}`)
+        return
+      }
+      // Populate local state with returned findings + updated status
+      const updated = json.data as Assessment
+      setFindings((updated.findings ?? {}) as Record<string, string>)
+      setStatus(updated.status)
+      setAssessment(updated)
+      onUpdated(updated)
+    } catch {
+      setResearchError('Network error — check your connection and try again')
+    } finally {
+      setResearching(false)
+    }
+  }
+
+  // ── Phase 4: Generate Service Map ───────────────────────────────────────────
+  const handleGenerateServiceMap = async () => {
+    setGeneratingMap(true)
+    setMapError(null)
+    try {
+      const res = await apiFetch(`/api/v1/prospect-assessments/${assessment.id}/generate-service-map`, {
+        method: 'POST',
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setMapError(json?.error ?? `Error ${res.status}`)
+        return
+      }
+      const updated = json.data as Assessment
+      setServiceMap(updated.serviceMap ?? '')
+      setAssessment(updated)
+      onUpdated(updated)
+      setMapOpen(true)
+      // Scroll to service map section
+      setTimeout(() => serviceMapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    } catch {
+      setMapError('Network error — check your connection and try again')
+    } finally {
+      setGeneratingMap(false)
+    }
+  }
+
+  const handleCopyMap = async () => {
+    await navigator.clipboard.writeText(serviceMap)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Detail header */}
-      <div className="flex items-center gap-4 border-b border-border px-6 py-4 shrink-0">
+      <div className="flex items-center gap-3 border-b border-border px-6 py-3 shrink-0 flex-wrap gap-y-2">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
         >
           <Icons.ChevronLeft className="h-3.5 w-3.5" />
           All assessments
         </button>
+
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-foreground truncate">{assessment.name}</h2>
           {assessment.url && (
             <p className="text-[11px] text-muted-foreground truncate">{assessment.url}</p>
           )}
         </div>
+
         {/* Live score */}
         {liveTotal != null && (
           <div className="text-right shrink-0">
@@ -351,40 +477,95 @@ function AssessmentDetail({
             {tier && <p className={`text-[10px] font-medium ${tier.color}`}>{tier.label}</p>}
           </div>
         )}
-        {/* Status selector */}
+
+        {/* Status */}
         <select
           value={status}
           onChange={(e) => handleStatusChange(e.target.value)}
-          className={`rounded-full px-2.5 py-1 text-[11px] font-medium border-0 outline-none cursor-pointer ${sc.color}`}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-medium border-0 outline-none cursor-pointer shrink-0 ${sc.color}`}
         >
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-        {/* Save indicator */}
+
+        {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Run Research */}
+          {assessment.url && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleRunResearch()}
+              disabled={researching || saving}
+              className="gap-1.5"
+            >
+              {researching
+                ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> Researching…</>
+                : <><Icons.Search className="h-3.5 w-3.5" /> Run Research</>
+              }
+            </Button>
+          )}
+
+          {/* Service Map */}
+          {hasScores && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => serviceMap ? setMapOpen(!mapOpen) : void handleGenerateServiceMap()}
+              disabled={generatingMap || saving}
+              className="gap-1.5"
+            >
+              {generatingMap
+                ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+                : serviceMap
+                  ? <><Icons.FileText className="h-3.5 w-3.5" /> {mapOpen ? 'Hide Map' : 'Service Map'}</>
+                  : <><Icons.Sparkles className="h-3.5 w-3.5" /> Service Map</>
+              }
+            </Button>
+          )}
+
+          {/* Save indicator */}
           {saving && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           {!saving && saved && <span className="text-[11px] text-emerald-600 font-medium">Saved</span>}
-          <Button size="sm" variant="outline" onClick={handleSaveNow} disabled={saving}>
-            Save
-          </Button>
+          <Button size="sm" variant="outline" onClick={handleSaveNow} disabled={saving}>Save</Button>
         </div>
       </div>
 
+      {/* Error banners */}
+      {researchError && (
+        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-6 py-2 shrink-0">
+          <Icons.AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+          <p className="text-xs text-red-700">{researchError}</p>
+          <button onClick={() => setResearchError(null)} className="ml-auto text-red-400 hover:text-red-600">
+            <Icons.X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {mapError && (
+        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-6 py-2 shrink-0">
+          <Icons.AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+          <p className="text-xs text-red-700">{mapError}</p>
+          <button onClick={() => setMapError(null)} className="ml-auto text-red-400 hover:text-red-600">
+            <Icons.X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Dimension cards */}
       <div className="flex-1 overflow-auto min-h-0 p-6 space-y-4">
+
         {/* Score summary bar */}
         <div className="flex items-center gap-3 rounded-xl border border-border bg-zinc-50 px-4 py-3">
           <Icons.BarChart3 className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div className="flex-1 flex flex-wrap gap-x-4 gap-y-1">
+          <div className="flex-1 flex flex-wrap gap-x-5 gap-y-1">
             {DIMENSIONS.map((d) => (
               <div key={d.key} className="flex items-center gap-1.5">
                 <span className="text-[11px] text-muted-foreground">{d.label.split(' ')[0]}</span>
-                {scores[d.key] != null ? (
-                  <span className="text-[11px] font-semibold text-foreground">{scores[d.key]}/5</span>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground/50">—</span>
-                )}
+                {scores[d.key] != null
+                  ? <span className="text-[11px] font-semibold text-foreground">{scores[d.key]}/5</span>
+                  : <span className="text-[11px] text-muted-foreground/40">—</span>
+                }
                 <span className="text-[10px] text-muted-foreground/40">{d.weight}%</span>
               </div>
             ))}
@@ -397,9 +578,23 @@ function AssessmentDetail({
           )}
         </div>
 
+        {/* Research running notice */}
+        {researching && (
+          <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <Icons.Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />
+            <div>
+              <p className="text-xs font-medium text-blue-800">Crawling {assessment.url}</p>
+              <p className="text-[11px] text-blue-600">Scraping up to 8 pages and generating findings for all 6 dimensions…</p>
+            </div>
+          </div>
+        )}
+
         {/* 6 dimension cards */}
         {DIMENSIONS.map((d) => (
-          <div key={d.key} className="rounded-xl border border-border bg-white p-5 space-y-3">
+          <div
+            key={d.key}
+            className={`rounded-xl border border-border bg-white p-5 space-y-3 transition-opacity ${researching ? 'opacity-50' : ''}`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <d.icon className="h-4 w-4 text-muted-foreground" />
@@ -414,9 +609,13 @@ function AssessmentDetail({
             <textarea
               value={findings[d.key] ?? ''}
               onChange={(e) => handleFindingChange(d.key, e.target.value)}
-              placeholder={`Add your findings for ${d.label.toLowerCase()}…`}
+              placeholder={researching
+                ? 'Research in progress…'
+                : `Add findings for ${d.label.toLowerCase()}…`
+              }
+              disabled={researching}
               rows={3}
-              className="w-full resize-none rounded-lg border border-border bg-zinc-50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-blue-400 focus:bg-white transition-colors"
+              className="w-full resize-none rounded-lg border border-border bg-zinc-50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-blue-400 focus:bg-white transition-colors disabled:cursor-not-allowed"
             />
           </div>
         ))}
@@ -435,6 +634,72 @@ function AssessmentDetail({
             className="w-full resize-none rounded-lg border border-border bg-zinc-50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-blue-400 focus:bg-white transition-colors"
           />
         </div>
+
+        {/* Service Map ── Phase 4 */}
+        {(serviceMap || mapOpen) && (
+          <div ref={serviceMapRef} className="rounded-xl border border-border bg-white overflow-hidden">
+            {/* Service map header */}
+            <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+              <Icons.FileText className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold text-foreground flex-1">Service Map</span>
+              {serviceMap && (
+                <>
+                  <button
+                    onClick={() => void handleGenerateServiceMap()}
+                    disabled={generatingMap}
+                    title="Regenerate service map"
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {generatingMap
+                      ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Icons.RefreshCw className="h-3.5 w-3.5" />
+                    }
+                    Regenerate
+                  </button>
+                  <button
+                    onClick={() => void handleCopyMap()}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {copied ? <Icons.Check className="h-3.5 w-3.5 text-emerald-600" /> : <Icons.Copy className="h-3.5 w-3.5" />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setMapOpen(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Icons.ChevronUp className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {generatingMap && !serviceMap ? (
+                <div className="flex items-center gap-3 py-8 justify-center">
+                  <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Generating service map from assessment + agency brain…</p>
+                </div>
+              ) : serviceMap ? (
+                <MarkdownBlock text={serviceMap} />
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Generate service map CTA — shown when scores exist but no map yet */}
+        {hasScores && !serviceMap && !mapOpen && !generatingMap && (
+          <div className="rounded-xl border border-dashed border-border bg-zinc-50 px-5 py-4 flex items-center gap-4">
+            <Icons.Sparkles className="h-5 w-5 text-muted-foreground shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-foreground">Generate Service Map</p>
+              <p className="text-[11px] text-muted-foreground">Use assessment scores + agency brain to produce a prioritized service proposal outline.</p>
+            </div>
+            <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => void handleGenerateServiceMap()}>
+              <Icons.Sparkles className="h-3.5 w-3.5" />
+              Generate
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -552,7 +817,6 @@ export function ResearchNodePage() {
 
   const handleCreate = (a: Assessment) => {
     setAssessments((prev) => [a, ...prev])
-    // Open detail view immediately after creation
     setActiveDetail(a)
   }
 
