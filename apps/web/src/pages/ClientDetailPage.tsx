@@ -5145,17 +5145,35 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
   const [label, setLabel] = useState('')
   const [frequency, setFrequency] = useState<ScheduledTaskFrequency>('weekly')
   const [config, setConfig] = useState<Record<string, unknown>>({})
+  const [verticalId, setVerticalId] = useState<string>('__client__')
+  const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${clientId}/verticals`)
+      .then((r) => r.json())
+      .then(({ data }) => setVerticals(data ?? []))
+      .catch(() => {})
+  }, [clientId])
 
   const save = async () => {
     if (!label.trim()) { setError('Label is required'); return }
     setSaving(true); setError(null)
+    const isVertical = verticalId !== '__client__'
     try {
       const res = await apiFetch('/api/v1/scheduled-tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: label.trim(), type, scope: 'client', frequency, clientId, config }),
+        body: JSON.stringify({
+          label: label.trim(),
+          type,
+          scope: isVertical ? 'vertical' : 'client',
+          frequency,
+          clientId,
+          ...(isVertical ? { verticalId } : {}),
+          config,
+        }),
       })
       const { data, error: err } = await res.json()
       if (!res.ok) { setError(err ?? 'Failed to create task'); return }
@@ -5181,6 +5199,21 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5" style={{ backgroundColor: '#ffffff', color: '#111827' }}>
+          {/* Vertical / brain destination */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Write research to</p>
+            <select
+              value={verticalId}
+              onChange={(e) => setVerticalId(e.target.value)}
+              style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+            >
+              <option value="__client__">Client brain (no vertical)</option>
+              {verticals.map((v) => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Type selector */}
           <div className="space-y-1.5">
             <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Task type</p>
