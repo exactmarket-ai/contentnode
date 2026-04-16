@@ -1113,7 +1113,7 @@ function S18({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
         <FwTable headers={['CTA Name', 'Description', 'Target Audience / Trigger', 'Asset(s)', '']}>
           {s.ctas.map((row, i) => (
             <tr key={i} className="border-b border-border">
-              <FwTableCell><FwTableInput value={row.ctaName} onChange={(v) => set((d) => { d.s18.ctas[i].ctaName = v })} placeholder={`CTA ${i + 1}`} /></FwTableCell>
+              <FwTableCell><FwTableTextarea value={row.ctaName} onChange={(v) => set((d) => { d.s18.ctas[i].ctaName = v })} rows={3} placeholder={`CTA ${i + 1}`} /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.description} onChange={(v) => set((d) => { d.s18.ctas[i].description = v })} rows={3} placeholder="What happens in this assessment / conversation" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.targetAudienceTrigger} onChange={(v) => set((d) => { d.s18.ctas[i].targetAudienceTrigger = v })} rows={3} placeholder="Who it's for and when to offer it" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.assets} onChange={(v) => set((d) => { d.s18.ctas[i].assets = v })} rows={3} placeholder="Brochure · Web page · Deck CTA slide" /></FwTableCell>
@@ -1124,6 +1124,7 @@ function S18({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
           ))}
         </FwTable>
       </div>
+      <AddButton onClick={() => set((d) => { d.s18.ctas.push({ ctaName: '', description: '', targetAudienceTrigger: '', assets: '' }) })} label="Add CTA" />
 
       <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Campaign Theme Suggestions</p>
       <FwHelp>2-4 campaign names with a one-sentence description of what each campaign is for.</FwHelp>
