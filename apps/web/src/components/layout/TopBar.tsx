@@ -445,7 +445,8 @@ export function TopBar() {
 
   const runCfg = RUN_STATUS_CONFIG[runStatus]
   const RunIcon = runCfg.icon
-  const modelList = workflow.default_model_config.provider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS
+  const isOfflineWf = workflow.connectivity_mode === 'offline'
+  const modelList = isOfflineWf ? OLLAMA_MODELS : (workflow.default_model_config.provider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS)
   const modelLabel = modelList.find((m) => m.value === workflow.default_model_config.model)?.label
     ?? workflow.default_model_config.model
 
@@ -576,33 +577,41 @@ export function TopBar() {
         </Badge>
       )}
 
-      {/* Default model picker */}
+      {/* Default model picker — Ollama only in offline mode */}
       <div className="flex items-center gap-1.5">
-        <Select
-          value={workflow.default_model_config.provider}
-          onValueChange={(v) =>
-            setWorkflow({
-              default_model_config: {
-                ...workflow.default_model_config,
-                provider: v as 'anthropic' | 'ollama',
-                model: v === 'anthropic' ? 'claude-sonnet-4-5' : 'llama3.2',
-              },
-            })
-          }
-        >
-          <SelectTrigger className="h-7 gap-1 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus:ring-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
-            <SelectItem value="ollama" className="text-xs">Ollama</SelectItem>
-          </SelectContent>
-        </Select>
+        {workflow.connectivity_mode !== 'offline' && (
+          <Select
+            value={workflow.default_model_config.provider}
+            onValueChange={(v) =>
+              setWorkflow({
+                default_model_config: {
+                  ...workflow.default_model_config,
+                  provider: v as 'anthropic' | 'ollama',
+                  model: v === 'anthropic' ? 'claude-sonnet-4-5' : 'llama3.2',
+                },
+              })
+            }
+          >
+            <SelectTrigger className="h-7 gap-1 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus:ring-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
+              <SelectItem value="ollama" className="text-xs">Ollama</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
 
         <Select
           value={workflow.default_model_config.model}
           onValueChange={(v) =>
-            setWorkflow({ default_model_config: { ...workflow.default_model_config, model: v } })
+            setWorkflow({
+              default_model_config: {
+                ...workflow.default_model_config,
+                provider: workflow.connectivity_mode === 'offline' ? 'ollama' : workflow.default_model_config.provider,
+                model: v,
+              },
+            })
           }
         >
           <SelectTrigger className="h-7 gap-1 border border-border bg-transparent px-2 text-xs focus:ring-0">
