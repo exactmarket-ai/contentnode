@@ -76,7 +76,7 @@ function defaultFramework() {
         { pillar: '', valueProp: '', keyServices: '', relevantTo: '', _open: false },
         { pillar: '', valueProp: '', keyServices: '', relevantTo: '', _open: false },
       ],
-      serviceStack: [{ service: '', whatItDelivers: '', priority: '', _open: true }],
+      serviceStack: [{ service: '', regulatoryDomain: '', whatItDelivers: '', priority: '', _open: true }],
     },
     s06: {
       differentiators: [{ label: '', position: '', _open: true }],
@@ -709,7 +709,7 @@ function S05({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
 
       <div className="mt-6 mb-2 flex items-center justify-between">
         <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Full Service Stack — Mapped to Vertical Needs</p>
-        <button onClick={() => set((d) => { d.s05.serviceStack.push({ service: '', whatItDelivers: '', priority: '', _open: true }) })} className="text-xs text-blue-500 hover:text-blue-700 font-medium">+ Add Service</button>
+        <button onClick={() => set((d) => { d.s05.serviceStack.push({ service: '', regulatoryDomain: '', whatItDelivers: '', priority: '', _open: true }) })} className="text-xs text-blue-500 hover:text-blue-700 font-medium">+ Add Service</button>
       </div>
       <FwHelp>List every {clientName} service relevant to this vertical. For each, describe what it delivers in context.</FwHelp>
       {fw.s05.serviceStack.map((row, i) => (
@@ -717,12 +717,13 @@ function S05({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
           onDelete={() => set((d) => { d.s05.serviceStack.splice(i, 1) })}>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div><FwLabel>Service Name</FwLabel><FwInput value={row.service} onChange={(v) => set((d) => { d.s05.serviceStack[i].service = v })} placeholder="Service name" fieldId={`s05.service.${i}.name`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Service Name" /></div>
-            <div className="lg:col-span-2"><FwLabel>What It Delivers (in this vertical)</FwLabel><FwTextarea value={row.whatItDelivers} onChange={(v) => set((d) => { d.s05.serviceStack[i].whatItDelivers = v })} rows={3} placeholder="What this delivers specifically for this market…" fieldId={`s05.service.${i}.whatItDelivers`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="What It Delivers (in this vertical)" /></div>
+            <div><FwLabel>Regulatory Domain (if applicable)</FwLabel><FwInput value={row.regulatoryDomain ?? ''} onChange={(v) => set((d) => { d.s05.serviceStack[i].regulatoryDomain = v })} placeholder="e.g. HIPAA, SOX, GDPR…" fieldId={`s05.service.${i}.regulatoryDomain`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Regulatory Domain" /></div>
+            <div><FwLabel>What It Delivers (in this vertical)</FwLabel><FwTextarea value={row.whatItDelivers} onChange={(v) => set((d) => { d.s05.serviceStack[i].whatItDelivers = v })} rows={3} placeholder="What this delivers specifically for this market…" fieldId={`s05.service.${i}.whatItDelivers`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="What It Delivers (in this vertical)" /></div>
           </div>
           <div className="mt-3"><FwLabel>Priority / Relevance</FwLabel><FwInput value={row.priority} onChange={(v) => set((d) => { d.s05.serviceStack[i].priority = v })} placeholder="High / Medium / Low" fieldId={`s05.service.${i}.priority`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Priority / Relevance" /></div>
         </FwCard>
       ))}
-      <AddButton onClick={() => set((d) => { d.s05.serviceStack.push({ service: '', whatItDelivers: '', priority: '', _open: true }) })} label="Add Service" />
+      <AddButton onClick={() => set((d) => { d.s05.serviceStack.push({ service: '', regulatoryDomain: '', whatItDelivers: '', priority: '', _open: true }) })} label="Add Service" />
     </div>
   )
 }
@@ -1801,6 +1802,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   const [downloadingDocx, setDownloadingDocx] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestFwRef = useRef<FrameworkData | null>(null)
+  const contentScrollRef = useRef<HTMLDivElement>(null)
 
   // Research + draft state
   const [websiteStatus, setWebsiteStatus] = useState<'none' | 'pending' | 'running' | 'ready' | 'failed'>('none')
@@ -1863,6 +1865,11 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
     fetchStatus()
     return () => { if (websitePollRef.current) { clearInterval(websitePollRef.current); websitePollRef.current = null } }
   }, [clientId, selectedVertical])
+
+  // Scroll content area to top whenever section changes
+  useEffect(() => {
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' })
+  }, [activeSection])
 
   const startWebsitePolling = useCallback(() => {
     if (websitePollRef.current) clearInterval(websitePollRef.current)
@@ -2134,7 +2141,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-8 py-6">
         {activeSection === 'brain' ? (
           <div className="mx-auto max-w-4xl">
             <AttachmentsSection

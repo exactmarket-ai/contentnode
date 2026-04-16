@@ -889,9 +889,9 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (serviceRows.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'Service Stack', bold: true, size: 20 })], spacing: { before: 120, after: 60 } }))
     children.push(styledTable(
-      ['Service', 'What It Delivers', 'Priority'],
-      serviceRows.map((r) => [r.service, r.whatItDelivers, r.priority]),
-      [30, 55, 15],
+      ['Service Name', 'Regulatory Domain (if applicable)', 'What It Delivers', 'Priority'],
+      serviceRows.map((r) => [r.service, r.regulatoryDomain ?? '', r.whatItDelivers, r.priority]),
+      [25, 22, 40, 13],
     ))
     children.push(gtmSpacer())
   }
