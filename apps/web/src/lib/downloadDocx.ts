@@ -7,11 +7,9 @@ import {
 import { stripMarkdown } from './utils'
 import type { FrameworkData } from '@/pages/ClientFrameworkTab'
 import { SECTIONS } from '@/pages/ClientFrameworkTab'
-import { apiFetch } from './api'
-
 // ── Doc style ─────────────────────────────────────────────────────────────────
 
-interface DocStyleConfig {
+export interface DocStyleConfig {
   logoStorageKey: string | null
   primaryColor: string
   secondaryColor: string
@@ -26,7 +24,7 @@ interface DocStyleConfig {
   applyToBranding: boolean
 }
 
-const DEFAULT_DOC_STYLE: DocStyleConfig = {
+export const DEFAULT_DOC_STYLE: DocStyleConfig = {
   logoStorageKey: null,
   primaryColor: '#1B1F3B',
   secondaryColor: '#4A90D9',
@@ -39,26 +37,6 @@ const DEFAULT_DOC_STYLE: DocStyleConfig = {
   applyToGtm: true,
   applyToDemandGen: false,
   applyToBranding: false,
-}
-
-async function fetchDocStyle(clientId: string): Promise<DocStyleConfig> {
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 4000)
-    const fetchPromise = apiFetch(`/api/v1/clients/${clientId}/doc-style/merged`, { signal: controller.signal })
-      .then(async (res) => {
-        clearTimeout(timer)
-        if (!res.ok) return DEFAULT_DOC_STYLE
-        const { data } = await res.json()
-        return { ...DEFAULT_DOC_STYLE, ...data } as DocStyleConfig
-      })
-    const timeoutPromise = new Promise<DocStyleConfig>((resolve) =>
-      setTimeout(() => resolve(DEFAULT_DOC_STYLE), 4000)
-    )
-    return await Promise.race([fetchPromise, timeoutPromise])
-  } catch {
-    return DEFAULT_DOC_STYLE
-  }
 }
 
 // Strip leading '#' for docx color strings
@@ -855,8 +833,8 @@ function gtmSpacer(): Paragraph {
   return new Paragraph({ spacing: { after: 120 } })
 }
 
-export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string, clientId?: string): Promise<void> {
-  const style = clientId ? await fetchDocStyle(clientId) : DEFAULT_DOC_STYLE
+export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string, docStyle?: DocStyleConfig): Promise<void> {
+  const style = docStyle ?? DEFAULT_DOC_STYLE
   const primaryHex = docColor(style.primaryColor)
   const secondaryHex = docColor(style.secondaryColor)
   const headingFont = style.headingFont

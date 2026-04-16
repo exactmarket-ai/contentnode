@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api'
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
 import { GTMPilot } from '@/components/pilot/GTMPilot'
-import { downloadGTMFrameworkDocx } from '@/lib/downloadDocx'
+import { downloadGTMFrameworkDocx, DEFAULT_DOC_STYLE, type DocStyleConfig } from '@/lib/downloadDocx'
 
 // ── Draft context — provides per-field AI drafting to all section components ──
 
@@ -1903,6 +1903,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [verticalsLoading, setVerticalsLoading] = useState(true)
   const [downloadingDocx, setDownloadingDocx] = useState(false)
+  const [docStyle, setDocStyle] = useState<DocStyleConfig>(DEFAULT_DOC_STYLE)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestFwRef = useRef<FrameworkData | null>(null)
   const contentScrollRef = useRef<HTMLDivElement>(null)
@@ -1924,6 +1925,14 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
       })
       .catch(() => {})
       .finally(() => setVerticalsLoading(false))
+  }, [clientId])
+
+  // Pre-fetch doc style so download is instant
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${clientId}/doc-style/merged`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => { if (json?.data) setDocStyle({ ...DEFAULT_DOC_STYLE, ...json.data }) })
+      .catch(() => {})
   }, [clientId])
 
   // Load framework when vertical selected
@@ -2157,7 +2166,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
             onClick={async () => {
               setDownloadingDocx(true)
               try {
-                await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, clientId)
+                await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, docStyle)
               } finally {
                 setDownloadingDocx(false)
               }
