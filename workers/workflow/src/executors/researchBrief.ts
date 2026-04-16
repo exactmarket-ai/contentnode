@@ -61,12 +61,15 @@ export async function runResearchBrief(
   if (!tavilyKey) throw new Error(`Research Brief: env var ${apiKeyRef} is not set`)
 
   // ── 2. Call Tavily Search API ──────────────────────────────────────────────
+  // Tavily max query length is 400 characters
+  const tavilyQuery = prompt.length > 400 ? prompt.slice(0, 397) + '...' : prompt
+
   const tavilyRes = await fetch('https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       api_key: tavilyKey,
-      query: prompt,
+      query: tavilyQuery,
       search_depth: 'advanced',
       max_results: 10,
       days: recencyDays,
