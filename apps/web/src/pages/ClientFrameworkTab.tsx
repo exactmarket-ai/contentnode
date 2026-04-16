@@ -1047,7 +1047,7 @@ function S16({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
         <FwTable headers={['Funnel Stage', 'Assets at This Stage', 'Primary CTA from This Stage', 'Buyer State']}>
           {fw.s16.funnelStages.map((row, i) => (
             <tr key={i} className="border-b border-border">
-              <FwTableCell><span className="font-semibold text-muted-foreground text-xs">{row.stage}</span></FwTableCell>
+              <FwTableCell><FwTableTextarea value={row.stage} onChange={(v) => set((d) => { d.s16.funnelStages[i].stage = v })} rows={3} placeholder="Funnel stage…" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.assets} onChange={(v) => set((d) => { d.s16.funnelStages[i].assets = v })} rows={3} placeholder="Assets…" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.primaryCTA} onChange={(v) => set((d) => { d.s16.funnelStages[i].primaryCTA = v })} rows={3} placeholder="Primary CTA…" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.buyerState} onChange={(v) => set((d) => { d.s16.funnelStages[i].buyerState = v })} rows={3} placeholder="Buyer state / intent signal…" /></FwTableCell>
