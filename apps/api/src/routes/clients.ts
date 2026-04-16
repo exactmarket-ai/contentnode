@@ -4253,12 +4253,25 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
       },
     })
 
-    // Resolve uploader display names across all three tables.
+    // 4. ClientVerticalBrainAttachment — client × vertical research (scheduled tasks, manual uploads)
+    const verticalBrainDocs = await prisma.clientVerticalBrainAttachment.findMany({
+      where: { clientId, agencyId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, filename: true, sourceUrl: true, mimeType: true, sizeBytes: true,
+        extractionStatus: true, summaryStatus: true, summary: true, createdAt: true,
+        verticalId: true, uploadedByUserId: true, uploadMethod: true,
+        vertical: { select: { id: true, name: true } },
+      },
+    })
+
+    // Resolve uploader display names across all tables.
     // uploadedByUserId may be an internal User UUID or a Clerk user ID (user_xxx fallback).
     const allUploaderIds = [...new Set([
       ...clientBrainDocs.map((d) => d.uploadedByUserId),
       ...campaignBrainDocs.map((d) => d.uploadedByUserId),
       ...brandDocs.map((d) => d.uploadedByUserId),
+      ...verticalBrainDocs.map((d) => d.uploadedByUserId),
     ].filter(Boolean) as string[])]
 
     const uploaderMap: Record<string, string | null> = {}
@@ -4280,7 +4293,7 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
 
     const SOURCE_LABELS: Record<string, string> = {
       client: 'Client Brain', campaign: 'Campaign', gtm_framework: 'GTM Framework',
-      demand_gen: 'Demand Gen', branding: 'Branding',
+      demand_gen: 'Demand Gen', branding: 'Branding', scheduled: 'Scheduled Task',
     }
 
     const allDocs = [
@@ -4317,6 +4330,17 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
         verticalId: d.verticalId, verticalName: d.vertical?.name ?? null,
         campaignId: null, campaignName: null, campaignScopedOnly: false,
         uploadMethod: 'file',
+        uploadedByName: d.uploadedByUserId ? (uploaderMap[d.uploadedByUserId] ?? null) : null,
+      })),
+      ...verticalBrainDocs.map((d) => ({
+        id: d.id, table: 'client_vertical_brain_attachments',
+        filename: d.filename, sourceUrl: d.sourceUrl ?? null, mimeType: d.mimeType, sizeBytes: d.sizeBytes,
+        extractionStatus: d.extractionStatus, summaryStatus: d.summaryStatus, summary: d.summary,
+        createdAt: d.createdAt.toISOString(),
+        source: 'scheduled', sourceLabel: 'Scheduled Task',
+        verticalId: d.verticalId, verticalName: d.vertical?.name ?? null,
+        campaignId: null, campaignName: null, campaignScopedOnly: false,
+        uploadMethod: d.uploadMethod,
         uploadedByName: d.uploadedByUserId ? (uploaderMap[d.uploadedByUserId] ?? null) : null,
       })),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

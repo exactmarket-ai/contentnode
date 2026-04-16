@@ -139,6 +139,34 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     return reply.send({ data: { queued: true } })
   })
 
+  // ── GET /api/v1/scheduled-tasks/:id/output ───────────────────────────────
+  app.get<{ Params: { id: string } }>('/:id/output', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params
+    const task = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
+    if (!task) return reply.code(404).send({ error: 'Task not found' })
+
+    const label = `[Scheduled] ${task.label}`
+
+    // Look up in whichever brain table the task wrote to
+    if (task.scope === 'vertical' && task.clientId && task.verticalId) {
+      const att = await prisma.clientVerticalBrainAttachment.findFirst({
+        where: { agencyId, clientId: task.clientId, verticalId: task.verticalId, filename: label },
+        select: { extractedText: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      })
+      return reply.send({ data: { text: att?.extractedText ?? null, updatedAt: att?.createdAt ?? null } })
+    } else if (task.clientId) {
+      const att = await prisma.clientBrainAttachment.findFirst({
+        where: { agencyId, clientId: task.clientId, source: 'scheduled', filename: label },
+        select: { extractedText: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      })
+      return reply.send({ data: { text: att?.extractedText ?? null, updatedAt: att?.createdAt ?? null } })
+    }
+    return reply.send({ data: { text: null, updatedAt: null } })
+  })
+
   // ── POST /api/v1/scheduled-tasks/seed-defaults ───────────────────────────
   app.post('/seed-defaults', async (req, reply) => {
     const { agencyId } = req.auth

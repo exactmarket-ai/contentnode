@@ -5345,11 +5345,60 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
   )
 }
 
+function TaskOutputModal({ task, onClose }: { task: ScheduledTask; onClose: () => void }) {
+  const [text, setText] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiFetch(`/api/v1/scheduled-tasks/${task.id}/output`)
+      .then((r) => r.json())
+      .then(({ data }) => setText(data?.text ?? null))
+      .catch(() => setText(null))
+      .finally(() => setLoading(false))
+  }, [task.id])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[680px] max-h-[85vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="rounded-t-xl px-6 py-4 flex items-center justify-between" style={{ backgroundColor: '#a200ee' }}>
+          <div>
+            <h2 className="text-sm font-semibold text-white">{task.label}</h2>
+            {task.vertical && <p className="text-xs text-white/70 mt-0.5">{task.vertical.name}</p>}
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5" style={{ backgroundColor: '#ffffff' }}>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+            </div>
+          ) : text ? (
+            <pre className="whitespace-pre-wrap text-xs leading-relaxed" style={{ color: '#111827', fontFamily: 'inherit' }}>{text}</pre>
+          ) : (
+            <p className="text-sm text-center py-12" style={{ color: '#6b7280' }}>No output yet — run the task first.</p>
+          )}
+        </div>
+        {text && (
+          <div className="px-6 py-3 flex justify-end" style={{ borderTop: '1px solid #e5e7eb', backgroundColor: '#ffffff' }}>
+            <button onClick={() => navigator.clipboard.writeText(text ?? '')}
+              style={{ height: 30, padding: '0 12px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icons.Copy className="h-3.5 w-3.5" /> Copy
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ScheduledTasksTab({ clientId }: { clientId: string }) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null)
+  const [viewingTask, setViewingTask] = useState<ScheduledTask | null>(null)
   const [running, setRunning] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
 
@@ -5500,6 +5549,13 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
                       title={task.enabled ? 'Disable' : 'Enable'}>
                       <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', task.enabled ? 'left-4' : 'left-0.5')} />
                     </button>
+                    {task.lastStatus === 'success' && (
+                      <button onClick={() => setViewingTask(task)}
+                        className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                        title="View output">
+                        <Icons.FileText className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     <button onClick={() => runNow(task.id)} disabled={running.has(task.id) || task.lastStatus === 'running'}
                       className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
                       title="Run now">
@@ -5526,6 +5582,8 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
           onCreated={(t) => setTasks((prev) => [t, ...prev])}
         />
       )}
+
+      {viewingTask && <TaskOutputModal task={viewingTask} onClose={() => setViewingTask(null)} />}
 
       {editingTask && (
         <AddTaskModal
