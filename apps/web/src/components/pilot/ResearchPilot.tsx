@@ -1,8 +1,8 @@
 /**
  * ResearchPilot.tsx
  *
- * researchPILOT — AI research strategist for Market Positioning & Competitive Assessments.
- * Right-side panel with chat interface, anchored to researchNODE page.
+ * researchPILOT — bottom-anchored chat panel, same pattern as GTMPilot.
+ * Collapses to a 44px bar, expands to 40vh.
  */
 
 import { useRef, useState, useEffect, useCallback } from 'react'
@@ -18,7 +18,6 @@ interface ResearchMessage {
 }
 
 export interface ResearchPilotProps {
-  onClose: () => void
   prospectName?: string | null
   prospectUrl?: string | null
 }
@@ -48,7 +47,7 @@ function MessageBubble({ msg }: { msg: ResearchMessage }) {
       )}
       <div
         className={cn(
-          'max-w-[88%] rounded-xl px-3 py-2 text-[12px] leading-relaxed',
+          'max-w-[80%] rounded-xl px-3 py-2 text-[12px] leading-relaxed',
           isUser
             ? 'bg-violet-600 text-white rounded-tr-sm'
             : 'bg-muted text-foreground rounded-tl-sm',
@@ -65,18 +64,10 @@ function MessageBubble({ msg }: { msg: ResearchMessage }) {
   )
 }
 
-// ─── Starter prompts ──────────────────────────────────────────────────────────
-
-const STARTERS = [
-  "How do I score Dimension 1 — Website & Messaging?",
-  "What should I look for in a prospect's competitive landscape?",
-  "Help me interpret a score of 2.5 on positioning.",
-  "Which dimensions matter most for a SaaS company?",
-]
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ResearchPilot({ onClose, prospectName, prospectUrl }: ResearchPilotProps) {
+export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps) {
+  const [open, setOpen]         = useState(false)
   const [messages, setMessages] = useState<ResearchMessage[]>([])
   const [loading, setLoading]   = useState(false)
   const [input, setInput]       = useState('')
@@ -85,8 +76,8 @@ export function ResearchPilot({ onClose, prospectName, prospectUrl }: ResearchPi
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 80)
-  }, [])
+    if (open) setTimeout(() => inputRef.current?.focus(), 80)
+  }, [open])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -143,67 +134,113 @@ export function ResearchPilot({ onClose, prospectName, prospectUrl }: ResearchPi
     }
   }
 
-  return (
-    <div className="flex w-80 shrink-0 flex-col border-l border-border bg-card overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600">
-            <Icons.Radar className="h-3.5 w-3.5 text-white" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold leading-none">researchPILOT</p>
-            {prospectName && (
-              <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[160px]">{prospectName}</p>
-            )}
-          </div>
-        </div>
+  // ── Collapsed bar ───────────────────────────────────────────────────────────
+  if (!open) {
+    const lastMsg = [...messages].reverse().find((m) => m.role === 'assistant')
+    return (
+      <div
+        className="relative flex shrink-0 items-center gap-3 border-t border-border bg-card px-4 cursor-pointer hover:bg-muted/40 transition-colors"
+        style={{ height: 44 }}
+        onClick={() => setOpen(true)}
+      >
         <button
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+          title="Open researchPILOT"
+          className="absolute top-0 left-1/2 z-10 -translate-x-1/2 flex w-12 h-3 items-center justify-center rounded-b-sm border border-t-0 border-border bg-card hover:bg-muted transition-colors"
         >
-          <Icons.X className="h-4 w-4" />
+          <Icons.ChevronUp className="h-2 w-2 text-muted-foreground" />
         </button>
+
+        <div className="flex items-center gap-1.5 text-violet-600 shrink-0">
+          <Icons.Radar className="h-4 w-4" />
+          <span className="text-xs font-bold tracking-wide">researchPILOT</span>
+        </div>
+
+        <span className="flex-1 truncate text-[11px] text-muted-foreground">
+          {lastMsg
+            ? lastMsg.content.replace(/\n/g, ' ').slice(0, 100)
+            : prospectName
+              ? `Ask me about assessing ${prospectName}…`
+              : 'Ask me about the assessment framework, scoring, or interpreting findings…'
+          }
+        </span>
+
+        <span className="text-[10px] text-violet-500 font-medium shrink-0 select-none">
+          Click to open ↑
+        </span>
+      </div>
+    )
+  }
+
+  // ── Expanded panel — 40vh ───────────────────────────────────────────────────
+  return (
+    <div
+      className="relative flex shrink-0 flex-col border-t border-border bg-card"
+      style={{ height: '40vh' }}
+    >
+      {/* Collapse handle */}
+      <button
+        onClick={() => setOpen(false)}
+        title="Collapse researchPILOT"
+        className="absolute top-0 left-1/2 z-10 -translate-x-1/2 flex w-12 h-3 items-center justify-center rounded-b-sm border border-t-0 border-border bg-card hover:bg-muted transition-colors"
+      >
+        <Icons.ChevronDown className="h-2 w-2 text-muted-foreground" />
+      </button>
+
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2 shrink-0">
+        <div className="flex items-center gap-1.5 text-violet-600">
+          <Icons.Radar className="h-4 w-4" />
+          <span className="text-xs font-bold tracking-wide">researchPILOT</span>
+        </div>
+        <span className="text-[10px] text-muted-foreground ml-0.5">AI research strategist</span>
+        {prospectName && (
+          <span className="ml-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5 text-[9px] font-medium text-violet-700">
+            {prospectName}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={() => setMessages([])}
+              title="Clear conversation"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <Icons.Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
         {messages.length === 0 && (
-          <div className="flex flex-col gap-3 pt-2">
-            <div className="flex flex-col items-center gap-2 py-4 text-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100">
-                <Icons.Radar className="h-5 w-5 text-violet-600" />
-              </div>
-              <p className="text-xs font-medium text-foreground">researchPILOT</p>
-              <p className="text-[11px] text-muted-foreground leading-relaxed max-w-[200px]">
-                Ask me anything about running assessments, scoring dimensions, or interpreting findings.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              {STARTERS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => void sendMessage(s)}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-left text-[11px] text-muted-foreground hover:border-violet-300 hover:text-foreground transition-colors"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
+            <Icons.Radar className="h-6 w-6 text-violet-300" />
+            <p className="text-xs font-medium text-muted-foreground">I'm your research strategist.</p>
+            <p className="text-[10px] text-muted-foreground/60 max-w-[260px]">
+              Ask me how to score any dimension, interpret findings, or identify service opportunities from gaps.
+            </p>
+            <button
+              onClick={() => void sendMessage('How do I get started with a prospect assessment?')}
+              className="mt-1 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-[11px] font-medium text-violet-600 hover:bg-violet-100 transition-colors"
+            >
+              How do I get started with a prospect assessment?
+            </button>
           </div>
         )}
-
         {messages.map((msg, i) => (
           <MessageBubble key={i} msg={msg} />
         ))}
-
         {loading && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-start">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600">
               <Icons.Radar className="h-3.5 w-3.5 text-white" />
             </div>
-            <div className="rounded-xl rounded-tl-sm bg-muted px-3 py-2">
-              <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
@@ -217,9 +254,9 @@ export function ResearchPilot({ onClose, prospectName, prospectUrl }: ResearchPi
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask researchPILOT…"
+            placeholder="Ask researchPILOT… (Enter to send)"
             rows={1}
-            className="flex-1 resize-none bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none leading-relaxed max-h-[120px]"
+            className="flex-1 resize-none bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none leading-relaxed max-h-[80px]"
             style={{ fieldSizing: 'content' } as React.CSSProperties}
           />
           <button
@@ -230,7 +267,6 @@ export function ResearchPilot({ onClose, prospectName, prospectUrl }: ResearchPi
             <Icons.ArrowUp className="h-3.5 w-3.5" />
           </button>
         </div>
-        <p className="mt-1.5 text-[10px] text-muted-foreground text-center">Enter to send · Shift+Enter for new line</p>
       </div>
     </div>
   )

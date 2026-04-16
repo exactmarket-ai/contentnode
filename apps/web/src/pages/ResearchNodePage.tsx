@@ -3,80 +3,120 @@
  *
  * researchNODE — Market Positioning & Competitive Assessment tool.
  * Accessible from the primary left navigation (super admin gated).
- * Includes researchPILOT chat panel on the right.
+ * researchPILOT anchored at the bottom, same pattern as GTMPilot.
  */
 
 import { useState } from 'react'
 import * as Icons from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ResearchPilot } from '@/components/pilot/ResearchPilot'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Assessment {
+  id: string
+  name: string
+  url: string
+  createdAt: string
+}
 
 // ─── Dimension metadata ───────────────────────────────────────────────────────
 
 const DIMENSIONS = [
-  { key: 'website_messaging',     label: 'Website & Messaging Audit',       weight: 20, icon: Icons.Globe },
-  { key: 'social_outbound',       label: 'Social Media & Outbound Content', weight: 10, icon: Icons.Share2 },
-  { key: 'positioning_segment',   label: 'Positioning & Segment Analysis',  weight: 20, icon: Icons.Target },
-  { key: 'analyst_context',       label: 'Industry & Analyst Context',      weight: 15, icon: Icons.BarChart3 },
-  { key: 'competitive_landscape', label: 'Competitive Landscape',           weight: 15, icon: Icons.Swords },
-  { key: 'growth_signals',        label: 'Growth Opportunity Signals',      weight: 20, icon: Icons.TrendingUp },
+  { key: 'website_messaging',     label: 'Website & Messaging Audit',       icon: Icons.Globe },
+  { key: 'social_outbound',       label: 'Social Media & Outbound Content', icon: Icons.Share2 },
+  { key: 'positioning_segment',   label: 'Positioning & Segment Analysis',  icon: Icons.Target },
+  { key: 'analyst_context',       label: 'Industry & Analyst Context',      icon: Icons.BarChart3 },
+  { key: 'competitive_landscape', label: 'Competitive Landscape',           icon: Icons.Swords },
+  { key: 'growth_signals',        label: 'Growth Opportunity Signals',      icon: Icons.TrendingUp },
 ]
-
-// ─── Score badge ──────────────────────────────────────────────────────────────
-
-function ScoreBadge({ score }: { score: number }) {
-  const tier =
-    score >= 4.5 ? { label: 'Category Leader',  color: 'bg-emerald-100 text-emerald-700' } :
-    score >= 3.5 ? { label: 'Strong Performer',  color: 'bg-blue-100 text-blue-700'       } :
-    score >= 2.5 ? { label: 'Developing',        color: 'bg-amber-100 text-amber-700'     } :
-    score >= 1.5 ? { label: 'Weak Positioning',  color: 'bg-orange-100 text-orange-700'   } :
-                   { label: 'At Risk',            color: 'bg-red-100 text-red-700'         }
-  return (
-    <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', tier.color)}>
-      {score.toFixed(1)} — {tier.label}
-    </span>
-  )
-}
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-8">
+    <div className="flex flex-col items-center justify-center h-full gap-6 px-8">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-border">
         <Icons.Telescope className="h-7 w-7 text-muted-foreground/40" />
       </div>
-      <div className="space-y-1.5">
+      <div className="text-center space-y-1.5">
         <p className="text-sm font-semibold text-foreground">No assessments yet</p>
-        <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
+        <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
           Start a new prospect assessment to gather market positioning intelligence across 6 weighted dimensions and generate a capabilities deck.
         </p>
       </div>
-      <div className="space-y-2 w-full max-w-xs">
-        <Button size="sm" className="w-full gap-1.5" onClick={onNew}>
+      <Button size="sm" className="gap-1.5" onClick={onNew}>
+        <Icons.Plus className="h-3.5 w-3.5" />
+        New Assessment
+      </Button>
+      <div className="w-full max-w-sm space-y-1.5">
+        {DIMENSIONS.map((d) => (
+          <div key={d.key} className="flex items-center gap-3 rounded-lg border border-border px-4 py-2.5">
+            <d.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="text-xs text-foreground">{d.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Assessment list ──────────────────────────────────────────────────────────
+
+function AssessmentList({ assessments, onNew }: { assessments: Assessment[]; onNew: () => void }) {
+  const relTime = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime()
+    if (diff < 60000) return 'just now'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+    return `${Math.floor(diff / 86400000)}d ago`
+  }
+
+  return (
+    <div className="p-6 space-y-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-muted-foreground">{assessments.length} assessment{assessments.length !== 1 ? 's' : ''}</p>
+        <Button size="sm" className="gap-1.5" onClick={onNew}>
           <Icons.Plus className="h-3.5 w-3.5" />
           New Assessment
         </Button>
-        <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
-          {DIMENSIONS.map((d) => (
-            <div key={d.key} className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5">
-              <d.icon className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <span className="truncate">{d.label.split(' ')[0]} {d.label.split(' ')[1]}</span>
-              <span className="ml-auto shrink-0 font-medium text-foreground">{d.weight}%</span>
-            </div>
-          ))}
-        </div>
       </div>
+      {assessments.map((a) => (
+        <div key={a.id} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3 hover:border-blue-300 transition-colors group cursor-pointer">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
+            {a.url && <p className="text-[11px] text-muted-foreground truncate">{a.url}</p>}
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="text-[10px] text-muted-foreground">{relTime(a.createdAt)}</span>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">In progress</span>
+            <Icons.ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
 // ─── New Assessment modal ─────────────────────────────────────────────────────
 
-function NewAssessmentModal({ onClose }: { onClose: () => void }) {
+function NewAssessmentModal({ onClose, onCreate }: { onClose: () => void; onCreate: (a: Assessment) => void }) {
   const [name, setName] = useState('')
   const [url,  setUrl]  = useState('')
+
+  const handleCreate = () => {
+    if (!name.trim()) return
+    onCreate({
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      url: url.trim(),
+      createdAt: new Date().toISOString(),
+    })
+    onClose()
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -97,8 +137,10 @@ function NewAssessmentModal({ onClose }: { onClose: () => void }) {
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               placeholder="e.g. Thrive NextGen"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
+              autoFocus
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
             />
           </div>
           <div className="space-y-1.5">
@@ -106,23 +148,20 @@ function NewAssessmentModal({ onClose }: { onClose: () => void }) {
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               placeholder="https://…"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
             />
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-zinc-50 px-4 py-3 text-[11px] text-muted-foreground leading-relaxed">
-          Assessment workflows are coming soon. For now, use <strong className="text-foreground">researchPILOT</strong> to guide your research manually across the 6 dimensions.
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-[11px] text-zinc-600 leading-relaxed">
+          Assessment workflows are coming soon. For now, use <strong className="text-zinc-800">researchPILOT</strong> to guide your research manually across the 6 dimensions.
         </div>
 
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button size="sm" disabled={!name.trim()} onClick={onClose}>
-            Create Assessment
-          </Button>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!name.trim()} onClick={handleCreate}>Create Assessment</Button>
         </div>
       </div>
     </div>
@@ -132,76 +171,58 @@ function NewAssessmentModal({ onClose }: { onClose: () => void }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function ResearchNodePage() {
-  const [pilotOpen, setPilotOpen] = useState(false)
-  const [showNew,   setShowNew]   = useState(false)
+  const [assessments, setAssessments] = useState<Assessment[]>([])
+  const [showNew, setShowNew]         = useState(false)
+
+  const activeAssessment = assessments[assessments.length - 1] ?? null
+
+  const handleCreate = (a: Assessment) => {
+    setAssessments((prev) => [...prev, a])
+  }
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* ── Main content ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
 
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-              <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold leading-none">researchNODE</h1>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Market positioning & competitive intelligence</p>
-            </div>
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+            <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPilotOpen((v) => !v)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-                pilotOpen
-                  ? 'border-violet-400 bg-violet-50 text-violet-700'
-                  : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-violet-300',
-              )}
-            >
-              <Icons.Radar className="h-3.5 w-3.5" />
-              researchPILOT
-            </button>
-            <Button size="sm" className="gap-1.5" onClick={() => setShowNew(true)}>
-              <Icons.Plus className="h-3.5 w-3.5" />
-              New Assessment
-            </Button>
+          <div>
+            <h1 className="text-sm font-semibold leading-none">researchNODE</h1>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Market positioning & competitive intelligence</p>
           </div>
         </div>
-
-        {/* Framework bar */}
-        <div className="flex items-center gap-0 border-b border-border bg-muted/30 overflow-x-auto shrink-0">
-          {DIMENSIONS.map((d, i) => (
-            <div
-              key={d.key}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2.5 text-[11px] text-muted-foreground border-r border-border shrink-0',
-                i === DIMENSIONS.length - 1 && 'border-r-0',
-              )}
-            >
-              <d.icon className="h-3 w-3 shrink-0" />
-              <span className="hidden lg:inline">{d.label}</span>
-              <span className="font-semibold text-foreground">{d.weight}%</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-auto">
-          <EmptyState onNew={() => setShowNew(true)} />
-        </div>
+        {assessments.length > 0 && (
+          <Button size="sm" className="gap-1.5" onClick={() => setShowNew(true)}>
+            <Icons.Plus className="h-3.5 w-3.5" />
+            New Assessment
+          </Button>
+        )}
       </div>
 
-      {/* ── researchPILOT panel ───────────────────────────────────────────────── */}
-      {pilotOpen && (
-        <ResearchPilot onClose={() => setPilotOpen(false)} />
-      )}
+      {/* Content */}
+      <div className="flex-1 overflow-auto min-h-0">
+        {assessments.length === 0
+          ? <EmptyState onNew={() => setShowNew(true)} />
+          : <AssessmentList assessments={assessments} onNew={() => setShowNew(true)} />
+        }
+      </div>
 
-      {/* ── New assessment modal ──────────────────────────────────────────────── */}
-      {showNew && <NewAssessmentModal onClose={() => setShowNew(false)} />}
+      {/* researchPILOT — bottom anchored */}
+      <ResearchPilot
+        prospectName={activeAssessment?.name}
+        prospectUrl={activeAssessment?.url}
+      />
+
+      {/* New assessment modal */}
+      {showNew && (
+        <NewAssessmentModal
+          onClose={() => setShowNew(false)}
+          onCreate={handleCreate}
+        />
+      )}
     </div>
   )
 }
