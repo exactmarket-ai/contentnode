@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api'
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
 import { GTMPilot } from '@/components/pilot/GTMPilot'
+import { downloadGTMFrameworkDocx } from '@/lib/downloadDocx'
 
 // ── Draft context — provides per-field AI drafting to all section components ──
 
@@ -26,7 +27,7 @@ const DraftContext = createContext<DraftContextValue>({
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
-const SECTIONS = [
+export const SECTIONS = [
   { num: '01', short: 'Vertical Overview',              usedIn: '' },
   { num: '02', short: 'Customer Definition + Profile',  usedIn: '' },
   { num: '03', short: 'Market Pressures + Stats',       usedIn: 'Brochure · eBook · Deck · Web Page · BDR Email 1' },
@@ -138,7 +139,7 @@ function defaultFramework() {
   }
 }
 
-type FrameworkData = ReturnType<typeof defaultFramework>
+export type FrameworkData = ReturnType<typeof defaultFramework>
 
 // ── Helper: section completion status ────────────────────────────────────────
 
@@ -1797,6 +1798,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   const [activeSection, setActiveSection] = useState<string>('brain')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [verticalsLoading, setVerticalsLoading] = useState(true)
+  const [downloadingDocx, setDownloadingDocx] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestFwRef = useRef<FrameworkData | null>(null)
 
@@ -2039,6 +2041,35 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
             {saveStatus === 'saved'  && <span className="text-green-600">Saved</span>}
             {saveStatus === 'error'  && <span className="text-red-500">Save failed</span>}
           </span>
+        )}
+        {selectedVertical && fw && (
+          <button
+            onClick={async () => {
+              setDownloadingDocx(true)
+              try {
+                await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name)
+              } finally {
+                setDownloadingDocx(false)
+              }
+            }}
+            disabled={downloadingDocx}
+            className={cn(
+              'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
+              downloadingDocx ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
+            )}
+          >
+            {downloadingDocx ? (
+              <svg className="h-3 w-3 animate-spin text-muted-foreground" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            ) : (
+              <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            )}
+            <span>{downloadingDocx ? 'Generating…' : 'Download DOCX'}</span>
+          </button>
         )}
       </div>
 

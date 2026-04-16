@@ -2,8 +2,11 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   AlignmentType, BorderStyle, Table, TableRow, TableCell,
   WidthType, ShadingType,
+  Header, Footer, PageNumber,
 } from 'docx'
 import { stripMarkdown } from './utils'
+import type { FrameworkData } from '@/pages/ClientFrameworkTab'
+import { SECTIONS } from '@/pages/ClientFrameworkTab'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -674,6 +677,548 @@ export async function downloadAssessmentDocx(data: AssessmentExport, clientName:
   const a = document.createElement('a')
   a.href = url
   a.download = `${safeName}_company_assessment.docx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── GTM Framework DOCX ───────────────────────────────────────────────────────
+
+const GTM_PURPLE = '7c3aed'
+const GTM_PURPLE_LIGHT = 'ede9fe'
+const GTM_GRAY = '6b7280'
+
+/** Creates a styled table with purple header row. widths are percentages (must sum to 100). */
+function styledTable(headers: string[], rows: string[][], widths?: number[]): Table {
+  const totalCols = headers.length
+  const pcts = widths ?? headers.map(() => Math.floor(100 / totalCols))
+
+  const headerRow = new TableRow({
+    tableHeader: true,
+    children: headers.map((h, i) =>
+      new TableCell({
+        width: { size: pcts[i], type: WidthType.PERCENTAGE },
+        shading: { type: ShadingType.SOLID, color: GTM_PURPLE_LIGHT, fill: GTM_PURPLE_LIGHT },
+        children: [new Paragraph({
+          children: [new TextRun({ text: h, bold: true, size: 18, color: GTM_PURPLE })],
+          spacing: { before: 60, after: 60 },
+        })],
+      })
+    ),
+  })
+
+  const dataRows = rows.map((cells) =>
+    new TableRow({
+      children: cells.map((cell, i) =>
+        new TableCell({
+          width: { size: pcts[i] ?? pcts[pcts.length - 1], type: WidthType.PERCENTAGE },
+          children: [new Paragraph({
+            children: [new TextRun({ text: cell ?? '', size: 18 })],
+            spacing: { before: 40, after: 40 },
+          })],
+        })
+      ),
+    })
+  )
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [headerRow, ...dataRows],
+  })
+}
+
+/** GTM section heading with purple border-bottom. Adds a page break before (except first). */
+function gtmSectionHeading(num: string, title: string, usedIn: string, addPageBreak: boolean): (Paragraph | Table)[] {
+  const items: Paragraph[] = []
+  if (addPageBreak) {
+    items.push(new Paragraph({ pageBreakBefore: true, spacing: { after: 0 } }))
+  }
+  items.push(
+    new Paragraph({
+      children: [new TextRun({ text: `§${num} ${title}`, bold: true, size: 26, color: GTM_PURPLE })],
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: usedIn ? 60 : 120 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: GTM_PURPLE } },
+    })
+  )
+  if (usedIn) {
+    items.push(
+      new Paragraph({
+        children: [new TextRun({ text: `Used in: ${usedIn}`, italics: true, size: 16, color: GTM_GRAY })],
+        spacing: { after: 120 },
+      })
+    )
+  }
+  return items
+}
+
+function gtmField(label: string, value: string | null | undefined): Paragraph[] {
+  if (!value?.trim()) return []
+  return [new Paragraph({
+    children: [
+      new TextRun({ text: `${label}: `, bold: true, size: 20 }),
+      new TextRun({ text: value.trim(), size: 20 }),
+    ],
+    spacing: { after: 80 },
+  })]
+}
+
+function gtmArea(label: string, value: string | null | undefined): Paragraph[] {
+  if (!value?.trim()) return []
+  return [
+    new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20 })], spacing: { after: 40 } }),
+    new Paragraph({ children: [new TextRun({ text: value.trim(), size: 20 })], spacing: { after: 120 } }),
+  ]
+}
+
+function gtmSubHeading(text: string): Paragraph {
+  return new Paragraph({
+    children: [new TextRun({ text, bold: true, size: 22, color: '111111' })],
+    spacing: { before: 160, after: 60 },
+  })
+}
+
+function gtmSpacer(): Paragraph {
+  return new Paragraph({ spacing: { after: 120 } })
+}
+
+export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string): Promise<void> {
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const children: (Paragraph | Table)[] = []
+
+  // ── Cover page ──────────────────────────────────────────────────────────────
+  children.push(
+    new Paragraph({ spacing: { after: 800 } }),
+    new Paragraph({
+      children: [new TextRun({ text: 'GTM FRAMEWORK', bold: true, size: 72, color: GTM_PURPLE })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 160 },
+    }),
+    new Paragraph({
+      children: [new TextRun({ text: clientName, bold: true, size: 36, color: '111111' })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 80 },
+    }),
+    new Paragraph({
+      children: [new TextRun({ text: verticalName, size: 28, color: GTM_GRAY })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 120 },
+    }),
+    new Paragraph({
+      children: [new TextRun({ text: dateStr, size: 20, color: GTM_GRAY })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 600 },
+    }),
+    new Paragraph({
+      border: { top: { style: BorderStyle.SINGLE, size: 4, color: GTM_PURPLE } },
+      spacing: { after: 0 },
+    }),
+  )
+
+  // ── §01 Vertical Overview ───────────────────────────────────────────────────
+  const s01 = SECTIONS.find((s) => s.num === '01')!
+  children.push(...gtmSectionHeading('01', s01.short, s01.usedIn, true))
+  children.push(...gtmArea('Positioning Statement', fw.s01.positioningStatement))
+  children.push(...gtmArea('Tagline Options', fw.s01.taglineOptions))
+  children.push(...gtmArea('How to Use', fw.s01.howToUse))
+  children.push(...gtmArea(`What ${clientName} Is NOT`, fw.s01.whatIsNot))
+
+  // ── §02 Customer Definition + Profile ──────────────────────────────────────
+  const s02 = SECTIONS.find((s) => s.num === '02')!
+  children.push(...gtmSectionHeading('02', s02.short, s02.usedIn, true))
+  children.push(...gtmField('Industry', fw.s02.industry))
+  children.push(...gtmField('Company Size', fw.s02.companySize))
+  children.push(...gtmField('Geography', fw.s02.geography))
+  children.push(...gtmField('IT Posture', fw.s02.itPosture))
+  children.push(...gtmField('Compliance Status', fw.s02.complianceStatus))
+  children.push(...gtmField('Contract Profile', fw.s02.contractProfile))
+
+  const buyerRows = fw.s02.buyerTable.filter((r) => r.segment?.trim() || r.primaryBuyer?.trim() || r.corePain?.trim() || r.entryPoint?.trim())
+  if (buyerRows.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Buyer Table', bold: true, size: 20 })], spacing: { after: 60 } }))
+    children.push(styledTable(
+      ['Segment', 'Primary Buyer', 'Core Pain', 'Entry Point'],
+      buyerRows.map((r) => [r.segment, r.primaryBuyer, r.corePain, r.entryPoint]),
+      [20, 25, 30, 25],
+    ))
+    children.push(gtmSpacer())
+  }
+  children.push(...gtmArea('Secondary Targets', fw.s02.secondaryTargets))
+
+  // ── §03 Market Pressures + Stats ────────────────────────────────────────────
+  const s03 = SECTIONS.find((s) => s.num === '03')!
+  children.push(...gtmSectionHeading('03', s03.short, s03.usedIn, true))
+  children.push(...gtmArea('Market Pressure Narrative', fw.s03.marketPressureNarrative))
+
+  const statRows = fw.s03.statsTable.filter((r) => r.stat?.trim() || r.context?.trim() || r.source?.trim())
+  if (statRows.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Stats', bold: true, size: 20 })], spacing: { after: 60 } }))
+    children.push(styledTable(
+      ['Stat', 'Context', 'Source', 'Year'],
+      statRows.map((r) => [r.stat, r.context, r.source, r.year]),
+      [30, 35, 25, 10],
+    ))
+    children.push(gtmSpacer())
+  }
+  children.push(...gtmArea('Additional Context', fw.s03.additionalContext))
+
+  // ── §04 Core Challenges ─────────────────────────────────────────────────────
+  const s04 = SECTIONS.find((s) => s.num === '04')!
+  children.push(...gtmSectionHeading('04', s04.short, s04.usedIn, true))
+  fw.s04.challenges.forEach((ch, i) => {
+    if (!ch.name?.trim() && !ch.whyExists?.trim() && !ch.consequence?.trim() && !ch.solution?.trim()) return
+    if (ch.name?.trim()) children.push(gtmSubHeading(`Challenge ${i + 1}: ${ch.name}`))
+    else children.push(gtmSubHeading(`Challenge ${i + 1}`))
+    children.push(...gtmArea('Why It Exists', ch.whyExists))
+    children.push(...gtmArea('Consequence', ch.consequence))
+    children.push(...gtmArea(`${clientName} Solution`, ch.solution))
+    children.push(...gtmField('Relevant Pillars', ch.pillarsText))
+  })
+
+  // ── §05 Solutions + Service Stack ───────────────────────────────────────────
+  const s05 = SECTIONS.find((s) => s.num === '05')!
+  children.push(...gtmSectionHeading('05', s05.short, s05.usedIn, true))
+  fw.s05.pillars.forEach((p, i) => {
+    if (!p.pillar?.trim() && !p.valueProp?.trim() && !p.keyServices?.trim()) return
+    children.push(gtmSubHeading(p.pillar?.trim() ? `Pillar ${i + 1}: ${p.pillar}` : `Pillar ${i + 1}`))
+    children.push(...gtmArea('Value Proposition', p.valueProp))
+    children.push(...gtmArea('Key Services', p.keyServices))
+    children.push(...gtmField('Relevant To', p.relevantTo))
+  })
+
+  const serviceRows = fw.s05.serviceStack.filter((r) => r.service?.trim() || r.whatItDelivers?.trim())
+  if (serviceRows.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Service Stack', bold: true, size: 20 })], spacing: { before: 120, after: 60 } }))
+    children.push(styledTable(
+      ['Service', 'What It Delivers', 'Priority'],
+      serviceRows.map((r) => [r.service, r.whatItDelivers, r.priority]),
+      [30, 55, 15],
+    ))
+    children.push(gtmSpacer())
+  }
+
+  // ── §06 Why [clientName] ────────────────────────────────────────────────────
+  const s06 = SECTIONS.find((s) => s.num === '06')!
+  children.push(...gtmSectionHeading('06', `Why ${clientName}`, s06.usedIn, true))
+  fw.s06.differentiators.forEach((d, i) => {
+    if (!d.label?.trim() && !d.position?.trim()) return
+    if (d.label?.trim()) children.push(gtmSubHeading(`${i + 1}. ${d.label}`))
+    else children.push(gtmSubHeading(`Differentiator ${i + 1}`))
+    children.push(...gtmArea('Position', d.position))
+  })
+
+  // ── §07 Segments + Buyer Profiles ───────────────────────────────────────────
+  const s07 = SECTIONS.find((s) => s.num === '07')!
+  children.push(...gtmSectionHeading('07', s07.short, s07.usedIn, true))
+  fw.s07.segments.forEach((seg, i) => {
+    if (!seg.name?.trim() && !seg.primaryBuyerTitles?.trim() && !seg.whatIsDifferent?.trim()) return
+    children.push(gtmSubHeading(seg.name?.trim() ? `Segment ${i + 1}: ${seg.name}` : `Segment ${i + 1}`))
+    children.push(...gtmField('Primary Buyer Titles', seg.primaryBuyerTitles))
+    children.push(...gtmArea('What Is Different', seg.whatIsDifferent))
+    children.push(...gtmArea('Key Pressures', seg.keyPressures))
+    children.push(...gtmField('Lead Hook', seg.leadHook))
+    children.push(...gtmField('Compliance Notes', seg.complianceNotes))
+  })
+
+  // ── §08 Messaging Framework ─────────────────────────────────────────────────
+  const s08 = SECTIONS.find((s) => s.num === '08')!
+  children.push(...gtmSectionHeading('08', s08.short, s08.usedIn, true))
+  children.push(...gtmArea('Problems', fw.s08.problems))
+  children.push(...gtmArea('Solution', fw.s08.solution))
+  children.push(...gtmArea('Outcomes', fw.s08.outcomes))
+
+  const vpRows = fw.s08.valuePropTable.filter((r) => r.pillar?.trim() || r.meaning?.trim() || r.proofPoint?.trim())
+  if (vpRows.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Value Proposition Table', bold: true, size: 20 })], spacing: { after: 60 } }))
+    children.push(styledTable(
+      ['Pillar', 'Meaning', 'Proof Point', 'Citation'],
+      vpRows.map((r) => [r.pillar, r.meaning, r.proofPoint, r.citation]),
+      [20, 35, 30, 15],
+    ))
+    children.push(gtmSpacer())
+  }
+
+  // ── §09 Proof Points + Case Studies ─────────────────────────────────────────
+  const s09 = SECTIONS.find((s) => s.num === '09')!
+  children.push(...gtmSectionHeading('09', s09.short, s09.usedIn, true))
+
+  const filledProofPoints = fw.s09.proofPoints.filter((p) => p.text?.trim())
+  if (filledProofPoints.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Proof Points', bold: true, size: 20 })], spacing: { after: 40 } }))
+    filledProofPoints.forEach((pp) => {
+      const text = pp.source?.trim() ? `${pp.text.trim()}  [${pp.source}]` : pp.text.trim()
+      children.push(new Paragraph({
+        children: [new TextRun({ text, size: 20 })],
+        bullet: { level: 0 },
+        spacing: { after: 40 },
+      }))
+    })
+    children.push(gtmSpacer())
+  }
+
+  fw.s09.caseStudies.forEach((cs, i) => {
+    if (!cs.clientProfile?.trim() && !cs.situation?.trim() && !cs.outcomes?.trim()) return
+    children.push(gtmSubHeading(`Case Study ${i + 1}${cs.clientProfile?.trim() ? ': ' + cs.clientProfile : ''}`))
+    children.push(...gtmField('URL', cs.url))
+    children.push(...gtmArea('Situation', cs.situation))
+    children.push(...gtmArea(`${clientName} Engagement`, cs.engagement))
+    children.push(...gtmArea('Outcomes', cs.outcomes))
+    children.push(...gtmArea('30-Second Version', cs.thirtySecond))
+    children.push(...gtmField('Headline Stat', cs.headlineStat))
+  })
+
+  // ── §10 Objection Handling ──────────────────────────────────────────────────
+  const s10 = SECTIONS.find((s) => s.num === '10')!
+  children.push(...gtmSectionHeading('10', s10.short, s10.usedIn, true))
+  fw.s10.objections.forEach((obj, i) => {
+    if (!obj.objection?.trim() && !obj.response?.trim()) return
+    children.push(gtmSubHeading(`Objection ${i + 1}`))
+    children.push(...gtmField('Objection', obj.objection))
+    children.push(...gtmArea('Response', obj.response))
+    children.push(...gtmArea('Follow-Up', obj.followUp))
+  })
+
+  // ── §11 Brand Voice Examples ─────────────────────────────────────────────────
+  const s11 = SECTIONS.find((s) => s.num === '11')!
+  children.push(...gtmSectionHeading('11', s11.short, s11.usedIn, true))
+  children.push(...gtmField('Tone Target', fw.s11.toneTarget))
+  children.push(...gtmField('Vocabulary Level', fw.s11.vocabularyLevel))
+  children.push(...gtmField('Sentence Style', fw.s11.sentenceStyle))
+  children.push(...gtmField('What to Avoid', fw.s11.whatToAvoid))
+
+  const filledGood = fw.s11.goodExamples.filter((e) => e.text?.trim())
+  if (filledGood.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Good Examples', bold: true, size: 20 })], spacing: { after: 40 } }))
+    filledGood.forEach((e) => {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: e.text.trim(), size: 20 })],
+        bullet: { level: 0 },
+        spacing: { after: 40 },
+      }))
+    })
+    children.push(gtmSpacer())
+  }
+
+  const filledBad = fw.s11.badExamples.filter((e) => e.bad?.trim() || e.whyWrong?.trim())
+  if (filledBad.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Bad Examples', bold: true, size: 20 })], spacing: { after: 60 } }))
+    children.push(styledTable(
+      ['Bad Example', 'Why Wrong'],
+      filledBad.map((e) => [e.bad, e.whyWrong]),
+      [50, 50],
+    ))
+    children.push(gtmSpacer())
+  }
+
+  // ── §12 Competitive Differentiation ─────────────────────────────────────────
+  const s12 = SECTIONS.find((s) => s.num === '12')!
+  children.push(...gtmSectionHeading('12', s12.short, s12.usedIn, true))
+
+  const compRows = fw.s12.competitors.filter((r) => r.type?.trim() || r.positioning?.trim() || r.counter?.trim())
+  if (compRows.length > 0) {
+    children.push(styledTable(
+      ['Type', 'Their Positioning', `${clientName} Counter`, 'When It Comes Up'],
+      compRows.map((r) => [r.type, r.positioning, r.counter, r.whenComesUp]),
+      [20, 25, 35, 20],
+    ))
+    children.push(gtmSpacer())
+  }
+
+  // ── §13 Customer Quotes + Testimonials ──────────────────────────────────────
+  const s13 = SECTIONS.find((s) => s.num === '13')!
+  children.push(...gtmSectionHeading('13', s13.short, s13.usedIn, true))
+  fw.s13.quotes.forEach((q, i) => {
+    if (!q.quoteText?.trim() && !q.attribution?.trim()) return
+    children.push(gtmSubHeading(`Quote ${i + 1}${q.attribution?.trim() ? ' — ' + q.attribution : ''}`))
+    if (q.quoteText?.trim()) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: `"${q.quoteText.trim()}"`, italics: true, size: 20 })],
+        spacing: { after: 60 },
+      }))
+    }
+    children.push(...gtmField('Context', q.context))
+    children.push(...gtmField('Best Used In', q.bestUsedIn))
+    children.push(...gtmField('Approved', q.approved))
+  })
+
+  // ── §14 Campaign Themes + Asset Mapping ─────────────────────────────────────
+  const s14 = SECTIONS.find((s) => s.num === '14')!
+  children.push(...gtmSectionHeading('14', s14.short, s14.usedIn, true))
+
+  const campaignRows = fw.s14.campaigns.filter((r) => r.theme?.trim() || r.targetAudience?.trim() || r.primaryAssets?.trim())
+  if (campaignRows.length > 0) {
+    children.push(styledTable(
+      ['Theme', 'Target Audience', 'Primary Assets', 'Key Message'],
+      campaignRows.map((r) => [r.theme, r.targetAudience, r.primaryAssets, r.keyMessage]),
+      [25, 25, 25, 25],
+    ))
+    children.push(gtmSpacer())
+  }
+
+  // ── §15 FAQs ────────────────────────────────────────────────────────────────
+  const s15 = SECTIONS.find((s) => s.num === '15')!
+  children.push(...gtmSectionHeading('15', s15.short, s15.usedIn, true))
+  fw.s15.faqs.forEach((faq, i) => {
+    if (!faq.question?.trim() && !faq.answer?.trim()) return
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `Q${i + 1}: ${faq.question?.trim() ?? ''}`, bold: true, size: 20 })],
+      spacing: { before: 120, after: 40 },
+    }))
+    if (faq.answer?.trim()) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: `A: ${faq.answer.trim()}`, size: 20 })],
+        spacing: { after: 40 },
+      }))
+    }
+    children.push(...gtmField('Best Addressed In', faq.bestAddressedIn))
+  })
+
+  // ── §16 Content Funnel Mapping ───────────────────────────────────────────────
+  const s16 = SECTIONS.find((s) => s.num === '16')!
+  children.push(...gtmSectionHeading('16', s16.short, s16.usedIn, true))
+
+  const funnelRows = fw.s16.funnelStages.filter((r) => r.assets?.trim() || r.primaryCTA?.trim() || r.buyerState?.trim())
+  if (funnelRows.length > 0) {
+    children.push(styledTable(
+      ['Stage', 'Assets', 'Primary CTA', 'Buyer State'],
+      funnelRows.map((r) => [r.stage, r.assets, r.primaryCTA, r.buyerState]),
+      [20, 30, 25, 25],
+    ))
+    children.push(gtmSpacer())
+  }
+  children.push(...gtmArea('CTA Sequencing', fw.s16.ctaSequencing))
+
+  // ── §17 Regulatory + Compliance ─────────────────────────────────────────────
+  const s17 = SECTIONS.find((s) => s.num === '17')!
+  children.push(...gtmSectionHeading('17', s17.short, s17.usedIn, true))
+
+  const regRows = fw.s17.regulations.filter((r) => r.requirement?.trim() || r.capability?.trim() || r.servicePillar?.trim())
+  if (regRows.length > 0) {
+    children.push(styledTable(
+      ['Requirement', `${clientName} Capability`, 'Service Pillar', 'Sales Note'],
+      regRows.map((r) => [r.requirement, r.capability, r.servicePillar, r.salesNote]),
+      [25, 30, 25, 20],
+    ))
+    children.push(gtmSpacer())
+  }
+  children.push(...gtmArea('Regulatory Sales Note', fw.s17.regulatorySalesNote))
+
+  // ── §18 CTAs + Next Steps ────────────────────────────────────────────────────
+  const s18 = SECTIONS.find((s) => s.num === '18')!
+  children.push(...gtmSectionHeading('18', s18.short, s18.usedIn, true))
+
+  const ctaRows = fw.s18.ctas.filter((r) => r.ctaName?.trim() || r.description?.trim())
+  if (ctaRows.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'CTAs', bold: true, size: 20 })], spacing: { after: 60 } }))
+    children.push(styledTable(
+      ['CTA Name', 'Description', 'Target Audience / Trigger', 'Assets'],
+      ctaRows.map((r) => [r.ctaName, r.description, r.targetAudienceTrigger, r.assets]),
+      [20, 35, 25, 20],
+    ))
+    children.push(gtmSpacer())
+  }
+
+  const campaignThemeRows = fw.s18.campaignThemes.filter((r) => r.campaignName?.trim() || r.description?.trim())
+  if (campaignThemeRows.length > 0) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Campaign Themes', bold: true, size: 20 })], spacing: { after: 60 } }))
+    children.push(styledTable(
+      ['Campaign Name', 'Description'],
+      campaignThemeRows.map((r) => [r.campaignName, r.description]),
+      [35, 65],
+    ))
+    children.push(gtmSpacer())
+  }
+
+  const ct = fw.s18.contact
+  const hasContact = ct.verticalOwner?.trim() || ct.marketingContact?.trim() || ct.salesLead?.trim() || ct.documentVersion?.trim()
+  if (hasContact) {
+    children.push(new Paragraph({ children: [new TextRun({ text: 'Contact Block', bold: true, size: 20 })], spacing: { after: 60 } }))
+    children.push(...gtmField('Vertical Owner', ct.verticalOwner))
+    children.push(...gtmField('Marketing Contact', ct.marketingContact))
+    children.push(...gtmField('Sales Lead', ct.salesLead))
+    children.push(...gtmField('Document Version', ct.documentVersion))
+    children.push(...gtmField('Last Updated', ct.lastUpdated))
+    children.push(...gtmField('Next Review Date', ct.nextReviewDate))
+  }
+
+  // ── Build document with header + footer ─────────────────────────────────────
+  const doc = new Document({
+    styles: {
+      paragraphStyles: [
+        {
+          id: 'Heading1',
+          name: 'Heading 1',
+          basedOn: 'Normal',
+          next: 'Normal',
+          run: { bold: true, size: 26, color: GTM_PURPLE },
+        },
+      ],
+    },
+    sections: [
+      {
+        properties: {
+          titlePage: true,
+        },
+        headers: {
+          default: new Header({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: `${clientName} | ${verticalName}`, size: 18, color: GTM_GRAY }),
+                  new TextRun({ text: '\t', size: 18 }),
+                  new TextRun({ text: 'GTM Framework', size: 18, color: GTM_GRAY }),
+                ],
+                alignment: AlignmentType.LEFT,
+                border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'e5e7eb' } },
+              }),
+            ],
+          }),
+          first: new Header({ children: [new Paragraph({ children: [] })] }),
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: 'Confidential', size: 16, color: GTM_GRAY }),
+                  new TextRun({ text: '\t', size: 16 }),
+                  new TextRun({ text: 'ContentNode AI', size: 16, color: GTM_GRAY }),
+                  new TextRun({ text: '\t', size: 16 }),
+                  new TextRun({ text: 'Page ', size: 16, color: GTM_GRAY }),
+                  new TextRun({
+                    children: [PageNumber.CURRENT],
+                    size: 16,
+                    color: GTM_GRAY,
+                  }),
+                  new TextRun({ text: ' of ', size: 16, color: GTM_GRAY }),
+                  new TextRun({
+                    children: [PageNumber.TOTAL_PAGES],
+                    size: 16,
+                    color: GTM_GRAY,
+                  }),
+                ],
+                alignment: AlignmentType.LEFT,
+                border: { top: { style: BorderStyle.SINGLE, size: 4, color: 'e5e7eb' } },
+                tabStops: [
+                  { type: 'center', position: 4320 },
+                  { type: 'right', position: 8640 },
+                ],
+              }),
+            ],
+          }),
+          first: new Footer({ children: [new Paragraph({ children: [] })] }),
+        },
+        children,
+      },
+    ],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  const safeName = (s: string) => s.replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  const today = new Date().toISOString().slice(0, 10)
+  a.href = url
+  a.download = `GTM-Framework-${safeName(clientName)}-${safeName(verticalName)}-${today}.docx`
   a.click()
   URL.revokeObjectURL(url)
 }
