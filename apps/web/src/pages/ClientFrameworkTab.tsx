@@ -815,14 +815,22 @@ function S08({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
           fieldId="s08.outcomes" sectionNum="08" sectionTitle="Messaging Framework" fieldLabel="Outcomes — the 'after' state (measurable, 2-3 sentences)" />
       </FwField>
 
-      <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Value Proposition by Pillar</p>
-      <FwTable headers={['Pillar', 'For This Vertical, This Means…', 'Proof Point', 'Citation']}>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Value Proposition by Pillar</p>
+        <button onClick={() => set((d) => { d.s08.valuePropTable.push({ pillar: '', meaning: '', proofPoint: '', citation: '' }) })} className="text-xs text-blue-500 hover:text-blue-700 font-medium">+ Add Row</button>
+      </div>
+      <FwTable headers={['Pillar', 'For This Vertical, This Means…', 'Proof Point', 'Citation', '']}>
         {s.valuePropTable.map((row, i) => (
           <tr key={i} className="border-b border-border">
             <FwTableCell><FwTableTextarea value={row.pillar} onChange={(v) => set((d) => { d.s08.valuePropTable[i].pillar = v })} rows={4} placeholder="Pillar name…" /></FwTableCell>
             <FwTableCell><FwTableTextarea value={row.meaning} onChange={(v) => set((d) => { d.s08.valuePropTable[i].meaning = v })} rows={4} placeholder="What this pillar means for this vertical…" /></FwTableCell>
             <FwTableCell><FwTableTextarea value={row.proofPoint} onChange={(v) => set((d) => { d.s08.valuePropTable[i].proofPoint = v })} rows={4} placeholder="e.g. 99.9% uptime SLA" /></FwTableCell>
             <FwTableCell><FwTableTextarea value={row.citation} onChange={(v) => set((d) => { d.s08.valuePropTable[i].citation = v })} rows={4} placeholder="Name & URL" /></FwTableCell>
+            <FwTableCell>
+              {s.valuePropTable.length > 1 && (
+                <button onClick={() => set((d) => { d.s08.valuePropTable.splice(i, 1) })} className="text-muted-foreground hover:text-destructive transition-colors" title="Remove row">✕</button>
+              )}
+            </FwTableCell>
           </tr>
         ))}
       </FwTable>
