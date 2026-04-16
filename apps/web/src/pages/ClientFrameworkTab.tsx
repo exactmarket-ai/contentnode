@@ -715,12 +715,12 @@ function S05({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       {fw.s05.serviceStack.map((row, i) => (
         <FwCard key={i} title={row.service || `Service ${i + 1}`} canDelete={fw.s05.serviceStack.length > 1}
           onDelete={() => set((d) => { d.s05.serviceStack.splice(i, 1) })}>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
             <div><FwLabel>Service Name</FwLabel><FwInput value={row.service} onChange={(v) => set((d) => { d.s05.serviceStack[i].service = v })} placeholder="Service name" fieldId={`s05.service.${i}.name`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Service Name" /></div>
             <div><FwLabel>Regulatory Domain (if applicable)</FwLabel><FwInput value={row.regulatoryDomain ?? ''} onChange={(v) => set((d) => { d.s05.serviceStack[i].regulatoryDomain = v })} placeholder="e.g. HIPAA, SOX, GDPR…" fieldId={`s05.service.${i}.regulatoryDomain`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Regulatory Domain" /></div>
             <div><FwLabel>What It Delivers (in this vertical)</FwLabel><FwTextarea value={row.whatItDelivers} onChange={(v) => set((d) => { d.s05.serviceStack[i].whatItDelivers = v })} rows={3} placeholder="What this delivers specifically for this market…" fieldId={`s05.service.${i}.whatItDelivers`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="What It Delivers (in this vertical)" /></div>
+            <div><FwLabel>Priority / Relevance</FwLabel><FwInput value={row.priority} onChange={(v) => set((d) => { d.s05.serviceStack[i].priority = v })} placeholder="High / Medium / Low" fieldId={`s05.service.${i}.priority`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Priority / Relevance" /></div>
           </div>
-          <div className="mt-3"><FwLabel>Priority / Relevance</FwLabel><FwInput value={row.priority} onChange={(v) => set((d) => { d.s05.serviceStack[i].priority = v })} placeholder="High / Medium / Low" fieldId={`s05.service.${i}.priority`} sectionNum="05" sectionTitle="Solutions + Service Stack" fieldLabel="Priority / Relevance" /></div>
         </FwCard>
       ))}
       <AddButton onClick={() => set((d) => { d.s05.serviceStack.push({ service: '', regulatoryDomain: '', whatItDelivers: '', priority: '', _open: true }) })} label="Add Service" />
