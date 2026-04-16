@@ -5508,6 +5508,10 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
           clientId={clientId}
           editTask={editingTask}
           onClose={() => setEditingTask(null)}
+          onCreated={(t) => {
+            setTasks((prev) => [t, ...prev])
+            setEditingTask(null)
+          }}
           onUpdated={(t) => {
             setTasks((prev) => prev.map((x) => x.id === t.id ? t : x))
             setEditingTask(null)
