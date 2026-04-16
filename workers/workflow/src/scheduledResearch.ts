@@ -91,8 +91,11 @@ async function writeToBrain(
 ): Promise<void> {
   const scheduledLabel = `[Scheduled] ${label}`
 
+  console.log(`[writeToBrain] scope=${scope} clientId=${clientId} verticalId=${verticalId} label="${scheduledLabel}"`)
+
   // Route on verticalId presence — ignore scope field which may be stale from old seeds
   if (clientId && verticalId) {
+    console.log(`[writeToBrain] → vertical branch, writing to clientBrainAttachment with verticalId`)
     // Vertical-scoped: write to clientBrainAttachment with verticalId set
     const existing = await prisma.clientBrainAttachment.findFirst({
       where: { agencyId, clientId, verticalId, source: 'scheduled', filename: scheduledLabel },
@@ -124,8 +127,10 @@ async function writeToBrain(
         },
       })
     }
+    console.log(`[writeToBrain] ✓ vertical write complete`)
     await synthesiseClientContext(agencyId, clientId)
   } else if (clientId) {
+    console.log(`[writeToBrain] → client branch (no vertical)`)
     // Client-scoped (no vertical): write to clientBrainAttachment without verticalId
     const existing = await prisma.clientBrainAttachment.findFirst({
       where: { agencyId, clientId, source: 'scheduled', filename: scheduledLabel, verticalId: null },
