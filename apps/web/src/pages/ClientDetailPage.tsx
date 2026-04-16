@@ -5013,7 +5013,11 @@ export function ClientDetailPage() {
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment']
   // Tabs that live under the "Settings" group
   const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs']
-  const MAIN_TABS: Tab[] = TABS.filter((t) => !SETTINGS_TABS.includes(t) && !RESEARCH_TABS.includes(t) && !DEMAND_GEN_TABS.includes(t))
+  // Tabs rendered before the Demand Gen group button
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'framework', 'branding', 'reviews']
+  // Tabs rendered after the Demand Gen group button
+  const POST_DEMAND_GEN_TABS: Tab[] = ['workflows', 'deliverables', 'insights']
+  const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS]
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
@@ -5045,7 +5049,7 @@ export function ClientDetailPage() {
 
       {/* Tabs — primary row */}
       <div className="flex gap-0 border-b border-border bg-card px-6 print:hidden">
-        {MAIN_TABS.map((tab) => (
+        {PRE_DEMAND_GEN_TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => switchTab(tab)}
@@ -5072,6 +5076,20 @@ export function ClientDetailPage() {
           <Icons.TrendingUp className="h-3 w-3" />
           Demand Gen
         </button>
+        {POST_DEMAND_GEN_TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => switchTab(tab)}
+            className={cn(
+              'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+              activeTab === tab
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
         {/* Research group entry point */}
         <button
           onClick={() => switchTab('company')}
