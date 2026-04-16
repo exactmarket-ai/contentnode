@@ -3302,11 +3302,19 @@ Output as clean HTML using <h3> for slide titles, <ul> for bullet points. Do not
     if (!client) return reply.code(404).send({ error: 'Client not found' })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
 
-    const attachments = await prisma.clientFrameworkAttachment.findMany({
-      where: { clientId, verticalId, agencyId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, storageKey: true, summaryStatus: true, summary: true },
-    })
+    const [attachments, scheduledEntries] = await Promise.all([
+      prisma.clientFrameworkAttachment.findMany({
+        where: { clientId, verticalId, agencyId },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, storageKey: true, summaryStatus: true, summary: true },
+      }),
+      // Include scheduled task results scoped to this vertical
+      prisma.clientBrainAttachment.findMany({
+        where: { clientId, agencyId, verticalId, source: 'scheduled' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, filename: true, mimeType: true, sizeBytes: true, createdAt: true, summaryStatus: true, summary: true },
+      }),
+    ])
     // Attach the Brand read for each file so the GTM room can show both lenses
     const storageKeys = attachments.map((a) => a.storageKey)
     const brandMirrors = storageKeys.length
@@ -3316,12 +3324,23 @@ Output as clean HTML using <h3> for slide titles, <ul> for bullet points. Do not
         })
       : []
     const brandMap = new Map(brandMirrors.map((m) => [m.storageKey, m]))
-    const data = attachments.map((a) => ({
-      ...a,
-      brandSummary: brandMap.get(a.storageKey)?.summary ?? null,
-      brandSummaryStatus: brandMap.get(a.storageKey)?.summaryStatus ?? null,
-      brandAttachmentId: brandMap.get(a.storageKey)?.id ?? null,
-    }))
+    const data = [
+      ...attachments.map((a) => ({
+        ...a,
+        source: 'framework',
+        brandSummary: brandMap.get(a.storageKey)?.summary ?? null,
+        brandSummaryStatus: brandMap.get(a.storageKey)?.summaryStatus ?? null,
+        brandAttachmentId: brandMap.get(a.storageKey)?.id ?? null,
+      })),
+      ...scheduledEntries.map((a) => ({
+        ...a,
+        storageKey: null,
+        source: 'scheduled',
+        brandSummary: null,
+        brandSummaryStatus: null,
+        brandAttachmentId: null,
+      })),
+    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     return reply.send({ data })
   })
 

@@ -148,17 +148,16 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
 
     const label = `[Scheduled] ${task.label}`
 
-    // Look up in whichever brain table the task wrote to
-    if (task.scope === 'vertical' && task.clientId && task.verticalId) {
-      const att = await prisma.clientVerticalBrainAttachment.findFirst({
-        where: { agencyId, clientId: task.clientId, verticalId: task.verticalId, filename: label },
-        select: { extractedText: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      })
-      return reply.send({ data: { text: att?.extractedText ?? null, updatedAt: att?.createdAt ?? null } })
-    } else if (task.clientId) {
+    // All scopes now write to clientBrainAttachment (vertical-scoped entries have verticalId set)
+    if (task.clientId) {
       const att = await prisma.clientBrainAttachment.findFirst({
-        where: { agencyId, clientId: task.clientId, source: 'scheduled', filename: label },
+        where: {
+          agencyId,
+          clientId: task.clientId,
+          source: 'scheduled',
+          filename: label,
+          ...(task.verticalId ? { verticalId: task.verticalId } : {}),
+        },
         select: { extractedText: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
       })

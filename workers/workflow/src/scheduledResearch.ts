@@ -124,11 +124,13 @@ async function writeToBrain(
     // Re-synthesise client brain context directly (avoids noop attachment issue)
     await synthesiseClientContext(agencyId, clientId)
   } else if (scope === 'vertical' && clientId && verticalId) {
-    const existing = await prisma.clientVerticalBrainAttachment.findFirst({
-      where: { agencyId, clientId, verticalId, uploadMethod: 'url', filename: scheduledLabel },
+    // Write to clientBrainAttachment with verticalId — this is the vertical-scoped client brain
+    // entry and surfaces in: Client Brain tab (brain/all), and the GTM Framework vertical brain view
+    const existing = await prisma.clientBrainAttachment.findFirst({
+      where: { agencyId, clientId, verticalId, source: 'scheduled', filename: scheduledLabel },
     })
     if (existing) {
-      await prisma.clientVerticalBrainAttachment.update({
+      await prisma.clientBrainAttachment.update({
         where: { id: existing.id },
         data: {
           extractedText: output,
@@ -138,13 +140,14 @@ async function writeToBrain(
         },
       })
     } else {
-      await prisma.clientVerticalBrainAttachment.create({
+      await prisma.clientBrainAttachment.create({
         data: {
           agencyId,
           clientId,
           verticalId,
           filename: scheduledLabel,
           mimeType: 'text/plain',
+          source: 'scheduled',
           uploadMethod: 'url',
           extractionStatus: 'ready',
           extractedText: output,
@@ -153,8 +156,8 @@ async function writeToBrain(
         },
       })
     }
-    // Re-synthesise vertical context
-    await synthesiseVerticalContext(agencyId, verticalId)
+    // Re-synthesise client brain context (vertical-scoped entries are included)
+    await synthesiseClientContext(agencyId, clientId)
   } else if (scope === 'company') {
     const existing = await prisma.agencyBrainAttachment.findFirst({
       where: { agencyId, uploadMethod: 'url', filename: scheduledLabel },
