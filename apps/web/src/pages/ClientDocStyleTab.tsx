@@ -357,18 +357,20 @@ export function ClientDocStyleTab({ clientId }: { clientId: string }) {
                 onChange={(v) => set(overrideKey, v)}
                 label={form[overrideKey] ? `Override: ${label.toLowerCase()}` : `Use default (${label.toLowerCase()})`}
               />
-              <label className={`flex items-center gap-3 cursor-pointer select-none transition-opacity ${form[overrideKey] ? '' : 'opacity-40 pointer-events-none'}`}>
-                <button
+              <div
+                className={`flex items-center gap-3 cursor-pointer select-none transition-opacity ${form[overrideKey] ? '' : 'opacity-40 pointer-events-none'}`}
+                onClick={() => form[overrideKey] && set(key, !form[key])}
+              >
+                <div
                   role="switch" aria-checked={form[key]}
-                  onClick={() => set(key, !form[key])}
-                  className="relative h-5 w-9 rounded-full transition-colors"
+                  className="relative flex-shrink-0 h-5 w-9 rounded-full transition-colors"
                   style={{ backgroundColor: form[key] ? '#a200ee' : '#d1d5db' }}
                 >
                   <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform"
                     style={{ transform: form[key] ? 'translateX(16px)' : 'translateX(2px)' }} />
-                </button>
+                </div>
                 <span className="text-[13px]" style={{ color: '#374151' }}>{label}</span>
-              </label>
+              </div>
             </div>
           ))}
         </div>

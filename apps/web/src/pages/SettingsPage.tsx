@@ -236,18 +236,17 @@ function DocStyleSection() {
             ['docCoverPage', 'Include cover page'],
             ['docPageNumbers', 'Include page numbers'],
           ] as const).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-3 cursor-pointer select-none">
-              <button
+            <div key={key} className="flex items-center gap-3 cursor-pointer select-none" onClick={() => set(key, !form[key])}>
+              <div
                 role="switch" aria-checked={form[key]}
-                onClick={() => set(key, !form[key])}
-                className="relative h-5 w-9 rounded-full transition-colors"
+                className="relative flex-shrink-0 h-5 w-9 rounded-full transition-colors"
                 style={{ backgroundColor: form[key] ? '#a200ee' : '#d1d5db' }}
               >
                 <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform"
                   style={{ transform: form[key] ? 'translateX(16px)' : 'translateX(2px)' }} />
-              </button>
+              </div>
               <span className="text-[13px]" style={{ color: '#374151' }}>{label}</span>
-            </label>
+            </div>
           ))}
         </div>
       </div>
