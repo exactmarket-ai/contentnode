@@ -792,6 +792,57 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
       </div>
 
       <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
+      <ScheduledTaskAlerts clientId={client.id} />
+    </div>
+  )
+}
+
+function ScheduledTaskAlerts({ clientId }: { clientId: string }) {
+  const [alerts, setAlerts] = useState<Array<{ id: string; label: string; lastChangeSummary: string | null; type: string }>>([])
+
+  useEffect(() => {
+    apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => {
+        setAlerts((data ?? []).filter((t: { changeDetected: boolean }) => t.changeDetected))
+      })
+      .catch(() => {})
+  }, [clientId])
+
+  const dismiss = async (id: string) => {
+    await apiFetch(`/api/v1/scheduled-tasks/${id}/dismiss`, { method: 'POST' }).catch(() => {})
+    setAlerts((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  if (alerts.length === 0) return null
+
+  const typeLabel: Record<string, string> = {
+    web_scrape: 'Web Scrape', review_miner: 'Review Miner',
+    audience_signal: 'Audience Signal', seo_intent: 'SEO Intent',
+  }
+
+  return (
+    <div className="space-y-2">
+      {alerts.map((alert) => (
+        <div key={alert.id} className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <Icons.Bell className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-foreground">
+              Research update · <span className="text-muted-foreground">{typeLabel[alert.type] ?? alert.type}</span>
+              {' — '}{alert.label}
+            </p>
+            {alert.lastChangeSummary && (
+              <p className="mt-0.5 text-xs text-muted-foreground">{alert.lastChangeSummary}</p>
+            )}
+          </div>
+          <button
+            onClick={() => dismiss(alert.id)}
+            className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Dismiss
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
@@ -4911,7 +4962,380 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure'] as const
+// ── Scheduled Tasks Tab ───────────────────────────────────────────────────────
+
+type ScheduledTaskType = 'web_scrape' | 'review_miner' | 'audience_signal' | 'seo_intent'
+type ScheduledTaskFrequency = 'daily' | 'weekly' | 'monthly'
+type ScheduledTaskScope = 'client' | 'vertical' | 'company'
+
+interface ScheduledTask {
+  id: string; label: string; type: ScheduledTaskType; scope: ScheduledTaskScope
+  frequency: ScheduledTaskFrequency; enabled: boolean; lastRunAt: string | null
+  nextRunAt: string | null; lastStatus: string; changeDetected: boolean
+  lastChangeSummary: string | null; config: Record<string, unknown>
+  clientId: string | null; verticalId: string | null
+}
+
+const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
+  web_scrape:      { label: 'Web Scrape',      icon: 'Globe',   color: 'text-blue-500' },
+  review_miner:    { label: 'Review Miner',    icon: 'Star',    color: 'text-amber-500' },
+  audience_signal: { label: 'Audience Signal', icon: 'Users',   color: 'text-violet-500' },
+  seo_intent:      { label: 'SEO Intent',      icon: 'Search',  color: 'text-green-500' },
+}
+
+function TaskConfigFields({ type, config, onChange }: {
+  type: ScheduledTaskType
+  config: Record<string, unknown>
+  onChange: (c: Record<string, unknown>) => void
+}) {
+  const set = (k: string, v: unknown) => onChange({ ...config, [k]: v })
+  const labelCls = 'block text-xs font-medium text-muted-foreground mb-1'
+  const inputCls = 'w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring'
+  const textareaCls = inputCls + ' resize-y'
+
+  if (type === 'web_scrape') return (
+    <div className="space-y-3">
+      <div><label className={labelCls}>Seed URLs (one per line)</label>
+        <textarea className={textareaCls} rows={3} value={(config.seedUrls as string) ?? ''} onChange={(e) => set('seedUrls', e.target.value)} placeholder="https://example.com/blog&#10;https://competitor.com" /></div>
+      <div><label className={labelCls}>Synthesis Target</label>
+        <select className={inputCls} value={(config.synthesisTarget as string) ?? 'summary'} onChange={(e) => set('synthesisTarget', e.target.value)}>
+          <option value="summary">General Summary</option>
+          <option value="dg_s7">S7 External Intelligence</option>
+          <option value="gtm_12">Competitive Intelligence</option>
+          <option value="raw">Raw</option>
+        </select></div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="stayOnDomain" checked={(config.stayOnDomain as boolean) ?? true} onChange={(e) => set('stayOnDomain', e.target.checked)} />
+        <label htmlFor="stayOnDomain" className="text-xs text-muted-foreground">Stay on domain</label>
+      </div>
+      <div><label className={labelCls}>Link filter pattern (optional regex)</label>
+        <input className={inputCls} value={(config.linkPattern as string) ?? ''} onChange={(e) => set('linkPattern', e.target.value)} placeholder="e.g. /blog|/news" /></div>
+    </div>
+  )
+
+  if (type === 'review_miner') return (
+    <div className="space-y-3">
+      <div><label className={labelCls}>Company name</label>
+        <input className={inputCls} value={(config.companyName as string) ?? ''} onChange={(e) => set('companyName', e.target.value)} placeholder="Acme Corp" /></div>
+      <div><label className={labelCls}>Platforms</label>
+        <div className="flex flex-wrap gap-2">
+          {(['trustpilot', 'g2', 'capterra'] as const).map((p) => {
+            const platforms = (config.platforms as string[]) ?? []
+            return (
+              <label key={p} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <input type="checkbox" checked={platforms.includes(p)} onChange={(e) => set('platforms', e.target.checked ? [...platforms, p] : platforms.filter((x) => x !== p))} />
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </label>
+            )
+          })}
+        </div></div>
+      <div><label className={labelCls}>Competitors (one per line, optional)</label>
+        <textarea className={textareaCls} rows={2} value={(config.competitors as string) ?? ''} onChange={(e) => set('competitors', e.target.value)} placeholder="Competitor A&#10;Competitor B" /></div>
+      <div><label className={labelCls}>Synthesis type</label>
+        <select className={inputCls} value={(config.synthesis as string) ?? 'full'} onChange={(e) => set('synthesis', e.target.value)}>
+          <option value="theme_analysis">Theme Analysis</option>
+          <option value="competitive_battlecard">Competitive Battlecard</option>
+          <option value="objection_map">Objection Map</option>
+          <option value="testimonials">Testimonials</option>
+          <option value="full">Full</option>
+        </select></div>
+    </div>
+  )
+
+  if (type === 'audience_signal') return (
+    <div className="space-y-3">
+      <div><label className={labelCls}>Seed keywords (one per line)</label>
+        <textarea className={textareaCls} rows={3} value={(config.keywords as string) ?? ''} onChange={(e) => set('keywords', e.target.value)} placeholder="SaaS pricing&#10;workflow automation" /></div>
+      <div><label className={labelCls}>Subreddits (one per line, optional)</label>
+        <textarea className={textareaCls} rows={2} value={(config.subreddits as string) ?? ''} onChange={(e) => set('subreddits', e.target.value)} placeholder="entrepreneur&#10;smallbusiness" /></div>
+      <div><label className={labelCls}>Analysis goal</label>
+        <select className={inputCls} value={(config.goal as string) ?? 'full'} onChange={(e) => set('goal', e.target.value)}>
+          <option value="pain_points">Pain Points</option>
+          <option value="vocabulary_map">Vocabulary Map</option>
+          <option value="objection_map">Objection Map</option>
+          <option value="question_map">Question Map</option>
+          <option value="full">Full</option>
+        </select></div>
+      <div><label className={labelCls}>Min upvotes</label>
+        <input type="number" className={inputCls} value={(config.minUpvotes as number) ?? 5} onChange={(e) => set('minUpvotes', Number(e.target.value))} min={0} /></div>
+    </div>
+  )
+
+  if (type === 'seo_intent') return (
+    <div className="space-y-3">
+      <div><label className={labelCls}>Seed keywords (one per line)</label>
+        <textarea className={textareaCls} rows={3} value={(config.seedKeywords as string) ?? ''} onChange={(e) => set('seedKeywords', e.target.value)} placeholder="marketing automation&#10;content workflow" /></div>
+      <div><label className={labelCls}>Data source</label>
+        <select className={inputCls} value={(config.dataSource as string) ?? 'claude'} onChange={(e) => set('dataSource', e.target.value)}>
+          <option value="claude">Claude inference (no key required)</option>
+          <option value="google_autocomplete">Google Autocomplete (free)</option>
+          <option value="dataforseo">DataForSEO (paid)</option>
+        </select></div>
+      <div><label className={labelCls}>Funnel focus</label>
+        <select className={inputCls} value={(config.funnelFocus as string) ?? 'all'} onChange={(e) => set('funnelFocus', e.target.value)}>
+          <option value="all">All stages</option>
+          <option value="awareness">Awareness</option>
+          <option value="consideration">Consideration</option>
+          <option value="decision">Decision</option>
+        </select></div>
+    </div>
+  )
+
+  return null
+}
+
+function AddTaskModal({ clientId, onClose, onCreated }: {
+  clientId: string; onClose: () => void; onCreated: (t: ScheduledTask) => void
+}) {
+  const [type, setType] = useState<ScheduledTaskType>('web_scrape')
+  const [label, setLabel] = useState('')
+  const [frequency, setFrequency] = useState<ScheduledTaskFrequency>('weekly')
+  const [config, setConfig] = useState<Record<string, unknown>>({})
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    if (!label.trim()) { setError('Label is required'); return }
+    setSaving(true); setError(null)
+    try {
+      const res = await apiFetch('/api/v1/scheduled-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label.trim(), type, scope: 'client', frequency, clientId, config }),
+      })
+      const { data, error: err } = await res.json()
+      if (!res.ok) { setError(err ?? 'Failed to create task'); return }
+      onCreated(data)
+      onClose()
+    } catch { setError('Network error') }
+    finally { setSaving(false) }
+  }
+
+  const inputCls = 'w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold">Add Scheduled Task</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><Icons.X className="h-4 w-4" /></button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto px-5 py-4 space-y-4">
+          {/* Type selector */}
+          <div>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Task type</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(Object.entries(TASK_TYPE_META) as [ScheduledTaskType, typeof TASK_TYPE_META[ScheduledTaskType]][]).map(([t, meta]) => {
+                const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+                return (
+                  <button key={t} onClick={() => { setType(t); setConfig({}) }}
+                    className={cn('flex items-center gap-2 rounded-lg border p-3 text-left text-xs transition-colors',
+                      type === t ? 'border-blue-500 bg-blue-500/10 text-blue-600' : 'border-border hover:border-muted-foreground/40'
+                    )}>
+                    <Icon className={cn('h-3.5 w-3.5 shrink-0', meta.color)} />
+                    <span className="font-medium">{meta.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Label + frequency */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Label</label>
+              <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Weekly competitor reviews" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Frequency</label>
+              <select className={inputCls} value={frequency} onChange={(e) => setFrequency(e.target.value as ScheduledTaskFrequency)}>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Type-specific config */}
+          <div>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Configuration</p>
+            <TaskConfigFields type={type} config={config} onChange={setConfig} />
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+          <button onClick={save} disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Creating…' : 'Create Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ScheduledTasksTab({ clientId }: { clientId: string }) {
+  const [tasks, setTasks] = useState<ScheduledTask[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+  const [running, setRunning] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => setTasks(data ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [clientId])
+
+  const toggle = async (task: ScheduledTask) => {
+    await apiFetch(`/api/v1/scheduled-tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !task.enabled }),
+    })
+    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, enabled: !t.enabled } : t))
+  }
+
+  const runNow = async (id: string) => {
+    setRunning((prev) => new Set([...prev, id]))
+    await apiFetch(`/api/v1/scheduled-tasks/${id}/run-now`, { method: 'POST' }).catch(() => {})
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, lastStatus: 'running' } : t))
+    setTimeout(() => setRunning((prev) => { const s = new Set(prev); s.delete(id); return s }), 3000)
+  }
+
+  const del = async (id: string) => {
+    await apiFetch(`/api/v1/scheduled-tasks/${id}`, { method: 'DELETE' })
+    setTasks((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      idle: 'bg-muted text-muted-foreground',
+      running: 'bg-blue-500/10 text-blue-500',
+      success: 'bg-green-500/10 text-green-600',
+      failed: 'bg-red-500/10 text-red-500',
+    }
+    return (
+      <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium', map[status] ?? map.idle)}>
+        {status}
+      </span>
+    )
+  }
+
+  const relTime = (iso: string | null) => {
+    if (!iso) return 'Never'
+    const diff = Date.now() - new Date(iso).getTime()
+    if (diff < 60000) return 'just now'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+    return `${Math.floor(diff / 86400000)}d ago`
+  }
+
+  const nextIn = (iso: string | null) => {
+    if (!iso) return '—'
+    const diff = new Date(iso).getTime() - Date.now()
+    if (diff <= 0) return 'overdue'
+    if (diff < 3600000) return `in ${Math.floor(diff / 60000)}m`
+    if (diff < 86400000) return `in ${Math.floor(diff / 3600000)}h`
+    return `in ${Math.floor(diff / 86400000)}d`
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Scheduled Tasks</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Research tasks that run automatically and feed results into the client brain.</p>
+        </div>
+        <button onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+          <Icons.Plus className="h-3.5 w-3.5" />
+          Add Task
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
+          <Icons.Clock className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-muted-foreground">No scheduled tasks yet</p>
+          <p className="max-w-xs text-xs text-muted-foreground/70">Add a task to automatically gather industry signals, competitor reviews, or SEO data on a recurring basis.</p>
+          <button onClick={() => setShowAdd(true)} className="mt-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+            Add your first task
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {tasks.map((task) => {
+            const meta = TASK_TYPE_META[task.type]
+            const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+            return (
+              <div key={task.id} className={cn('rounded-xl border bg-card p-4', task.changeDetected ? 'border-amber-500/40' : 'border-border')}>
+                <div className="flex items-start gap-3">
+                  <div className={cn('mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/30')}>
+                    <Icon className={cn('h-3.5 w-3.5', meta.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium">{task.label}</span>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{meta.label}</span>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground capitalize">{task.frequency}</span>
+                      {statusBadge(task.lastStatus)}
+                      {task.changeDetected && (
+                        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">update detected</span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
+                      <span>Last run: {relTime(task.lastRunAt)}</span>
+                      <span>·</span>
+                      <span>Next: {nextIn(task.nextRunAt)}</span>
+                    </div>
+                    {task.changeDetected && task.lastChangeSummary && (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{task.lastChangeSummary}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Enable/disable toggle */}
+                    <button onClick={() => toggle(task)}
+                      className={cn('relative h-5 w-9 rounded-full transition-colors', task.enabled ? 'bg-blue-600' : 'bg-muted')}
+                      title={task.enabled ? 'Disable' : 'Enable'}>
+                      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', task.enabled ? 'left-4' : 'left-0.5')} />
+                    </button>
+                    <button onClick={() => runNow(task.id)} disabled={running.has(task.id) || task.lastStatus === 'running'}
+                      className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+                      title="Run now">
+                      {running.has(task.id) ? '…' : '▶'}
+                    </button>
+                    <button onClick={() => del(task.id)} className="rounded p-1 text-muted-foreground hover:text-red-500" title="Delete">
+                      <Icons.Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {showAdd && (
+        <AddTaskModal
+          clientId={clientId}
+          onClose={() => setShowAdd(false)}
+          onCreated={(t) => setTasks((prev) => [t, ...prev])}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
+
+const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -5005,6 +5429,7 @@ export function ClientDetailPage() {
     profile:       'Company Profiler',
     company:       'Company Research',
     structure:     'Structure',
+    'scheduled-tasks': 'Scheduled Tasks',
   }
 
   // Tabs that live under the "Demand Gen" group
@@ -5012,7 +5437,7 @@ export function ClientDetailPage() {
   // Tabs that live under the "Research" group
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment']
   // Tabs that live under the "Settings" group
-  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs']
+  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'scheduled-tasks']
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'framework', 'branding', 'reviews']
   // Tabs rendered after the Demand Gen group button
@@ -5248,6 +5673,7 @@ export function ClientDetailPage() {
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'company' && <CompanyProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'structure' && <StructureTab client={client} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
+        {activeTab === 'scheduled-tasks' && <ScheduledTasksTab clientId={client.id} />}
       </div>}
 
       {showEditClient && (

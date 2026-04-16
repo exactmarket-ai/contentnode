@@ -13,6 +13,7 @@ export const QUEUE_AGENCY_BRAIN_PROCESS = 'agency-brain-process'
 export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
 export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
+export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -91,6 +92,11 @@ export interface ClientVerticalBrainProcessJobData {
 export interface PromptSuggestJobData {
   agencyId: string
   clientId: string
+}
+
+export interface ScheduledResearchJobData {
+  taskId: string
+  agencyId: string
 }
 
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
@@ -213,4 +219,12 @@ export function getPromptSuggestQueue(): Queue<PromptSuggestJobData> {
     promptSuggestQueue = new Queue<PromptSuggestJobData>(QUEUE_PROMPT_SUGGEST, { connection: getRedis() })
   }
   return promptSuggestQueue
+}
+
+let scheduledResearchQueue: Queue<ScheduledResearchJobData> | null = null
+export function getScheduledResearchQueue(): Queue<ScheduledResearchJobData> {
+  if (!scheduledResearchQueue) {
+    scheduledResearchQueue = new Queue<ScheduledResearchJobData>(QUEUE_SCHEDULED_RESEARCH, { connection: getRedis() })
+  }
+  return scheduledResearchQueue
 }

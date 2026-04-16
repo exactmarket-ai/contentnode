@@ -47,6 +47,12 @@ import {
   processClientVerticalBrainAttachment,
 } from './clientBrainExtraction.js'
 import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
+import { runScheduledResearch, runResearchChecker } from './scheduledResearch.js'
+import {
+  QUEUE_SCHEDULED_RESEARCH,
+  QUEUE_RESEARCH_CHECKER,
+  type ScheduledResearchJobData,
+} from './queues.js'
 import { withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -307,6 +313,35 @@ const promptSuggestWorker = createWorker<PromptSuggestJobData>(
   3
 )
 
+// ── research-checker — fires every 5 minutes ─────────────────────────────────
+const researchCheckerQueue = createQueue(QUEUE_RESEARCH_CHECKER)
+await researchCheckerQueue.add(
+  'tick',
+  {},
+  {
+    jobId: 'research-checker-singleton',
+    repeat: { every: 300_000 }, // every 5 minutes
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 20 },
+  }
+)
+const researchCheckerWorker = createWorker(
+  QUEUE_RESEARCH_CHECKER,
+  async () => { await runResearchChecker() },
+  1
+)
+
+// ── scheduled-research ────────────────────────────────────────────────────────
+const scheduledResearchWorker = createWorker<ScheduledResearchJobData>(
+  QUEUE_SCHEDULED_RESEARCH,
+  async (job: Job<ScheduledResearchJobData>) => {
+    console.log(`[scheduled-research] running task ${job.data.taskId}`)
+    await runScheduledResearch(job)
+    console.log(`[scheduled-research] task ${job.data.taskId} done`)
+  },
+  3
+)
+
 // ── file-cleanup — runs once per day ─────────────────────────────────────────
 const QUEUE_FILE_CLEANUP = 'file-cleanup'
 const fileCleanupQueue = createQueue(QUEUE_FILE_CLEANUP)
@@ -343,6 +378,8 @@ async function shutdown() {
     agencyBrainProcessWorker.close(),
     verticalBrainProcessWorker.close(),
     clientVerticalBrainProcessWorker.close(),
+    researchCheckerWorker.close(),
+    scheduledResearchWorker.close(),
     fileCleanupWorker.close(),
   ])
   process.exit(0)

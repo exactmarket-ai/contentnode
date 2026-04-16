@@ -121,7 +121,7 @@ async function fetchUrlText(url: string): Promise<string> {
 // Synthesise all ready attachments into client brain context
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function synthesiseClientContext(agencyId: string, clientId: string): Promise<void> {
+export async function synthesiseClientContext(agencyId: string, clientId: string): Promise<void> {
   const attachments = await prisma.clientBrainAttachment.findMany({
     where: { clientId, agencyId, summaryStatus: 'ready' },
     orderBy: { createdAt: 'asc' },
@@ -176,7 +176,7 @@ Be thorough but clear. Write in structured prose with short labelled sections. 8
 // Agency brain synthesis — rebuilds Agency.brainContext from all ready attachments
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function synthesiseAgencyContext(agencyId: string): Promise<void> {
+export async function synthesiseAgencyContext(agencyId: string): Promise<void> {
   const attachments = await prisma.agencyBrainAttachment.findMany({
     where: { agencyId, summaryStatus: 'ready' },
     orderBy: { createdAt: 'asc' },
@@ -221,7 +221,7 @@ Be thorough but clear. Write in structured prose with short labelled sections. 8
 // Vertical brain synthesis — rebuilds Vertical.brainContext from all ready attachments
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function synthesiseVerticalContext(agencyId: string, verticalId: string): Promise<void> {
+export async function synthesiseVerticalContext(agencyId: string, verticalId: string): Promise<void> {
   const attachments = await prisma.verticalBrainAttachment.findMany({
     where: { agencyId, verticalId, summaryStatus: 'ready' },
     orderBy: { createdAt: 'asc' },

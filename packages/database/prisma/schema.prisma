@@ -55,6 +55,7 @@ model Agency {
   brandAttachments   ClientBrandAttachment[]
   manualUsageEntries ManualUsageEntry[]
   campaigns          Campaign[]
+  scheduledTasks     ScheduledTask[]
   agencyBrainAttachments         AgencyBrainAttachment[]
   verticalBrainAttachments       VerticalBrainAttachment[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
@@ -126,6 +127,7 @@ model Client {
   manualUsageEntries ManualUsageEntry[]
   campaigns          Campaign[]
   brainAttachments   ClientBrainAttachment[]
+  scheduledTasks     ScheduledTask[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   brainContext       String?  @db.Text @map("brain_context")
 
@@ -151,6 +153,7 @@ model Vertical {
   frameworkAttachments ClientFrameworkAttachment[]
   frameworkResearch    ClientFrameworkResearch[]
   brainAttachments     VerticalBrainAttachment[]
+  scheduledTasks       ScheduledTask[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   workflows            Workflow[]
   brainContext         String? @db.Text @map("brain_context")
@@ -1534,4 +1537,37 @@ model ClientVerticalBrainAttachment {
   @@index([clientId])
   @@index([clientId, verticalId])
   @@map("client_vertical_brain_attachments")
+}
+
+// ─────────────────────────────────────────────
+// ScheduledTask — recurring research task
+// ─────────────────────────────────────────────
+model ScheduledTask {
+  id                String    @id @default(cuid())
+  agencyId          String    @map("agency_id")
+  clientId          String?   @map("client_id")
+  verticalId        String?   @map("vertical_id")
+  scope             String    // 'company' | 'client' | 'vertical'
+  type              String    // 'web_scrape' | 'review_miner' | 'audience_signal' | 'seo_intent'
+  label             String
+  config            Json      @default("{}")
+  frequency         String    @default("weekly") // 'daily' | 'weekly' | 'monthly'
+  enabled           Boolean   @default(true)
+  lastRunAt         DateTime? @map("last_run_at")
+  nextRunAt         DateTime? @map("next_run_at")
+  lastStatus        String    @default("idle") @map("last_status")
+  lastOutputHash    String?   @map("last_output_hash")
+  lastChangeSummary String?   @db.Text @map("last_change_summary")
+  changeDetected    Boolean   @default(false) @map("change_detected")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  agency   Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical? @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@index([agencyId, enabled, nextRunAt])
+  @@map("scheduled_tasks")
 }

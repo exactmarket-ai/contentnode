@@ -20,6 +20,8 @@ export const QUEUE_AGENCY_BRAIN_PROCESS = 'agency-brain-process'
 export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
 export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
+export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
+export const QUEUE_RESEARCH_CHECKER = 'research-checker'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -120,6 +122,11 @@ export interface ClientVerticalBrainProcessJobData {
   clientId: string
   verticalId: string
   url?: string
+}
+
+export interface ScheduledResearchJobData {
+  taskId: string
+  agencyId: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
