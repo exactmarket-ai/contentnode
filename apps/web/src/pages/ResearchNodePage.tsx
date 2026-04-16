@@ -64,7 +64,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 
 // ─── Assessment list ──────────────────────────────────────────────────────────
 
-function AssessmentList({ assessments, onNew }: { assessments: Assessment[]; onNew: () => void }) {
+function AssessmentList({ assessments, onNew, onDelete }: { assessments: Assessment[]; onNew: () => void; onDelete: (id: string) => void }) {
   const relTime = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime()
     if (diff < 60000) return 'just now'
@@ -94,6 +94,13 @@ function AssessmentList({ assessments, onNew }: { assessments: Assessment[]; onN
           <div className="flex items-center gap-3 shrink-0">
             <span className="text-[10px] text-muted-foreground">{relTime(a.createdAt)}</span>
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">In progress</span>
+            <button
+              onClick={() => onDelete(a.id)}
+              title="Delete assessment"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
+            >
+              <Icons.Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
       ))}
@@ -206,7 +213,7 @@ export function ResearchNodePage() {
       <div className="flex-1 overflow-auto min-h-0">
         {assessments.length === 0
           ? <EmptyState onNew={() => setShowNew(true)} />
-          : <AssessmentList assessments={assessments} onNew={() => setShowNew(true)} />
+          : <AssessmentList assessments={assessments} onNew={() => setShowNew(true)} onDelete={(id) => setAssessments((prev) => prev.filter((a) => a.id !== id))} />
         }
       </div>
 
