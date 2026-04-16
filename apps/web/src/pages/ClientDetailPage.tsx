@@ -766,6 +766,158 @@ function OverviewReviewsCard({ clientId, onTabChange }: { clientId: string; onTa
   )
 }
 
+// ── Module-level timestamp helper ─────────────────────────────────────────────
+
+function relTimestamp(iso: string | null): string {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60000) return 'just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  return `${Math.floor(diff / 86400000)}d ago`
+}
+
+// ── Brain Entries card ─────────────────────────────────────────────────────────
+
+type BrainFeedItem =
+  | { kind: 'brain'; id: string; filename: string; source: string; sourceLabel: string; summary: string | null; createdAt: string }
+  | { kind: 'research'; id: string; label: string; taskType: string; summary: string | null; runAt: string }
+
+const BRAIN_ENTRY_SOURCE_COLORS: Record<string, string> = {
+  client:        'bg-blue-100 text-blue-700',
+  campaign:      'bg-purple-100 text-purple-700',
+  gtm_framework: 'bg-green-100 text-green-700',
+  demand_gen:    'bg-orange-100 text-orange-700',
+  branding:      'bg-pink-100 text-pink-700',
+}
+
+const RESEARCH_TYPE_LABELS: Record<string, string> = {
+  web_scrape:      'Web Scrape',
+  review_miner:    'Review Miner',
+  audience_signal: 'Audience Signal',
+  seo_intent:      'SEO Intent',
+}
+
+function BrainEntriesCard({ clientId, onTabChange }: { clientId: string; onTabChange: (tab: Tab) => void }) {
+  const [items, setItems] = useState<BrainFeedItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    try {
+      const [brainRes, tasksRes] = await Promise.all([
+        apiFetch(`/api/v1/clients/${clientId}/brain/all`),
+        apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`),
+      ])
+      const { data: brainData } = await brainRes.json()
+      const { data: tasksData } = await tasksRes.json()
+
+      const brainItems: BrainFeedItem[] = (brainData ?? []).map((d: any) => ({
+        kind: 'brain' as const,
+        id: `${d.table}-${d.id}`,
+        filename: d.filename,
+        source: d.source,
+        sourceLabel: d.sourceLabel,
+        summary: d.summary,
+        createdAt: d.createdAt,
+      }))
+
+      const researchItems: BrainFeedItem[] = (tasksData ?? [])
+        .filter((t: any) => t.changeDetected)
+        .map((t: any) => ({
+          kind: 'research' as const,
+          id: t.id,
+          label: t.label,
+          taskType: t.type,
+          summary: t.lastChangeSummary,
+          runAt: t.lastRunAt ?? new Date().toISOString(),
+        }))
+
+      const all = [...brainItems, ...researchItems].sort((a, b) => {
+        const ta = new Date(a.kind === 'brain' ? a.createdAt : a.runAt).getTime()
+        const tb = new Date(b.kind === 'brain' ? b.createdAt : b.runAt).getTime()
+        return tb - ta
+      })
+      setItems(all)
+    } catch (_) {
+    } finally {
+      setLoading(false)
+    }
+  }, [clientId])
+
+  useEffect(() => { load() }, [load])
+
+  const dismiss = async (id: string) => {
+    await apiFetch(`/api/v1/scheduled-tasks/${id}/dismiss`, { method: 'POST' }).catch(() => {})
+    setItems((prev) => prev.filter((i) => !(i.kind === 'research' && i.id === id)))
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 shrink-0">
+        <div className="flex items-center gap-2">
+          <Icons.Brain className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium">Brain Entries</span>
+        </div>
+        <button
+          onClick={() => onTabChange('brain')}
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View all →
+        </button>
+      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Icons.Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : items.length === 0 ? (
+        <p className="py-8 text-center text-xs text-muted-foreground">No brain entries yet.</p>
+      ) : (
+        <div className="divide-y divide-border/40 overflow-y-auto">
+          {items.map((item) =>
+            item.kind === 'brain' ? (
+              <div key={item.id} className="flex items-start gap-3 px-4 py-2.5">
+                <Icons.FileText className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs text-foreground/80 truncate">{item.filename}</span>
+                    <span className={cn(
+                      'shrink-0 inline-flex items-center rounded-full px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide',
+                      BRAIN_ENTRY_SOURCE_COLORS[item.source] ?? 'bg-muted text-muted-foreground'
+                    )}>
+                      {item.sourceLabel}
+                    </span>
+                  </div>
+                  {item.summary && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">{item.summary}</p>
+                  )}
+                </div>
+                <span className="shrink-0 text-[10px] text-muted-foreground/60 ml-1">{relTimestamp(item.createdAt)}</span>
+              </div>
+            ) : (
+              <div key={item.id} className="flex items-start gap-3 px-4 py-2.5 bg-amber-500/5">
+                <Icons.Bell className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-foreground">
+                    {RESEARCH_TYPE_LABELS[item.taskType] ?? item.taskType}
+                    {' — '}{item.label}
+                  </p>
+                  {item.summary && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{item.summary}</p>
+                  )}
+                </div>
+                <div className="shrink-0 flex items-center gap-2 ml-1">
+                  <span className="text-[10px] text-muted-foreground/60">{relTimestamp(item.runAt)}</span>
+                  <button onClick={() => dismiss(item.id)} className="text-xs text-muted-foreground hover:text-foreground leading-none">×</button>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (tab: Tab) => void; onUpdate: (updated: Partial<Client>) => void }) {
   const { isAdmin, loading: roleLoading } = useCurrentUser()
 
@@ -792,8 +944,10 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
         ))}
       </div>
 
-      <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
-      <ScheduledTaskAlerts clientId={client.id} />
+      <div className="grid grid-cols-2 gap-4">
+        <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
+        <BrainEntriesCard clientId={client.id} onTabChange={onTabChange} />
+      </div>
     </div>
   )
 }
