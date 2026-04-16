@@ -38,6 +38,7 @@ import { voiceProviderRoutes } from './routes/voiceProviders.js'
 import { nodePilotRoutes }     from './routes/nodepilot.js'
 import { demandPilotRoutes }    from './routes/demandpilot.js'
 import { gtmPilotRoutes }       from './routes/gtmpilot.js'
+import { researchPilotRoutes }  from './routes/researchpilot.js'
 import { campaignRoutes }       from './routes/campaigns.js'
 import { scheduledTaskRoutes }  from './routes/scheduledTasks.js'
 import { docTemplateRoutes }    from './routes/docTemplates.js'
@@ -150,6 +151,7 @@ await app.register(voiceProviderRoutes,    { prefix: '/api/v1/voice-providers' }
 await app.register(nodePilotRoutes,        { prefix: '/api/v1/nodepilot' })
 await app.register(demandPilotRoutes,      { prefix: '/api/v1/demand-pilot' })
 await app.register(gtmPilotRoutes,         { prefix: '/api/v1/gtm-pilot' })
+await app.register(researchPilotRoutes,    { prefix: '/api/v1/research-pilot' })
 await app.register(campaignRoutes,         { prefix: '/api/v1/campaigns' })
 await app.register(scheduledTaskRoutes,    { prefix: '/api/v1/scheduled-tasks' })
 await app.register(docTemplateRoutes,      { prefix: '/api/v1/doc-templates' })

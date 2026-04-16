@@ -8,6 +8,7 @@ import { ClientListPage } from '@/pages/ClientListPage'
 import { ClientDetailPage } from '@/pages/ClientDetailPage'
 import { UsagePage } from '@/pages/UsagePage'
 import { HumanizerDashboard } from '@/pages/HumanizerDashboard'
+import { ResearchNodePage } from '@/pages/ResearchNodePage'
 import { ReviewsAndRunsPage } from '@/pages/ReviewsAndRunsPage'
 import { CalendarPage } from '@/pages/CalendarPage'
 import { ReviewPage } from '@/pages/ReviewPage'
@@ -94,6 +95,7 @@ const protectedChildren = [
   { path: 'reports', element: <Navigate to="/quality" replace /> },
   { path: 'usage', element: <UsagePage /> },
   { path: 'humanizer', element: <HumanizerDashboard /> },
+  { path: 'research',  element: <ResearchNodePage /> },
   { path: 'team', element: <TeamPage /> },
   { path: 'team/invite', element: <InvitePage /> },
   { path: 'access', element: <AccessPage /> },

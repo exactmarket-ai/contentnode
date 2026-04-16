@@ -160,6 +160,22 @@ export function AppNav({ onSignOut }: AppNavProps) {
         <NavItem key={item.to} {...item} collapsed={collapsed} />
       ))}
 
+      {/* researchNODE — owner / super admin only */}
+      {isOwner && (
+        <>
+          <div className="my-1 h-px w-full bg-border" />
+          <NavItem
+            to="/research"
+            collapsed={collapsed}
+            icon={Icons.Telescope}
+            label="researchNODE"
+            activeBg="#f5f0ff"
+            activeText="#7c3aed"
+            activeBorder="#ddd6fe"
+          />
+        </>
+      )}
+
       <div className="mt-auto pt-2">
         <div className="my-1 h-px w-full bg-border" />
         {BOTTOM_NAV_ITEMS.map((item) => (
