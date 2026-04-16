@@ -26,28 +26,71 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     const parsed = z.object({
       tempContactExpiryDays: z.number().int().positive().nullable().optional(),
+      // doc style fields
+      docPrimaryColor:    z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      docSecondaryColor:  z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      docHeadingFont:     z.string().max(100).optional(),
+      docBodyFont:        z.string().max(100).optional(),
+      docAgencyName:      z.string().max(200).nullable().optional(),
+      docCoverPage:       z.boolean().optional(),
+      docPageNumbers:     z.boolean().optional(),
+      docFooterText:      z.string().max(500).nullable().optional(),
+      docApplyToGtm:      z.boolean().optional(),
+      docApplyToDemandGen: z.boolean().optional(),
+      docApplyToBranding: z.boolean().optional(),
     }).safeParse(req.body)
 
     if (!parsed.success) {
       return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
     }
 
+    const { tempContactExpiryDays, ...docStyle } = parsed.data
+    const updateData: Record<string, unknown> = {}
+    if (tempContactExpiryDays !== undefined) updateData.tempContactExpiryDays = tempContactExpiryDays
+    Object.entries(docStyle).forEach(([k, v]) => { if (v !== undefined) updateData[k] = v })
+
     const settings = await prisma.agencySettings.upsert({
       where: { agencyId },
-      create: {
-        agencyId,
-        ...(parsed.data.tempContactExpiryDays !== undefined
-          ? { tempContactExpiryDays: parsed.data.tempContactExpiryDays }
-          : {}),
-      },
-      update: {
-        ...(parsed.data.tempContactExpiryDays !== undefined
-          ? { tempContactExpiryDays: parsed.data.tempContactExpiryDays }
-          : {}),
-      },
+      create: { agencyId, ...updateData },
+      update: updateData,
     })
 
     return reply.send({ data: settings })
+  })
+
+  // ── POST /doc-logo — upload agency doc logo ──────────────────────────────────
+  app.post('/doc-logo', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
+    const { agencyId } = req.auth
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+    const LOGO_MIME: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+    }
+    const ext = extname(data.filename).toLowerCase()
+    if (!LOGO_MIME[ext]) return reply.code(400).send({ error: 'Only JPG, PNG, GIF, WEBP, SVG allowed' })
+    const chunks: Buffer[] = []
+    for await (const chunk of data.file) chunks.push(chunk)
+    const buffer = Buffer.concat(chunks)
+    if (buffer.byteLength > 5 * 1024 * 1024) return reply.code(400).send({ error: 'Logo must be under 5 MB' })
+    const base64 = `data:${LOGO_MIME[ext]};base64,${buffer.toString('base64')}`
+    await prisma.agencySettings.upsert({
+      where: { agencyId },
+      create: { agencyId, docLogoStorageKey: base64 },
+      update: { docLogoStorageKey: base64 },
+    })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // ── DELETE /doc-logo ──────────────────────────────────────────────────────────
+  app.delete('/doc-logo', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
+    const { agencyId } = req.auth
+    await prisma.agencySettings.upsert({
+      where: { agencyId },
+      create: { agencyId },
+      update: { docLogoStorageKey: null },
+    })
+    return reply.send({ data: { ok: true } })
   })
 
   // ── Agency Brain ──────────────────────────────────────────────────────────────

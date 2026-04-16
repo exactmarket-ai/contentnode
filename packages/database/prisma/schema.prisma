@@ -56,6 +56,7 @@ model Agency {
   manualUsageEntries ManualUsageEntry[]
   campaigns          Campaign[]
   scheduledTasks     ScheduledTask[]
+  clientDocStyles    ClientDocStyle[]
   agencyBrainAttachments         AgencyBrainAttachment[]
   verticalBrainAttachments       VerticalBrainAttachment[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
@@ -75,12 +76,53 @@ model AgencySettings {
   agencyId                String   @unique @map("agency_id")
   // Temp contacts: null = never expire, otherwise days until auto-archive
   tempContactExpiryDays   Int?     @map("temp_contact_expiry_days")
+  // DOCX style defaults — used by all document downloads unless overridden per-client
+  docLogoStorageKey       String?  @map("doc_logo_storage_key")
+  docPrimaryColor         String   @default("#1B1F3B") @map("doc_primary_color")
+  docSecondaryColor       String   @default("#4A90D9") @map("doc_secondary_color")
+  docHeadingFont          String   @default("Calibri") @map("doc_heading_font")
+  docBodyFont             String   @default("Calibri") @map("doc_body_font")
+  docAgencyName           String?  @map("doc_agency_name")
+  docCoverPage            Boolean  @default(true) @map("doc_cover_page")
+  docPageNumbers          Boolean  @default(true) @map("doc_page_numbers")
+  docFooterText           String?  @map("doc_footer_text")
+  docApplyToGtm           Boolean  @default(true) @map("doc_apply_to_gtm")
+  docApplyToDemandGen     Boolean  @default(false) @map("doc_apply_to_demand_gen")
+  docApplyToBranding      Boolean  @default(false) @map("doc_apply_to_branding")
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
 
   @@map("agency_settings")
+}
+
+// ClientDocStyle — per-client DOCX style overrides (null = inherit from AgencySettings)
+// ─────────────────────────────────────────────
+model ClientDocStyle {
+  id               String   @id @default(cuid())
+  agencyId         String   @map("agency_id")
+  clientId         String   @unique @map("client_id")
+  logoStorageKey   String?  @map("logo_storage_key")
+  primaryColor     String?  @map("primary_color")
+  secondaryColor   String?  @map("secondary_color")
+  headingFont      String?  @map("heading_font")
+  bodyFont         String?  @map("body_font")
+  agencyName       String?  @map("agency_name")
+  coverPage        Boolean? @map("cover_page")
+  pageNumbers      Boolean? @map("page_numbers")
+  footerText       String?  @map("footer_text")
+  applyToGtm       Boolean? @map("apply_to_gtm")
+  applyToDemandGen Boolean? @map("apply_to_demand_gen")
+  applyToBranding  Boolean? @map("apply_to_branding")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@map("client_doc_styles")
 }
 
 // ─────────────────────────────────────────────
@@ -131,6 +173,7 @@ model Client {
   usageRecords       UsageRecord[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   brainContext       String?  @db.Text @map("brain_context")
+  docStyle           ClientDocStyle?
 
   @@unique([agencyId, slug])
   @@index([agencyId])

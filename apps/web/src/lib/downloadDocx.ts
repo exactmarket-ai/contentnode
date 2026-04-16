@@ -2,11 +2,74 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   AlignmentType, BorderStyle, Table, TableRow, TableCell,
   WidthType, ShadingType,
-  Header, Footer, PageNumber,
+  Header, Footer, PageNumber, ImageRun,
 } from 'docx'
 import { stripMarkdown } from './utils'
 import type { FrameworkData } from '@/pages/ClientFrameworkTab'
 import { SECTIONS } from '@/pages/ClientFrameworkTab'
+import { apiFetch } from './api'
+
+// ── Doc style ─────────────────────────────────────────────────────────────────
+
+interface DocStyleConfig {
+  logoStorageKey: string | null
+  primaryColor: string
+  secondaryColor: string
+  headingFont: string
+  bodyFont: string
+  agencyName: string | null
+  coverPage: boolean
+  pageNumbers: boolean
+  footerText: string | null
+  applyToGtm: boolean
+  applyToDemandGen: boolean
+  applyToBranding: boolean
+}
+
+const DEFAULT_DOC_STYLE: DocStyleConfig = {
+  logoStorageKey: null,
+  primaryColor: '#1B1F3B',
+  secondaryColor: '#4A90D9',
+  headingFont: 'Calibri',
+  bodyFont: 'Calibri',
+  agencyName: null,
+  coverPage: true,
+  pageNumbers: true,
+  footerText: null,
+  applyToGtm: true,
+  applyToDemandGen: false,
+  applyToBranding: false,
+}
+
+async function fetchDocStyle(clientId: string): Promise<DocStyleConfig> {
+  try {
+    const res = await apiFetch(`/api/v1/clients/${clientId}/doc-style/merged`)
+    if (!res.ok) return DEFAULT_DOC_STYLE
+    const { data } = await res.json()
+    return { ...DEFAULT_DOC_STYLE, ...data }
+  } catch {
+    return DEFAULT_DOC_STYLE
+  }
+}
+
+// Strip leading '#' for docx color strings
+function docColor(hex: string): string {
+  return hex.replace(/^#/, '')
+}
+
+// Convert base64 data URL to Uint8Array for ImageRun
+async function dataUrlToBytes(dataUrl: string): Promise<Uint8Array | null> {
+  try {
+    const base64 = dataUrl.split(',')[1]
+    if (!base64) return null
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return bytes
+  } catch {
+    return null
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -687,19 +750,21 @@ const GTM_PURPLE = '7c3aed'
 const GTM_PURPLE_LIGHT = 'ede9fe'
 const GTM_GRAY = '6b7280'
 
-/** Creates a styled table with purple header row. widths are percentages (must sum to 100). */
-function styledTable(headers: string[], rows: string[][], widths?: number[]): Table {
+/** Creates a styled table with themed header row. widths are percentages (must sum to 100). */
+function styledTable(headers: string[], rows: string[][], widths?: number[], primaryColor = GTM_PURPLE): Table {
   const totalCols = headers.length
   const pcts = widths ?? headers.map(() => Math.floor(100 / totalCols))
+  // derive a light tint (fallback to GTM_PURPLE_LIGHT)
+  const lightColor = primaryColor === GTM_PURPLE ? GTM_PURPLE_LIGHT : primaryColor + '22'
 
   const headerRow = new TableRow({
     tableHeader: true,
     children: headers.map((h, i) =>
       new TableCell({
         width: { size: pcts[i], type: WidthType.PERCENTAGE },
-        shading: { type: ShadingType.SOLID, color: GTM_PURPLE_LIGHT, fill: GTM_PURPLE_LIGHT },
+        shading: { type: ShadingType.SOLID, color: lightColor, fill: lightColor },
         children: [new Paragraph({
-          children: [new TextRun({ text: h, bold: true, size: 18, color: GTM_PURPLE })],
+          children: [new TextRun({ text: h, bold: true, size: 18, color: primaryColor })],
           spacing: { before: 60, after: 60 },
         })],
       })
@@ -726,18 +791,18 @@ function styledTable(headers: string[], rows: string[][], widths?: number[]): Ta
   })
 }
 
-/** GTM section heading with purple border-bottom. Adds a page break before (except first). */
-function gtmSectionHeading(num: string, title: string, usedIn: string, addPageBreak: boolean): (Paragraph | Table)[] {
+/** GTM section heading with themed border-bottom. Adds a page break before (except first). */
+function gtmSectionHeading(num: string, title: string, usedIn: string, addPageBreak: boolean, primaryColor = GTM_PURPLE): (Paragraph | Table)[] {
   const items: Paragraph[] = []
   if (addPageBreak) {
     items.push(new Paragraph({ pageBreakBefore: true, spacing: { after: 0 } }))
   }
   items.push(
     new Paragraph({
-      children: [new TextRun({ text: `§${num} ${title}`, bold: true, size: 26, color: GTM_PURPLE })],
+      children: [new TextRun({ text: `§${num} ${title}`, bold: true, size: 26, color: primaryColor })],
       heading: HeadingLevel.HEADING_1,
       spacing: { before: 240, after: usedIn ? 60 : 120 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: GTM_PURPLE } },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: primaryColor } },
     })
   )
   if (usedIn) {
@@ -781,42 +846,70 @@ function gtmSpacer(): Paragraph {
   return new Paragraph({ spacing: { after: 120 } })
 }
 
-export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string): Promise<void> {
+export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string, clientId?: string): Promise<void> {
+  const style = clientId ? await fetchDocStyle(clientId) : DEFAULT_DOC_STYLE
+  const primaryHex = docColor(style.primaryColor)
+  const secondaryHex = docColor(style.secondaryColor)
+  const headingFont = style.headingFont
+  const bodyFont = style.bodyFont
+  const footerAgencyName = style.agencyName ?? 'ContentNode AI'
+  const footerText = style.footerText ?? 'Confidential'
+  // Bound helpers that close over primaryHex so every heading/table uses the client's brand color
+  const sh = (num: string, title: string, usedIn: string, addPageBreak: boolean) =>
+    gtmSectionHeading(num, title, usedIn, addPageBreak, primaryHex)
+  const st = (headers: string[], rows: string[][], widths?: number[]) =>
+    styledTable(headers, rows, widths, primaryHex)
+  void secondaryHex // reserved for future secondary-color use
+
   const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   const children: (Paragraph | Table)[] = []
 
   // ── Cover page ──────────────────────────────────────────────────────────────
-  children.push(
-    new Paragraph({ spacing: { after: 800 } }),
-    new Paragraph({
-      children: [new TextRun({ text: 'GTM FRAMEWORK', bold: true, size: 72, color: GTM_PURPLE })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 160 },
-    }),
-    new Paragraph({
-      children: [new TextRun({ text: clientName, bold: true, size: 36, color: '111111' })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 80 },
-    }),
-    new Paragraph({
-      children: [new TextRun({ text: verticalName, size: 28, color: GTM_GRAY })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 120 },
-    }),
-    new Paragraph({
-      children: [new TextRun({ text: dateStr, size: 20, color: GTM_GRAY })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 600 },
-    }),
-    new Paragraph({
-      border: { top: { style: BorderStyle.SINGLE, size: 4, color: GTM_PURPLE } },
-      spacing: { after: 0 },
-    }),
-  )
+  if (style.coverPage) {
+    // Logo
+    if (style.logoStorageKey) {
+      const bytes = await dataUrlToBytes(style.logoStorageKey)
+      if (bytes) {
+        children.push(new Paragraph({
+          children: [new ImageRun({ data: bytes, transformation: { width: 140, height: 50 }, type: 'png' })],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 320 },
+        }))
+      }
+    } else {
+      children.push(new Paragraph({ spacing: { after: 400 } }))
+    }
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: 'GTM FRAMEWORK', bold: true, size: 72, color: primaryHex, font: { name: headingFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 160 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: clientName, bold: true, size: 36, color: '111111', font: { name: headingFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 80 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: verticalName, size: 28, color: GTM_GRAY, font: { name: bodyFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: dateStr, size: 20, color: GTM_GRAY, font: { name: bodyFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 600 },
+      }),
+      new Paragraph({
+        border: { top: { style: BorderStyle.SINGLE, size: 4, color: primaryHex } },
+        spacing: { after: 0 },
+      }),
+    )
+  }
 
   // ── §01 Vertical Overview ───────────────────────────────────────────────────
   const s01 = SECTIONS.find((s) => s.num === '01')!
-  children.push(...gtmSectionHeading('01', s01.short, s01.usedIn, true))
+  children.push(...sh('01', s01.short, s01.usedIn, true))
   children.push(...gtmArea('Positioning Statement', fw.s01.positioningStatement))
   children.push(...gtmArea('Tagline Options', fw.s01.taglineOptions))
   children.push(...gtmArea('How to Use', fw.s01.howToUse))
@@ -824,7 +917,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §02 Customer Definition + Profile ──────────────────────────────────────
   const s02 = SECTIONS.find((s) => s.num === '02')!
-  children.push(...gtmSectionHeading('02', s02.short, s02.usedIn, true))
+  children.push(...sh('02', s02.short, s02.usedIn, true))
   children.push(...gtmField('Industry', fw.s02.industry))
   children.push(...gtmField('Company Size', fw.s02.companySize))
   children.push(...gtmField('Geography', fw.s02.geography))
@@ -835,7 +928,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const buyerRows = fw.s02.buyerTable.filter((r) => r.segment?.trim() || r.primaryBuyer?.trim() || r.corePain?.trim() || r.entryPoint?.trim())
   if (buyerRows.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'Buyer Table', bold: true, size: 20 })], spacing: { after: 60 } }))
-    children.push(styledTable(
+    children.push(st(
       ['Segment', 'Primary Buyer', 'Core Pain', 'Entry Point'],
       buyerRows.map((r) => [r.segment, r.primaryBuyer, r.corePain, r.entryPoint]),
       [20, 25, 30, 25],
@@ -846,13 +939,13 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §03 Market Pressures + Stats ────────────────────────────────────────────
   const s03 = SECTIONS.find((s) => s.num === '03')!
-  children.push(...gtmSectionHeading('03', s03.short, s03.usedIn, true))
+  children.push(...sh('03', s03.short, s03.usedIn, true))
   children.push(...gtmArea('Market Pressure Narrative', fw.s03.marketPressureNarrative))
 
   const statRows = fw.s03.statsTable.filter((r) => r.stat?.trim() || r.context?.trim() || r.source?.trim())
   if (statRows.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'Stats', bold: true, size: 20 })], spacing: { after: 60 } }))
-    children.push(styledTable(
+    children.push(st(
       ['Stat', 'Context', 'Source', 'Year'],
       statRows.map((r) => [r.stat, r.context, r.source, r.year]),
       [30, 35, 25, 10],
@@ -863,7 +956,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §04 Core Challenges ─────────────────────────────────────────────────────
   const s04 = SECTIONS.find((s) => s.num === '04')!
-  children.push(...gtmSectionHeading('04', s04.short, s04.usedIn, true))
+  children.push(...sh('04', s04.short, s04.usedIn, true))
   fw.s04.challenges.forEach((ch, i) => {
     if (!ch.name?.trim() && !ch.whyExists?.trim() && !ch.consequence?.trim() && !ch.solution?.trim()) return
     if (ch.name?.trim()) children.push(gtmSubHeading(`Challenge ${i + 1}: ${ch.name}`))
@@ -876,7 +969,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §05 Solutions + Service Stack ───────────────────────────────────────────
   const s05 = SECTIONS.find((s) => s.num === '05')!
-  children.push(...gtmSectionHeading('05', s05.short, s05.usedIn, true))
+  children.push(...sh('05', s05.short, s05.usedIn, true))
   fw.s05.pillars.forEach((p, i) => {
     if (!p.pillar?.trim() && !p.valueProp?.trim() && !p.keyServices?.trim()) return
     children.push(gtmSubHeading(p.pillar?.trim() ? `Pillar ${i + 1}: ${p.pillar}` : `Pillar ${i + 1}`))
@@ -888,7 +981,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const serviceRows = fw.s05.serviceStack.filter((r) => r.service?.trim() || r.whatItDelivers?.trim())
   if (serviceRows.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'Service Stack', bold: true, size: 20 })], spacing: { before: 120, after: 60 } }))
-    children.push(styledTable(
+    children.push(st(
       ['Service Name', 'Regulatory Domain (if applicable)', 'What It Delivers', 'Priority'],
       serviceRows.map((r) => [r.service, r.regulatoryDomain ?? '', r.whatItDelivers, r.priority]),
       [25, 22, 40, 13],
@@ -898,7 +991,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §06 Why [clientName] ────────────────────────────────────────────────────
   const s06 = SECTIONS.find((s) => s.num === '06')!
-  children.push(...gtmSectionHeading('06', `Why ${clientName}`, s06.usedIn, true))
+  children.push(...sh('06', `Why ${clientName}`, s06.usedIn, true))
   fw.s06.differentiators.forEach((d, i) => {
     if (!d.label?.trim() && !d.position?.trim()) return
     if (d.label?.trim()) children.push(gtmSubHeading(`${i + 1}. ${d.label}`))
@@ -908,7 +1001,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §07 Segments + Buyer Profiles ───────────────────────────────────────────
   const s07 = SECTIONS.find((s) => s.num === '07')!
-  children.push(...gtmSectionHeading('07', s07.short, s07.usedIn, true))
+  children.push(...sh('07', s07.short, s07.usedIn, true))
   fw.s07.segments.forEach((seg, i) => {
     if (!seg.name?.trim() && !seg.primaryBuyerTitles?.trim() && !seg.whatIsDifferent?.trim()) return
     children.push(gtmSubHeading(seg.name?.trim() ? `Segment ${i + 1}: ${seg.name}` : `Segment ${i + 1}`))
@@ -921,7 +1014,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §08 Messaging Framework ─────────────────────────────────────────────────
   const s08 = SECTIONS.find((s) => s.num === '08')!
-  children.push(...gtmSectionHeading('08', s08.short, s08.usedIn, true))
+  children.push(...sh('08', s08.short, s08.usedIn, true))
   children.push(...gtmArea('Problems', fw.s08.problems))
   children.push(...gtmArea('Solution', fw.s08.solution))
   children.push(...gtmArea('Outcomes', fw.s08.outcomes))
@@ -929,7 +1022,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const vpRows = fw.s08.valuePropTable.filter((r) => r.pillar?.trim() || r.meaning?.trim() || r.proofPoint?.trim())
   if (vpRows.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'Value Proposition Table', bold: true, size: 20 })], spacing: { after: 60 } }))
-    children.push(styledTable(
+    children.push(st(
       ['Pillar', 'Meaning', 'Proof Point', 'Citation'],
       vpRows.map((r) => [r.pillar, r.meaning, r.proofPoint, r.citation]),
       [20, 35, 30, 15],
@@ -939,7 +1032,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §09 Proof Points + Case Studies ─────────────────────────────────────────
   const s09 = SECTIONS.find((s) => s.num === '09')!
-  children.push(...gtmSectionHeading('09', s09.short, s09.usedIn, true))
+  children.push(...sh('09', s09.short, s09.usedIn, true))
 
   const filledProofPoints = fw.s09.proofPoints.filter((p) => p.text?.trim())
   if (filledProofPoints.length > 0) {
@@ -968,7 +1061,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §10 Objection Handling ──────────────────────────────────────────────────
   const s10 = SECTIONS.find((s) => s.num === '10')!
-  children.push(...gtmSectionHeading('10', s10.short, s10.usedIn, true))
+  children.push(...sh('10', s10.short, s10.usedIn, true))
   fw.s10.objections.forEach((obj, i) => {
     if (!obj.objection?.trim() && !obj.response?.trim()) return
     children.push(gtmSubHeading(`Objection ${i + 1}`))
@@ -979,7 +1072,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §11 Brand Voice Examples ─────────────────────────────────────────────────
   const s11 = SECTIONS.find((s) => s.num === '11')!
-  children.push(...gtmSectionHeading('11', s11.short, s11.usedIn, true))
+  children.push(...sh('11', s11.short, s11.usedIn, true))
   children.push(...gtmField('Tone Target', fw.s11.toneTarget))
   children.push(...gtmField('Vocabulary Level', fw.s11.vocabularyLevel))
   children.push(...gtmField('Sentence Style', fw.s11.sentenceStyle))
@@ -1001,7 +1094,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const filledBad = fw.s11.badExamples.filter((e) => e.bad?.trim() || e.whyWrong?.trim())
   if (filledBad.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'Bad Examples', bold: true, size: 20 })], spacing: { after: 60 } }))
-    children.push(styledTable(
+    children.push(st(
       ['Bad Example', 'Why Wrong'],
       filledBad.map((e) => [e.bad, e.whyWrong]),
       [50, 50],
@@ -1011,11 +1104,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §12 Competitive Differentiation ─────────────────────────────────────────
   const s12 = SECTIONS.find((s) => s.num === '12')!
-  children.push(...gtmSectionHeading('12', s12.short, s12.usedIn, true))
+  children.push(...sh('12', s12.short, s12.usedIn, true))
 
   const compRows = fw.s12.competitors.filter((r) => r.type?.trim() || r.positioning?.trim() || r.counter?.trim())
   if (compRows.length > 0) {
-    children.push(styledTable(
+    children.push(st(
       ['Type', 'Their Positioning', `${clientName} Counter`, 'When It Comes Up'],
       compRows.map((r) => [r.type, r.positioning, r.counter, r.whenComesUp]),
       [20, 25, 35, 20],
@@ -1025,7 +1118,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §13 Customer Quotes + Testimonials ──────────────────────────────────────
   const s13 = SECTIONS.find((s) => s.num === '13')!
-  children.push(...gtmSectionHeading('13', s13.short, s13.usedIn, true))
+  children.push(...sh('13', s13.short, s13.usedIn, true))
   fw.s13.quotes.forEach((q, i) => {
     if (!q.quoteText?.trim() && !q.attribution?.trim()) return
     children.push(gtmSubHeading(`Quote ${i + 1}${q.attribution?.trim() ? ' — ' + q.attribution : ''}`))
@@ -1042,11 +1135,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §14 Campaign Themes + Asset Mapping ─────────────────────────────────────
   const s14 = SECTIONS.find((s) => s.num === '14')!
-  children.push(...gtmSectionHeading('14', s14.short, s14.usedIn, true))
+  children.push(...sh('14', s14.short, s14.usedIn, true))
 
   const campaignRows = fw.s14.campaigns.filter((r) => r.theme?.trim() || r.targetAudience?.trim() || r.primaryAssets?.trim())
   if (campaignRows.length > 0) {
-    children.push(styledTable(
+    children.push(st(
       ['Theme', 'Target Audience', 'Primary Assets', 'Key Message'],
       campaignRows.map((r) => [r.theme, r.targetAudience, r.primaryAssets, r.keyMessage]),
       [25, 25, 25, 25],
@@ -1056,7 +1149,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §15 FAQs ────────────────────────────────────────────────────────────────
   const s15 = SECTIONS.find((s) => s.num === '15')!
-  children.push(...gtmSectionHeading('15', s15.short, s15.usedIn, true))
+  children.push(...sh('15', s15.short, s15.usedIn, true))
   fw.s15.faqs.forEach((faq, i) => {
     if (!faq.question?.trim() && !faq.answer?.trim()) return
     children.push(new Paragraph({
@@ -1074,11 +1167,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §16 Content Funnel Mapping ───────────────────────────────────────────────
   const s16 = SECTIONS.find((s) => s.num === '16')!
-  children.push(...gtmSectionHeading('16', s16.short, s16.usedIn, true))
+  children.push(...sh('16', s16.short, s16.usedIn, true))
 
   const funnelRows = fw.s16.funnelStages.filter((r) => r.assets?.trim() || r.primaryCTA?.trim() || r.buyerState?.trim())
   if (funnelRows.length > 0) {
-    children.push(styledTable(
+    children.push(st(
       ['Stage', 'Assets', 'Primary CTA', 'Buyer State'],
       funnelRows.map((r) => [r.stage, r.assets, r.primaryCTA, r.buyerState]),
       [20, 30, 25, 25],
@@ -1089,11 +1182,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §17 Regulatory + Compliance ─────────────────────────────────────────────
   const s17 = SECTIONS.find((s) => s.num === '17')!
-  children.push(...gtmSectionHeading('17', s17.short, s17.usedIn, true))
+  children.push(...sh('17', s17.short, s17.usedIn, true))
 
   const regRows = fw.s17.regulations.filter((r) => r.requirement?.trim() || r.capability?.trim() || r.servicePillar?.trim())
   if (regRows.length > 0) {
-    children.push(styledTable(
+    children.push(st(
       ['Requirement', `${clientName} Capability`, 'Service Pillar', 'Sales Note'],
       regRows.map((r) => [r.requirement, r.capability, r.servicePillar, r.salesNote]),
       [25, 30, 25, 20],
@@ -1104,12 +1197,12 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §18 CTAs + Next Steps ────────────────────────────────────────────────────
   const s18 = SECTIONS.find((s) => s.num === '18')!
-  children.push(...gtmSectionHeading('18', s18.short, s18.usedIn, true))
+  children.push(...sh('18', s18.short, s18.usedIn, true))
 
   const ctaRows = fw.s18.ctas.filter((r) => r.ctaName?.trim() || r.description?.trim())
   if (ctaRows.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'CTAs', bold: true, size: 20 })], spacing: { after: 60 } }))
-    children.push(styledTable(
+    children.push(st(
       ['CTA Name', 'Description', 'Target Audience / Trigger', 'Assets'],
       ctaRows.map((r) => [r.ctaName, r.description, r.targetAudienceTrigger, r.assets]),
       [20, 35, 25, 20],
@@ -1120,7 +1213,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const campaignThemeRows = fw.s18.campaignThemes.filter((r) => r.campaignName?.trim() || r.description?.trim())
   if (campaignThemeRows.length > 0) {
     children.push(new Paragraph({ children: [new TextRun({ text: 'Campaign Themes', bold: true, size: 20 })], spacing: { after: 60 } }))
-    children.push(styledTable(
+    children.push(st(
       ['Campaign Name', 'Description'],
       campaignThemeRows.map((r) => [r.campaignName, r.description]),
       [35, 65],
@@ -1141,22 +1234,42 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   }
 
   // ── Build document with header + footer ─────────────────────────────────────
+  const footerPageChildren: TextRun[] = [
+    new TextRun({ text: footerText, size: 16, color: GTM_GRAY }),
+    new TextRun({ text: '\t', size: 16 }),
+    new TextRun({ text: footerAgencyName, size: 16, color: GTM_GRAY }),
+  ]
+  if (style.pageNumbers) {
+    footerPageChildren.push(
+      new TextRun({ text: '\t', size: 16 }),
+      new TextRun({ text: 'Page ', size: 16, color: GTM_GRAY }),
+      new TextRun({ children: [PageNumber.CURRENT], size: 16, color: GTM_GRAY }),
+      new TextRun({ text: ' of ', size: 16, color: GTM_GRAY }),
+      new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: GTM_GRAY }),
+    )
+  }
+
   const doc = new Document({
     styles: {
       paragraphStyles: [
+        {
+          id: 'Normal',
+          name: 'Normal',
+          run: { font: { name: bodyFont }, size: 20, color: '111111' },
+        },
         {
           id: 'Heading1',
           name: 'Heading 1',
           basedOn: 'Normal',
           next: 'Normal',
-          run: { bold: true, size: 26, color: GTM_PURPLE },
+          run: { bold: true, size: 26, color: primaryHex, font: { name: headingFont } },
         },
       ],
     },
     sections: [
       {
         properties: {
-          titlePage: true,
+          titlePage: style.coverPage,
         },
         headers: {
           default: new Header({
@@ -1178,24 +1291,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
           default: new Footer({
             children: [
               new Paragraph({
-                children: [
-                  new TextRun({ text: 'Confidential', size: 16, color: GTM_GRAY }),
-                  new TextRun({ text: '\t', size: 16 }),
-                  new TextRun({ text: 'ContentNode AI', size: 16, color: GTM_GRAY }),
-                  new TextRun({ text: '\t', size: 16 }),
-                  new TextRun({ text: 'Page ', size: 16, color: GTM_GRAY }),
-                  new TextRun({
-                    children: [PageNumber.CURRENT],
-                    size: 16,
-                    color: GTM_GRAY,
-                  }),
-                  new TextRun({ text: ' of ', size: 16, color: GTM_GRAY }),
-                  new TextRun({
-                    children: [PageNumber.TOTAL_PAGES],
-                    size: 16,
-                    color: GTM_GRAY,
-                  }),
-                ],
+                children: footerPageChildren,
                 alignment: AlignmentType.LEFT,
                 border: { top: { style: BorderStyle.SINGLE, size: 4, color: 'e5e7eb' } },
                 tabStops: [

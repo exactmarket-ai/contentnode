@@ -4621,4 +4621,110 @@ Example format: {"field1":"value1","field2":"value2"}`,
       return reply.send({ data: { ok: true } })
     }
   )
+
+  // ── Client Doc Style ──────────────────────────────────────────────────────────
+
+  const docStyleBody = z.object({
+    primaryColor:    z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+    secondaryColor:  z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+    headingFont:     z.string().max(100).nullable().optional(),
+    bodyFont:        z.string().max(100).nullable().optional(),
+    agencyName:      z.string().max(200).nullable().optional(),
+    coverPage:       z.boolean().nullable().optional(),
+    pageNumbers:     z.boolean().nullable().optional(),
+    footerText:      z.string().max(500).nullable().optional(),
+    applyToGtm:      z.boolean().nullable().optional(),
+    applyToDemandGen: z.boolean().nullable().optional(),
+    applyToBranding: z.boolean().nullable().optional(),
+  })
+
+  // GET /:id/doc-style
+  app.get<{ Params: { id: string } }>('/:id/doc-style', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const style = await prisma.clientDocStyle.findUnique({ where: { clientId: req.params.id } })
+    return reply.send({ data: style ?? null })
+  })
+
+  // PATCH /:id/doc-style
+  app.patch<{ Params: { id: string } }>('/:id/doc-style', async (req, reply) => {
+    const { agencyId } = req.auth
+    const parsed = docStyleBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const data = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined))
+    const style = await prisma.clientDocStyle.upsert({
+      where: { clientId: req.params.id },
+      create: { agencyId, clientId: req.params.id, ...data },
+      update: data,
+    })
+    return reply.send({ data: style })
+  })
+
+  // POST /:id/doc-style/logo
+  app.post<{ Params: { id: string } }>('/:id/doc-style/logo', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+    const LOGO_MIME: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+    }
+    const ext = extname(data.filename).toLowerCase()
+    if (!LOGO_MIME[ext]) return reply.code(400).send({ error: 'Only JPG, PNG, GIF, WEBP, SVG allowed' })
+    const chunks: Buffer[] = []
+    for await (const chunk of data.file) chunks.push(chunk)
+    const buffer = Buffer.concat(chunks)
+    if (buffer.byteLength > 5 * 1024 * 1024) return reply.code(400).send({ error: 'Logo must be under 5 MB' })
+    const base64 = `data:${LOGO_MIME[ext]};base64,${buffer.toString('base64')}`
+    await prisma.clientDocStyle.upsert({
+      where: { clientId: req.params.id },
+      create: { agencyId, clientId: req.params.id, logoStorageKey: base64 },
+      update: { logoStorageKey: base64 },
+    })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // DELETE /:id/doc-style/logo
+  app.delete<{ Params: { id: string } }>('/:id/doc-style/logo', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    await prisma.clientDocStyle.upsert({
+      where: { clientId: req.params.id },
+      create: { agencyId, clientId: req.params.id },
+      update: { logoStorageKey: null },
+    })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // GET /:id/doc-style/merged — agency defaults merged with client overrides
+  app.get<{ Params: { id: string } }>('/:id/doc-style/merged', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const [agency, clientStyle] = await Promise.all([
+      prisma.agencySettings.findUnique({ where: { agencyId } }),
+      prisma.clientDocStyle.findUnique({ where: { clientId: req.params.id } }),
+    ])
+    const merged = {
+      logoStorageKey: clientStyle?.logoStorageKey ?? agency?.docLogoStorageKey ?? null,
+      primaryColor:   clientStyle?.primaryColor   ?? agency?.docPrimaryColor   ?? '#1B1F3B',
+      secondaryColor: clientStyle?.secondaryColor ?? agency?.docSecondaryColor ?? '#4A90D9',
+      headingFont:    clientStyle?.headingFont    ?? agency?.docHeadingFont    ?? 'Calibri',
+      bodyFont:       clientStyle?.bodyFont       ?? agency?.docBodyFont       ?? 'Calibri',
+      agencyName:     clientStyle?.agencyName     ?? agency?.docAgencyName     ?? null,
+      coverPage:      clientStyle?.coverPage      ?? agency?.docCoverPage      ?? true,
+      pageNumbers:    clientStyle?.pageNumbers    ?? agency?.docPageNumbers    ?? true,
+      footerText:     clientStyle?.footerText     ?? agency?.docFooterText     ?? null,
+      applyToGtm:     clientStyle?.applyToGtm     ?? agency?.docApplyToGtm     ?? true,
+      applyToDemandGen: clientStyle?.applyToDemandGen ?? agency?.docApplyToDemandGen ?? false,
+      applyToBranding: clientStyle?.applyToBranding  ?? agency?.docApplyToBranding  ?? false,
+    }
+    return reply.send({ data: merged })
+  })
 }

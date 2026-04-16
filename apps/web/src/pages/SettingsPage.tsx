@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { formatBytes } from '@/components/layout/config/shared'
@@ -7,6 +7,252 @@ interface AgencySettings {
   id: string
   agencyId: string
   tempContactExpiryDays: number | null
+  docLogoStorageKey: string | null
+  docPrimaryColor: string
+  docSecondaryColor: string
+  docHeadingFont: string
+  docBodyFont: string
+  docAgencyName: string | null
+  docCoverPage: boolean
+  docPageNumbers: boolean
+  docFooterText: string | null
+  docApplyToGtm: boolean
+  docApplyToDemandGen: boolean
+  docApplyToBranding: boolean
+}
+
+const FONTS = ['Calibri', 'Arial', 'Georgia', 'Times New Roman', 'Garamond', 'Verdana', 'Helvetica']
+
+// ── DocStyleSection ───────────────────────────────────────────────────────────
+
+function DocStyleSection() {
+  const [form, setForm] = useState({
+    docPrimaryColor: '#1B1F3B',
+    docSecondaryColor: '#4A90D9',
+    docHeadingFont: 'Calibri',
+    docBodyFont: 'Calibri',
+    docAgencyName: '',
+    docCoverPage: true,
+    docPageNumbers: true,
+    docFooterText: '',
+    docApplyToGtm: true,
+    docApplyToDemandGen: false,
+    docApplyToBranding: false,
+  })
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    apiFetch('/api/v1/settings')
+      .then((r) => r.json())
+      .then(({ data }: { data: AgencySettings }) => {
+        if (!data) return
+        setForm({
+          docPrimaryColor: data.docPrimaryColor ?? '#1B1F3B',
+          docSecondaryColor: data.docSecondaryColor ?? '#4A90D9',
+          docHeadingFont: data.docHeadingFont ?? 'Calibri',
+          docBodyFont: data.docBodyFont ?? 'Calibri',
+          docAgencyName: data.docAgencyName ?? '',
+          docCoverPage: data.docCoverPage ?? true,
+          docPageNumbers: data.docPageNumbers ?? true,
+          docFooterText: data.docFooterText ?? '',
+          docApplyToGtm: data.docApplyToGtm ?? true,
+          docApplyToDemandGen: data.docApplyToDemandGen ?? false,
+          docApplyToBranding: data.docApplyToBranding ?? false,
+        })
+        if (data.docLogoStorageKey) setLogoPreview(data.docLogoStorageKey)
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleSave = useCallback(async () => {
+    setSaving(true)
+    try {
+      await apiFetch('/api/v1/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...form,
+          docAgencyName: form.docAgencyName || null,
+          docFooterText: form.docFooterText || null,
+        }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch { /* ignore */ }
+    finally { setSaving(false) }
+  }, [form])
+
+  const handleLogoUpload = async (file: File) => {
+    setUploadingLogo(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await apiFetch('/api/v1/settings/doc-logo', { method: 'POST', body: fd })
+      if (res.ok) {
+        const reader = new FileReader()
+        reader.onload = (e) => setLogoPreview(e.target?.result as string)
+        reader.readAsDataURL(file)
+      }
+    } finally { setUploadingLogo(false) }
+  }
+
+  const removeLogo = async () => {
+    await apiFetch('/api/v1/settings/doc-logo', { method: 'DELETE' })
+    setLogoPreview(null)
+  }
+
+  const set = (key: keyof typeof form, val: unknown) => setForm((f) => ({ ...f, [key]: val }))
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-1">
+        <Icons.FileType className="h-4 w-4" style={{ color: '#b4b2a9' }} />
+        <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Style Templates</h2>
+      </div>
+      <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
+        Set agency-wide defaults for how DOCX downloads look. Individual clients can override these settings.
+      </p>
+
+      <div className="rounded-xl p-5 space-y-5" style={{ backgroundColor: '#fff', border: '1px solid #e8e7e1' }}>
+        {/* Sub-section label */}
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>GTM Framework Template</p>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: '#a200ee' }}
+          >
+            {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Icons.Check className="h-3 w-3" /> : <Icons.Save className="h-3 w-3" />}
+            {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+          </button>
+        </div>
+
+        {/* Apply to */}
+        <div>
+          <p className="text-[12px] font-medium mb-2" style={{ color: '#6b7280' }}>Apply template to</p>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['docApplyToGtm', 'GTM Framework'],
+              ['docApplyToDemandGen', 'Demand Gen'],
+              ['docApplyToBranding', 'Branding'],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => set(key, !form[key])}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors"
+                style={form[key]
+                  ? { backgroundColor: '#fdf5ff', border: '1px solid #a200ee', color: '#7a00b4' }
+                  : { backgroundColor: '#fafaf8', border: '1px solid #e8e7e1', color: '#6b7280' }}
+              >
+                {form[key] && <Icons.Check className="h-3 w-3" />}
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Logo */}
+        <div>
+          <p className="text-[12px] font-medium mb-2" style={{ color: '#6b7280' }}>Logo</p>
+          {logoPreview ? (
+            <div className="flex items-center gap-3">
+              <img src={logoPreview} alt="Doc logo" className="h-10 object-contain rounded border border-border" style={{ maxWidth: 160 }} />
+              <button onClick={removeLogo} className="text-[11px] text-red-500 hover:text-red-700">Remove</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => logoRef.current?.click()}
+              disabled={uploadingLogo}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] transition-colors"
+              style={{ border: '1px dashed #d1d5db', color: '#6b7280', backgroundColor: '#fafaf8' }}
+            >
+              {uploadingLogo ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Upload className="h-3.5 w-3.5" />}
+              Upload logo (JPG, PNG, SVG — max 5 MB)
+            </button>
+          )}
+          <input ref={logoRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.svg"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = '' }} />
+        </div>
+
+        {/* Colors */}
+        <div className="grid grid-cols-2 gap-4">
+          {([
+            ['docPrimaryColor', 'Primary color'],
+            ['docSecondaryColor', 'Secondary color'],
+          ] as const).map(([key, label]) => (
+            <div key={key}>
+              <p className="text-[12px] font-medium mb-1.5" style={{ color: '#6b7280' }}>{label}</p>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form[key]} onChange={(e) => set(key, e.target.value)}
+                  className="h-8 w-10 cursor-pointer rounded border border-border" />
+                <input type="text" value={form[key]} maxLength={7}
+                  onChange={(e) => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) set(key, e.target.value) }}
+                  className="flex-1 rounded border border-border px-2 py-1.5 text-[12px] font-mono" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Fonts */}
+        <div className="grid grid-cols-2 gap-4">
+          {([
+            ['docHeadingFont', 'Heading font'],
+            ['docBodyFont', 'Body font'],
+          ] as const).map(([key, label]) => (
+            <div key={key}>
+              <p className="text-[12px] font-medium mb-1.5" style={{ color: '#6b7280' }}>{label}</p>
+              <select value={form[key]} onChange={(e) => set(key, e.target.value)}
+                className="w-full rounded border border-border px-2 py-1.5 text-[13px]"
+                style={{ backgroundColor: '#fafaf8' }}>
+                {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+
+        {/* Agency name */}
+        <div>
+          <p className="text-[12px] font-medium mb-1.5" style={{ color: '#6b7280' }}>Agency name <span style={{ color: '#b4b2a9' }}>(shown in footer)</span></p>
+          <input type="text" value={form.docAgencyName} onChange={(e) => set('docAgencyName', e.target.value)}
+            placeholder="e.g. Acme Agency"
+            className="w-full rounded border border-border px-3 py-2 text-[13px]" />
+        </div>
+
+        {/* Footer text */}
+        <div>
+          <p className="text-[12px] font-medium mb-1.5" style={{ color: '#6b7280' }}>Footer text <span style={{ color: '#b4b2a9' }}>(optional)</span></p>
+          <input type="text" value={form.docFooterText} onChange={(e) => set('docFooterText', e.target.value)}
+            placeholder="e.g. Confidential — Do not distribute"
+            className="w-full rounded border border-border px-3 py-2 text-[13px]" />
+        </div>
+
+        {/* Toggles */}
+        <div className="flex flex-col gap-3">
+          {([
+            ['docCoverPage', 'Include cover page'],
+            ['docPageNumbers', 'Include page numbers'],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-3 cursor-pointer select-none">
+              <button
+                role="switch" aria-checked={form[key]}
+                onClick={() => set(key, !form[key])}
+                className="relative h-5 w-9 rounded-full transition-colors"
+                style={{ backgroundColor: form[key] ? '#a200ee' : '#d1d5db' }}
+              >
+                <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform"
+                  style={{ transform: form[key] ? 'translateX(16px)' : 'translateX(2px)' }} />
+              </button>
+              <span className="text-[13px]" style={{ color: '#374151' }}>{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
 }
 
 interface AgencyFile {
@@ -670,6 +916,9 @@ export function SettingsPage() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-6" style={{ backgroundColor: '#fafaf8' }}>
         <div style={{ maxWidth: 560 }} className="space-y-10">
+
+          {/* ── Style Templates ──────────────────────────────────────────── */}
+          <DocStyleSection />
 
           {/* ── File Library ─────────────────────────────────────────────── */}
           <LibrarySection />

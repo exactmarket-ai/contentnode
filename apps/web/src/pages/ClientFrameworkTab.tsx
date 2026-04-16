@@ -2157,7 +2157,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
             onClick={async () => {
               setDownloadingDocx(true)
               try {
-                await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name)
+                await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, clientId)
               } finally {
                 setDownloadingDocx(false)
               }
