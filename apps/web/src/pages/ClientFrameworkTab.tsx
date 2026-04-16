@@ -819,7 +819,7 @@ function S08({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
       <FwTable headers={['Pillar', 'For This Vertical, This Means…', 'Proof Point', 'Citation']}>
         {s.valuePropTable.map((row, i) => (
           <tr key={i} className="border-b border-border">
-            <FwTableCell><span className="font-semibold text-muted-foreground">{row.pillar}</span></FwTableCell>
+            <FwTableCell><FwTableTextarea value={row.pillar} onChange={(v) => set((d) => { d.s08.valuePropTable[i].pillar = v })} rows={4} placeholder="Pillar name…" /></FwTableCell>
             <FwTableCell><FwTableTextarea value={row.meaning} onChange={(v) => set((d) => { d.s08.valuePropTable[i].meaning = v })} rows={4} placeholder="What this pillar means for this vertical…" /></FwTableCell>
             <FwTableCell><FwTableTextarea value={row.proofPoint} onChange={(v) => set((d) => { d.s08.valuePropTable[i].proofPoint = v })} rows={4} placeholder="e.g. 99.9% uptime SLA" /></FwTableCell>
             <FwTableCell><FwTableTextarea value={row.citation} onChange={(v) => set((d) => { d.s08.valuePropTable[i].citation = v })} rows={4} placeholder="Name & URL" /></FwTableCell>
