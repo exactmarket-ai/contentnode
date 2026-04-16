@@ -4989,50 +4989,52 @@ function TaskConfigFields({ type, config, onChange }: {
   onChange: (c: Record<string, unknown>) => void
 }) {
   const set = (k: string, v: unknown) => onChange({ ...config, [k]: v })
-  const labelCls = 'block text-xs font-medium text-muted-foreground mb-1'
-  const inputCls = 'w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring'
-  const textareaCls = inputCls + ' resize-y'
+  const inputStyle: React.CSSProperties = { width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }
+  const textareaStyle: React.CSSProperties = { width: '100%', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '8px 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }
+
+  const lStyle: React.CSSProperties = { color: '#6b7280', fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 4 }
+  const chkLStyle: React.CSSProperties = { color: '#374151', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }
 
   if (type === 'web_scrape') return (
     <div className="space-y-3">
-      <div><label className={labelCls}>Seed URLs (one per line)</label>
-        <textarea className={textareaCls} rows={3} value={(config.seedUrls as string) ?? ''} onChange={(e) => set('seedUrls', e.target.value)} placeholder="https://example.com/blog&#10;https://competitor.com" /></div>
-      <div><label className={labelCls}>Synthesis Target</label>
-        <select className={inputCls} value={(config.synthesisTarget as string) ?? 'summary'} onChange={(e) => set('synthesisTarget', e.target.value)}>
+      <div><label style={lStyle}>Seed URLs (one per line)</label>
+        <textarea style={textareaStyle} rows={3} value={(config.seedUrls as string) ?? ''} onChange={(e) => set('seedUrls', e.target.value)} placeholder={'https://example.com/blog\nhttps://competitor.com'} /></div>
+      <div><label style={lStyle}>Synthesis Target</label>
+        <select style={inputStyle} value={(config.synthesisTarget as string) ?? 'summary'} onChange={(e) => set('synthesisTarget', e.target.value)}>
           <option value="summary">General Summary</option>
           <option value="dg_s7">S7 External Intelligence</option>
           <option value="gtm_12">Competitive Intelligence</option>
           <option value="raw">Raw</option>
         </select></div>
-      <div className="flex items-center gap-2">
+      <label style={chkLStyle}>
         <input type="checkbox" id="stayOnDomain" checked={(config.stayOnDomain as boolean) ?? true} onChange={(e) => set('stayOnDomain', e.target.checked)} />
-        <label htmlFor="stayOnDomain" className="text-xs text-muted-foreground">Stay on domain</label>
-      </div>
-      <div><label className={labelCls}>Link filter pattern (optional regex)</label>
-        <input className={inputCls} value={(config.linkPattern as string) ?? ''} onChange={(e) => set('linkPattern', e.target.value)} placeholder="e.g. /blog|/news" /></div>
+        Stay on domain
+      </label>
+      <div><label style={lStyle}>Link filter pattern (optional regex)</label>
+        <input style={inputStyle} value={(config.linkPattern as string) ?? ''} onChange={(e) => set('linkPattern', e.target.value)} placeholder="e.g. /blog|/news" /></div>
     </div>
   )
 
   if (type === 'review_miner') return (
     <div className="space-y-3">
-      <div><label className={labelCls}>Company name</label>
-        <input className={inputCls} value={(config.companyName as string) ?? ''} onChange={(e) => set('companyName', e.target.value)} placeholder="Acme Corp" /></div>
-      <div><label className={labelCls}>Platforms</label>
-        <div className="flex flex-wrap gap-2">
+      <div><label style={lStyle}>Company name</label>
+        <input style={inputStyle} value={(config.companyName as string) ?? ''} onChange={(e) => set('companyName', e.target.value)} placeholder="Acme Corp" /></div>
+      <div><label style={lStyle}>Platforms</label>
+        <div className="flex flex-wrap gap-3">
           {(['trustpilot', 'g2', 'capterra'] as const).map((p) => {
             const platforms = (config.platforms as string[]) ?? []
             return (
-              <label key={p} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <label key={p} style={chkLStyle}>
                 <input type="checkbox" checked={platforms.includes(p)} onChange={(e) => set('platforms', e.target.checked ? [...platforms, p] : platforms.filter((x) => x !== p))} />
                 {p.charAt(0).toUpperCase() + p.slice(1)}
               </label>
             )
           })}
         </div></div>
-      <div><label className={labelCls}>Competitors (one per line, optional)</label>
-        <textarea className={textareaCls} rows={2} value={(config.competitors as string) ?? ''} onChange={(e) => set('competitors', e.target.value)} placeholder="Competitor A&#10;Competitor B" /></div>
-      <div><label className={labelCls}>Synthesis type</label>
-        <select className={inputCls} value={(config.synthesis as string) ?? 'full'} onChange={(e) => set('synthesis', e.target.value)}>
+      <div><label style={lStyle}>Competitors (one per line, optional)</label>
+        <textarea style={textareaStyle} rows={2} value={(config.competitors as string) ?? ''} onChange={(e) => set('competitors', e.target.value)} placeholder={'Competitor A\nCompetitor B'} /></div>
+      <div><label style={lStyle}>Synthesis type</label>
+        <select style={inputStyle} value={(config.synthesis as string) ?? 'full'} onChange={(e) => set('synthesis', e.target.value)}>
           <option value="theme_analysis">Theme Analysis</option>
           <option value="competitive_battlecard">Competitive Battlecard</option>
           <option value="objection_map">Objection Map</option>
@@ -5044,35 +5046,35 @@ function TaskConfigFields({ type, config, onChange }: {
 
   if (type === 'audience_signal') return (
     <div className="space-y-3">
-      <div><label className={labelCls}>Seed keywords (one per line)</label>
-        <textarea className={textareaCls} rows={3} value={(config.keywords as string) ?? ''} onChange={(e) => set('keywords', e.target.value)} placeholder="SaaS pricing&#10;workflow automation" /></div>
-      <div><label className={labelCls}>Subreddits (one per line, optional)</label>
-        <textarea className={textareaCls} rows={2} value={(config.subreddits as string) ?? ''} onChange={(e) => set('subreddits', e.target.value)} placeholder="entrepreneur&#10;smallbusiness" /></div>
-      <div><label className={labelCls}>Analysis goal</label>
-        <select className={inputCls} value={(config.goal as string) ?? 'full'} onChange={(e) => set('goal', e.target.value)}>
+      <div><label style={lStyle}>Seed keywords (one per line)</label>
+        <textarea style={textareaStyle} rows={3} value={(config.keywords as string) ?? ''} onChange={(e) => set('keywords', e.target.value)} placeholder={'SaaS pricing\nworkflow automation'} /></div>
+      <div><label style={lStyle}>Subreddits (one per line, optional)</label>
+        <textarea style={textareaStyle} rows={2} value={(config.subreddits as string) ?? ''} onChange={(e) => set('subreddits', e.target.value)} placeholder={'entrepreneur\nsmallbusiness'} /></div>
+      <div><label style={lStyle}>Analysis goal</label>
+        <select style={inputStyle} value={(config.goal as string) ?? 'full'} onChange={(e) => set('goal', e.target.value)}>
           <option value="pain_points">Pain Points</option>
           <option value="vocabulary_map">Vocabulary Map</option>
           <option value="objection_map">Objection Map</option>
           <option value="question_map">Question Map</option>
           <option value="full">Full</option>
         </select></div>
-      <div><label className={labelCls}>Min upvotes</label>
-        <input type="number" className={inputCls} value={(config.minUpvotes as number) ?? 5} onChange={(e) => set('minUpvotes', Number(e.target.value))} min={0} /></div>
+      <div><label style={lStyle}>Min upvotes</label>
+        <input type="number" style={inputStyle} value={(config.minUpvotes as number) ?? 5} onChange={(e) => set('minUpvotes', Number(e.target.value))} min={0} /></div>
     </div>
   )
 
   if (type === 'seo_intent') return (
     <div className="space-y-3">
-      <div><label className={labelCls}>Seed keywords (one per line)</label>
-        <textarea className={textareaCls} rows={3} value={(config.seedKeywords as string) ?? ''} onChange={(e) => set('seedKeywords', e.target.value)} placeholder="marketing automation&#10;content workflow" /></div>
-      <div><label className={labelCls}>Data source</label>
-        <select className={inputCls} value={(config.dataSource as string) ?? 'claude'} onChange={(e) => set('dataSource', e.target.value)}>
+      <div><label style={lStyle}>Seed keywords (one per line)</label>
+        <textarea style={textareaStyle} rows={3} value={(config.seedKeywords as string) ?? ''} onChange={(e) => set('seedKeywords', e.target.value)} placeholder={'marketing automation\ncontent workflow'} /></div>
+      <div><label style={lStyle}>Data source</label>
+        <select style={inputStyle} value={(config.dataSource as string) ?? 'claude'} onChange={(e) => set('dataSource', e.target.value)}>
           <option value="claude">Claude inference (no key required)</option>
           <option value="google_autocomplete">Google Autocomplete (free)</option>
           <option value="dataforseo">DataForSEO (paid)</option>
         </select></div>
-      <div><label className={labelCls}>Funnel focus</label>
-        <select className={inputCls} value={(config.funnelFocus as string) ?? 'all'} onChange={(e) => set('funnelFocus', e.target.value)}>
+      <div><label style={lStyle}>Funnel focus</label>
+        <select style={inputStyle} value={(config.funnelFocus as string) ?? 'all'} onChange={(e) => set('funnelFocus', e.target.value)}>
           <option value="all">All stages</option>
           <option value="awareness">Awareness</option>
           <option value="consideration">Consideration</option>
@@ -5111,27 +5113,40 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
     finally { setSaving(false) }
   }
 
-  const inputCls = 'w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring'
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold">Add Scheduled Task</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><Icons.X className="h-4 w-4" /></button>
+      <div className="w-[520px] max-h-[90vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {/* Purple header — same pattern as WorkflowCreationModal */}
+        <div className="rounded-t-xl px-6 py-5" style={{ backgroundColor: '#a200ee' }}>
+          <div className="flex items-center gap-2">
+            <Icons.CalendarClock className="h-5 w-5 text-white/80" />
+            <h2 className="text-base font-semibold text-white">Add Scheduled Task</h2>
+            <button onClick={onClose} className="ml-auto rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
+              <Icons.X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="mt-1 text-sm text-white/70 pl-7">Automate recurring research to keep the brain up to date.</p>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4 space-y-4">
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5" style={{ backgroundColor: '#ffffff', color: '#111827' }}>
           {/* Type selector */}
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Task type</p>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Task type</p>
             <div className="grid grid-cols-2 gap-2">
               {(Object.entries(TASK_TYPE_META) as [ScheduledTaskType, typeof TASK_TYPE_META[ScheduledTaskType]][]).map(([t, meta]) => {
                 const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+                const active = type === t
                 return (
                   <button key={t} onClick={() => { setType(t); setConfig({}) }}
-                    className={cn('flex items-center gap-2 rounded-lg border p-3 text-left text-xs transition-colors',
-                      type === t ? 'border-blue-500 bg-blue-500/10 text-blue-600' : 'border-border hover:border-muted-foreground/40'
-                    )}>
+                    style={{
+                      border: active ? '1px solid #a200ee' : '1px solid #e5e7eb',
+                      backgroundColor: active ? '#fdf5ff' : '#f9fafb',
+                      color: active ? '#7c00cc' : '#111827',
+                      borderRadius: 8, padding: '10px 12px',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      textAlign: 'left', fontSize: 12, cursor: 'pointer',
+                      transition: 'border-color 0.15s',
+                    }}>
                     <Icon className={cn('h-3.5 w-3.5 shrink-0', meta.color)} />
                     <span className="font-medium">{meta.label}</span>
                   </button>
@@ -5141,14 +5156,23 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
           </div>
 
           {/* Label + frequency */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Label</label>
-              <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Weekly competitor reviews" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Label</p>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="e.g. Weekly competitor reviews"
+                style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+              />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Frequency</label>
-              <select className={inputCls} value={frequency} onChange={(e) => setFrequency(e.target.value as ScheduledTaskFrequency)}>
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Frequency</p>
+              <select
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value as ScheduledTaskFrequency)}
+                style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+              >
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
@@ -5157,17 +5181,19 @@ function AddTaskModal({ clientId, onClose, onCreated }: {
           </div>
 
           {/* Type-specific config */}
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Configuration</p>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Configuration</p>
             <TaskConfigFields type={type} config={config} onChange={setConfig} />
           </div>
 
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs" style={{ color: '#dc2626' }}>{error}</p>}
         </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">Cancel</button>
-          <button onClick={save} disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Creating…' : 'Create Task'}
+
+        <div className="flex items-center justify-end gap-2 px-6 py-4" style={{ borderTop: '1px solid #e5e7eb', backgroundColor: '#ffffff' }}>
+          <button onClick={onClose} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 12, fontWeight: 600, color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="h-3.5 w-3.5" />}
+            Create Task
           </button>
         </div>
       </div>

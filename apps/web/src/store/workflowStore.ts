@@ -682,6 +682,7 @@ interface WorkflowState {
   setNodeParent: (nodeId: string, parentId: string | null, position: { x: number; y: number }) => void
   groupSelectedNodes: () => void
   ungroupNode: (groupId: string) => void
+  duplicateNodes: (nodeIds: string[]) => void
 
   // Actions — UI
   setSelectedNodeId: (id: string | null) => void
@@ -921,6 +922,63 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       })
 
     set({ nodes: updated, graphDirty: true, selectedNodeId: null })
+  },
+
+  duplicateNodes: (nodeIds) => {
+    const { nodes, edges } = get()
+    const allNodes = nodes as (Node & { parentNode?: string })[]
+
+    // Collect group IDs so we can include their children
+    const groupIds = new Set(
+      nodeIds.filter((id) => allNodes.find((x) => x.id === id)?.type === 'group')
+    )
+
+    // Include child nodes of any selected groups
+    const childIds = allNodes
+      .filter((n) => n.parentNode && groupIds.has(n.parentNode))
+      .map((n) => n.id)
+    const allIds = [...new Set([...nodeIds, ...childIds])]
+
+    // Build ID map: original id → new id
+    const idMap = new Map(
+      allIds.map((id) => [`${id}`, `node_${Date.now()}_${Math.random().toString(36).slice(2)}`])
+    )
+
+    const OFFSET = 40
+    const duplicated = allIds.map((id) => {
+      const orig = allNodes.find((n) => n.id === id)!
+      const { parentNode, ...rest } = orig as Node & { parentNode?: string }
+      return {
+        ...rest,
+        id: idMap.get(id)!,
+        position: { x: orig.position.x + OFFSET, y: orig.position.y + OFFSET },
+        selected: true,
+        ...(parentNode ? { parentNode: idMap.get(parentNode) ?? parentNode } : {}),
+        data: { ...orig.data },
+      }
+    })
+
+    // Duplicate edges where both endpoints are in the selection
+    const idSet = new Set(allIds)
+    const dupEdges = edges
+      .filter((e) => idSet.has(e.source) && idSet.has(e.target))
+      .map((e) => ({
+        ...e,
+        id: crypto.randomUUID(),
+        source: idMap.get(e.source)!,
+        target: idMap.get(e.target)!,
+      }))
+
+    // Groups at front, regular nodes after; deselect originals
+    const deselected = nodes.map((n) => ({ ...n, selected: false }))
+    const groups = duplicated.filter((n) => n.type === 'group')
+    const nonGroups = duplicated.filter((n) => n.type !== 'group')
+
+    set({
+      nodes: [...groups, ...deselected, ...nonGroups],
+      edges: [...edges, ...dupEdges],
+      graphDirty: true,
+    })
   },
 
   // UI actions

@@ -58,22 +58,31 @@ export function WorkflowCanvas() {
   const {
     nodes, edges,
     onNodesChange, onEdgesChange, onConnect,
-    setSelectedNodeId, addNode, setRfInstance,
+    setSelectedNodeId, addNode, setRfInstance, duplicateNodes,
   } = useWorkflowStore()
   const canvasTool = useWorkflowStore((s) => s.canvasTool)
   const setCanvasTool = useWorkflowStore((s) => s.setCanvasTool)
   const isLocked = useWorkflowStore((s) => s.workflow.isLocked ?? false)
 
-  // Keyboard shortcuts: V = select, H = hand
+  // Keyboard shortcuts: V = select, H = hand, Cmd+D = duplicate
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Cmd+D: always block browser bookmark, then duplicate if not in an input
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+        e.preventDefault()
+        if (!(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+          const selectedIds = useWorkflowStore.getState().nodes.filter((n) => n.selected).map((n) => n.id)
+          if (selectedIds.length > 0) duplicateNodes(selectedIds)
+        }
+        return
+      }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.key === 'v' || e.key === 'V') setCanvasTool('select')
       if (e.key === 'h' || e.key === 'H') setCanvasTool('hand')
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [setCanvasTool])
+  }, [setCanvasTool, duplicateNodes])
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
   const hasFitRef = useRef(false)
