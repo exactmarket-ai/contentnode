@@ -96,7 +96,11 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     if (config !== undefined) updateData.config = config
     if (enabled !== undefined) updateData.enabled = enabled
     if (clientId !== undefined) updateData.clientId = clientId
-    if (verticalId !== undefined) updateData.verticalId = verticalId ?? null
+    if (verticalId !== undefined) {
+      updateData.verticalId = verticalId ?? null
+      // Scope follows vertical selection: vertical set → 'vertical', cleared → 'client'
+      updateData.scope = verticalId ? 'vertical' : 'client'
+    }
 
     const task = await prisma.scheduledTask.update({
       where: { id },

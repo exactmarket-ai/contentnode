@@ -193,10 +193,10 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
 
   await withAgency(agencyId, async () => {
     const task = await prisma.scheduledTask.findFirst({
-      where: { id: taskId, agencyId, enabled: true },
+      where: { id: taskId, agencyId },
     })
     if (!task) {
-      console.warn(`[scheduled-research] task ${taskId} not found or disabled`)
+      console.warn(`[scheduled-research] task ${taskId} not found`)
       return
     }
 
