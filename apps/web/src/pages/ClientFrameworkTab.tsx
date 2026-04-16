@@ -1120,8 +1120,8 @@ function S18({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
             </tr>
           ))}
         </FwTable>
+        <AddButton onClick={() => set((d) => { d.s18.ctas.push({ ctaName: '', description: '', targetAudienceTrigger: '', assets: '' }) })} label="Add CTA" />
       </div>
-      <AddButton onClick={() => set((d) => { d.s18.ctas.push({ ctaName: '', description: '', targetAudienceTrigger: '', assets: '' }) })} label="Add CTA" />
 
       <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Campaign Theme Suggestions</p>
       <FwHelp>2-4 campaign names with a one-sentence description of what each campaign is for.</FwHelp>
