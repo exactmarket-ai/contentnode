@@ -1104,10 +1104,7 @@ function S18({ fw, set, clientName }: { fw: FrameworkData; set: (fn: (d: Framewo
     <div>
       <FwSectionHeader num="18" title="CTAs + Next Steps" usedIn={SECTIONS[17].usedIn} />
 
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Primary CTAs</p>
-        <button onClick={() => set((d) => { d.s18.ctas.push({ ctaName: '', description: '', targetAudienceTrigger: '', assets: '' }) })} className="text-xs text-blue-500 hover:text-blue-700 font-medium">+ Add CTA</button>
-      </div>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Primary CTAs</p>
       <FwHelp>3-4 CTAs in order of preference. Each should have a clear description, target audience, and trigger condition.</FwHelp>
       <div className="mb-6">
         <FwTable headers={['CTA Name', 'Description', 'Target Audience / Trigger', 'Asset(s)', '']}>
