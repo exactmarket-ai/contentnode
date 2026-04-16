@@ -43,10 +43,19 @@ const DEFAULT_DOC_STYLE: DocStyleConfig = {
 
 async function fetchDocStyle(clientId: string): Promise<DocStyleConfig> {
   try {
-    const res = await apiFetch(`/api/v1/clients/${clientId}/doc-style/merged`)
-    if (!res.ok) return DEFAULT_DOC_STYLE
-    const { data } = await res.json()
-    return { ...DEFAULT_DOC_STYLE, ...data }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 4000)
+    const fetchPromise = apiFetch(`/api/v1/clients/${clientId}/doc-style/merged`, { signal: controller.signal })
+      .then(async (res) => {
+        clearTimeout(timer)
+        if (!res.ok) return DEFAULT_DOC_STYLE
+        const { data } = await res.json()
+        return { ...DEFAULT_DOC_STYLE, ...data } as DocStyleConfig
+      })
+    const timeoutPromise = new Promise<DocStyleConfig>((resolve) =>
+      setTimeout(() => resolve(DEFAULT_DOC_STYLE), 4000)
+    )
+    return await Promise.race([fetchPromise, timeoutPromise])
   } catch {
     return DEFAULT_DOC_STYLE
   }
