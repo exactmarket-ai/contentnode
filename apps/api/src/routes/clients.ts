@@ -4359,7 +4359,9 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
       const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
       if (!client) return reply.code(404).send({ error: 'Client not found' })
 
-      // Resolve brandVerticalId → ClientVertical id by name match
+      // Resolve brandVerticalId → Vertical.id by name match
+      // ScheduledTask.verticalId = Vertical.id; ClientBrandVertical has no direct FK to Vertical,
+      // so match by name (user names them identically, e.g. "Healthcare").
       let resolvedVerticalId = verticalId
       if (brandVerticalId && !verticalId) {
         const bv = await prisma.clientBrandVertical.findFirst({
@@ -4367,11 +4369,11 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
           select: { name: true },
         })
         if (bv) {
-          const cv = await prisma.clientVertical.findFirst({
-            where: { clientId, agencyId, name: bv.name },
+          const v = await prisma.vertical.findFirst({
+            where: { agencyId, name: bv.name },
             select: { id: true },
           })
-          resolvedVerticalId = cv?.id
+          resolvedVerticalId = v?.id
         }
       }
 
