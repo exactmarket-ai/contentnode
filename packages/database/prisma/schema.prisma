@@ -128,6 +128,7 @@ model Client {
   campaigns          Campaign[]
   brainAttachments   ClientBrainAttachment[]
   scheduledTasks     ScheduledTask[]
+  usageRecords       UsageRecord[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   brainContext       String?  @db.Text @map("brain_context")
 
@@ -822,18 +823,24 @@ model Insight {
 // UsageRecord — metered billing / quota tracking
 // ─────────────────────────────────────────────
 model UsageRecord {
-  id         String   @id @default(cuid())
-  agencyId   String   @map("agency_id")
-  metric     String   // ai_tokens | workflow_runs | storage_bytes | …
-  quantity   Float
-  periodStart DateTime @map("period_start")
-  periodEnd   DateTime @map("period_end")
-  metadata   Json     @default("{}")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id              String   @id @default(cuid())
+  agencyId        String   @map("agency_id")
+  clientId        String?  @map("client_id")
+  scheduledTaskId String?  @map("scheduled_task_id")
+  metric          String   // ai_tokens | workflow_runs | storage_bytes | research_brief_searches | …
+  quantity        Float
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
 
-  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  agency        Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client        Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  scheduledTask ScheduledTask? @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
 
   @@index([agencyId])
+  @@index([clientId])
+  @@index([scheduledTaskId])
   @@index([agencyId, metric, periodStart])
   @@map("usage_records")
 }
@@ -1562,9 +1569,10 @@ model ScheduledTask {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  agency   Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client   Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  vertical Vertical? @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical     Vertical?     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  usageRecords UsageRecord[]
 
   @@index([agencyId])
   @@index([clientId])

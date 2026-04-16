@@ -4964,7 +4964,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
 // ── Scheduled Tasks Tab ───────────────────────────────────────────────────────
 
-type ScheduledTaskType = 'web_scrape' | 'review_miner' | 'audience_signal' | 'seo_intent'
+type ScheduledTaskType = 'web_scrape' | 'review_miner' | 'audience_signal' | 'seo_intent' | 'research_brief'
 type ScheduledTaskFrequency = 'daily' | 'weekly' | 'monthly'
 type ScheduledTaskScope = 'client' | 'vertical' | 'company'
 
@@ -4977,10 +4977,11 @@ interface ScheduledTask {
 }
 
 const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
-  web_scrape:      { label: 'Web Scrape',      icon: 'Globe',   color: 'text-blue-500' },
-  review_miner:    { label: 'Review Miner',    icon: 'Star',    color: 'text-amber-500' },
-  audience_signal: { label: 'Audience Signal', icon: 'Users',   color: 'text-violet-500' },
-  seo_intent:      { label: 'SEO Intent',      icon: 'Search',  color: 'text-green-500' },
+  web_scrape:      { label: 'Web Scrape',      icon: 'Globe',       color: 'text-blue-500' },
+  review_miner:    { label: 'Review Miner',    icon: 'Star',        color: 'text-amber-500' },
+  audience_signal: { label: 'Audience Signal', icon: 'Users',       color: 'text-violet-500' },
+  seo_intent:      { label: 'SEO Intent',      icon: 'Search',      color: 'text-green-500' },
+  research_brief:  { label: 'Research Brief',  icon: 'FileSearch',  color: 'text-purple-600' },
 }
 
 function TaskConfigFields({ type, config, onChange }: {
@@ -5082,6 +5083,57 @@ function TaskConfigFields({ type, config, onChange }: {
         </select></div>
     </div>
   )
+
+  if (type === 'research_brief') {
+    const DEFAULT_FORMAT = `Summarize your findings in this format:
+
+1. Top news item (1-2 sentences, include source and date)
+2. Emerging risk (specific compliance gap, legal exposure, or timeline pressure)
+3. Emerging trend (behavior shift among relevant organizations)
+4. Analyst perspective (key claim from a research firm, with source)
+5. One strategic question this raises
+6. Sources — list every source cited above with article title, publication name, URL, and publish date.`
+
+    return (
+      <div className="space-y-3">
+        <div>
+          <label style={lStyle}>Research prompt</label>
+          <textarea
+            style={{ ...textareaStyle, minHeight: 120 }}
+            rows={6}
+            value={(config.prompt as string) ?? ''}
+            onChange={(e) => set('prompt', e.target.value)}
+            placeholder={'Search the web for [topic] news published in the last 7 days.\n\nFocus on:\n- Key development 1\n- Key development 2\n\nSummarize findings in structured format.'}
+          />
+          <p style={{ color: '#9ca3af', fontSize: 11, marginTop: 4 }}>Paste your full research prompt. Be specific about topics, sources, and timeframes.</p>
+        </div>
+        <div>
+          <label style={lStyle}>Recency window</label>
+          <select style={inputStyle} value={(config.recencyDays as number) ?? 7} onChange={(e) => set('recencyDays', Number(e.target.value))}>
+            <option value={7}>Last 7 days</option>
+            <option value={14}>Last 14 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+          <p style={{ color: '#9ca3af', fontSize: 11, marginTop: 4 }}>Filters search results to this time window. Use a longer window for less frequent topics.</p>
+        </div>
+        <div>
+          <label style={lStyle}>Output format <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optional — leave blank for default 6-point brief)</span></label>
+          <textarea
+            style={{ ...textareaStyle, minHeight: 100 }}
+            rows={5}
+            value={(config.synthesisFormat as string) ?? ''}
+            onChange={(e) => set('synthesisFormat', e.target.value)}
+            placeholder={DEFAULT_FORMAT}
+          />
+        </div>
+        <div>
+          <label style={lStyle}>Tavily API key env var <span style={{ fontWeight: 400, color: '#9ca3af' }}>(defaults to TAVILY_API_KEY)</span></label>
+          <input style={inputStyle} value={(config.apiKeyRef as string) ?? ''} onChange={(e) => set('apiKeyRef', e.target.value)} placeholder="TAVILY_API_KEY" />
+        </div>
+      </div>
+    )
+  }
 
   return null
 }

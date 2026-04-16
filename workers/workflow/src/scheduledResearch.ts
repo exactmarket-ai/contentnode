@@ -10,6 +10,7 @@ import { DeepWebScrapeExecutor } from './executors/deepWebScrape.js'
 import { ReviewMinerExecutor } from './executors/reviewMiner.js'
 import { AudienceSignalExecutor } from './executors/audienceSignal.js'
 import { SeoIntentExecutor } from './executors/seoIntent.js'
+import { runResearchBrief, type ResearchBriefConfig } from './executors/researchBrief.js'
 import {
   synthesiseClientContext,
   synthesiseAgencyContext,
@@ -40,7 +41,20 @@ const FAKE_CTX: NodeExecutionContext = {
   workflowId: 'scheduled',
 }
 
-async function runResearch(type: string, config: Record<string, unknown>): Promise<string> {
+async function runResearch(
+  type: string,
+  config: Record<string, unknown>,
+  usageCtx: { agencyId: string; clientId: string | null; taskId: string },
+): Promise<string> {
+  if (type === 'research_brief') {
+    return runResearchBrief(
+      config as unknown as ResearchBriefConfig,
+      usageCtx.agencyId,
+      usageCtx.clientId,
+      usageCtx.taskId,
+    )
+  }
+
   let result: { output?: unknown } | null = null
 
   if (type === 'web_scrape') {
@@ -190,7 +204,11 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
 
     try {
       const config = task.config as Record<string, unknown>
-      const output = await runResearch(task.type, config)
+      const output = await runResearch(task.type, config, {
+        agencyId,
+        clientId: task.clientId,
+        taskId,
+      })
 
       const newHash = createHash('sha256').update(output).digest('hex')
       const changed = task.lastOutputHash !== newHash
