@@ -4974,6 +4974,7 @@ interface ScheduledTask {
   nextRunAt: string | null; lastStatus: string; changeDetected: boolean
   lastChangeSummary: string | null; config: Record<string, unknown>
   clientId: string | null; verticalId: string | null
+  vertical?: { id: string; name: string } | null
 }
 
 const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
@@ -5455,6 +5456,9 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
                       <span className="text-sm font-medium">{task.label}</span>
                       <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{meta.label}</span>
                       <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground capitalize">{task.frequency}</span>
+                      {task.vertical && (
+                        <span className="rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">{task.vertical.name}</span>
+                      )}
                       {statusBadge(task.lastStatus)}
                       {task.changeDetected && (
                         <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">update detected</span>

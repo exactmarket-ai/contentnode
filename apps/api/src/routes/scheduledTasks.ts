@@ -42,6 +42,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         ...(clientId ? { clientId } : {}),
       },
       orderBy: { createdAt: 'desc' },
+      include: { vertical: { select: { id: true, name: true } } },
     })
     return reply.send({ data: tasks })
   })
