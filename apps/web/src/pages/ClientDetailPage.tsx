@@ -5351,6 +5351,7 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
   const [showAdd, setShowAdd] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null)
   const [running, setRunning] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`)
@@ -5413,6 +5414,10 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
     return `in ${Math.floor(diff / 86400000)}d`
   }
 
+  const filteredTasks = tasks
+    .filter((t) => t.label.toLowerCase().includes(search.toLowerCase()) || (t.vertical?.name ?? '').toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => a.label.localeCompare(b.label))
+
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between">
@@ -5425,6 +5430,16 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
           <Icons.Plus className="h-3.5 w-3.5" />
           Add Task
         </button>
+      </div>
+
+      <div className="relative">
+        <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search tasks..."
+          className="w-full rounded-lg border border-border bg-muted/30 py-1.5 pl-8 pr-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
       </div>
 
       {loading ? (
@@ -5440,9 +5455,14 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
             Add your first task
           </button>
         </div>
+      ) : filteredTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
+          <Icons.Search className="h-6 w-6 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No tasks match &ldquo;{search}&rdquo;</p>
+        </div>
       ) : (
         <div className="space-y-2">
-          {tasks.map((task) => {
+          {filteredTasks.map((task) => {
             const meta = TASK_TYPE_META[task.type]
             const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
             return (
