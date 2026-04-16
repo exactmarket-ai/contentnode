@@ -2167,6 +2167,9 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
               setDownloadingDocx(true)
               try {
                 await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, docStyle)
+              } catch (err) {
+                console.error('[GTM Download] failed:', err)
+                alert('Download failed: ' + (err instanceof Error ? err.message : String(err)))
               } finally {
                 setDownloadingDocx(false)
               }
