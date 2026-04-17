@@ -174,7 +174,7 @@ QUALITY CHECKLIST:
       ? `Generate the Reveal.js slide deck from this creative brief and content:\n\n${content}`
       : `Generate the HTML page from this content:\n\n${content}`
 
-    const result = await callModel(MODEL, userPrompt, systemPrompt)
+    const result = await callModel({ ...MODEL, system_prompt: systemPrompt }, userPrompt)
 
     // Strip accidental markdown fences
     let html = result.text.trim()
