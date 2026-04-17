@@ -5657,7 +5657,7 @@ async function downloadDocx(blog: GeneratedBlog) {
   const res = await apiFetch('/api/v1/content-generator/download-docx', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: blog.title, content: blog.content, sources: blog.sources ?? [] }),
+    body: JSON.stringify({ title: blog.title, content: blog.content, sources: blog.sources ?? [], linkedIn: blog.linkedIn }),
   })
   if (!res.ok) { alert('Download failed — try again'); return }
   const blob = await res.blob()

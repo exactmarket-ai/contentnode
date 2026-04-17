@@ -148,7 +148,7 @@ function parseInlineRuns(line: string): TextRun[] {
   return runs.length ? runs : [new TextRun({ text: line })]
 }
 
-function blogToDocx(title: string, content: string, sources: string[]): Document {
+function blogToDocx(title: string, content: string, sources: string[], linkedIn?: { post: string; imagePrompt: string }): Document {
   const paragraphs: Paragraph[] = []
 
   // Title
@@ -222,6 +222,39 @@ function blogToDocx(title: string, content: string, sources: string[]): Document
     }
   }
 
+  // LinkedIn post section
+  if (linkedIn?.post) {
+    paragraphs.push(
+      new Paragraph({ text: '', spacing: { after: 200 } }),
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun({ text: 'LinkedIn Post', bold: true, size: 28, color: '111827' })],
+        spacing: { before: 400, after: 160 },
+      }),
+    )
+    for (const line of linkedIn.post.split('\n')) {
+      paragraphs.push(new Paragraph({
+        children: parseInlineRuns(line.trimEnd()),
+        spacing: { after: 160 },
+      }))
+    }
+  }
+
+  // Image prompt section
+  if (linkedIn?.imagePrompt) {
+    paragraphs.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun({ text: 'Image Generation Prompt', bold: true, size: 28, color: '111827' })],
+        spacing: { before: 400, after: 160 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: linkedIn.imagePrompt, italics: true, color: '374151' })],
+        spacing: { after: 200 },
+      }),
+    )
+  }
+
   return new Document({
     creator:     'ContentNode.ai',
     description: title,
@@ -252,9 +285,10 @@ const generateBody = z.object({
 })
 
 const docxBody = z.object({
-  title:   z.string().min(1),
-  content: z.string().min(1),
-  sources: z.array(z.string()).default([]),
+  title:    z.string().min(1),
+  content:  z.string().min(1),
+  sources:  z.array(z.string()).default([]),
+  linkedIn: z.object({ post: z.string(), imagePrompt: z.string() }).optional(),
 })
 
 const reviewBody = z.object({
@@ -414,9 +448,9 @@ Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
   app.post('/download-docx', async (req, reply) => {
     const parsed = docxBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' })
-    const { title, content, sources } = parsed.data
+    const { title, content, sources, linkedIn } = parsed.data
 
-    const doc    = blogToDocx(title, content, sources)
+    const doc    = blogToDocx(title, content, sources, linkedIn)
     const buffer = await Packer.toBuffer(doc)
     const slug   = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
 
