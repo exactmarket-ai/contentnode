@@ -440,7 +440,7 @@ model User {
 model Workflow {
   id               String   @id @default(cuid())
   agencyId         String   @map("agency_id")
-  clientId         String   @map("client_id")
+  clientId         String?  @map("client_id")
   name             String
   description      String?
   connectivityMode String   @default("online") @map("connectivity_mode") // online | offline — locked after first run
@@ -459,7 +459,7 @@ model Workflow {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   agency          Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
   defaultAssignee User?     @relation("WorkflowDefaultAssignee", fields: [defaultAssigneeId], references: [id])
   vertical        Vertical? @relation(fields: [verticalId], references: [id], onDelete: SetNull)
   nodes            Node[]
