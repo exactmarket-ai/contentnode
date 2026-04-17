@@ -20,6 +20,12 @@ const ANTHROPIC_MODELS = [
   { value: 'claude-opus-4-6',   label: 'Opus 4.6' },
   { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
 ]
+const OPENAI_MODELS = [
+  { value: 'gpt-4o',       label: 'GPT-4o' },
+  { value: 'gpt-4o-mini',  label: 'GPT-4o Mini' },
+  { value: 'gpt-4-turbo',  label: 'GPT-4 Turbo' },
+  { value: 'o1-mini',      label: 'o1 Mini' },
+]
 const OLLAMA_MODELS = [
   { value: 'gemma4:e4b',    label: 'Gemma 4 E4B' },
   { value: 'llama3.1:70b',  label: 'Llama 3.1 70B' },
@@ -30,6 +36,12 @@ const OLLAMA_MODELS = [
   { value: 'mistral',       label: 'Mistral 7B' },
   { value: 'phi3',          label: 'Phi-3' },
 ]
+
+function defaultModelForProvider(provider: string) {
+  if (provider === 'openai') return 'gpt-4o'
+  if (provider === 'ollama') return 'llama3.2'
+  return 'claude-sonnet-4-5'
+}
 
 export async function pollRunUntilTerminal(runId: string) {
   const POLL_INTERVAL_MS = 2000
@@ -447,7 +459,10 @@ export function TopBar() {
   const runCfg = RUN_STATUS_CONFIG[runStatus]
   const RunIcon = runCfg.icon
   const isOfflineWf = workflow.connectivity_mode === 'offline'
-  const modelList = isOfflineWf ? OLLAMA_MODELS : (workflow.default_model_config.provider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS)
+  const modelList = isOfflineWf ? OLLAMA_MODELS
+    : workflow.default_model_config.provider === 'openai' ? OPENAI_MODELS
+    : workflow.default_model_config.provider === 'anthropic' ? ANTHROPIC_MODELS
+    : OLLAMA_MODELS
   const modelLabel = modelList.find((m) => m.value === workflow.default_model_config.model)?.label
     ?? workflow.default_model_config.model
   const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
@@ -589,8 +604,8 @@ export function TopBar() {
               setWorkflow({
                 default_model_config: {
                   ...workflow.default_model_config,
-                  provider: v as 'anthropic' | 'ollama',
-                  model: v === 'anthropic' ? 'claude-sonnet-4-5' : 'llama3.2',
+                  provider: v as 'anthropic' | 'openai' | 'ollama',
+                  model: defaultModelForProvider(v),
                 },
               })
             }
@@ -600,6 +615,7 @@ export function TopBar() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
+              <SelectItem value="openai" className="text-xs">OpenAI</SelectItem>
               <SelectItem value="ollama" className="text-xs">Ollama</SelectItem>
             </SelectContent>
           </Select>
@@ -651,6 +667,7 @@ export function TopBar() {
             </SelectContent>
           </Select>
         )}
+
       </div>
 
       {/* Promote to template (admin only) */}

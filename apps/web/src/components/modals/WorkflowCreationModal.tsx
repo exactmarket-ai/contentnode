@@ -16,6 +16,12 @@ const ANTHROPIC_MODELS = [
   { value: 'claude-opus-4-6',            label: 'Claude Opus 4.6' },
   { value: 'claude-haiku-4-5-20251001',  label: 'Claude Haiku 4.5' },
 ]
+const OPENAI_MODELS = [
+  { value: 'gpt-4o',       label: 'GPT-4o' },
+  { value: 'gpt-4o-mini',  label: 'GPT-4o Mini' },
+  { value: 'gpt-4-turbo',  label: 'GPT-4 Turbo' },
+  { value: 'o1-mini',      label: 'o1 Mini' },
+]
 const OLLAMA_MODELS = [
   { value: 'gemma4:e4b',   label: 'Gemma 4 E4B' },
   { value: 'llama3.1:70b', label: 'Llama 3.1 70B' },
@@ -26,6 +32,12 @@ const OLLAMA_MODELS = [
   { value: 'mistral',      label: 'Mistral 7B' },
   { value: 'phi3',         label: 'Phi-3' },
 ]
+
+function defaultModelForProvider(p: string) {
+  if (p === 'openai') return 'gpt-4o'
+  if (p === 'ollama') return 'gemma3:12b'
+  return 'claude-sonnet-4-5'
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   demand_gen: 'Demand Generation', marketing: 'Marketing Campaigns', blog: 'Blog', social: 'Social', email: 'Email', seo: 'SEO', general: 'General',
@@ -70,7 +82,7 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
   const selectedClient = clients.find((c) => c.id === clientId)
   const clientRequiresOffline = selectedClient?.requireOffline === true
   const effectiveMode: ConnectivityMode = clientRequiresOffline ? 'offline' : mode
-  const effectiveProvider: 'anthropic' | 'ollama' = clientRequiresOffline ? 'ollama' : provider
+  const effectiveProvider: 'anthropic' | 'openai' | 'ollama' = clientRequiresOffline ? 'ollama' : provider
   const effectiveModel: string = clientRequiresOffline ? 'gemma3:12b' : model
 
   useEffect(() => {
@@ -109,8 +121,9 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
 
   const handleProviderChange = (p: string) => {
     if (clientRequiresOffline) return
-    const newProvider = p as 'anthropic' | 'ollama'
+    const newProvider = p as 'anthropic' | 'openai' | 'ollama'
     setProvider(newProvider)
+    setModel(defaultModelForProvider(p))
     setModel(newProvider === 'anthropic' ? 'claude-sonnet-4-5' : 'gemma3:12b')
   }
 
@@ -170,7 +183,9 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
 
   const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
   const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
-  const modelList = effectiveProvider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS
+  const modelList = effectiveProvider === 'anthropic' ? ANTHROPIC_MODELS
+    : effectiveProvider === 'openai' ? OPENAI_MODELS
+    : OLLAMA_MODELS
 
   // ── Step 1: Template picker ─────────────────────────────────────────────────
   if (step === 'template') {
@@ -395,6 +410,7 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
                 <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
+                  <SelectItem value="openai" className="text-xs">OpenAI</SelectItem>
                   <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
                 </SelectContent>
               </Select>
