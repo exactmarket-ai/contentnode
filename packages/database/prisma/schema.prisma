@@ -93,6 +93,7 @@ model AgencySettings {
   docApplyToGtm           Boolean  @default(true) @map("doc_apply_to_gtm")
   docApplyToDemandGen     Boolean  @default(false) @map("doc_apply_to_demand_gen")
   docApplyToBranding      Boolean  @default(false) @map("doc_apply_to_branding")
+  ollamaModels            Json     @default("[]") @map("ollama_models") // retained for schema compat — moved to users.ollama_models
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
