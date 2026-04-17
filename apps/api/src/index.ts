@@ -43,6 +43,8 @@ import { prospectAssessmentRoutes }   from './routes/prospectAssessments.js'
 import { campaignRoutes }       from './routes/campaigns.js'
 import { scheduledTaskRoutes }  from './routes/scheduledTasks.js'
 import { docTemplateRoutes }    from './routes/docTemplates.js'
+import { leadershipRoutes }     from './routes/leadership.js'
+import { contentGeneratorRoutes } from './routes/contentGenerator.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -157,6 +159,8 @@ await app.register(prospectAssessmentRoutes,   { prefix: '/api/v1/prospect-asses
 await app.register(campaignRoutes,         { prefix: '/api/v1/campaigns' })
 await app.register(scheduledTaskRoutes,    { prefix: '/api/v1/scheduled-tasks' })
 await app.register(docTemplateRoutes,      { prefix: '/api/v1/doc-templates' })
+await app.register(leadershipRoutes,         { prefix: '/api/v1/leadership' })
+await app.register(contentGeneratorRoutes,   { prefix: '/api/v1/content-generator' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

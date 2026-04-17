@@ -5595,7 +5595,7 @@ function TaskOutputModal({ task, onClose }: { task: ScheduledTask; onClose: () =
   )
 }
 
-// ── Generate Content Modal ────────────────────────────────────────────────────
+// ── Shared blog content types + helpers ──────────────────────────────────────
 
 interface GeneratedBlog {
   title:    string
@@ -5606,13 +5606,408 @@ interface GeneratedBlog {
   linkedIn: { post: string; imagePrompt: string }
 }
 
-function GenerateContentModal({ task, onClose }: { task: ScheduledTask; onClose: () => void }) {
-  const [blogCount, setBlogCount] = useState<2 | 3>(2)
-  const [generating, setGenerating] = useState(false)
-  const [blogs, setBlogs] = useState<GeneratedBlog[]>([])
+async function downloadDocx(blog: GeneratedBlog) {
+  const res = await apiFetch('/api/v1/content-generator/download-docx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: blog.title, content: blog.content, sources: blog.sources ?? [] }),
+  })
+  if (!res.ok) { alert('Download failed — try again'); return }
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  const slug = blog.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60)
+  a.href     = url
+  a.download = `${slug}.docx`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 3000)
+}
+
+// Shared blog results panel used by both modals
+function BlogResultsPanel({
+  blogs,
+  clientId,
+  sourceLabel,
+  onRegenerate,
+  generating,
+}: {
+  blogs: GeneratedBlog[]
+  clientId: string
+  sourceLabel: string
+  onRegenerate?: () => void
+  generating?: boolean
+}) {
   const [activeIdx, setActiveIdx] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState<string | null>(null)
+  const [copied, setCopied]       = useState<string | null>(null)
+  const [saving, setSaving]       = useState(false)
+  const [saved, setSaved]         = useState(false)
+
+  const copy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(key)
+    setTimeout(() => setCopied(null), 1800)
+  }
+
+  const sendToReview = async () => {
+    setSaving(true)
+    try {
+      await apiFetch('/api/v1/content-generator/save-to-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, taskLabel: sourceLabel, blogs }),
+      })
+      setSaved(true)
+    } catch { /* non-fatal */ }
+    finally { setSaving(false) }
+  }
+
+  const blog = blogs[activeIdx]
+  if (!blog) return null
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Blog tabs + actions */}
+      <div className="flex items-center border-b border-border px-6 shrink-0 gap-0">
+        {blogs.map((b, i) => (
+          <button
+            key={i}
+            onClick={() => setActiveIdx(i)}
+            className={cn(
+              'px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors',
+              activeIdx === i ? 'border-violet-500 text-violet-600' : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Blog {i + 1}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-2 py-2">
+          {saved ? (
+            <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+              <Icons.Check className="h-3 w-3" /> Sent to Review
+            </span>
+          ) : (
+            <button
+              onClick={sendToReview}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
+            >
+              {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.ClipboardCheck className="h-3 w-3" />}
+              Send to Review
+            </button>
+          )}
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              disabled={generating}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
+            >
+              <Icons.RefreshCw className="h-3 w-3" /> Regenerate
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Blog content */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        {/* Title + download */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold leading-snug">{blog.title}</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground italic">{blog.excerpt}</p>
+          </div>
+          <button
+            onClick={() => downloadDocx(blog)}
+            className="shrink-0 flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            <Icons.Download className="h-3.5 w-3.5" />
+            Download .docx
+          </button>
+        </div>
+
+        {/* Blog markdown */}
+        <div className="rounded-xl border border-border bg-muted/20 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Blog Post</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => copy(blog.content, 'blog')}
+                className="flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                <Icons.Copy className="h-3 w-3" />
+                {copied === 'blog' ? 'Copied!' : 'Copy Markdown'}
+              </button>
+            </div>
+          </div>
+          <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground max-h-56 overflow-y-auto" style={{ fontFamily: 'inherit' }}>
+            {blog.content}
+          </pre>
+        </div>
+
+        {/* LinkedIn */}
+        <div className="rounded-xl border border-border bg-blue-50/40 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-medium text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+              <Icons.Linkedin className="h-3.5 w-3.5" /> LinkedIn Post
+            </span>
+            <button
+              onClick={() => copy(blog.linkedIn.post, `li-${activeIdx}`)}
+              className="flex items-center gap-1 rounded border border-blue-200 bg-white px-2 py-0.5 text-[10px] text-blue-600 hover:bg-blue-50"
+            >
+              <Icons.Copy className="h-3 w-3" />
+              {copied === `li-${activeIdx}` ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <p className="whitespace-pre-wrap text-xs leading-relaxed">{blog.linkedIn.post}</p>
+        </div>
+
+        {/* Image prompt */}
+        <div className="rounded-xl border border-border bg-amber-50/40 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-medium text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
+              <Icons.Image className="h-3.5 w-3.5" /> Image Prompt
+            </span>
+            <button
+              onClick={() => copy(blog.linkedIn.imagePrompt, `img-${activeIdx}`)}
+              className="flex items-center gap-1 rounded border border-amber-200 bg-white px-2 py-0.5 text-[10px] text-amber-600 hover:bg-amber-50"
+            >
+              <Icons.Copy className="h-3 w-3" />
+              {copied === `img-${activeIdx}` ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">{blog.linkedIn.imagePrompt}</p>
+        </div>
+
+        {/* Sources */}
+        {blog.sources?.length > 0 && (
+          <div className="rounded-xl border border-border p-4">
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Sources cited</p>
+            <ul className="space-y-1">
+              {blog.sources.map((s, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-xs text-blue-600 truncate">
+                  <Icons.ExternalLink className="h-3 w-3 shrink-0" />
+                  <a href={s} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">{s}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Research & Publish Modal ──────────────────────────────────────────────────
+
+const TIMEFRAME_OPTIONS = [
+  { label: 'Past 7 days',    value: 7   },
+  { label: 'Past 30 days',   value: 30  },
+  { label: 'Past 3 months',  value: 90  },
+  { label: 'Past 6 months',  value: 180 },
+  { label: 'Past year',      value: 365 },
+]
+
+function ResearchPublishModal({
+  clientId,
+  clientName,
+  verticals,
+  onClose,
+}: {
+  clientId:   string
+  clientName: string
+  verticals:  { id: string; name: string }[]
+  onClose:    () => void
+}) {
+  const [step, setStep]             = useState<'config' | 'generating' | 'results'>('config')
+  const [topics, setTopics]         = useState<string[]>([''])
+  const [timeframeDays, setTfd]     = useState(30)
+  const [blogCount, setBlogCount]   = useState(2)
+  const [verticalId, setVerticalId] = useState('')
+  const [blogs, setBlogs]           = useState<GeneratedBlog[]>([])
+  const [researchMeta, setMeta]     = useState<{ articlesFound: number } | null>(null)
+  const [error, setError]           = useState<string | null>(null)
+
+  const addTopic    = () => { if (topics.length < 5) setTopics([...topics, '']) }
+  const removeTopic = (i: number) => setTopics(topics.filter((_, idx) => idx !== i))
+  const setTopic    = (i: number, v: string) => setTopics(topics.map((t, idx) => idx === i ? v : t))
+
+  const generate = async () => {
+    const validTopics = topics.map((t) => t.trim()).filter(Boolean)
+    if (!validTopics.length) { setError('Add at least one topic'); return }
+    setStep('generating')
+    setError(null)
+    try {
+      const res = await apiFetch('/api/v1/content-generator/research-and-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          verticalId: verticalId || undefined,
+          topics: validTopics,
+          timeframeDays,
+          blogCount,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Generation failed')
+      setBlogs(json.data.blogs ?? [])
+      setMeta({ articlesFound: json.data.research?.articlesFound ?? 0 })
+      setStep('results')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong')
+      setStep('config')
+    }
+  }
+
+  const sourceLabel = `Research & Publish — ${topics.filter(Boolean).join(', ')}`
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-[820px] max-h-[92vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 flex items-center justify-between shrink-0" style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}>
+          <div>
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Icons.Newspaper className="h-4 w-4" /> Research & Publish
+            </h2>
+            <p className="text-xs text-white/70 mt-0.5">{clientName} — search industry news → generate blogs + LinkedIn posts</p>
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Config step */}
+        {step === 'config' && (
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+            {/* Topics */}
+            <div>
+              <label className="block text-xs font-medium mb-1.5">Research topics <span className="text-muted-foreground font-normal">(up to 5)</span></label>
+              <div className="space-y-2">
+                {topics.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={t}
+                      onChange={(e) => setTopic(i, e.target.value)}
+                      placeholder={`e.g. AI in ${i === 0 ? 'B2B sales' : i === 1 ? 'marketing automation' : 'enterprise software'}`}
+                      className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    />
+                    {topics.length > 1 && (
+                      <button onClick={() => removeTopic(i)} className="rounded p-1 text-muted-foreground hover:text-red-500">
+                        <Icons.X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {topics.length < 5 && (
+                <button onClick={addTopic} className="mt-2 flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700">
+                  <Icons.Plus className="h-3.5 w-3.5" /> Add topic
+                </button>
+              )}
+            </div>
+
+            {/* Row: timeframe + blog count */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium mb-1.5">Timeframe</label>
+                <select
+                  value={timeframeDays}
+                  onChange={(e) => setTfd(Number(e.target.value))}
+                  className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  {TIMEFRAME_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1.5">Number of blogs</label>
+                <select
+                  value={blogCount}
+                  onChange={(e) => setBlogCount(Number(e.target.value))}
+                  className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>{n} blog{n > 1 ? 's' : ''}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Vertical (optional) */}
+            {verticals.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium mb-1.5">Vertical <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <select
+                  value={verticalId}
+                  onChange={(e) => setVerticalId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  <option value="">All verticals</option>
+                  {verticals.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            {error && <p className="text-xs text-red-500">{error}</p>}
+
+            <button
+              onClick={generate}
+              className="flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium text-white"
+              style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}
+            >
+              <Icons.Sparkles className="h-4 w-4" />
+              Research & Generate {blogCount} Blog{blogCount > 1 ? 's' : ''}
+            </button>
+          </div>
+        )}
+
+        {/* Generating step */}
+        {step === 'generating' && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 py-16">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+            <div className="text-center">
+              <p className="text-sm font-medium">Researching & writing…</p>
+              <p className="text-xs text-muted-foreground mt-1">Searching industry news · Synthesising research · Writing {blogCount} blog{blogCount > 1 ? 's' : ''}</p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">This takes 60–120 seconds for {blogCount} blog{blogCount > 1 ? 's' : ''}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Results step */}
+        {step === 'results' && blogs.length > 0 && (
+          <>
+            {researchMeta && (
+              <div className="px-6 py-2 border-b border-border bg-muted/20 flex items-center gap-2 shrink-0">
+                <Icons.Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Found {researchMeta.articlesFound} articles · Generated {blogs.length} blog{blogs.length > 1 ? 's' : ''}</span>
+                <button onClick={() => setStep('config')} className="ml-auto text-xs text-violet-600 hover:underline">← Edit search</button>
+              </div>
+            )}
+            <BlogResultsPanel
+              blogs={blogs}
+              clientId={clientId}
+              sourceLabel={sourceLabel}
+              onRegenerate={generate}
+              generating={step === 'generating'}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Generate Content Modal ────────────────────────────────────────────────────
+
+function GenerateContentModal({ task, onClose }: { task: ScheduledTask; onClose: () => void }) {
+  const [blogCount, setBlogCount] = useState(2)
+  const [generating, setGenerating] = useState(false)
+  const [blogs, setBlogs]           = useState<GeneratedBlog[]>([])
+  const [error, setError]           = useState<string | null>(null)
 
   const generate = async () => {
     setGenerating(true)
@@ -5627,7 +6022,6 @@ function GenerateContentModal({ task, onClose }: { task: ScheduledTask; onClose:
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Generation failed')
       setBlogs(json.data.blogs ?? [])
-      setActiveIdx(0)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
     } finally {
@@ -5635,18 +6029,10 @@ function GenerateContentModal({ task, onClose }: { task: ScheduledTask; onClose:
     }
   }
 
-  const copy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(key)
-    setTimeout(() => setCopied(null), 1800)
-  }
-
-  const blog = blogs[activeIdx]
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-[780px] max-h-[90vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl overflow-hidden"
+        className="w-[820px] max-h-[92vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -5662,175 +6048,67 @@ function GenerateContentModal({ task, onClose }: { task: ScheduledTask; onClose:
           </button>
         </div>
 
-        {/* Config row — shown only before generation */}
+        {/* Config — shown before generation */}
         {blogs.length === 0 && !generating && (
-          <div className="px-6 py-5 space-y-4 flex-1 flex flex-col justify-center">
-            <p className="text-sm text-muted-foreground">
-              Turn this research into blog posts written in the client's brand voice, with LinkedIn posts and source citations.
-            </p>
+          <div className="px-6 py-6 space-y-5 flex-1 flex flex-col justify-center">
+            <p className="text-sm text-muted-foreground">Turn this research into blog posts in the client's brand voice, with LinkedIn posts, image prompts, and downloadable .docx files.</p>
             <div>
               <p className="text-xs font-medium mb-2">Number of blog posts</p>
-              <div className="flex gap-2">
-                {([2, 3] as const).map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setBlogCount(n)}
-                    className={cn(
-                      'rounded-lg border px-5 py-2.5 text-sm font-medium transition-colors',
-                      blogCount === n ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-border text-muted-foreground hover:border-border/80',
-                    )}
-                  >
-                    {n} blogs
-                  </button>
-                ))}
-              </div>
+              <select
+                value={blogCount}
+                onChange={(e) => setBlogCount(Number(e.target.value))}
+                className="w-40 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-violet-500"
+              >
+                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} blog{n > 1 ? 's' : ''}</option>)}
+              </select>
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
             <button
               onClick={generate}
-              className="self-start flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors"
+              className="self-start flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium text-white"
               style={{ background: '#a200ee' }}
             >
               <Icons.Sparkles className="h-4 w-4" />
-              Generate {blogCount} Blogs + LinkedIn Posts
+              Generate {blogCount} Blog{blogCount > 1 ? 's' : ''} + LinkedIn Posts
             </button>
           </div>
         )}
 
-        {/* Generating state */}
+        {/* Generating */}
         {generating && (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
-            <p className="text-sm text-muted-foreground">Writing {blogCount} blog posts with citations…</p>
-            <p className="text-xs text-muted-foreground/60">This takes 30–60 seconds</p>
+            <p className="text-sm text-muted-foreground">Writing {blogCount} blog{blogCount > 1 ? 's' : ''} with citations…</p>
+            <p className="text-xs text-muted-foreground/60">30–60 seconds</p>
           </div>
         )}
 
         {/* Results */}
         {blogs.length > 0 && (
-          <>
-            {/* Blog tabs */}
-            <div className="flex border-b border-border px-6 shrink-0">
-              {blogs.map((b, i) => (
-                <button
-                  key={i}
-                  onClick={() => setActiveIdx(i)}
-                  className={cn(
-                    'px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors',
-                    activeIdx === i ? 'border-violet-500 text-violet-600' : 'border-transparent text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  Blog {i + 1}
-                </button>
-              ))}
-              <button
-                onClick={generate}
-                disabled={generating}
-                className="ml-auto flex items-center gap-1.5 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-              >
-                <Icons.RefreshCw className="h-3 w-3" /> Regenerate
-              </button>
-            </div>
-
-            {blog && (
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-                {/* Title + excerpt */}
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-base font-semibold leading-snug">{blog.title}</h3>
-                    <button
-                      onClick={() => copy(blog.title, 'title')}
-                      className="shrink-0 rounded border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-                    >
-                      {copied === 'title' ? '✓' : 'Copy'}
-                    </button>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground italic">{blog.excerpt}</p>
-                </div>
-
-                {/* Blog content */}
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Blog Post</span>
-                    <button
-                      onClick={() => copy(blog.content, 'blog')}
-                      className="flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-                    >
-                      <Icons.Copy className="h-3 w-3" />
-                      {copied === 'blog' ? 'Copied!' : 'Copy Markdown'}
-                    </button>
-                  </div>
-                  <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground max-h-64 overflow-y-auto" style={{ fontFamily: 'inherit' }}>
-                    {blog.content}
-                  </pre>
-                </div>
-
-                {/* LinkedIn post */}
-                <div className="rounded-xl border border-border bg-blue-50/40 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-medium text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <Icons.Linkedin className="h-3.5 w-3.5" /> LinkedIn Post
-                    </span>
-                    <button
-                      onClick={() => copy(blog.linkedIn.post, 'li')}
-                      className="flex items-center gap-1 rounded border border-blue-200 bg-white px-2 py-0.5 text-[10px] text-blue-600 hover:bg-blue-50"
-                    >
-                      <Icons.Copy className="h-3 w-3" />
-                      {copied === 'li' ? 'Copied!' : 'Copy'}
-                    </button>
-                  </div>
-                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">{blog.linkedIn.post}</p>
-                </div>
-
-                {/* Image prompt */}
-                <div className="rounded-xl border border-border bg-amber-50/40 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-medium text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <Icons.Image className="h-3.5 w-3.5" /> Image Prompt
-                    </span>
-                    <button
-                      onClick={() => copy(blog.linkedIn.imagePrompt, 'img')}
-                      className="flex items-center gap-1 rounded border border-amber-200 bg-white px-2 py-0.5 text-[10px] text-amber-600 hover:bg-amber-50"
-                    >
-                      <Icons.Copy className="h-3 w-3" />
-                      {copied === 'img' ? 'Copied!' : 'Copy'}
-                    </button>
-                  </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground">{blog.linkedIn.imagePrompt}</p>
-                </div>
-
-                {/* Sources */}
-                {blog.sources?.length > 0 && (
-                  <div className="rounded-xl border border-border p-4">
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Sources cited</p>
-                    <ul className="space-y-1">
-                      {blog.sources.map((s, i) => (
-                        <li key={i} className="flex items-center gap-1.5 text-xs text-blue-600 truncate">
-                          <Icons.ExternalLink className="h-3 w-3 shrink-0" />
-                          <a href={s} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">{s}</a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </>
+          <BlogResultsPanel
+            blogs={blogs}
+            clientId={task.clientId ?? ''}
+            sourceLabel={task.label}
+            onRegenerate={generate}
+            generating={generating}
+          />
         )}
       </div>
     </div>
   )
 }
 
-function ScheduledTasksTab({ clientId }: { clientId: string }) {
-  const [tasks, setTasks] = useState<ScheduledTask[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null)
-  const [viewingTask, setViewingTask] = useState<ScheduledTask | null>(null)
-  const [generatingTask, setGeneratingTask] = useState<ScheduledTask | null>(null)
-  const [running, setRunning] = useState<Set<string>>(new Set())
-  const [search, setSearch] = useState('')
+function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const [tasks, setTasks]                     = useState<ScheduledTask[]>([])
+  const [loading, setLoading]                 = useState(true)
+  const [showAdd, setShowAdd]                 = useState(false)
+  const [editingTask, setEditingTask]         = useState<ScheduledTask | null>(null)
+  const [viewingTask, setViewingTask]         = useState<ScheduledTask | null>(null)
+  const [generatingTask, setGeneratingTask]   = useState<ScheduledTask | null>(null)
+  const [showResearch, setShowResearch]       = useState(false)
+  const [running, setRunning]                 = useState<Set<string>>(new Set())
+  const [search, setSearch]                   = useState('')
+  const [verticals, setVerticals]             = useState<{ id: string; name: string }[]>([])
 
   useEffect(() => {
     apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`)
@@ -5838,6 +6116,10 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
       .then(({ data }) => setTasks(data ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
+    apiFetch('/api/v1/verticals')
+      .then((r) => r.json())
+      .then(({ data }) => setVerticals((data ?? []).map((v: { id: string; name: string }) => ({ id: v.id, name: v.name }))))
+      .catch(() => {})
   }, [clientId])
 
   const toggle = async (task: ScheduledTask) => {
@@ -5904,11 +6186,21 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
           <h2 className="text-sm font-semibold">Scheduled Tasks</h2>
           <p className="text-xs text-muted-foreground mt-0.5">Research tasks that run automatically and feed results into the client brain.</p>
         </div>
-        <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
-          <Icons.Plus className="h-3.5 w-3.5" />
-          Add Task
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowResearch(true)}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
+            style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}
+          >
+            <Icons.Newspaper className="h-3.5 w-3.5" />
+            Research &amp; Publish
+          </button>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+            <Icons.Plus className="h-3.5 w-3.5" />
+            Add Task
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -6024,6 +6316,14 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
 
       {viewingTask && <TaskOutputModal task={viewingTask} onClose={() => setViewingTask(null)} />}
       {generatingTask && <GenerateContentModal task={generatingTask} onClose={() => setGeneratingTask(null)} />}
+      {showResearch && (
+        <ResearchPublishModal
+          clientId={clientId}
+          clientName={clientName}
+          verticals={verticals}
+          onClose={() => setShowResearch(false)}
+        />
+      )}
 
       {editingTask && (
         <AddTaskModal
@@ -6387,7 +6687,7 @@ export function ClientDetailPage() {
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'company' && <CompanyProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'structure' && <StructureTab client={client} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
-        {activeTab === 'scheduled-tasks' && <ScheduledTasksTab clientId={client.id} />}
+        {activeTab === 'scheduled-tasks' && <ScheduledTasksTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'doc-style' && <ClientDocStyleTab clientId={client.id} />}
       </div>}
 
