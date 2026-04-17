@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useOllamaModels } from '@/hooks/useOllamaModels'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -123,7 +123,11 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
     if (clientRequiresOffline) return
     const newProvider = p as 'anthropic' | 'openai' | 'ollama'
     setProvider(newProvider)
-    setModel(defaultModelForProvider(p))
+    // For Ollama, default to the first installed model if available
+    const defaultModel = p === 'ollama' && ollamaOptions.length > 0
+      ? ollamaOptions[0].value
+      : defaultModelForProvider(p)
+    setModel(defaultModel)
     setModel(newProvider === 'anthropic' ? 'claude-sonnet-4-5' : 'gemma3:12b')
   }
 
@@ -181,11 +185,7 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
     }
   }
 
-  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  const ollamaOptions = [
-    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
-    ...OLLAMA_MODELS,
-  ]
+  const ollamaOptions = useOllamaModels()
   const modelList = effectiveProvider === 'anthropic' ? ANTHROPIC_MODELS
     : effectiveProvider === 'openai' ? OPENAI_MODELS
     : ollamaOptions

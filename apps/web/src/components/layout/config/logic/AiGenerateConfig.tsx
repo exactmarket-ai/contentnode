@@ -4,8 +4,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
-import { FieldGroup, modelLabel, defaultModelForProvider, modelsForProvider, OLLAMA_MODELS } from '../shared'
-import { useSettingsStore } from '@/store/settingsStore'
+import { FieldGroup, modelLabel, defaultModelForProvider, modelsForProvider } from '../shared'
+import { useOllamaModels } from '@/hooks/useOllamaModels'
 import { PromptPickerModal, type PromptTemplate } from '@/components/modals/PromptPickerModal'
 import { apiFetch } from '@/lib/api'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -35,11 +35,7 @@ export function AiGenerateConfig({
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
   const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
   const isOffline = useWorkflowStore((s) => s.workflow.connectivity_mode === 'offline')
-  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  const ollamaOptions = [
-    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
-    ...OLLAMA_MODELS,
-  ]
+  const ollamaOptions = useOllamaModels()
   const [copied, setCopied] = useState(false)
   const [showPromptPicker, setShowPromptPicker] = useState(false)
   const [loadedTemplate, setLoadedTemplate] = useState<PromptTemplate | null>(null)

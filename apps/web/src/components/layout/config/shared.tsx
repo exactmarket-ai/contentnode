@@ -1,7 +1,7 @@
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useOllamaModels } from '@/hooks/useOllamaModels'
 
 // ─── Model constants ──────────────────────────────────────────────────────────
 
@@ -121,12 +121,7 @@ export function ModelOverride({
   showTemperature = false,
 }: ModelOverrideProps) {
   const inheritedLabel = `${modelLabel(workflowModel.provider, workflowModel.model)} (default)`
-  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  // Merge profile models (first) with hardcoded defaults, deduped
-  const ollamaOptions = [
-    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
-    ...OLLAMA_MODELS,
-  ]
+  const ollamaOptions = useOllamaModels()
 
   return (
     <div className="space-y-2">

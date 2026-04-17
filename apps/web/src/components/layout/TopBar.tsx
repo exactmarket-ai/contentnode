@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useOllamaModels } from '@/hooks/useOllamaModels'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -465,11 +465,7 @@ export function TopBar() {
     : OLLAMA_MODELS
   const modelLabel = modelList.find((m) => m.value === workflow.default_model_config.model)?.label
     ?? workflow.default_model_config.model
-  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  const ollamaOptions = [
-    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
-    ...OLLAMA_MODELS,
-  ]
+  const ollamaOptions = useOllamaModels()
 
   const handleDuplicate = async (name: string, clientId: string) => {
     const { workflow: wf, nodes, edges } = useWorkflowStore.getState()
@@ -603,15 +599,18 @@ export function TopBar() {
         {workflow.connectivity_mode !== 'offline' && (
           <Select
             value={workflow.default_model_config.provider}
-            onValueChange={(v) =>
+            onValueChange={(v) => {
+              const model = v === 'ollama' && ollamaOptions.length > 0
+                ? ollamaOptions[0].value
+                : defaultModelForProvider(v)
               setWorkflow({
                 default_model_config: {
                   ...workflow.default_model_config,
                   provider: v as 'anthropic' | 'openai' | 'ollama',
-                  model: defaultModelForProvider(v),
+                  model,
                 },
               })
-            }
+            }}
           >
             <SelectTrigger className="h-7 gap-1 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus:ring-0">
               <SelectValue />
