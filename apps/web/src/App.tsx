@@ -1,5 +1,8 @@
+import { useEffect } from 'react'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom'
 import { ClerkProvider, SignIn, SignedIn, useAuth, useClerk } from '@clerk/clerk-react'
+import { apiFetch } from '@/lib/api'
+import { useSettingsStore } from '@/store/settingsStore'
 import { AppNav } from '@/components/layout/AppNav'
 import { WorkflowEditor } from '@/pages/WorkflowEditor'
 import { WorkflowListPage } from '@/pages/WorkflowListPage'
@@ -60,6 +63,17 @@ function SignInPage() {
 function ProtectedLayout() {
   const { isLoaded, isSignedIn } = useAuth()
   const { signOut } = useClerk()
+  const setOllamaModels = useSettingsStore((s) => s.setOllamaModels)
+
+  useEffect(() => {
+    if (!isSignedIn) return
+    apiFetch('/api/v1/settings')
+      .then((r) => r.json())
+      .then(({ data }) => {
+        if (Array.isArray(data?.ollamaModels)) setOllamaModels(data.ollamaModels)
+      })
+      .catch(() => {/* settings load failure is non-fatal */})
+  }, [isSignedIn, setOllamaModels])
 
   if (!isLoaded) {
     return (

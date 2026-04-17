@@ -1,6 +1,7 @@
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { useSettingsStore } from '@/store/settingsStore'
 
 // ─── Model constants ──────────────────────────────────────────────────────────
 
@@ -120,6 +121,8 @@ export function ModelOverride({
   showTemperature = false,
 }: ModelOverrideProps) {
   const inheritedLabel = `${modelLabel(workflowModel.provider, workflowModel.model)} (default)`
+  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
 
   return (
     <div className="space-y-2">
@@ -169,7 +172,7 @@ export function ModelOverride({
                   className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
                 />
                 <datalist id="ollama-models-override">
-                  {OLLAMA_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
                 </datalist>
               </>
             ) : (

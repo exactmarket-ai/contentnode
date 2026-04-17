@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -449,6 +450,8 @@ export function TopBar() {
   const modelList = isOfflineWf ? OLLAMA_MODELS : (workflow.default_model_config.provider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS)
   const modelLabel = modelList.find((m) => m.value === workflow.default_model_config.model)?.label
     ?? workflow.default_model_config.model
+  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
 
   const handleDuplicate = async (name: string, clientId: string) => {
     const { workflow: wf, nodes, edges } = useWorkflowStore.getState()
@@ -622,7 +625,7 @@ export function TopBar() {
               className="h-full w-28 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />
             <datalist id="ollama-models-topbar">
-              {OLLAMA_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
             </datalist>
           </div>
         ) : (

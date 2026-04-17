@@ -63,6 +63,7 @@ model Agency {
   agencyBrainAttachments         AgencyBrainAttachment[]
   verticalBrainAttachments       VerticalBrainAttachment[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
+  leadershipMembers              LeadershipMember[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -92,6 +93,8 @@ model AgencySettings {
   docApplyToGtm           Boolean  @default(true) @map("doc_apply_to_gtm")
   docApplyToDemandGen     Boolean  @default(false) @map("doc_apply_to_demand_gen")
   docApplyToBranding      Boolean  @default(false) @map("doc_apply_to_branding")
+  // Ollama models available to this agency — populates model picker datalists
+  ollamaModels            Json     @default("[]") @map("ollama_models")
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
@@ -177,6 +180,7 @@ model Client {
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   brainContext       String?  @db.Text @map("brain_context")
   docStyle           ClientDocStyle?
+  leadershipMembers  LeadershipMember[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -1699,4 +1703,31 @@ model DocTemplateAssignment {
   @@index([agencyId])
   @@index([templateId])
   @@map("doc_template_assignments")
+}
+
+// ─────────────────────────────────────────────
+// LeadershipMember — executive thought leadership profiles
+// ─────────────────────────────────────────────
+model LeadershipMember {
+  id               String   @id @default(cuid())
+  agencyId         String   @map("agency_id")
+  clientId         String   @map("client_id")
+  name             String
+  role             String
+  linkedInUrl      String?  @map("linkedin_url")
+  headshotUrl      String?  @map("headshot_url")
+  bio              String?  @db.Text
+  personalTone     String?  @db.Text @map("personal_tone")
+  signatureTopics  Json     @default("[]") @map("signature_topics")
+  signatureStories Json     @default("[]") @map("signature_stories")
+  avoidPhrases     Json     @default("[]") @map("avoid_phrases")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("leadership_members")
 }

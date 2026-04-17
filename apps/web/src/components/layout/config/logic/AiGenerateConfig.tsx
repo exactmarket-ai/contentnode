@@ -4,7 +4,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
-import { FieldGroup, modelLabel, defaultModelForProvider, modelsForProvider } from '../shared'
+import { FieldGroup, modelLabel, defaultModelForProvider, modelsForProvider, OLLAMA_MODELS } from '../shared'
+import { useSettingsStore } from '@/store/settingsStore'
 import { PromptPickerModal, type PromptTemplate } from '@/components/modals/PromptPickerModal'
 import { apiFetch } from '@/lib/api'
 import { useWorkflowStore } from '@/store/workflowStore'
@@ -34,6 +35,8 @@ export function AiGenerateConfig({
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
   const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
   const isOffline = useWorkflowStore((s) => s.workflow.connectivity_mode === 'offline')
+  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
   const [copied, setCopied] = useState(false)
   const [showPromptPicker, setShowPromptPicker] = useState(false)
   const [loadedTemplate, setLoadedTemplate] = useState<PromptTemplate | null>(null)
@@ -142,7 +145,7 @@ export function AiGenerateConfig({
               className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
             />
             <datalist id="ollama-models-offline">
-              {modelsForProvider('ollama').map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
             </datalist>
           </FieldGroup>
         </div>
@@ -201,7 +204,7 @@ export function AiGenerateConfig({
                       className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
                     />
                     <datalist id="ollama-models-node-override">
-                      {modelsForProvider('ollama').map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                      {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
                     </datalist>
                   </>
                 ) : (

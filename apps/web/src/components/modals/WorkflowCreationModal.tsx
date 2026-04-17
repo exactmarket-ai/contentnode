@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -167,6 +168,8 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
     }
   }
 
+  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
   const modelList = effectiveProvider === 'anthropic' ? ANTHROPIC_MODELS : OLLAMA_MODELS
 
   // ── Step 1: Template picker ─────────────────────────────────────────────────
@@ -407,7 +410,7 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
                     className="h-8 flex-1 rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground disabled:opacity-50"
                   />
                   <datalist id="ollama-models-creation">
-                    {OLLAMA_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
                   </datalist>
                 </>
               ) : (
