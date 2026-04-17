@@ -62,7 +62,7 @@ export function HtmlPageOutput({
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   }
 
-  const isSlidesDeck = html.includes('Reveal.initialize')
+  const isSlidesDeck = html.includes('CONTENTNODE-SLIDES-DECK') || html.includes('Reveal.initialize')
 
   return (
     <div className="space-y-2">

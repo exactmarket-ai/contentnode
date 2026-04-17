@@ -15,7 +15,7 @@ const SLIDE_MODEL: ModelConfig = {
   model: 'claude-sonnet-4-6',
   api_key_ref: 'ANTHROPIC_API_KEY',
   temperature: 0.3,
-  max_tokens: 8192,
+  max_tokens: 16000,
 }
 
 const SLIDE_BATCH_SIZE = 5
@@ -125,7 +125,7 @@ function renderSlide(slide: CreativeDirectorSlide, brief: CreativeDirectorBrief)
 
   const accent  = (s: string) => `<span style="color:${p.accent}">${s}</span>`
   const bar     = `<div style="position:absolute;top:0;left:0;right:0;height:4px;background:${p.accent}"></div>`
-  const h1      = (extra = '') => `<h2 style="margin:0 0 0.35em;font-family:${hf};color:${p.primary};font-size:1.65em;font-weight:700;line-height:1.15;flex-shrink:0${extra}">${slide.title}</h2>`
+  const h1      = (extra = '') => `<h2 style="margin:0 0 0.35em;font-family:${hf};color:#f1f5f9;font-size:1.65em;font-weight:700;line-height:1.15;flex-shrink:0${extra}">${slide.title}</h2>`
   const body    = slide.content ? `<p style="margin:0 0 0.6em;font-family:${bf};color:#cbd5e1;font-size:0.82em;line-height:1.65">${slide.content}</p>` : ''
   const bullets = slide.keyPoints.map(pt =>
     `<li style="display:flex;gap:0.55em;align-items:flex-start;margin:0.3em 0">
@@ -135,18 +135,18 @@ function renderSlide(slide: CreativeDirectorSlide, brief: CreativeDirectorBrief)
   const bulletList = slide.keyPoints.length
     ? `<ul style="margin:0;padding:0;list-style:none">${bullets}</ul>`
     : ''
-  const notes   = `<aside class="notes">${slide.notes}</aside>`
+  // Uses div.slide — picked up by the vanilla slider in buildHtmlShell
   const wrap    = (inner: string) =>
-    `<section style="background:${p.background};padding:2em 2.8em;box-sizing:border-box;display:flex;flex-direction:column;height:100%;position:relative;overflow:hidden">
-  ${bar}${inner}${notes}
-</section>`
+    `<div class="slide" style="background:${p.background};padding:2em 2.8em;box-sizing:border-box;position:absolute;inset:0;overflow:hidden">
+  ${bar}${inner}
+</div>`
 
   switch (slide.layout) {
 
     case 'title-splash':
       return wrap(`
   <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
-    <h1 style="margin:0 0 0.4em;font-family:${hf};color:${p.primary};font-size:2.3em;font-weight:800;line-height:1.1">${slide.title}</h1>
+    <h1 style="margin:0 0 0.4em;font-family:${hf};color:#f1f5f9;font-size:2.3em;font-weight:800;line-height:1.1">${slide.title}</h1>
     ${body}
     ${bulletList}
   </div>`)
@@ -249,7 +249,10 @@ function buildHtmlShell(brief: CreativeDirectorBrief, sections: string): string 
   const fontParam = encodeURIComponent(
     `family=${fonts.heading.replace(/ /g, '+')}:wght@400;600;700&family=${fonts.body.replace(/ /g, '+')}:wght@400;500&display=swap`
   )
+  // Pure vanilla slider — no Reveal.js dependency that could override inline styles.
+  // Marker comment "CONTENTNODE-SLIDES-DECK" used by the frontend to detect slide decks.
   return `<!DOCTYPE html>
+<!-- CONTENTNODE-SLIDES-DECK -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -257,42 +260,51 @@ function buildHtmlShell(brief: CreativeDirectorBrief, sections: string): string 
 <title>Executive Presentation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?${fontParam}" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/theme/black.css">
 <style>
-  :root {
-    --bg: ${palette.background};
-    --surface: ${palette.surface};
-    --primary: ${palette.primary};
-    --accent: ${palette.accent};
-    --muted: ${palette.muted};
-    --font-heading: '${fonts.heading}', sans-serif;
-    --font-body: '${fonts.body}', sans-serif;
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;background:${palette.background};overflow:hidden}
+  .deck{position:relative;width:100%;height:100%}
+  /* Slides hidden by default; .active makes them visible */
+  .slide{display:none;position:absolute;inset:0;flex-direction:column}
+  .slide.active{display:flex}
+  /* Navigation controls */
+  .nav{position:fixed;bottom:1em;right:1.4em;display:flex;gap:0.55em;align-items:center;z-index:9999}
+  .nav-btn{
+    background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
+    color:#e2e8f0;padding:0.32em 0.8em;border-radius:4px;cursor:pointer;
+    font-size:0.8em;font-family:sans-serif;transition:background 0.12s
   }
-  .reveal { font-family: var(--font-body); background: var(--bg); }
-  .reveal .slides { text-align: left; }
-  .reveal h1, .reveal h2, .reveal h3 { font-family: var(--font-heading); color: var(--primary); margin-bottom: 0.5em; }
-  .reveal h1 { font-size: 2.2em; }
-  .reveal h2 { font-size: 1.6em; }
-  .reveal p, .reveal li { color: #e2e8f0; font-size: 0.85em; line-height: 1.6; }
-  .reveal ul { margin-left: 1.2em; }
-  .reveal .accent { color: var(--accent); }
-  .reveal .muted { color: var(--muted); font-size: 0.8em; }
-  .reveal .surface-card { background: var(--surface); border-radius: 8px; padding: 1em 1.4em; }
-  .reveal .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5em; }
-  .reveal .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; }
-  .reveal .stat-num { font-size: 2.4em; font-weight: 700; color: var(--accent); line-height: 1; }
+  .nav-btn:hover{background:rgba(255,255,255,0.22)}
+  .slide-num{color:rgba(255,255,255,0.38);font-size:0.7em;min-width:3.5em;text-align:center;font-family:sans-serif}
 </style>
 </head>
 <body>
-<div class="reveal">
-  <div class="slides">
+<div class="deck">
 ${sections}
-  </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.js"></script>
+<div class="nav">
+  <button class="nav-btn" id="prev">&#8592;</button>
+  <span class="slide-num" id="counter"></span>
+  <button class="nav-btn" id="next">&#8594;</button>
+</div>
 <script>
-Reveal.initialize({ hash: true, transition: 'fade', progress: true, controls: true, slideNumber: 'c/t' });
+(function(){
+  var slides=Array.from(document.querySelectorAll('.slide'));
+  var cur=0;
+  function show(n){
+    slides[cur].classList.remove('active');
+    cur=(n+slides.length)%slides.length;
+    slides[cur].classList.add('active');
+    document.getElementById('counter').textContent=(cur+1)+' / '+slides.length;
+  }
+  document.getElementById('next').addEventListener('click',function(){show(cur+1)});
+  document.getElementById('prev').addEventListener('click',function(){show(cur-1)});
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='ArrowDown')show(cur+1);
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp')show(cur-1);
+  });
+  show(0);
+})();
 </script>
 </body>
 </html>`
@@ -317,26 +329,29 @@ async function buildSlidesFromRawContent(
 ): Promise<{ html: string; tokensUsed: number; inputTokens: number; outputTokens: number }> {
   // Creative Director inline call
   const cdSystem = `You are a senior creative director at a top-tier B2B design agency.
-Read the executive presentation and produce a structured creative brief for a Reveal.js slide deck.
-Return ONLY valid JSON — no markdown, no explanation.
+Read the executive presentation and produce a structured creative brief for a slide deck.
+Return ONLY valid JSON — no markdown, no explanation, no trailing text after the closing brace.
+
+CRITICAL: Count every section/topic in the source. Your "slides" array MUST contain one entry per section — do not merge, skip, or truncate sections. If there are 13 sections, produce 13 slide objects.
 
 {
-  "palette": { "background": "<hex>", "surface": "<hex>", "primary": "<hex>", "accent": "<hex>", "muted": "<hex>" },
-  "fonts": { "heading": "<Google Font>", "body": "<Google Font>" },
+  "palette": { "background": "<dark hex>", "surface": "<slightly lighter hex>", "primary": "<brand hex>", "accent": "<vibrant hex>", "muted": "<muted hex>" },
+  "fonts": { "heading": "<Google Font name>", "body": "<Google Font name>" },
   "style": "<one-line visual theme>",
   "slides": [
     {
       "number": 1,
       "title": "<slide title>",
       "layout": "<title-splash|two-column|stat-grid|timeline|quote-callout|comparison-table|icon-grid|closing-cta>",
-      "content": "<full content for this slide>",
-      "keyPoints": ["<bullet 1>", "<bullet 2>"],
-      "notes": "<speaker notes>"
+      "content": "<prose description for this slide — full sentences>",
+      "keyPoints": ["<bullet 1>", "<bullet 2>", "<bullet 3>"],
+      "notes": "<optional speaker notes>"
     }
   ]
 }
 
-Extract EVERY slide present in the presentation. Do not skip any.`
+palette.background should be dark (e.g. #0F172A).
+Every slide must have a non-empty title and at least one keyPoint or non-empty content.`
 
   const cdResult = await callModel(
     { ...SLIDE_MODEL, system_prompt: cdSystem, max_tokens: 8192, temperature: 0.4 },
