@@ -1055,10 +1055,11 @@ function QuickAssessModal({
   onClose: () => void
   onCreate: (a: Assessment) => void
 }) {
-  const [name,       setName]       = useState('')
-  const [url,        setUrl]        = useState('')
-  const [step,       setStep]       = useState<QuickStep>('idle')
-  const [error,      setError]      = useState<string | null>(null)
+  const [name,        setName]        = useState('')
+  const [url,         setUrl]         = useState('')
+  const [step,        setStep]        = useState<QuickStep>('idle')
+  const [error,       setError]       = useState<string | null>(null)
+  const [presWarning, setPresWarning] = useState<string | null>(null)
 
   const activeStepIdx = QUICK_STEPS.findIndex((s) => s.key === step)
 
@@ -1099,12 +1100,21 @@ function QuickAssessModal({
 
       // Step 4: generate executive presentation (non-fatal if it fails)
       setStep('presenting')
-      const presRes = await apiFetch(
-        `/api/v1/prospect-assessments/${id}/generate-exec-presentation`,
-        { method: 'POST' },
-      )
-      const presJson = await presRes.json()
-      const finalAssessment: Assessment = presRes.ok ? presJson.data : afterMap
+      let finalAssessment: Assessment = afterMap
+      try {
+        const presRes = await apiFetch(
+          `/api/v1/prospect-assessments/${id}/generate-exec-presentation`,
+          { method: 'POST' },
+        )
+        const presJson = await presRes.json()
+        if (presRes.ok) {
+          finalAssessment = presJson.data
+        } else {
+          setPresWarning('Exec presentation timed out — you can generate it manually from the assessment page.')
+        }
+      } catch {
+        setPresWarning('Exec presentation failed — you can generate it manually from the assessment page.')
+      }
 
       setStep('done')
       setTimeout(() => {
@@ -1204,6 +1214,14 @@ function QuickAssessModal({
                 <span className="text-xs font-medium text-emerald-700">Assessment complete — opening now…</span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Exec presentation warning (non-fatal) */}
+        {presWarning && step === 'done' && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <Icons.AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-700 leading-relaxed">{presWarning}</p>
           </div>
         )}
 

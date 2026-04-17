@@ -987,11 +987,11 @@ ${EXEC_PRESENTATION_TEMPLATE}
 
 Fill in all [Insert ...] placeholders and generic text with specific content for ${assessment.name}. Return the complete 13-slide presentation.`
 
-  const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
+  const anthropic = new Anthropic({ apiKey, timeout: 180_000, maxRetries: 1 })
 
   const response = await anthropic.messages.create({
     model:      'claude-sonnet-4-5',
-    max_tokens: 5000,
+    max_tokens: 3000,
     system:     EXEC_PRESENTATION_SYSTEM,
     messages:   [{ role: 'user', content: userPrompt }],
   })
