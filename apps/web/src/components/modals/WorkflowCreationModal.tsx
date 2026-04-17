@@ -12,8 +12,9 @@ import type { ConnectivityMode } from '@/store/workflowStore'
 import { WORKFLOW_TEMPLATES, type WorkflowTemplate } from '@/lib/workflowTemplates'
 
 const ANTHROPIC_MODELS = [
+  { value: 'claude-opus-4-7',            label: 'Claude Opus 4.7' },
+  { value: 'claude-sonnet-4-6',          label: 'Claude Sonnet 4.6' },
   { value: 'claude-sonnet-4-5',          label: 'Claude Sonnet 4.5' },
-  { value: 'claude-opus-4-6',            label: 'Claude Opus 4.6' },
   { value: 'claude-haiku-4-5-20251001',  label: 'Claude Haiku 4.5' },
 ]
 const OPENAI_MODELS = [
@@ -123,12 +124,10 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
     if (clientRequiresOffline) return
     const newProvider = p as 'anthropic' | 'openai' | 'ollama'
     setProvider(newProvider)
-    // For Ollama, default to the first installed model if available
     const defaultModel = p === 'ollama' && ollamaOptions.length > 0
       ? ollamaOptions[0].value
       : defaultModelForProvider(p)
     setModel(defaultModel)
-    setModel(newProvider === 'anthropic' ? 'claude-sonnet-4-5' : 'gemma3:12b')
   }
 
   const handleSubmit = async () => {

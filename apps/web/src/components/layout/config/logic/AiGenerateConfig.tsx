@@ -160,7 +160,7 @@ export function AiGenerateConfig({
                 onChange(
                   'model_config',
                   e.target.checked
-                    ? { provider: 'anthropic', model: 'claude-sonnet-4-5' }
+                    ? { provider: 'anthropic', model: 'claude-sonnet-4-5' }  // default override = Sonnet 4.5
                     : null,
                 )
               }
