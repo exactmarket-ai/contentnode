@@ -521,14 +521,15 @@ const DOCX_ACCENT = '4F46E5'
 const DOCX_MID    = '6B7280'
 const DOCX_RULE   = 'E5E7EB'
 
-function pt(n: number) { return n * 20 }
+function pt(n: number) { return n * 20 }   // twips — for margins/spacing
+function sz(n: number) { return n * 2  }   // half-points — for font size
 
 function parseInline(text: string): TextRun[] {
   const parts = text.split(/(\*\*[^*]+\*\*)/g)
   return parts.flatMap((p) =>
     p.startsWith('**') && p.endsWith('**')
       ? [new TextRun({ text: p.slice(2, -2), bold: true, color: DOCX_BRAND, font: 'Calibri' })]
-      : p ? [new TextRun({ text: p, color: DOCX_BRAND, font: 'Calibri', size: pt(11) })]
+      : p ? [new TextRun({ text: p, color: DOCX_BRAND, font: 'Calibri', size: sz(11) })]
       : [],
   )
 }
@@ -555,7 +556,7 @@ function mdToParagraphs(markdown: string): Paragraph[] {
         heading: HeadingLevel.HEADING_1,
         pageBreakBefore: result.length > 0,
         spacing: { before: pt(0), after: pt(10) },
-        children: [new TextRun({ text: trimmed, bold: true, size: pt(16), color: DOCX_ACCENT, font: 'Calibri' })],
+        children: [new TextRun({ text: trimmed, bold: true, size: sz(16), color: DOCX_ACCENT, font: 'Calibri' })],
       }))
       continue
     }
@@ -565,7 +566,7 @@ function mdToParagraphs(markdown: string): Paragraph[] {
       result.push(new Paragraph({
         heading: HeadingLevel.HEADING_2,
         spacing: { before: pt(14), after: pt(4) },
-        children: [new TextRun({ text: trimmed.slice(3), bold: true, size: pt(13), color: DOCX_ACCENT, font: 'Calibri' })],
+        children: [new TextRun({ text: trimmed.slice(3), bold: true, size: sz(13), color: DOCX_ACCENT, font: 'Calibri' })],
       }))
       continue
     }
@@ -575,7 +576,7 @@ function mdToParagraphs(markdown: string): Paragraph[] {
       result.push(new Paragraph({
         heading: HeadingLevel.HEADING_3,
         spacing: { before: pt(10), after: pt(2) },
-        children: [new TextRun({ text: trimmed.slice(4), bold: true, size: pt(12), color: DOCX_BRAND, font: 'Calibri' })],
+        children: [new TextRun({ text: trimmed.slice(4), bold: true, size: sz(12), color: DOCX_BRAND, font: 'Calibri' })],
       }))
       continue
     }
@@ -588,7 +589,7 @@ function mdToParagraphs(markdown: string): Paragraph[] {
       if (isLabel && trimmed.length < 50) {
         result.push(new Paragraph({
           spacing: { before: pt(8), after: pt(2) },
-          children: [new TextRun({ text: trimmed, bold: true, size: pt(11), color: DOCX_BRAND, font: 'Calibri' })],
+          children: [new TextRun({ text: trimmed, bold: true, size: sz(11), color: DOCX_BRAND, font: 'Calibri' })],
         }))
         continue
       }
@@ -613,7 +614,7 @@ function mdToParagraphs(markdown: string): Paragraph[] {
         spacing: { before: pt(4), after: pt(2) },
         indent: { left: pt(24), hanging: pt(16) },
         children: [
-          new TextRun({ text: `${numMatch[1]}.  `, bold: true, color: DOCX_MID, font: 'Calibri', size: pt(11) }),
+          new TextRun({ text: `${numMatch[1]}.  `, bold: true, color: DOCX_MID, font: 'Calibri', size: sz(11) }),
           ...parseInline(numMatch[2]),
         ],
       }))
@@ -634,7 +635,7 @@ async function buildDocx(title: string, subtitle: string | null, content: string
     styles: {
       default: {
         document: {
-          run: { font: 'Calibri', size: pt(11), color: DOCX_BRAND },
+          run: { font: 'Calibri', size: sz(11), color: DOCX_BRAND },
         },
       },
     },
@@ -647,11 +648,11 @@ async function buildDocx(title: string, subtitle: string | null, content: string
       children: [
         new Paragraph({
           spacing: { before: 0, after: pt(4) },
-          children: [new TextRun({ text: title, bold: true, size: pt(22), color: DOCX_BRAND, font: 'Calibri' })],
+          children: [new TextRun({ text: title, bold: true, size: sz(22), color: DOCX_BRAND, font: 'Calibri' })],
         }),
         ...(subtitle ? [new Paragraph({
           spacing: { before: 0, after: pt(16) },
-          children: [new TextRun({ text: subtitle, size: pt(11), color: DOCX_MID, font: 'Calibri' })],
+          children: [new TextRun({ text: subtitle, size: sz(11), color: DOCX_MID, font: 'Calibri' })],
         })] : [new Paragraph({ spacing: { before: 0, after: pt(12) }, children: [] })]),
         ...mdToParagraphs(content),
       ],
