@@ -97,7 +97,8 @@ export async function workflowRoutes(app: FastifyInstance) {
       // No client selected (prospect/org-level workflow).
       // Until the DB migration making client_id nullable is deployed, fall back to the
       // first client in the agency so the INSERT doesn't violate the NOT NULL constraint.
-      const fallback = await prisma.client.findFirst({ where: { agencyId }, select: { id: true }, orderBy: { createdAt: 'asc' } })
+      const exactMarket = await prisma.client.findFirst({ where: { agencyId, name: 'Exact Market' }, select: { id: true } })
+      const fallback = exactMarket ?? await prisma.client.findFirst({ where: { agencyId }, select: { id: true }, orderBy: { createdAt: 'asc' } })
       if (fallback) clientId = fallback.id
       // If no clients exist at all, attempt the insert without a clientId —
       // this will succeed once the migration has run, and fail gracefully before that.
