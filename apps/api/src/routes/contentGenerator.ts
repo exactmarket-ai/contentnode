@@ -408,28 +408,41 @@ ${articleDigest}
 
 Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
 
-    const result = await callModel(
-      {
-        provider:       'anthropic',
-        model:          'claude-sonnet-4-6',
-        api_key_ref:    'ANTHROPIC_API_KEY',
-        temperature:    0.65,
-        max_tokens:     16000,
-        system_prompt:  systemPrompt,
-      },
-      userPrompt,
-    )
-
-    let blogs: GeneratedBlog[] = []
-    try {
-      const cleaned = result.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+    const parseBlogs = (text: string): GeneratedBlog[] => {
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
       const match = cleaned.match(/\{[\s\S]*\}/)
-      if (match) {
-        const p = JSON.parse(match[0]) as { blogs?: GeneratedBlog[] }
-        blogs = Array.isArray(p.blogs) ? p.blogs : []
+      if (!match) return []
+      const p = JSON.parse(match[0]) as { blogs?: GeneratedBlog[] }
+      return Array.isArray(p.blogs) ? p.blogs : []
+    }
+
+    // Batch into calls of max 2 blogs to stay well under the 3-min timeout
+    const BATCH = 2
+    let blogs: GeneratedBlog[] = []
+    let tokensUsed = 0
+    try {
+      for (let offset = 0; offset < blogCount; offset += BATCH) {
+        const n = Math.min(BATCH, blogCount - offset)
+        const batchSystemPrompt = systemPrompt
+          .replace(`into ${blogCount} distinct`, `into ${n} distinct`)
+          + (offset > 0 ? `\nThese are blogs ${offset + 1}–${offset + n} in a series; take fresh angles not covered by earlier blogs.` : '')
+        const result = await callModel(
+          {
+            provider:      'anthropic',
+            model:         'claude-sonnet-4-6',
+            api_key_ref:   'ANTHROPIC_API_KEY',
+            temperature:   0.65,
+            max_tokens:    8192,
+            system_prompt: batchSystemPrompt,
+          },
+          userPrompt,
+        )
+        tokensUsed += result.tokens_used ?? 0
+        blogs = blogs.concat(parseBlogs(result.text))
       }
-    } catch {
-      return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
+    } catch (err) {
+      console.error('[research-and-write] callModel failed:', err)
+      return reply.code(500).send({ error: 'Content generation timed out or failed — try fewer blogs or try again' })
     }
     if (!blogs.length) return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
 
@@ -441,7 +454,7 @@ Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
           articles: articles.map((a) => ({ title: a.title, url: a.url, source: a.source, pubDate: a.pubDate })),
           sourceUrls,
         },
-        tokensUsed: result.tokens_used,
+        tokensUsed,
       },
     })
   })

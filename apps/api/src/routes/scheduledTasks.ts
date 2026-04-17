@@ -223,8 +223,9 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         .filter((u) => !u.includes('fonts.googleapis') && !u.includes('cdn.jsdelivr') && u.length > 10),
     )].slice(0, 20)
 
-    const systemPrompt = `You are a content strategist and expert B2B blog writer${clientName ? ` for ${clientName}` : ''}.
-Turn the research intelligence below into ${blogCount} distinct, publication-ready blog posts — each taking a different angle or insight from the research.
+    const buildPrompt = (n: number, offset: number) => {
+      const systemPrompt = `You are a content strategist and expert B2B blog writer${clientName ? ` for ${clientName}` : ''}.
+Turn the research intelligence below into ${n} distinct, publication-ready blog posts — each taking a different angle or insight from the research.${offset > 0 ? ` These are blogs ${offset + 1}–${offset + n} in a series; do not repeat angles already covered by earlier blogs.` : ''}
 ${toneOfVoice ? `\nBrand voice: ${toneOfVoice}` : ''}
 
 For EACH blog post:
@@ -255,38 +256,57 @@ Return ONLY valid JSON — no markdown fences, nothing outside the JSON object:
   ]
 }`
 
-    const userPrompt = `Research task: ${task.label}
+      const userPrompt = `Research task: ${task.label}
 ${sourceUrls.length > 0 ? `\nSource URLs found in this research:\n${sourceUrls.map((u, i) => `${i + 1}. ${u}`).join('\n')}\n` : ''}
 --- FULL RESEARCH OUTPUT ---
 ${att.extractedText.slice(0, 13000)}`
 
-    const result = await callModel(
-      {
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
-        api_key_ref: 'ANTHROPIC_API_KEY',
-        temperature: 0.65,
-        max_tokens: 16000,
-        system_prompt: systemPrompt,
-      },
-      userPrompt,
-    )
+      return { systemPrompt, userPrompt }
+    }
+
+    const parseBlogs = (text: string): unknown[] => {
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+      const match = cleaned.match(/\{[\s\S]*\}/)
+      if (!match) return []
+      const parsed = JSON.parse(match[0]) as { blogs?: unknown[] }
+      return Array.isArray(parsed.blogs) ? parsed.blogs : []
+    }
+
+    // Batch into calls of max 2 blogs to stay well under the 3-min timeout
+    const BATCH = 2
+    const batches: Array<{ n: number; offset: number }> = []
+    for (let i = 0; i < blogCount; i += BATCH) {
+      batches.push({ n: Math.min(BATCH, blogCount - i), offset: i })
+    }
 
     let blogs: unknown[] = []
+    let tokensUsed = 0
     try {
-      // Strip markdown fences if present, then extract outermost JSON object
-      const cleaned = result.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
-      const match = cleaned.match(/\{[\s\S]*\}/)
-      if (match) {
-        const parsed = JSON.parse(match[0]) as { blogs?: unknown[] }
-        blogs = Array.isArray(parsed.blogs) ? parsed.blogs : []
+      for (const { n, offset } of batches) {
+        const { systemPrompt, userPrompt } = buildPrompt(n, offset)
+        const result = await callModel(
+          {
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-6',
+            api_key_ref: 'ANTHROPIC_API_KEY',
+            temperature: 0.65,
+            max_tokens: 8192,
+            system_prompt: systemPrompt,
+          },
+          userPrompt,
+        )
+        tokensUsed += result.tokens_used ?? 0
+        const batch = parseBlogs(result.text)
+        blogs = blogs.concat(batch)
       }
-    } catch {
-      return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
+    } catch (err) {
+      console.error('[generate-content] callModel failed:', err)
+      return reply.code(500).send({ error: 'Content generation timed out or failed — try fewer blogs or try again' })
     }
+
     if (!blogs.length) return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
 
-    return reply.send({ data: { blogs, sourceUrls, taskLabel: task.label, tokensUsed: result.tokens_used } })
+    return reply.send({ data: { blogs, sourceUrls, taskLabel: task.label, tokensUsed } })
   })
 
   // ── POST /api/v1/scheduled-tasks/seed-defaults ───────────────────────────
