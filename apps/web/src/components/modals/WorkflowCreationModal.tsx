@@ -69,7 +69,7 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
 
   const [name, setName] = useState('Untitled Workflow')
   const [mode, setMode] = useState<ConnectivityMode>('online')
-  const [provider, setProvider] = useState<'anthropic' | 'ollama'>('anthropic')
+  const [provider, setProvider] = useState<'anthropic' | 'openai' | 'ollama'>('anthropic')
   const [model, setModel] = useState('claude-sonnet-4-5')
   const [clientId, setClientId] = useState(defaultClientId ?? '')
   const [clients, setClients] = useState<Client[]>([])
@@ -181,11 +181,14 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
     }
   }
 
-  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
+  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  const ollamaOptions = [
+    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
+    ...OLLAMA_MODELS,
+  ]
   const modelList = effectiveProvider === 'anthropic' ? ANTHROPIC_MODELS
     : effectiveProvider === 'openai' ? OPENAI_MODELS
-    : OLLAMA_MODELS
+    : ollamaOptions
 
   // ── Step 1: Template picker ─────────────────────────────────────────────────
   if (step === 'template') {
@@ -414,31 +417,14 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
                   <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
                 </SelectContent>
               </Select>
-              {effectiveProvider === 'ollama' ? (
-                <>
-                  <input
-                    type="text"
-                    list="ollama-models-creation"
-                    value={effectiveModel}
-                    onChange={(e) => { if (!clientRequiresOffline) setModel(e.target.value) }}
-                    disabled={clientRequiresOffline}
-                    placeholder="e.g. llama3.1:70b"
-                    className="h-8 flex-1 rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground disabled:opacity-50"
-                  />
-                  <datalist id="ollama-models-creation">
-                    {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
-                  </datalist>
-                </>
-              ) : (
-                <Select value={effectiveModel} onValueChange={(v) => { if (!clientRequiresOffline) setModel(v) }} disabled={clientRequiresOffline}>
-                  <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {modelList.map((m) => (
-                      <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <Select value={effectiveModel} onValueChange={(v) => { if (!clientRequiresOffline) setModel(v) }} disabled={clientRequiresOffline}>
+                <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {modelList.map((m) => (
+                    <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

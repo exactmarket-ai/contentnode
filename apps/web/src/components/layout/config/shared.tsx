@@ -121,8 +121,12 @@ export function ModelOverride({
   showTemperature = false,
 }: ModelOverrideProps) {
   const inheritedLabel = `${modelLabel(workflowModel.provider, workflowModel.model)} (default)`
-  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
+  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  // Merge profile models (first) with hardcoded defaults, deduped
+  const ollamaOptions = [
+    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
+    ...OLLAMA_MODELS,
+  ]
 
   return (
     <div className="space-y-2">
@@ -161,37 +165,21 @@ export function ModelOverride({
             </Select>
           </FieldGroup>
           <FieldGroup label="Model">
-            {provider === 'ollama' ? (
-              <>
-                <input
-                  type="text"
-                  list="ollama-models-override"
-                  value={model}
-                  onChange={(e) => onChange('model_config', { provider, model: e.target.value })}
-                  placeholder="e.g. llama3.1:70b"
-                  className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
-                />
-                <datalist id="ollama-models-override">
-                  {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
-                </datalist>
-              </>
-            ) : (
-              <Select
-                value={model}
-                onValueChange={(v) => onChange('model_config', { provider, model: v })}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelsForProvider(provider).map((m) => (
-                    <SelectItem key={m.value} value={m.value} className="text-xs">
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <Select
+              value={model}
+              onValueChange={(v) => onChange('model_config', { provider, model: v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(provider === 'ollama' ? ollamaOptions : modelsForProvider(provider)).map((m) => (
+                  <SelectItem key={m.value} value={m.value} className="text-xs">
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FieldGroup>
           {showTemperature && (
             <div className="space-y-1.5">

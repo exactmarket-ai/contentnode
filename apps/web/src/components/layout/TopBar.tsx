@@ -465,8 +465,11 @@ export function TopBar() {
     : OLLAMA_MODELS
   const modelLabel = modelList.find((m) => m.value === workflow.default_model_config.model)?.label
     ?? workflow.default_model_config.model
-  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
+  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  const ollamaOptions = [
+    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
+    ...OLLAMA_MODELS,
+  ]
 
   const handleDuplicate = async (name: string, clientId: string) => {
     const { workflow: wf, nodes, edges } = useWorkflowStore.getState()
@@ -622,28 +625,24 @@ export function TopBar() {
         )}
 
         {(isOfflineWf || workflow.default_model_config.provider === 'ollama') ? (
-          <div className="flex items-center gap-1 rounded border border-border bg-transparent px-2 h-7">
-            <Icons.Cpu className="h-3 w-3 shrink-0 text-muted-foreground" />
-            <input
-              type="text"
-              list="ollama-models-topbar"
-              value={workflow.default_model_config.model}
-              onChange={(e) =>
-                setWorkflow({
-                  default_model_config: {
-                    ...workflow.default_model_config,
-                    provider: 'ollama',
-                    model: e.target.value,
-                  },
-                })
-              }
-              placeholder="model name"
-              className="h-full w-28 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            />
-            <datalist id="ollama-models-topbar">
-              {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
-            </datalist>
-          </div>
+          <Select
+            value={workflow.default_model_config.model}
+            onValueChange={(v) =>
+              setWorkflow({
+                default_model_config: { ...workflow.default_model_config, provider: 'ollama', model: v },
+              })
+            }
+          >
+            <SelectTrigger className="h-7 gap-1 border border-border bg-transparent px-2 text-xs focus:ring-0">
+              <Icons.Cpu className="h-3 w-3 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ollamaOptions.map((m) => (
+                <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : (
           <Select
             value={workflow.default_model_config.model}

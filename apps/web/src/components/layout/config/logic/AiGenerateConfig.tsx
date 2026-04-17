@@ -35,8 +35,11 @@ export function AiGenerateConfig({
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
   const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
   const isOffline = useWorkflowStore((s) => s.workflow.connectivity_mode === 'offline')
-  const agencyOllamaModels = useSettingsStore((s) => s.ollamaModels)
-  const ollamaSuggestions = agencyOllamaModels.length > 0 ? agencyOllamaModels : OLLAMA_MODELS.map((m) => m.value)
+  const profileOllamaModels = useSettingsStore((s) => s.ollamaModels)
+  const ollamaOptions = [
+    ...profileOllamaModels.filter((v) => !OLLAMA_MODELS.find((m) => m.value === v)).map((v) => ({ value: v, label: v })),
+    ...OLLAMA_MODELS,
+  ]
   const [copied, setCopied] = useState(false)
   const [showPromptPicker, setShowPromptPicker] = useState(false)
   const [loadedTemplate, setLoadedTemplate] = useState<PromptTemplate | null>(null)
@@ -136,17 +139,17 @@ export function AiGenerateConfig({
             <span className="text-[11px] text-amber-700">Offline mode — Ollama (local) only</span>
           </div>
           <FieldGroup label="Model">
-            <input
-              type="text"
-              list="ollama-models-offline"
+            <Select
               value={overrideModel}
-              onChange={(e) => onChange('model_config', { provider: 'ollama', model: e.target.value })}
-              placeholder="e.g. llama3.1:70b"
-              className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
-            />
-            <datalist id="ollama-models-offline">
-              {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
-            </datalist>
+              onValueChange={(v) => onChange('model_config', { provider: 'ollama', model: v })}
+            >
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {ollamaOptions.map((m) => (
+                  <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FieldGroup>
         </div>
       ) : (
@@ -194,19 +197,17 @@ export function AiGenerateConfig({
               </FieldGroup>
               <FieldGroup label="Model">
                 {overrideProvider === 'ollama' ? (
-                  <>
-                    <input
-                      type="text"
-                      list="ollama-models-node-override"
-                      value={overrideModel}
-                      onChange={(e) => onChange('model_config', { ...modelCfg, model: e.target.value })}
-                      placeholder="e.g. llama3.1:70b"
-                      className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
-                    />
-                    <datalist id="ollama-models-node-override">
-                      {ollamaSuggestions.map((v) => <option key={v} value={v} />)}
-                    </datalist>
-                  </>
+                  <Select
+                    value={overrideModel}
+                    onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
+                  >
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ollamaOptions.map((m) => (
+                        <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <Select
                     value={overrideModel}
