@@ -1,17 +1,63 @@
 /**
  * researchpilot.ts
  *
- * POST /api/v1/research-pilot/chat
- *
- * researchPILOT — AI research strategist for Market Positioning & Competitive Assessments.
- * Guides agency teams through the 6-dimension assessment framework, scoring, and service mapping.
+ * POST /api/v1/research-pilot/chat   — AI chat with 6-dimension framework context
+ * POST /api/v1/research-pilot/upload — Extract text from .docx or .pdf for chat attachment
  */
 
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
+// ─── Lazy CJS interop helpers ─────────────────────────────────────────────────
+
+type MammothModule = { convertToHtml: (input: { buffer: Buffer }) => Promise<{ value: string }> }
+let _mammoth: MammothModule | null = null
+async function getMammoth(): Promise<MammothModule> {
+  if (!_mammoth) {
+    const mod = await import('mammoth') as any
+    _mammoth = mod.default ?? mod
+  }
+  return _mammoth!
+}
+
+type PdfParseModule = (buffer: Buffer) => Promise<{ text: string; numpages: number }>
+let _pdfParse: PdfParseModule | null = null
+async function getPdfParse(): Promise<PdfParseModule> {
+  if (!_pdfParse) {
+    const mod = await import('pdf-parse') as any
+    _pdfParse = mod.default ?? mod
+  }
+  return _pdfParse!
+}
+
+// ─── Text extraction ──────────────────────────────────────────────────────────
+
+const MAX_ATTACHMENT_CHARS = 20_000
+
+async function extractDocx(buffer: Buffer): Promise<string> {
+  const mammoth = await getMammoth()
+  const result  = await mammoth.convertToHtml({ buffer })
+  // Strip HTML tags from mammoth output
+  return result.value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .split('\n').map((l) => l.trim()).filter(Boolean).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+async function extractPdf(buffer: Buffer): Promise<string> {
+  const parse = await getPdfParse()
+  const result = await parse(buffer)
+  return result.text
+    .replace(/[ \t]{2,}/g, ' ')
+    .split('\n').map((l) => l.trim()).filter(Boolean).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+// ─── Chat schema ──────────────────────────────────────────────────────────────
 
 const messageSchema = z.object({
   role:    z.enum(['user', 'assistant']),
@@ -19,10 +65,10 @@ const messageSchema = z.object({
 })
 
 const chatBody = z.object({
-  messages:       z.array(messageSchema).min(1).max(40),
-  prospectName:   z.string().optional().nullable(),
-  prospectUrl:    z.string().optional().nullable(),
-  assessmentContext: z.record(z.unknown()).optional(), // partial scores / findings so far
+  messages:          z.array(messageSchema).min(1).max(40),
+  prospectName:      z.string().optional().nullable(),
+  prospectUrl:       z.string().optional().nullable(),
+  assessmentContext: z.record(z.unknown()).optional(),
 })
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -30,6 +76,8 @@ const chatBody = z.object({
 const SYSTEM_PROMPT = `You are researchPILOT, the AI research strategist built into ContentNode's researchNODE tool. You help agency teams conduct Market Positioning & Competitive Assessments on prospects and potential clients — producing intelligence that supports a tailored capabilities deck and service proposal.
 
 Your role: guide users through the 6-dimension assessment framework, help them interpret research findings, assign accurate maturity scores (1–5), and translate gaps into specific service opportunities.
+
+When the user attaches a document, read it carefully and extract any signals relevant to the assessment dimensions. Treat attached documents as primary research material — analyst reports, whitepapers, competitive intelligence, and industry research are all valuable inputs. Summarise what's in the document and explain how it affects the assessment.
 
 THE 6-DIMENSION ASSESSMENT FRAMEWORK (dimensions with weights and scoring):
 
@@ -74,15 +122,74 @@ Engagement models: Strategy Sprint (4–6 weeks), GTM Build (8–12 weeks), Ongo
 HOW TO RESPOND:
 - When the user is researching a prospect: suggest specifically what to look for, what signals matter, what questions to ask
 - When the user shares findings: interpret them sharply, suggest a score with clear justification tied to evidence
+- When the user attaches a document: summarise the most relevant intelligence from it and connect it to specific dimensions
 - When scoring is complete: calculate the weighted total, name the tier, identify the top 2–3 service opportunities
 - Be direct and strategic — no generic advice, always specific to what the user has shared
 - Keep responses concise: 3–6 lines of insight, then clear next step
 - Never ask more than one question per message
 - If the user asks what to do next: guide them to the next unscored dimension`
 
-// ─── Route ────────────────────────────────────────────────────────────────────
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
 export async function researchPilotRoutes(app: FastifyInstance) {
+
+  // ── Upload: extract text from .docx or .pdf ─────────────────────────────────
+  app.post('/upload', async (req, reply) => {
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const { filename, file, mimetype } = data
+    const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+
+    if (!['docx', 'pdf'].includes(ext)) {
+      file.resume()
+      return reply.code(400).send({ error: 'Only .docx and .pdf files are supported' })
+    }
+
+    // Buffer the file (cap at 20 MB)
+    const chunks: Buffer[] = []
+    let totalBytes = 0
+    for await (const chunk of file) {
+      totalBytes += (chunk as Buffer).length
+      if (totalBytes > 20 * 1024 * 1024) {
+        return reply.code(413).send({ error: 'File too large — maximum 20 MB' })
+      }
+      chunks.push(chunk as Buffer)
+    }
+    const buffer = Buffer.concat(chunks)
+
+    let text: string
+    try {
+      if (ext === 'docx') {
+        text = await extractDocx(buffer)
+      } else {
+        text = await extractPdf(buffer)
+      }
+    } catch (err) {
+      return reply.code(422).send({
+        error: `Could not extract text from ${ext.toUpperCase()} — the file may be scanned, encrypted, or corrupted`,
+      })
+    }
+
+    if (!text.trim()) {
+      return reply.code(422).send({ error: 'No readable text found in the file' })
+    }
+
+    const truncated = text.length > MAX_ATTACHMENT_CHARS
+    const trimmed   = truncated ? text.slice(0, MAX_ATTACHMENT_CHARS) : text
+
+    return reply.send({
+      data: {
+        filename,
+        text:      trimmed,
+        charCount: trimmed.length,
+        truncated,
+        pages:     ext === 'pdf' ? Math.ceil(buffer.length / 3000) : undefined, // rough estimate
+      },
+    })
+  })
+
+  // ── Chat ─────────────────────────────────────────────────────────────────────
   app.post('/chat', async (req, reply) => {
     const parsed = chatBody.safeParse(req.body)
     if (!parsed.success) {
@@ -94,7 +201,7 @@ export async function researchPilotRoutes(app: FastifyInstance) {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
-    const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
+    const anthropic = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
 
     const contextHint = [
       prospectName ? `Prospect: ${prospectName}` : null,
@@ -108,7 +215,7 @@ export async function researchPilotRoutes(app: FastifyInstance) {
 
     const response = await anthropic.messages.create({
       model:      'claude-sonnet-4-5',
-      max_tokens: 1500,
+      max_tokens: 2000,
       system:     SYSTEM_PROMPT,
       messages:   anthropicMessages,
     })
