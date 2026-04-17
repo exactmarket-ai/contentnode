@@ -19,12 +19,17 @@ const messageSchema = z.object({
 })
 
 const chatBody = z.object({
-  messages: z.array(messageSchema).min(1).max(40),
+  messages: z.array(z.object({
+    role:       z.enum(['user', 'assistant']),
+    content:    z.string().max(8000),
+    image:      z.object({ base64: z.string().max(5_000_000), mediaType: z.string().max(50) }).optional(),
+  })).min(1).max(40),
   workflowContext: z.object({
-    workflowName: z.string().optional(),
-    clientId:     z.string().nullable().optional(),
-    clientName:   z.string().nullable().optional(),
-    nodes:        z.array(z.object({ subtype: z.string(), label: z.string() })).optional(),
+    workflowName:  z.string().optional(),
+    clientId:      z.string().nullable().optional(),
+    clientName:    z.string().nullable().optional(),
+    nodes:         z.array(z.object({ subtype: z.string(), label: z.string() })).optional(),
+    htmlOutputs:   z.array(z.object({ nodeId: z.string(), label: z.string(), html: z.string().max(200_000) })).optional(),
   }).optional(),
 })
 
@@ -81,6 +86,7 @@ MEDIA / OUTPUTS — generate and deliver:
                        NEVER use media-download after image-generation or video-generation — those nodes already have a built-in image/video preview and download button. Adding media-download after them is redundant and will show nothing.
   display           Show result in the run panel — use for SHORT content the user will read and copy (social posts, ad copy, short emails, scripts). Has built-in Copy button.
   file-export       Export result as a downloadable .docx/.txt/.md file — use for LONGER content the user needs to save or send (blog posts, whitepapers, reports, long-form articles, LinkedIn articles). Has Download + Copy buttons.
+  html-page         Generate a complete, styled HTML page from content — use when the output should be a web page (landing page, email HTML, one-pager, case study, event page, product brief). Pulls client brand colours and fonts automatically. Has built-in iframe preview and download. (config: { pageType: 'landing-page'|'email-html'|'one-pager'|'case-study'|'event-page'|'product-brief', styleDirection: '...', useBrandColors: true })
   email             Send result via email
   webhook           POST result to an external URL
   client-feedback   Request stakeholder feedback via secure portal
@@ -262,12 +268,44 @@ export async function nodePilotRoutes(app: FastifyInstance) {
     if (workflowContext?.nodes && workflowContext.nodes.length > 0) {
       contextParts.push(`Existing nodes: ${workflowContext.nodes.map((n) => n.label).join(', ')}`)
     }
+
+    // Append any HTML page outputs as editable context
+    let htmlContextBlock = ''
+    if (workflowContext?.htmlOutputs && workflowContext.htmlOutputs.length > 0) {
+      htmlContextBlock = workflowContext.htmlOutputs.map((h) => (
+        `\n\n[HTML Page output — node: "${h.label}"]\n${h.html.slice(0, 8000)}${h.html.length > 8000 ? '\n…[truncated]' : ''}`
+      )).join('')
+    }
+
     const contextPrefix = contextParts.length > 0 ? `[${contextParts.join(' · ')}]\n\n` : ''
 
-    const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => ({
-      role:    m.role,
-      content: i === 0 && contextPrefix ? contextPrefix + m.content : m.content,
-    }))
+    // Use sonnet when any message has an image attachment (vision requires it)
+    const hasImage = messages.some((m) => m.image)
+    const model = hasImage ? 'claude-sonnet-4-5' : 'claude-haiku-4-5-20251001'
+
+    const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => {
+      const text = i === 0 && (contextPrefix || htmlContextBlock)
+        ? contextPrefix + m.content + htmlContextBlock
+        : m.content
+
+      if (m.image) {
+        return {
+          role: m.role,
+          content: [
+            {
+              type: 'image' as const,
+              source: {
+                type:       'base64' as const,
+                media_type: m.image.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                data:       m.image.base64,
+              },
+            },
+            { type: 'text' as const, text },
+          ],
+        }
+      }
+      return { role: m.role, content: text }
+    })
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
@@ -275,8 +313,8 @@ export async function nodePilotRoutes(app: FastifyInstance) {
     const client = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
 
     const response = await client.messages.create({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 2500,
+      model:      model,
+      max_tokens: hasImage ? 4000 : 2500,
       system:     systemPrompt,
       messages:   anthropicMessages,
     })

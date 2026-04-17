@@ -29,6 +29,7 @@ import { WorkflowOutputExecutor } from './executors/workflowOutput.js'
 import { GtmFrameworkExecutor } from './executors/gtmFramework.js'
 import { BrandContextExecutor } from './executors/brandContext.js'
 import { ClientBrainExecutor } from './executors/clientBrain.js'
+import { HtmlPageExecutor } from './executors/htmlPage.js'
 import { VoiceOutputNodeExecutor } from './executors/voiceOutput.js'
 import { MusicGenerationNodeExecutor } from './executors/musicGeneration.js'
 import { AudioMixNodeExecutor } from './executors/audioMix.js'
@@ -105,6 +106,7 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'output:client-feedback':    FeedbackNodeExecutor,
   'output:email':              EmailNodeExecutor,
   'output:webhook':            WebhookNodeExecutor,
+  'output:html-page':          HtmlPageExecutor,
   insight:                     InsightNodeExecutor,
   gtm_framework:               GtmFrameworkExecutor,
   brand_context:               BrandContextExecutor,

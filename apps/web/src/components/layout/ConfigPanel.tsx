@@ -46,6 +46,7 @@ import { ImageResizeConfig } from './config/logic/ImageResizeConfig'
 
 import { WebhookConfig } from './config/output/WebhookConfig'
 import { EmailConfig } from './config/output/EmailConfig'
+import { HtmlPageConfig } from './config/output/HtmlPageConfig'
 import { FileExportConfig, FileExportOutput } from './config/output/FileExportConfig'
 import { ContentOutputConfig, DisplayNodeOutput } from './config/output/ContentOutputConfig'
 import { ClientFeedbackConfig } from './config/output/ClientFeedbackConfig'
@@ -162,6 +163,8 @@ function NodeConfigForm({
         return <ImageGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} nodeLabel={nodeLabel} />
       if (subtype === 'video-generation')
         return <VideoGenerationConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} nodeLabel={nodeLabel} />
+      if (subtype === 'html-page')
+        return <HtmlPageConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} nodeId={nodeId} />
       if (subtype === 'client-feedback')
         return <ClientFeedbackConfig config={config} onChange={onChange} />
       if (subtype === 'email')

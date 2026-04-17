@@ -373,6 +373,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     requiresManualInput: true, // requires audio upload + speaker assignment during run
   },
   {
+    type: 'output', subtype: 'html-page',
+    label: 'HTML Page', description: 'Render content as a styled HTML page using client brand colours',
+    category: 'output', icon: 'Globe',
+    defaultConfig: { subtype: 'html-page', pageType: 'landing-page', styleDirection: '', useBrandColors: true },
+  },
+  {
     type: 'output', subtype: 'webhook',
     label: 'Webhook', description: 'POST result to an external URL',
     category: 'output', icon: 'Send',
@@ -619,9 +625,10 @@ export interface PilotSuggestion {
 }
 
 export interface PilotMessage {
-  role:         'user' | 'assistant'
-  content:      string
-  suggestions?: PilotSuggestion[]
+  role:          'user' | 'assistant'
+  content:       string
+  suggestions?:  PilotSuggestion[]
+  imagePreview?: string  // data URL shown as thumbnail in user messages
 }
 
 // ─── Insight state for confirmation banner ────────────────────────────────────

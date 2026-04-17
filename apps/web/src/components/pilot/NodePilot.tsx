@@ -11,6 +11,15 @@ import * as Icons from 'lucide-react'
 import { useWorkflowStore, type PilotSuggestion } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface AttachedImage {
+  base64: string
+  mediaType: string
+  previewUrl: string
+  fileName: string
+}
+
 // ─── Inline bold renderer — converts **text** → <b>text</b> ─────────────────
 
 function renderBold(text: string): React.ReactNode {
@@ -25,18 +34,88 @@ function renderBold(text: string): React.ReactNode {
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
+// ─── HTML block renderer — splits content on ```html fences ─────────────────
+
+function renderContentWithHtmlBlocks(
+  content: string,
+  onApplyHtml?: (html: string) => void,
+): React.ReactNode {
+  const htmlFenceRe = /```html\n([\s\S]*?)```/g
+  const parts: React.ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+
+  while ((match = htmlFenceRe.exec(content)) !== null) {
+    // text before fence
+    if (match.index > last) {
+      const pre = content.slice(last, match.index)
+      parts.push(
+        <span key={`t-${last}`}>
+          {pre.split('\n').map((line, i, arr) => (
+            <span key={i}>{renderBold(line)}{i < arr.length - 1 && <br />}</span>
+          ))}
+        </span>
+      )
+    }
+    // HTML block
+    const html = match[1].trim()
+    parts.push(
+      <div key={`h-${match.index}`} className="mt-2 mb-1 rounded-lg border border-border bg-zinc-900 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-700">
+          <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider">HTML</span>
+          {onApplyHtml && (
+            <button
+              onClick={() => onApplyHtml(html)}
+              className="flex items-center gap-1 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-[9px] font-semibold px-2 py-0.5 transition-colors"
+            >
+              <Icons.Check className="h-2.5 w-2.5" />
+              Apply to page
+            </button>
+          )}
+        </div>
+        <pre className="px-3 py-2 text-[9px] text-zinc-300 font-mono overflow-x-auto max-h-[120px] whitespace-pre-wrap leading-relaxed">
+          {html.slice(0, 400)}{html.length > 400 ? '\n…' : ''}
+        </pre>
+      </div>
+    )
+    last = match.index + match[0].length
+  }
+
+  // trailing text
+  if (last < content.length) {
+    const tail = content.slice(last)
+    parts.push(
+      <span key={`t-end`}>
+        {tail.split('\n').map((line, i, arr) => (
+          <span key={i}>{renderBold(line)}{i < arr.length - 1 && <br />}</span>
+        ))}
+      </span>
+    )
+  }
+
+  return parts.length > 0 ? parts : content.split('\n').map((line, i, arr) => (
+    <span key={i}>{renderBold(line)}{i < arr.length - 1 && <br />}</span>
+  ))
+}
+
+// ─── Message bubble ───────────────────────────────────────────────────────────
+
 function MessageBubble({
   role,
   content,
+  imagePreview,
   suggestions,
   onChoose,
   onApply,
+  onApplyHtml,
 }: {
   role: 'user' | 'assistant'
   content: string
+  imagePreview?: string
   suggestions?: PilotSuggestion[]
   onChoose?: (s: PilotSuggestion) => void
   onApply?: (s: PilotSuggestion) => void
+  onApplyHtml?: (html: string) => void
 }) {
   const isUser = role === 'user'
   return (
@@ -47,6 +126,12 @@ function MessageBubble({
         </div>
       )}
       <div className="flex flex-col gap-2 max-w-[88%]">
+        {/* Attached image thumbnail (user messages only) */}
+        {imagePreview && (
+          <div className="self-end">
+            <img src={imagePreview} alt="Attached" className="rounded-lg max-h-[80px] max-w-[140px] object-cover border border-violet-300" />
+          </div>
+        )}
         <div
           className={`rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
             isUser
@@ -54,12 +139,12 @@ function MessageBubble({
               : 'bg-muted text-foreground rounded-tl-sm'
           }`}
         >
-          {content.split('\n').map((line, i, arr) => (
-            <span key={i}>
-              {renderBold(line)}
-              {i < arr.length - 1 && <br />}
-            </span>
-          ))}
+          {isUser
+            ? content.split('\n').map((line, i, arr) => (
+                <span key={i}>{renderBold(line)}{i < arr.length - 1 && <br />}</span>
+              ))
+            : renderContentWithHtmlBlocks(content, onApplyHtml)
+          }
         </div>
         {/* Inline suggestion cards */}
         {suggestions && suggestions.length > 0 && (
@@ -120,6 +205,7 @@ export function NodePilot() {
   const pilotLoading     = useWorkflowStore((s) => s.pilotLoading)
   const workflow         = useWorkflowStore((s) => s.workflow)
   const nodes            = useWorkflowStore((s) => s.nodes)
+  const nodeRunStatuses  = useWorkflowStore((s) => s.nodeRunStatuses)
 
   const setPilotOpen         = useWorkflowStore((s) => s.setPilotOpen)
   const addPilotMessage      = useWorkflowStore((s) => s.addPilotMessage)
@@ -127,11 +213,59 @@ export function NodePilot() {
   const setPilotLoading      = useWorkflowStore((s) => s.setPilotLoading)
   const clearPilot           = useWorkflowStore((s) => s.clearPilot)
   const applyPilotSuggestion = useWorkflowStore((s) => s.applyPilotSuggestion)
+  const setNodeRunStatuses   = useWorkflowStore((s) => s.setNodeRunStatuses)
 
-  const [inputValue, setInputValue] = useState('')
+  const [inputValue,    setInputValue]    = useState('')
+  const [attachment,    setAttachment]    = useState<AttachedImage | null>(null)
   const scrollRef      = useRef<HTMLDivElement>(null)
   const lastMsgRef     = useRef<HTMLDivElement>(null)
   const inputRef       = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef   = useRef<HTMLInputElement>(null)
+
+  // Collect current HTML outputs from html-page nodes
+  const htmlOutputs = nodes
+    .filter((n) => (n.data.subtype as string) === 'html-page')
+    .map((n) => {
+      const status = nodeRunStatuses[n.id]
+      const html = (status?.output as { html?: string } | undefined)?.html
+      return html ? { nodeId: n.id, label: (n.data.label as string) || 'HTML Page', html } : null
+    })
+    .filter(Boolean) as { nodeId: string; label: string; html: string }[]
+
+  // Apply HTML from pilot response to the matching html-page node output
+  const handleApplyHtml = useCallback((html: string) => {
+    if (htmlOutputs.length === 0) return
+    // Apply to the first HTML page node (most common case)
+    const target = htmlOutputs[0]
+    setNodeRunStatuses({
+      [target.nodeId]: {
+        ...(nodeRunStatuses[target.nodeId] ?? { status: 'passed' }),
+        output: { html },
+      },
+    })
+  }, [htmlOutputs, nodeRunStatuses, setNodeRunStatuses])
+
+  // Handle image file selection
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) return
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string
+      const base64 = dataUrl.split(',')[1]
+      setAttachment({
+        base64,
+        mediaType: file.type,
+        previewUrl: dataUrl,
+        fileName: file.name,
+      })
+    }
+    reader.readAsDataURL(file)
+    // Reset input so same file can be re-selected
+    e.target.value = ''
+  }, [])
 
   // Scroll the TOP of the last message into view so text is always readable
   // before the suggestion cards below it
@@ -150,19 +284,30 @@ export function NodePilot() {
     const text = (overrideText ?? inputValue).trim()
     if (!text || pilotLoading) return
 
-    if (!overrideText) setInputValue('')
-    addPilotMessage({ role: 'user', content: text })
+    const currentAttachment = attachment
+    if (!overrideText) {
+      setInputValue('')
+      setAttachment(null)
+    }
+
+    addPilotMessage({ role: 'user', content: text, imagePreview: currentAttachment?.previewUrl })
     setPilotLoading(true)
     setPilotSuggestions([])
 
     try {
       const history = useWorkflowStore.getState().pilotMessages
+      const userMsg: { role: 'user'; content: string; image?: { base64: string; mediaType: string } } = {
+        role: 'user',
+        content: overrideText ?? text,
+        ...(currentAttachment ? { image: { base64: currentAttachment.base64, mediaType: currentAttachment.mediaType } } : {}),
+      }
+
       const res = await apiFetch('/api/v1/nodepilot/chat', {
         method: 'POST',
         body: JSON.stringify({
           messages: [
             ...history.map((m) => ({ role: m.role, content: m.content })),
-            { role: 'user', content: overrideText ?? text },
+            userMsg,
           ],
           workflowContext: {
             workflowName: workflow.name ?? undefined,
@@ -172,6 +317,7 @@ export function NodePilot() {
               .filter((n) => n.type !== 'group')
               .map((n) => ({ subtype: (n.data.subtype as string) ?? n.type, label: n.data.label as string }))
               .slice(0, 20),
+            ...(htmlOutputs.length > 0 ? { htmlOutputs } : {}),
           },
         }),
       })
@@ -308,9 +454,11 @@ export function NodePilot() {
             <MessageBubble
               role={msg.role}
               content={msg.content}
+              imagePreview={msg.imagePreview}
               suggestions={msg.suggestions}
               onChoose={handleChoose}
               onApply={handleApply}
+              onApplyHtml={msg.role === 'assistant' ? handleApplyHtml : undefined}
             />
           </div>
         ))}
@@ -328,21 +476,55 @@ export function NodePilot() {
         )}
       </div>
 
+      {/* Attachment preview */}
+      {attachment && (
+        <div className="flex items-center gap-2 border-t border-border px-3 pt-2 shrink-0">
+          <img src={attachment.previewUrl} alt="Attachment" className="h-10 w-10 rounded-md object-cover border border-border" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-foreground truncate">{attachment.fileName}</p>
+            <p className="text-[9px] text-muted-foreground">Image attached</p>
+          </div>
+          <button onClick={() => setAttachment(null)} className="text-muted-foreground hover:text-foreground">
+            <Icons.X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Input bar */}
       <div className="flex items-end gap-2 border-t border-border px-3 py-2 shrink-0">
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        {/* Attach image button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          title="Attach image for visual reference"
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+            attachment
+              ? 'border-violet-400 bg-violet-50 text-violet-600'
+              : 'border-border text-muted-foreground hover:border-violet-400 hover:text-violet-600'
+          }`}
+        >
+          <Icons.Paperclip className="h-4 w-4" />
+        </button>
         <textarea
           ref={inputRef}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="What do you want to build? (Shift+Enter for new line)"
+          placeholder={attachment ? 'Describe the style changes…' : 'What do you want to build? (Shift+Enter for new line)'}
           rows={1}
           className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-violet-500 min-h-[32px] max-h-[80px] overflow-y-auto"
           style={{ lineHeight: '1.4' }}
         />
         <button
           onClick={() => void sendMessage()}
-          disabled={!inputValue.trim() || pilotLoading}
+          disabled={(!inputValue.trim() && !attachment) || pilotLoading}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
         >
           <Icons.SendHorizontal className="h-4 w-4" />
