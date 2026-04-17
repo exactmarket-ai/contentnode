@@ -1663,6 +1663,7 @@ model ProspectAssessment {
   url          String?
   industry     String?
   status       String   @default("not_started")
+  source       String   @default("manual")
   scores       Json?
   findings     Json?
   notes        String?  @db.Text

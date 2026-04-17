@@ -25,6 +25,7 @@ interface Assessment {
   url: string | null
   industry: string | null
   status: string
+  source: string   // 'manual' | 'quick'
   scores: Record<string, number> | null
   findings: Record<string, string> | null
   notes: string | null
@@ -180,100 +181,184 @@ function ScoreSelector({ value, onChange }: { value: number | null; onChange: (v
   )
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
+// ─── Assessment card (shared by both columns) ─────────────────────────────────
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+function AssessmentCard({
+  a,
+  onOpen,
+  onDelete,
+}: {
+  a: Assessment
+  onOpen: (a: Assessment) => void
+  onDelete: (id: string) => void
+}) {
+  const sc   = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.not_started
+  const tier = tierFor(a.totalScore)
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6 px-8">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-border">
-        <Icons.Telescope className="h-7 w-7 text-muted-foreground/40" />
+    <div
+      className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
+      onClick={() => onOpen(a)}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-foreground leading-snug truncate">{a.name}</p>
+        {a.url && <p className="text-[10px] text-muted-foreground truncate">{a.url}</p>}
       </div>
-      <div className="text-center space-y-1.5">
-        <p className="text-sm font-semibold text-foreground">No assessments yet</p>
-        <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
-          Start a new prospect assessment to gather market positioning intelligence across 6 weighted dimensions and generate a capabilities deck.
-        </p>
-      </div>
-      <Button size="sm" className="gap-1.5" onClick={onNew}>
-        <Icons.Plus className="h-3.5 w-3.5" />
-        New Assessment
-      </Button>
-      <div className="w-full max-w-sm space-y-1.5">
-        {DIMENSIONS.map((d) => (
-          <div key={d.key} className="flex items-center gap-3 rounded-lg border border-border px-4 py-2.5">
-            <d.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="text-xs text-foreground">{d.label}</span>
-            <span className="ml-auto text-xs font-medium text-muted-foreground">{d.weight}%</span>
+      <div className="flex items-center gap-2 shrink-0">
+        {a.totalScore != null && (
+          <div className="text-right">
+            <span className="text-[13px] font-bold text-foreground leading-none">{a.totalScore.toFixed(1)}</span>
+            {tier && <p className={`text-[9px] font-medium ${tier.color}`}>{tier.label}</p>}
           </div>
-        ))}
+        )}
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${sc.color}`}>
+          {sc.label}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(a.id) }}
+          title="Delete"
+          className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
+        >
+          <Icons.Trash2 className="h-3 w-3" />
+        </button>
       </div>
     </div>
   )
 }
 
-// ─── Assessment list ──────────────────────────────────────────────────────────
+// ─── Two-column layout ────────────────────────────────────────────────────────
 
-function AssessmentList({
+function TwoColumnLayout({
   assessments,
   onNew,
+  onQuick,
   onDelete,
   onOpen,
 }: {
   assessments: Assessment[]
   onNew: () => void
+  onQuick: () => void
   onDelete: (id: string) => void
   onOpen: (a: Assessment) => void
 }) {
+  const manual = assessments.filter((a) => a.source !== 'quick')
+  const quick  = assessments.filter((a) => a.source === 'quick')
+
   return (
-    <div className="p-6 space-y-3">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-muted-foreground">
-          {assessments.length} assessment{assessments.length !== 1 ? 's' : ''}
-        </p>
-        <Button size="sm" className="gap-1.5" onClick={onNew}>
-          <Icons.Plus className="h-3.5 w-3.5" />
-          New Assessment
-        </Button>
+    <div className="flex h-full divide-x divide-border">
+
+      {/* ── Left: researchNODE (manual) ───────────────────────────────────── */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+        {/* Column header */}
+        <div className="flex items-start justify-between border-b border-border px-5 py-4 shrink-0 bg-white">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Icons.Telescope className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm font-semibold text-foreground">researchNODE</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground pl-6">AI finds it. Humans make it matter.</p>
+          </div>
+          <Button size="sm" className="gap-1.5 shrink-0 ml-3" onClick={onNew}>
+            <Icons.Plus className="h-3.5 w-3.5" />
+            New
+          </Button>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-auto p-4 space-y-2">
+          {manual.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4 py-12 px-4 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border-2 border-dashed border-border">
+                <Icons.Telescope className="h-5 w-5 text-muted-foreground/40" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-foreground">No manual assessments yet</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed max-w-[200px]">
+                  Score each dimension yourself using research + researchPILOT.
+                </p>
+              </div>
+              <div className="w-full space-y-1">
+                {DIMENSIONS.map((d) => (
+                  <div key={d.key} className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5">
+                    <d.icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="text-[10px] text-foreground truncate">{d.label}</span>
+                    <span className="ml-auto text-[9px] font-medium text-muted-foreground">{d.weight}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-[10px] text-muted-foreground px-1 mb-1">
+                {manual.length} assessment{manual.length !== 1 ? 's' : ''}
+              </p>
+              {manual.map((a) => (
+                <AssessmentCard key={a.id} a={a} onOpen={onOpen} onDelete={onDelete} />
+              ))}
+            </>
+          )}
+        </div>
       </div>
 
-      {assessments.map((a) => {
-        const sc = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.not_started
-        const tier = tierFor(a.totalScore)
-        return (
-          <div
-            key={a.id}
-            className="flex items-center gap-4 rounded-xl border border-border px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
-            onClick={() => onOpen(a)}
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground">{a.name}</p>
-              {a.url && <p className="text-[11px] text-muted-foreground truncate">{a.url}</p>}
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-[10px] text-muted-foreground">{relTime(a.createdAt)}</span>
-              {a.totalScore != null && (
-                <div className="text-right">
-                  <span className="text-[13px] font-bold text-foreground">{a.totalScore.toFixed(1)}</span>
-                  {tier && <p className={`text-[9px] font-medium ${tier.color}`}>{tier.label}</p>}
-                </div>
-              )}
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sc.color}`}>
-                {sc.label}
+      {/* ── Right: researchNODE-quick (automated) ────────────────────────── */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+        {/* Column header */}
+        <div className="flex items-start justify-between border-b border-border px-5 py-4 shrink-0 bg-white">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Icons.Zap className="h-4 w-4 text-violet-500 shrink-0" />
+              <span className="text-sm font-semibold text-foreground">
+                researchNODE-<span className="text-violet-600">quick</span>
               </span>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(a.id) }}
-                title="Delete assessment"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
-              >
-                <Icons.Trash2 className="h-3.5 w-3.5" />
-              </button>
             </div>
+            <p className="text-[11px] text-muted-foreground pl-6">Zero interaction. Instant insight.</p>
           </div>
-        )
-      })}
+          <Button
+            size="sm"
+            className="gap-1.5 shrink-0 ml-3 bg-violet-600 hover:bg-violet-700 text-white"
+            onClick={onQuick}
+          >
+            <Icons.Zap className="h-3.5 w-3.5" />
+            Run
+          </Button>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-auto p-4 space-y-2">
+          {quick.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4 py-12 px-4 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border-2 border-dashed border-violet-200">
+                <Icons.Zap className="h-5 w-5 text-violet-300" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-foreground">No quick assessments yet</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed max-w-[200px]">
+                  Enter a company name + URL. researchNODE scores all 6 dimensions and generates a service map automatically.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+                onClick={onQuick}
+              >
+                <Icons.Zap className="h-3.5 w-3.5" />
+                Run Quick Assessment
+              </Button>
+            </div>
+          ) : (
+            <>
+              <p className="text-[10px] text-muted-foreground px-1 mb-1">
+                {quick.length} assessment{quick.length !== 1 ? 's' : ''}
+              </p>
+              {quick.map((a) => (
+                <AssessmentCard key={a.id} a={a} onOpen={onOpen} onDelete={onDelete} />
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+
     </div>
   )
 }
@@ -284,10 +369,12 @@ function AssessmentDetail({
   initial,
   onBack,
   onUpdated,
+  onDelete,
 }: {
   initial: Assessment
   onBack: () => void
   onUpdated: (a: Assessment) => void
+  onDelete: () => void
 }) {
   const [assessment,    setAssessment]    = useState<Assessment>(initial)
   const [scores,        setScores]        = useState<Record<string, number>>(initial.scores ?? {})
@@ -533,6 +620,13 @@ function AssessmentDetail({
           {saving && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           {!saving && saved && <span className="text-[11px] text-emerald-600 font-medium">Saved</span>}
           <Button size="sm" variant="outline" onClick={handleSaveNow} disabled={saving}>Save</Button>
+          <button
+            onClick={onDelete}
+            title="Delete assessment"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
+          >
+            <Icons.Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
@@ -798,12 +892,203 @@ function NewAssessmentModal({
   )
 }
 
+// ─── Quick Assessment modal ───────────────────────────────────────────────────
+
+type QuickStep = 'idle' | 'crawling' | 'analyzing' | 'mapping' | 'done' | 'error'
+
+const QUICK_STEPS: Array<{ key: QuickStep; label: string }> = [
+  { key: 'crawling',  label: 'Crawling website'                },
+  { key: 'analyzing', label: 'Analyzing 6 dimensions & scoring' },
+  { key: 'mapping',   label: 'Generating service map'           },
+]
+
+function QuickAssessModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void
+  onCreate: (a: Assessment) => void
+}) {
+  const [name,       setName]       = useState('')
+  const [url,        setUrl]        = useState('')
+  const [step,       setStep]       = useState<QuickStep>('idle')
+  const [error,      setError]      = useState<string | null>(null)
+
+  const activeStepIdx = QUICK_STEPS.findIndex((s) => s.key === step)
+
+  const handleRun = async () => {
+    if (!name.trim() || !url.trim()) return
+    setError(null)
+
+    try {
+      // Step 1: create the assessment record
+      setStep('crawling')
+      const createRes = await apiFetch('/api/v1/prospect-assessments', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), url: url.trim(), source: 'quick' }),
+      })
+      const createJson = await createRes.json()
+      if (!createRes.ok) throw new Error(createJson?.error ?? `Error ${createRes.status}`)
+      const id = createJson.data.id as string
+
+      // Step 2: crawl + auto-score in one pass
+      setStep('analyzing')
+      const researchRes = await apiFetch(
+        `/api/v1/prospect-assessments/${id}/run-research?autoScore=true`,
+        { method: 'POST' },
+      )
+      const researchJson = await researchRes.json()
+      if (!researchRes.ok) throw new Error(researchJson?.error ?? `Error ${researchRes.status}`)
+
+      // Step 3: generate service map
+      setStep('mapping')
+      const mapRes = await apiFetch(
+        `/api/v1/prospect-assessments/${id}/generate-service-map`,
+        { method: 'POST' },
+      )
+      const mapJson = await mapRes.json()
+      // Service map failure is non-fatal — we still open the assessment
+      const finalAssessment: Assessment = mapRes.ok ? mapJson.data : researchJson.data
+
+      setStep('done')
+      setTimeout(() => {
+        onCreate(finalAssessment)
+        onClose()
+      }, 600)
+    } catch (err) {
+      setStep('error')
+      setError(err instanceof Error ? err.message : 'Something went wrong — please try again')
+    }
+  }
+
+  const isRunning = step !== 'idle' && step !== 'done' && step !== 'error'
+  const canRun    = name.trim().length > 0 && url.trim().length > 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-white shadow-2xl p-6 space-y-5">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100">
+              <Icons.Zap className="h-3.5 w-3.5 text-violet-600" />
+            </div>
+            <h2 className="text-sm font-semibold">Quick Assessment</h2>
+          </div>
+          {!isRunning && (
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+              <Icons.X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Description */}
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Enter a company name and website. researchNODE will crawl the site, score all 6 dimensions automatically, and generate a service map — no manual input required.
+        </p>
+
+        {/* Inputs — hidden while running */}
+        {step === 'idle' && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Company name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Thrive NextGen"
+                autoFocus
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-violet-400 transition-colors placeholder:text-muted-foreground"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Website URL <span className="text-red-400">*</span></label>
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://…"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-violet-400 transition-colors placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Progress steps — shown while running or done */}
+        {step !== 'idle' && step !== 'error' && (
+          <div className="space-y-3 py-2">
+            {QUICK_STEPS.map((s, i) => {
+              const isDone    = step === 'done' || i < activeStepIdx
+              const isActive  = s.key === step
+              return (
+                <div key={s.key} className="flex items-center gap-3">
+                  <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                    isDone   ? 'border-emerald-500 bg-emerald-500' :
+                    isActive ? 'border-violet-500 bg-white'        :
+                               'border-zinc-200 bg-white'
+                  }`}>
+                    {isDone  ? <Icons.Check className="h-3.5 w-3.5 text-white" /> :
+                     isActive ? <Icons.Loader2 className="h-3 w-3 animate-spin text-violet-600" /> :
+                               <span className="h-2 w-2 rounded-full bg-zinc-200" />
+                    }
+                  </div>
+                  <span className={`text-xs transition-colors ${
+                    isDone   ? 'text-emerald-700 font-medium' :
+                    isActive ? 'text-foreground font-medium'  :
+                               'text-muted-foreground'
+                  }`}>
+                    {s.label}
+                  </span>
+                </div>
+              )
+            })}
+
+            {step === 'done' && (
+              <div className="flex items-center gap-2 pt-1">
+                <Icons.CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="text-xs font-medium text-emerald-700">Assessment complete — opening now…</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error */}
+        {step === 'error' && error && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+            <Icons.AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-red-700 leading-relaxed">{error}</p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2 justify-end">
+          {(step === 'idle' || step === 'error') && (
+            <>
+              <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+              <Button
+                size="sm"
+                disabled={!canRun}
+                onClick={() => void handleRun()}
+                className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                <Icons.Zap className="h-3.5 w-3.5" />
+                {step === 'error' ? 'Try Again' : 'Run Quick Assessment'}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function ResearchNodePage() {
   const [assessments,  setAssessments]  = useState<Assessment[]>([])
   const [loading,      setLoading]      = useState(true)
   const [showNew,      setShowNew]      = useState(false)
+  const [showQuick,    setShowQuick]    = useState(false)
   const [activeDetail, setActiveDetail] = useState<Assessment | null>(null)
 
   const load = useCallback(async () => {
@@ -840,36 +1125,8 @@ export function ResearchNodePage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
 
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-            <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div>
-            <h1 className="text-sm font-semibold leading-none">researchNODE</h1>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Market positioning & competitive intelligence</p>
-          </div>
-        </div>
-        {!activeDetail && assessments.length > 0 && (
-          <Button size="sm" className="gap-1.5" onClick={() => setShowNew(true)}>
-            <Icons.Plus className="h-3.5 w-3.5" />
-            New Assessment
-          </Button>
-        )}
-        {activeDetail && (
-          <button
-            onClick={() => void handleDelete(activeDetail.id)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-500 transition-colors"
-          >
-            <Icons.Trash2 className="h-3.5 w-3.5" />
-            Delete
-          </button>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto min-h-0">
+      {/* Content — two-column list OR full-width detail */}
+      <div className="flex-1 overflow-hidden min-h-0">
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -879,13 +1136,13 @@ export function ResearchNodePage() {
             initial={activeDetail}
             onBack={() => setActiveDetail(null)}
             onUpdated={handleUpdated}
+            onDelete={() => void handleDelete(activeDetail.id)}
           />
-        ) : assessments.length === 0 ? (
-          <EmptyState onNew={() => setShowNew(true)} />
         ) : (
-          <AssessmentList
+          <TwoColumnLayout
             assessments={assessments}
             onNew={() => setShowNew(true)}
+            onQuick={() => setShowQuick(true)}
             onDelete={handleDelete}
             onOpen={setActiveDetail}
           />
@@ -903,6 +1160,17 @@ export function ResearchNodePage() {
         <NewAssessmentModal
           onClose={() => setShowNew(false)}
           onCreate={handleCreate}
+        />
+      )}
+
+      {/* Quick Assessment modal */}
+      {showQuick && (
+        <QuickAssessModal
+          onClose={() => setShowQuick(false)}
+          onCreate={(a) => {
+            setAssessments((prev) => [a, ...prev])
+            setActiveDetail(a)
+          }}
         />
       )}
     </div>

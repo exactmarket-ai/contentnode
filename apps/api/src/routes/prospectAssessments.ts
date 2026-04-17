@@ -25,6 +25,7 @@ const createBody = z.object({
   name:     z.string().min(1).max(300),
   url:      z.string().max(500).optional().nullable(),
   industry: z.string().max(200).optional().nullable(),
+  source:   z.enum(['manual', 'quick']).optional().default('manual'),
 })
 
 const updateBody = z.object({
@@ -224,6 +225,88 @@ async function generateFindings(
 
   const findings = JSON.parse(jsonMatch[0]) as Record<string, string>
   return findings
+}
+
+// ─── Quick assessment: combined findings + scores in one pass ─────────────────
+
+const QUICK_ASSESS_PROMPT = `You are a senior market research analyst and competitive positioning expert.
+
+Given the scraped website content below, analyse the prospect across all 6 dimensions and produce BOTH findings AND a maturity score (1–5) for each dimension.
+
+Return ONLY a valid JSON object with exactly these keys:
+{
+  "website_messaging":     { "score": <1-5>, "findings": "..." },
+  "social_outbound":       { "score": <1-5>, "findings": "..." },
+  "positioning_segment":   { "score": <1-5>, "findings": "..." },
+  "analyst_context":       { "score": <1-5>, "findings": "..." },
+  "competitive_landscape": { "score": <1-5>, "findings": "..." },
+  "growth_signals":        { "score": <1-5>, "findings": "..." }
+}
+
+SCORING GUIDE (use integer 1–5):
+- 1: Absent, generic, or completely undifferentiated
+- 2: Minimal or inconsistent — signals exist but weak
+- 3: Present but undifferentiated — clear but not compelling
+- 4: Above average — specific, differentiated, mostly consistent
+- 5: Best-in-class — sharp, evidence-rich, fully differentiated
+
+DIMENSION GUIDANCE:
+- website_messaging: Homepage headline specificity, value prop clarity, CTA quality, solution/use-case pages, case studies with real outcomes, blog thought leadership
+- social_outbound: LinkedIn page activity signals (embedded feeds, share widgets), executive voice cues, content POV, ad/event mentions
+- positioning_segment: ICP clarity, segment consistency (enterprise/mid-market/SMB), vertical depth, buyer persona alignment, pricing signals
+- analyst_context: Market category language, analyst/award mentions, industry category ownership, regulatory or trend awareness
+- competitive_landscape: Competitor mentions or differentiation claims, alternative positioning language, win themes, G2/review or testimonial signals
+- growth_signals: Untapped use cases, adjacent segments they touch, content whitespace, expansion-ready language, partner/channel signals
+
+FINDINGS: 3-5 sentences per dimension. Be specific — cite actual content, headlines, page structures, or signals you observed. If a dimension has limited signal in the scraped content, state what's visible and note what's missing.`
+
+async function generateFindingsAndScores(
+  pages: Array<{ url: string; text: string }>,
+  prospectName: string,
+  prospectUrl: string,
+): Promise<{ findings: Record<string, string>; scores: Record<string, number> }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+
+  const rawContent = pages
+    .map((p, i) => `--- Page ${i + 1}: ${p.url} ---\n${p.text}`)
+    .join('\n\n')
+
+  const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
+
+  const response = await anthropic.messages.create({
+    model:      'claude-sonnet-4-5',
+    max_tokens: 4000,
+    system:     QUICK_ASSESS_PROMPT,
+    messages:   [{
+      role:    'user',
+      content: `Prospect: ${prospectName}\nWebsite: ${prospectUrl}\n\nSCRAPED CONTENT:\n\n${rawContent}`,
+    }],
+  })
+
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim()
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error('Could not parse auto-assessment from AI response')
+
+  const raw = JSON.parse(jsonMatch[0]) as Record<string, { score: number; findings: string }>
+
+  const findings: Record<string, string> = {}
+  const scores: Record<string, number>   = {}
+
+  for (const [key, val] of Object.entries(raw)) {
+    if (val?.findings) findings[key] = val.findings
+    if (val?.score != null) {
+      const clamped = Math.min(5, Math.max(1, Math.round(Number(val.score))))
+      scores[key] = clamped
+    }
+  }
+
+  return { findings, scores }
 }
 
 // ─── Agency context builder (for service map) ─────────────────────────────────
@@ -464,6 +547,7 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
         url:      parsed.data.url ?? null,
         industry: parsed.data.industry ?? null,
         status:   'not_started',
+        source:   parsed.data.source ?? 'manual',
       },
     })
 
@@ -492,7 +576,7 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     const existing = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Not found' })
 
-    const { scores, ...rest } = parsed.data
+    const { scores, findings, ...rest } = parsed.data
 
     let totalScore = parsed.data.totalScore
     if (scores != null) {
@@ -503,7 +587,8 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
       where: { id },
       data: {
         ...rest,
-        ...(scores !== undefined ? { scores } : {}),
+        ...(scores    !== undefined ? { scores:   scores    as never } : {}),
+        ...(findings  !== undefined ? { findings: findings  as never } : {}),
         ...(totalScore !== undefined ? { totalScore } : {}),
       },
     })
@@ -526,9 +611,11 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
 
   // ── Run Research ────────────────────────────────────────────────────────────
   // Crawls the prospect's website and uses Claude to populate all 6 dimension findings.
+  // ?autoScore=true  → also assigns scores in the same pass (used by Quick Assessment)
   app.post('/:id/run-research', async (req, reply) => {
     const { agencyId } = req.auth
     const { id } = req.params as { id: string }
+    const { autoScore } = req.query as Record<string, string>
 
     const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
     if (!assessment) return reply.code(404).send({ error: 'Not found' })
@@ -548,6 +635,24 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     if (pages.length === 0) {
       await prisma.prospectAssessment.update({ where: { id }, data: { status: 'not_started' } })
       return reply.code(422).send({ error: 'No readable content found at prospect URL — the site may be JS-only or blocking crawlers' })
+    }
+
+    if (autoScore === 'true') {
+      // Quick Assessment: findings + scores in a single Claude call
+      let result: { findings: Record<string, string>; scores: Record<string, number> }
+      try {
+        result = await generateFindingsAndScores(pages, assessment.name, assessment.url)
+      } catch (err) {
+        await prisma.prospectAssessment.update({ where: { id }, data: { status: 'not_started' } })
+        return reply.code(500).send({ error: err instanceof Error ? err.message : 'Failed to generate findings and scores' })
+      }
+
+      const totalScore = calcTotalScore(result.scores)
+      const updated = await prisma.prospectAssessment.update({
+        where: { id },
+        data:  { findings: result.findings, scores: result.scores, totalScore, status: 'complete' },
+      })
+      return reply.send({ data: updated, pagesScraped: pages.length })
     }
 
     let findings: Record<string, string>
