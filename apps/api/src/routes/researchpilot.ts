@@ -15,7 +15,7 @@ import Anthropic                from '@anthropic-ai/sdk'
 
 const messageSchema = z.object({
   role:    z.enum(['user', 'assistant']),
-  content: z.string().max(10000),
+  content: z.string().max(100000), // long research responses can be 15k+ chars
 })
 
 const chatBody = z.object({

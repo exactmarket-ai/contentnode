@@ -108,11 +108,18 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
 
     try {
       const history = [...messages, userMsg]
+      // Trim very long assistant messages in history to avoid hitting body size limits.
+      // Keep full content for the last 4 messages; older ones are truncated to 2000 chars.
+      const trimmedHistory = history.map((m, i) => {
+        const isRecent = i >= history.length - 4
+        if (isRecent || m.role === 'user' || m.content.length <= 2000) return m
+        return { ...m, content: m.content.slice(0, 2000) + '\n…[truncated for context]' }
+      })
       const res = await apiFetch('/api/v1/research-pilot/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          messages:     history.map((m) => ({ role: m.role, content: m.content })),
+          messages:     trimmedHistory.map((m) => ({ role: m.role, content: m.content })),
           prospectName: prospectName ?? null,
           prospectUrl:  prospectUrl  ?? null,
         }),
