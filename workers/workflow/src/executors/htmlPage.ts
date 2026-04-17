@@ -17,6 +17,7 @@ const PAGE_TYPE_INSTRUCTIONS: Record<string, string> = {
   'case-study':     'Structured story: client challenge → solution → measurable results. Highlight key metrics with large callout numbers. Quote from stakeholder.',
   'event-page':     'Event details prominent at top (date, location, format). Agenda section, speaker cards, registration CTA. Urgency / scarcity elements.',
   'product-brief':  'Product overview: headline value prop, key features in icon grid, use-case scenarios, technical specs table, CTA to learn more / demo.',
+  'slide-deck':     'Reveal.js 4 presentation (CDN: https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.css + reveal.js). Each slide is a <section>. Use 8 layout types: title-splash, two-column, stat-grid, timeline, quote-callout, comparison-table, icon-grid, closing-cta. Load Google Fonts in <head>. No Tailwind — style via inline CSS + Reveal.js theme variables. The creative brief from the input specifies exact palette/fonts/layout per slide — follow it precisely.',
 }
 
 // ─── Brand context ────────────────────────────────────────────────────────────
@@ -116,7 +117,29 @@ export class HtmlPageExecutor extends NodeExecutor {
 
     const pageInstructions = PAGE_TYPE_INSTRUCTIONS[pageType] ?? PAGE_TYPE_INSTRUCTIONS['landing-page']
 
-    const systemPrompt = `You are an expert HTML/CSS developer and conversion copywriter.
+    const isSlideDeck = pageType === 'slide-deck'
+
+    const systemPrompt = isSlideDeck
+      ? `You are an expert HTML/CSS developer specialising in Reveal.js presentations.
+Generate a complete, self-contained, production-quality Reveal.js 4 HTML presentation from the content provided.
+
+OUTPUT RULES:
+- Return ONLY the raw HTML document — no markdown fences, no explanation, no commentary.
+- Start with <!DOCTYPE html>.
+- Load Reveal.js 4 via CDN: https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.css and reveal.js
+- Load Google Fonts in <head> based on the creative brief fonts in the input.
+- Each slide is a <section> inside <div class="reveal"><div class="slides">.
+- Initialise with: Reveal.initialize({ hash: true, transition: 'fade', progress: true, controls: true });
+- Do NOT use Tailwind — style via <style> block using the palette from the creative brief.
+- Use the layout type specified per slide in the creative brief (title-splash, two-column, stat-grid, timeline, quote-callout, comparison-table, icon-grid, closing-cta).
+
+QUALITY CHECKLIST:
+✓ All slides visible — no missing content from the exec presentation
+✓ Consistent colour palette from the creative brief
+✓ Font pairing applied: heading font for h1/h2, body font for p/li
+✓ slide-number or progress bar enabled
+✓ Speaker notes in <aside class="notes"> where helpful`
+      : `You are an expert HTML/CSS developer and conversion copywriter.
 Generate a complete, self-contained, production-quality HTML page from the content provided.
 
 OUTPUT RULES:
@@ -147,7 +170,11 @@ QUALITY CHECKLIST:
 ✓ Hover states on all interactive elements
 ✓ Dark header or footer for visual anchoring`
 
-    const result = await callModel(MODEL, `Generate the HTML page from this content:\n\n${content}`, systemPrompt)
+    const userPrompt = isSlideDeck
+      ? `Generate the Reveal.js slide deck from this creative brief and content:\n\n${content}`
+      : `Generate the HTML page from this content:\n\n${content}`
+
+    const result = await callModel(MODEL, userPrompt, systemPrompt)
 
     // Strip accidental markdown fences
     let html = result.text.trim()

@@ -20,6 +20,7 @@ const PAGE_TYPES = [
   { value: 'case-study',    label: 'Case Study',      desc: 'Challenge → solution → results' },
   { value: 'event-page',    label: 'Event Page',      desc: 'Date, agenda, speakers, registration' },
   { value: 'product-brief', label: 'Product Brief',   desc: 'Features, use cases, specs' },
+  { value: 'slide-deck',    label: 'Slide Deck',      desc: 'Reveal.js 4 presentation' },
 ]
 
 // ─── Preview / output section ─────────────────────────────────────────────────

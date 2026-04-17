@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { apiFetch } from '@/lib/api'
@@ -690,8 +691,10 @@ function AssessmentDetail({
   const [generatingExec,   setGeneratingExec]   = useState(false)
   const [execError,        setExecError]        = useState<string | null>(null)
   const [execOpen,         setExecOpen]         = useState(false)
-  const [downloading,      setDownloading]      = useState<string | null>(null)
+  const [downloading,        setDownloading]        = useState<string | null>(null)
+  const [sendToWorkflowOpen, setSendToWorkflowOpen] = useState(false)
 
+  const navigate = useNavigate()
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const serviceMapRef  = useRef<HTMLDivElement>(null)
   const execRef        = useRef<HTMLDivElement>(null)
@@ -1264,6 +1267,13 @@ function AssessmentDetail({
                     }
                     Download docx
                   </button>
+                  <button
+                    onClick={() => setSendToWorkflowOpen(true)}
+                    className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    <Icons.Send className="h-3.5 w-3.5" />
+                    Send to Workflow
+                  </button>
                 </>
               )}
               <button
@@ -1394,6 +1404,210 @@ function AssessmentDetail({
             </Button>
           </div>
         )}
+      </div>
+
+      {sendToWorkflowOpen && (
+        <SendToWorkflowModal
+          assessmentName={assessment.name}
+          execPresentation={execPresentation}
+          slideDeck={slideDeck || null}
+          onClose={() => setSendToWorkflowOpen(false)}
+          onCreated={(workflowId) => navigate(`/workflows/${workflowId}`)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Send to Workflow modal ───────────────────────────────────────────────────
+
+interface Client { id: string; name: string; slug: string }
+
+function SendToWorkflowModal({
+  assessmentName,
+  execPresentation,
+  slideDeck,
+  onClose,
+  onCreated,
+}: {
+  assessmentName: string
+  execPresentation: string
+  slideDeck: string | null
+  onClose: () => void
+  onCreated: (workflowId: string) => void
+}) {
+  const [clients,       setClients]       = useState<Client[]>([])
+  const [clientId,      setClientId]      = useState('')
+  const [workflowName,  setWorkflowName]  = useState(`${assessmentName} — Slide Deck`)
+  const [includeSlides, setIncludeSlides] = useState(!!slideDeck)
+  const [loading,       setLoading]       = useState(true)
+  const [saving,        setSaving]        = useState(false)
+  const [error,         setError]         = useState<string | null>(null)
+
+  useEffect(() => {
+    apiFetch('/api/v1/clients')
+      .then(r => r.json())
+      .then(j => {
+        const list: Client[] = j.data ?? []
+        setClients(list)
+        if (list.length > 0) setClientId(list[0].id)
+      })
+      .catch(() => setError('Could not load clients'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleCreate = async () => {
+    if (!clientId || !workflowName.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      // 1. Create workflow
+      const wfRes = await apiFetch('/api/v1/workflows', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: workflowName.trim(),
+          clientId,
+          connectivityMode: 'online',
+        }),
+      })
+      const wfJson = await wfRes.json()
+      if (!wfRes.ok) throw new Error(wfJson?.error ?? `Error ${wfRes.status}`)
+      const workflowId = wfJson.data.id
+
+      // 2. Seed nodes: Text Input with exec presentation + optionally HTML Page
+      const nodes: Array<{
+        id: string; type: string; position: { x: number; y: number }
+        data: Record<string, unknown>
+      }> = []
+      const edges: Array<{ id: string; source: string; target: string }> = []
+
+      const textNodeId = 'n1'
+      nodes.push({
+        id: textNodeId,
+        type: 'source',
+        position: { x: 80, y: 120 },
+        data: {
+          label: 'Executive Presentation',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: execPresentation,
+          },
+        },
+      })
+
+      if (includeSlides && slideDeck) {
+        const htmlNodeId = 'n2'
+        nodes.push({
+          id: htmlNodeId,
+          type: 'output',
+          position: { x: 480, y: 120 },
+          data: {
+            label: 'Slide Deck',
+            subtype: 'html-page',
+            config: {
+              subtype: 'html-page',
+              pageType: 'slide-deck',
+              styleDirection: 'Reveal.js slide deck — import from exec presentation',
+              useBrandColors: true,
+              _generatedHtml: slideDeck,
+            },
+          },
+        })
+        edges.push({ id: 'e1', source: textNodeId, target: htmlNodeId })
+      }
+
+      await apiFetch(`/api/v1/workflows/${workflowId}/graph`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nodes, edges, name: workflowName.trim() }),
+      })
+
+      onCreated(workflowId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create workflow')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-white shadow-2xl p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Icons.Send className="h-4 w-4 text-blue-500" />
+            <h2 className="text-sm font-semibold">Send to Workflow Canvas</h2>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-[12px] text-muted-foreground">
+          Creates a new workflow with the executive presentation loaded as a Text Input node, ready to build on.
+        </p>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Workflow name</label>
+            <input
+              value={workflowName}
+              onChange={(e) => setWorkflowName(e.target.value)}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Client</label>
+            {loading ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading clients…
+              </div>
+            ) : clients.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No clients found. Create a client first.</p>
+            ) : (
+              <select
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors"
+              >
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {slideDeck && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeSlides}
+                onChange={(e) => setIncludeSlides(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span className="text-xs text-foreground">Also load the generated slide deck as an HTML Page node</span>
+            </label>
+          )}
+        </div>
+
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button
+            size="sm"
+            disabled={!clientId || !workflowName.trim() || loading || saving}
+            onClick={() => void handleCreate()}
+          >
+            {saving
+              ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Creating…</>
+              : <><Icons.ArrowRight className="h-3.5 w-3.5 mr-1.5" />Open in Canvas</>
+            }
+          </Button>
+        </div>
       </div>
     </div>
   )

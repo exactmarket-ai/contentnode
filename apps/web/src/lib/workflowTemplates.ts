@@ -3548,4 +3548,82 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
       { id: 'e-sw-11', source: 'sw-r3-det',    target: 'sw-out' },
     ],
   },
+
+  // ─── Slide Deck from Research ─────────────────────────────────────────────
+  {
+    id: 'slide-deck-from-research',
+    name: 'Slide Deck from Research',
+    description:
+      'Paste in an Executive Presentation from researchNODE and let the Creative Director design a full Reveal.js HTML slide deck — layout, colour palette, typography — ready to present or refine in nodePILOT.',
+    category: 'demand_gen',
+    icon: 'GalleryHorizontal',
+    nodes: [
+      {
+        id: 'sd-src',
+        type: 'source',
+        position: { x: 80, y: 160 },
+        data: {
+          label: 'Executive Presentation',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: '',
+            placeholder:
+              'Paste your Executive Presentation content here (from researchNODE → Send to Workflow, or copy manually).',
+          },
+        },
+      },
+      {
+        id: 'sd-style',
+        type: 'source',
+        position: { x: 80, y: 360 },
+        data: {
+          label: 'Style Direction (optional)',
+          subtype: 'text-input',
+          config: {
+            subtype: 'text-input',
+            text: '',
+            placeholder:
+              'Optional: describe the visual tone — e.g. "dark tech feel, bold headlines, minimal charts" or leave blank to let the Creative Director decide.',
+          },
+        },
+      },
+      {
+        id: 'sd-ai',
+        type: 'logic',
+        position: { x: 480, y: 200 },
+        data: {
+          label: 'Creative Director Brief',
+          subtype: 'ai-generate',
+          config: {
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt:
+              'You are a senior creative director at a top-tier B2B design agency. Read the executive presentation and style direction. Design a Reveal.js slide deck brief: choose a colour palette (background, surface, primary, accent, muted), Google Font pairing, overall style, and a layout type for each slide (title-splash, two-column, stat-grid, timeline, quote-callout, comparison-table, icon-grid, or closing-cta). Return only valid JSON — no markdown fences.\n\n{"palette":{"background":"","surface":"","primary":"","accent":"","muted":""},"fonts":{"heading":"","body":""},"style":"","slideLayouts":[{"slideNumber":1,"layout":"","notes":""}]}',
+            additionalInstructions: '',
+          },
+        },
+      },
+      {
+        id: 'sd-html',
+        type: 'output',
+        position: { x: 880, y: 200 },
+        data: {
+          label: 'Slide Deck HTML',
+          subtype: 'html-page',
+          config: {
+            subtype: 'html-page',
+            pageType: 'slide-deck',
+            styleDirection: 'Follow the Creative Director brief from the previous node exactly.',
+            useBrandColors: false,
+          },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-sd-1', source: 'sd-src',   target: 'sd-ai' },
+      { id: 'e-sd-2', source: 'sd-style', target: 'sd-ai' },
+      { id: 'e-sd-3', source: 'sd-ai',   target: 'sd-html' },
+    ],
+  },
 ]
