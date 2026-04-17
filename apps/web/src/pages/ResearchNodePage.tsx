@@ -1039,12 +1039,13 @@ function NewAssessmentModal({
 
 // ─── Quick Assessment modal ───────────────────────────────────────────────────
 
-type QuickStep = 'idle' | 'crawling' | 'analyzing' | 'mapping' | 'done' | 'error'
+type QuickStep = 'idle' | 'crawling' | 'analyzing' | 'mapping' | 'presenting' | 'done' | 'error'
 
 const QUICK_STEPS: Array<{ key: QuickStep; label: string }> = [
-  { key: 'crawling',  label: 'Crawling website'                },
-  { key: 'analyzing', label: 'Analyzing 6 dimensions & scoring' },
-  { key: 'mapping',   label: 'Generating service map'           },
+  { key: 'crawling',   label: 'Crawling website'                },
+  { key: 'analyzing',  label: 'Analyzing 6 dimensions & scoring' },
+  { key: 'mapping',    label: 'Generating service map'           },
+  { key: 'presenting', label: 'Building exec presentation'       },
 ]
 
 function QuickAssessModal({
@@ -1093,8 +1094,17 @@ function QuickAssessModal({
         { method: 'POST' },
       )
       const mapJson = await mapRes.json()
-      // Service map failure is non-fatal — we still open the assessment
-      const finalAssessment: Assessment = mapRes.ok ? mapJson.data : researchJson.data
+      // Service map failure is non-fatal — we still continue
+      const afterMap: Assessment = mapRes.ok ? mapJson.data : researchJson.data
+
+      // Step 4: generate executive presentation (non-fatal if it fails)
+      setStep('presenting')
+      const presRes = await apiFetch(
+        `/api/v1/prospect-assessments/${id}/generate-exec-presentation`,
+        { method: 'POST' },
+      )
+      const presJson = await presRes.json()
+      const finalAssessment: Assessment = presRes.ok ? presJson.data : afterMap
 
       setStep('done')
       setTimeout(() => {
