@@ -7,7 +7,16 @@ const MODEL: ModelConfig = {
   model: 'claude-sonnet-4-5',
   api_key_ref: 'ANTHROPIC_API_KEY',
   temperature: 0.3,
-  max_tokens: 8096,
+  max_tokens: 8192,
+}
+
+// Slide decks need the full token budget — 13+ slides of Reveal.js HTML can run long
+const SLIDE_DECK_MODEL: ModelConfig = {
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-6',
+  api_key_ref: 'ANTHROPIC_API_KEY',
+  temperature: 0.3,
+  max_tokens: 8192,
 }
 
 const PAGE_TYPE_INSTRUCTIONS: Record<string, string> = {
@@ -171,7 +180,11 @@ QUALITY CHECKLIST:
       ? `Generate the Reveal.js slide deck from this creative brief and content:\n\n${content}`
       : `Generate the HTML page from this content:\n\n${content}`
 
-    const result = await callModel({ ...MODEL, system_prompt: systemPrompt }, userPrompt)
+    const modelCfg = isSlideDeck
+      ? { ...SLIDE_DECK_MODEL, system_prompt: systemPrompt }
+      : { ...MODEL, system_prompt: systemPrompt }
+
+    const result = await callModel(modelCfg, userPrompt)
 
     // Strip accidental markdown fences
     let html = result.text.trim()
@@ -181,6 +194,11 @@ QUALITY CHECKLIST:
 
     if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
       throw new Error('HTML Page: model did not return valid HTML')
+    }
+
+    // Detect truncation — if </html> is missing the output was cut off
+    if (isSlideDeck && !html.includes('</html>')) {
+      throw new Error('Slide deck was truncated (too many slides for one pass). Try splitting into fewer slides or use Design Slides from researchNODE which runs a two-step pipeline.')
     }
 
     return {
