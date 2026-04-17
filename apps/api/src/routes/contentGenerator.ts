@@ -408,24 +408,45 @@ ${articleDigest}
 
 Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
 
-    const parseBlogs = (text: string): GeneratedBlog[] => {
-      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
-      const match = cleaned.match(/\{[\s\S]*\}/)
-      if (!match) return []
-      const p = JSON.parse(match[0]) as { blogs?: GeneratedBlog[] }
-      return Array.isArray(p.blogs) ? p.blogs : []
+    const sanitizeJson = (raw: string): string => {
+      let inString = false, escaped = false, out = ''
+      for (const ch of raw) {
+        if (escaped) { out += ch; escaped = false; continue }
+        if (ch === '\\' && inString) { out += ch; escaped = true; continue }
+        if (ch === '"') { inString = !inString; out += ch; continue }
+        if (inString) {
+          if (ch === '\n') { out += '\\n'; continue }
+          if (ch === '\r') { out += '\\r'; continue }
+          if (ch === '\t') { out += '\\t'; continue }
+        }
+        out += ch
+      }
+      return out
     }
 
-    // Batch into calls of max 2 blogs to stay well under the 3-min timeout
+    const parseBlogs = (text: string): GeneratedBlog[] => {
+      try {
+        const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+        const match = stripped.match(/\{[\s\S]*\}/)
+        if (!match) return []
+        const p = JSON.parse(sanitizeJson(match[0])) as { blogs?: GeneratedBlog[] }
+        return Array.isArray(p.blogs) ? p.blogs : []
+      } catch (e) {
+        console.warn('[research-and-write] JSON parse failed:', (e as Error).message)
+        return []
+      }
+    }
+
+    // Batch into calls of max 2 blogs to keep each call under ~60s
     const BATCH = 2
     let blogs: GeneratedBlog[] = []
     let tokensUsed = 0
-    try {
-      for (let offset = 0; offset < blogCount; offset += BATCH) {
-        const n = Math.min(BATCH, blogCount - offset)
-        const batchSystemPrompt = systemPrompt
-          .replace(`into ${blogCount} distinct`, `into ${n} distinct`)
-          + (offset > 0 ? `\nThese are blogs ${offset + 1}–${offset + n} in a series; take fresh angles not covered by earlier blogs.` : '')
+    for (let offset = 0; offset < blogCount; offset += BATCH) {
+      const n = Math.min(BATCH, blogCount - offset)
+      const batchSystemPrompt = systemPrompt
+        .replace(`into ${blogCount} distinct`, `into ${n} distinct`)
+        + (offset > 0 ? `\nThese are blogs ${offset + 1}–${offset + n} in a series; take fresh angles not covered by earlier blogs.` : '')
+      try {
         const result = await callModel(
           {
             provider:      'anthropic',
@@ -439,12 +460,12 @@ Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
         )
         tokensUsed += result.tokens_used ?? 0
         blogs = blogs.concat(parseBlogs(result.text))
+      } catch (err) {
+        console.error(`[research-and-write] batch ${offset}–${offset + n} failed:`, err)
+        // continue — return whatever batches succeeded
       }
-    } catch (err) {
-      console.error('[research-and-write] callModel failed:', err)
-      return reply.code(500).send({ error: 'Content generation timed out or failed — try fewer blogs or try again' })
     }
-    if (!blogs.length) return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
+    if (!blogs.length) return reply.code(500).send({ error: 'Generation failed — check API connectivity or try again' })
 
     return reply.send({
       data: {

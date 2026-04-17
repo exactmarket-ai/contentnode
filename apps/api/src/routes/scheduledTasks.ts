@@ -264,15 +264,37 @@ ${att.extractedText.slice(0, 13000)}`
       return { systemPrompt, userPrompt }
     }
 
-    const parseBlogs = (text: string): unknown[] => {
-      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
-      const match = cleaned.match(/\{[\s\S]*\}/)
-      if (!match) return []
-      const parsed = JSON.parse(match[0]) as { blogs?: unknown[] }
-      return Array.isArray(parsed.blogs) ? parsed.blogs : []
+    // Fix literal newlines/tabs inside JSON string values (common LLM output issue)
+    const sanitizeJson = (raw: string): string => {
+      let inString = false, escaped = false, out = ''
+      for (const ch of raw) {
+        if (escaped) { out += ch; escaped = false; continue }
+        if (ch === '\\' && inString) { out += ch; escaped = true; continue }
+        if (ch === '"') { inString = !inString; out += ch; continue }
+        if (inString) {
+          if (ch === '\n') { out += '\\n'; continue }
+          if (ch === '\r') { out += '\\r'; continue }
+          if (ch === '\t') { out += '\\t'; continue }
+        }
+        out += ch
+      }
+      return out
     }
 
-    // Batch into calls of max 2 blogs to stay well under the 3-min timeout
+    const parseBlogs = (text: string): unknown[] => {
+      try {
+        const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+        const match = stripped.match(/\{[\s\S]*\}/)
+        if (!match) return []
+        const parsed = JSON.parse(sanitizeJson(match[0])) as { blogs?: unknown[] }
+        return Array.isArray(parsed.blogs) ? parsed.blogs : []
+      } catch (e) {
+        console.warn('[generate-content] JSON parse failed:', (e as Error).message)
+        return []
+      }
+    }
+
+    // Batch into calls of max 2 blogs to keep each call under ~60s
     const BATCH = 2
     const batches: Array<{ n: number; offset: number }> = []
     for (let i = 0; i < blogCount; i += BATCH) {
@@ -281,9 +303,9 @@ ${att.extractedText.slice(0, 13000)}`
 
     let blogs: unknown[] = []
     let tokensUsed = 0
-    try {
-      for (const { n, offset } of batches) {
-        const { systemPrompt, userPrompt } = buildPrompt(n, offset)
+    for (const { n, offset } of batches) {
+      const { systemPrompt, userPrompt } = buildPrompt(n, offset)
+      try {
         const result = await callModel(
           {
             provider: 'anthropic',
@@ -296,15 +318,14 @@ ${att.extractedText.slice(0, 13000)}`
           userPrompt,
         )
         tokensUsed += result.tokens_used ?? 0
-        const batch = parseBlogs(result.text)
-        blogs = blogs.concat(batch)
+        blogs = blogs.concat(parseBlogs(result.text))
+      } catch (err) {
+        console.error(`[generate-content] batch ${offset}–${offset + n} failed:`, err)
+        // continue — return whatever batches succeeded
       }
-    } catch (err) {
-      console.error('[generate-content] callModel failed:', err)
-      return reply.code(500).send({ error: 'Content generation timed out or failed — try fewer blogs or try again' })
     }
 
-    if (!blogs.length) return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
+    if (!blogs.length) return reply.code(500).send({ error: 'Generation failed — check API connectivity or try again' })
 
     return reply.send({ data: { blogs, sourceUrls, taskLabel: task.label, tokensUsed } })
   })
