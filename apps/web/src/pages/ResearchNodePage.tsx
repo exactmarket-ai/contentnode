@@ -250,12 +250,16 @@ function TwoColumnLayout({
       {/* ── Left: researchNODE (manual) ───────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-        {/* Column sub-header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-2 shrink-0">
-          <p className="text-[11px] text-muted-foreground">
-            {manual.length} assessment{manual.length !== 1 ? 's' : ''}
-          </p>
-          <Button size="sm" className="gap-1.5 h-7 text-xs" onClick={onNew}>
+        {/* Column header */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-3 shrink-0">
+          <div>
+            <p className="text-xs font-semibold flex items-center gap-1.5">
+              <Icons.Telescope className="h-3.5 w-3.5 text-muted-foreground" />
+              researchNODE
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">AI finds it. Humans make it matter.</p>
+          </div>
+          <Button size="sm" className="gap-1.5 h-7 text-xs shrink-0 ml-3" onClick={onNew}>
             <Icons.Plus className="h-3 w-3" />
             New
           </Button>
@@ -295,12 +299,16 @@ function TwoColumnLayout({
       {/* ── Right: researchNODE-quick (automated) ────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-        {/* Column sub-header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-2 shrink-0">
-          <p className="text-[11px] text-muted-foreground">
-            {quick.length} assessment{quick.length !== 1 ? 's' : ''}
-          </p>
-          <Button size="sm" className="gap-1.5 h-7 text-xs" onClick={onQuick}>
+        {/* Column header */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-3 shrink-0">
+          <div>
+            <p className="text-xs font-semibold flex items-center gap-1.5">
+              <Icons.Zap className="h-3.5 w-3.5 text-violet-500" />
+              <span>researchNODE-<span className="text-violet-600">quick</span></span>
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Zero interaction. Instant insight.</p>
+          </div>
+          <Button size="sm" className="gap-1.5 h-7 text-xs shrink-0 ml-3" onClick={onQuick}>
             <Icons.Plus className="h-3 w-3" />
             New
           </Button>
@@ -1262,32 +1270,14 @@ export function ResearchNodePage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
 
-      {/* Site-scheme top banner — hidden when detail is open */}
-      {!activeDetail && (
-        <div className="shrink-0 border-b border-border">
-          <div className="flex divide-x divide-border">
-
-            {/* Left — researchNODE */}
-            <div className="flex-1 px-6 py-4">
-              <h1 className="text-sm font-semibold flex items-center gap-2">
-                <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
-                researchNODE
-              </h1>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">AI finds it. Humans make it matter.</p>
-            </div>
-
-            {/* Right — researchNODE-quick */}
-            <div className="flex-1 px-6 py-4">
-              <h1 className="text-sm font-semibold flex items-center gap-2">
-                <Icons.Zap className="h-4 w-4 text-violet-500" />
-                <span>researchNODE-<span className="text-violet-600">quick</span></span>
-              </h1>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Zero interaction. Instant insight.</p>
-            </div>
-
-          </div>
-        </div>
-      )}
+      {/* Standard site banner */}
+      <div className="shrink-0 border-b border-border px-6 py-4">
+        <h1 className="text-sm font-semibold flex items-center gap-2">
+          <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
+          researchNODE
+        </h1>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">Market positioning & competitive intelligence</p>
+      </div>
 
       {/* Content — two-column list OR full-width detail */}
       <div className="flex-1 overflow-hidden min-h-0">
