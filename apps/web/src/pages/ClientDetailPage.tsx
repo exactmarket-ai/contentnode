@@ -5595,12 +5595,240 @@ function TaskOutputModal({ task, onClose }: { task: ScheduledTask; onClose: () =
   )
 }
 
+// ── Generate Content Modal ────────────────────────────────────────────────────
+
+interface GeneratedBlog {
+  title:    string
+  slug:     string
+  excerpt:  string
+  content:  string
+  sources:  string[]
+  linkedIn: { post: string; imagePrompt: string }
+}
+
+function GenerateContentModal({ task, onClose }: { task: ScheduledTask; onClose: () => void }) {
+  const [blogCount, setBlogCount] = useState<2 | 3>(2)
+  const [generating, setGenerating] = useState(false)
+  const [blogs, setBlogs] = useState<GeneratedBlog[]>([])
+  const [activeIdx, setActiveIdx] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const generate = async () => {
+    setGenerating(true)
+    setError(null)
+    setBlogs([])
+    try {
+      const res = await apiFetch(`/api/v1/scheduled-tasks/${task.id}/generate-content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blogCount }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Generation failed')
+      setBlogs(json.data.blogs ?? [])
+      setActiveIdx(0)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const copy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(key)
+    setTimeout(() => setCopied(null), 1800)
+  }
+
+  const blog = blogs[activeIdx]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-[780px] max-h-[90vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 flex items-center justify-between shrink-0" style={{ background: 'linear-gradient(135deg,#a200ee,#6d28d9)' }}>
+          <div>
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Icons.FileText className="h-4 w-4" /> Generate Content
+            </h2>
+            <p className="text-xs text-white/70 mt-0.5">{task.label}</p>
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Config row — shown only before generation */}
+        {blogs.length === 0 && !generating && (
+          <div className="px-6 py-5 space-y-4 flex-1 flex flex-col justify-center">
+            <p className="text-sm text-muted-foreground">
+              Turn this research into blog posts written in the client's brand voice, with LinkedIn posts and source citations.
+            </p>
+            <div>
+              <p className="text-xs font-medium mb-2">Number of blog posts</p>
+              <div className="flex gap-2">
+                {([2, 3] as const).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setBlogCount(n)}
+                    className={cn(
+                      'rounded-lg border px-5 py-2.5 text-sm font-medium transition-colors',
+                      blogCount === n ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-border text-muted-foreground hover:border-border/80',
+                    )}
+                  >
+                    {n} blogs
+                  </button>
+                ))}
+              </div>
+            </div>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <button
+              onClick={generate}
+              className="self-start flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors"
+              style={{ background: '#a200ee' }}
+            >
+              <Icons.Sparkles className="h-4 w-4" />
+              Generate {blogCount} Blogs + LinkedIn Posts
+            </button>
+          </div>
+        )}
+
+        {/* Generating state */}
+        {generating && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+            <p className="text-sm text-muted-foreground">Writing {blogCount} blog posts with citations…</p>
+            <p className="text-xs text-muted-foreground/60">This takes 30–60 seconds</p>
+          </div>
+        )}
+
+        {/* Results */}
+        {blogs.length > 0 && (
+          <>
+            {/* Blog tabs */}
+            <div className="flex border-b border-border px-6 shrink-0">
+              {blogs.map((b, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveIdx(i)}
+                  className={cn(
+                    'px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors',
+                    activeIdx === i ? 'border-violet-500 text-violet-600' : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  Blog {i + 1}
+                </button>
+              ))}
+              <button
+                onClick={generate}
+                disabled={generating}
+                className="ml-auto flex items-center gap-1.5 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+              >
+                <Icons.RefreshCw className="h-3 w-3" /> Regenerate
+              </button>
+            </div>
+
+            {blog && (
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                {/* Title + excerpt */}
+                <div>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-base font-semibold leading-snug">{blog.title}</h3>
+                    <button
+                      onClick={() => copy(blog.title, 'title')}
+                      className="shrink-0 rounded border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      {copied === 'title' ? '✓' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground italic">{blog.excerpt}</p>
+                </div>
+
+                {/* Blog content */}
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Blog Post</span>
+                    <button
+                      onClick={() => copy(blog.content, 'blog')}
+                      className="flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      <Icons.Copy className="h-3 w-3" />
+                      {copied === 'blog' ? 'Copied!' : 'Copy Markdown'}
+                    </button>
+                  </div>
+                  <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground max-h-64 overflow-y-auto" style={{ fontFamily: 'inherit' }}>
+                    {blog.content}
+                  </pre>
+                </div>
+
+                {/* LinkedIn post */}
+                <div className="rounded-xl border border-border bg-blue-50/40 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <Icons.Linkedin className="h-3.5 w-3.5" /> LinkedIn Post
+                    </span>
+                    <button
+                      onClick={() => copy(blog.linkedIn.post, 'li')}
+                      className="flex items-center gap-1 rounded border border-blue-200 bg-white px-2 py-0.5 text-[10px] text-blue-600 hover:bg-blue-50"
+                    >
+                      <Icons.Copy className="h-3 w-3" />
+                      {copied === 'li' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">{blog.linkedIn.post}</p>
+                </div>
+
+                {/* Image prompt */}
+                <div className="rounded-xl border border-border bg-amber-50/40 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <Icons.Image className="h-3.5 w-3.5" /> Image Prompt
+                    </span>
+                    <button
+                      onClick={() => copy(blog.linkedIn.imagePrompt, 'img')}
+                      className="flex items-center gap-1 rounded border border-amber-200 bg-white px-2 py-0.5 text-[10px] text-amber-600 hover:bg-amber-50"
+                    >
+                      <Icons.Copy className="h-3 w-3" />
+                      {copied === 'img' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{blog.linkedIn.imagePrompt}</p>
+                </div>
+
+                {/* Sources */}
+                {blog.sources?.length > 0 && (
+                  <div className="rounded-xl border border-border p-4">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Sources cited</p>
+                    <ul className="space-y-1">
+                      {blog.sources.map((s, i) => (
+                        <li key={i} className="flex items-center gap-1.5 text-xs text-blue-600 truncate">
+                          <Icons.ExternalLink className="h-3 w-3 shrink-0" />
+                          <a href={s} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">{s}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ScheduledTasksTab({ clientId }: { clientId: string }) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null)
   const [viewingTask, setViewingTask] = useState<ScheduledTask | null>(null)
+  const [generatingTask, setGeneratingTask] = useState<ScheduledTask | null>(null)
   const [running, setRunning] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
 
@@ -5752,11 +5980,20 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
                       <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', task.enabled ? 'left-4' : 'left-0.5')} />
                     </button>
                     {task.lastStatus === 'success' && (
-                      <button onClick={() => setViewingTask(task)}
-                        className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-                        title="View output">
-                        <Icons.FileText className="h-3.5 w-3.5" />
-                      </button>
+                      <>
+                        <button onClick={() => setViewingTask(task)}
+                          className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                          title="View output">
+                          <Icons.FileText className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setGeneratingTask(task)}
+                          className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-600 hover:bg-violet-100 flex items-center gap-1"
+                          title="Generate blogs + LinkedIn posts"
+                        >
+                          <Icons.Sparkles className="h-3 w-3" /> Generate
+                        </button>
+                      </>
                     )}
                     <button onClick={() => runNow(task.id)} disabled={running.has(task.id) || task.lastStatus === 'running'}
                       className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
@@ -5786,6 +6023,7 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
       )}
 
       {viewingTask && <TaskOutputModal task={viewingTask} onClose={() => setViewingTask(null)} />}
+      {generatingTask && <GenerateContentModal task={generatingTask} onClose={() => setGeneratingTask(null)} />}
 
       {editingTask && (
         <AddTaskModal
@@ -5994,7 +6232,7 @@ export function ClientDetailPage() {
         <button
           onClick={() => switchTab('structure')}
           className={cn(
-            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ml-auto',
+            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
             inSettings
               ? 'border-blue-500 text-blue-600'
               : 'border-transparent text-muted-foreground hover:text-foreground',

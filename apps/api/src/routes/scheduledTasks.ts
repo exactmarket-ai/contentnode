@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '@contentnode/database'
+import { callModel } from '@contentnode/ai'
 import {
   getScheduledResearchQueue,
   type ScheduledResearchJobData,
@@ -164,6 +165,119 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
       return reply.send({ data: { text: att?.extractedText ?? null, updatedAt: att?.createdAt ?? null } })
     }
     return reply.send({ data: { text: null, updatedAt: null } })
+  })
+
+  // ── POST /api/v1/scheduled-tasks/:id/generate-content ────────────────────
+  // Turns a completed scheduled task output into 2–3 blog posts + LinkedIn posts
+  app.post<{
+    Params: { id: string }
+    Body: { blogCount?: number }
+  }>('/:id/generate-content', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params
+    const blogCount = Math.min(Math.max(Number((req.body as { blogCount?: number })?.blogCount ?? 2), 2), 3)
+
+    const task = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
+    if (!task) return reply.code(404).send({ error: 'Task not found' })
+    if (!task.clientId) return reply.code(400).send({ error: 'Task has no client' })
+
+    // Fetch the research output from the brain attachment
+    const att = await prisma.clientBrainAttachment.findFirst({
+      where: {
+        agencyId,
+        clientId: task.clientId,
+        source: 'scheduled',
+        filename: `[Scheduled] ${task.label}`,
+        ...(task.verticalId ? { verticalId: task.verticalId } : {}),
+      },
+      select: { extractedText: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!att?.extractedText) return reply.code(404).send({ error: 'No output available — run the task first' })
+
+    // Fetch client brand voice + name
+    const [brandBuilder, client] = await Promise.all([
+      prisma.clientBrandBuilder.findFirst({
+        where: { clientId: task.clientId, agencyId },
+        select: { dataJson: true },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.client.findFirst({ where: { id: task.clientId, agencyId }, select: { name: true } }),
+    ])
+    const brandData = (brandBuilder?.dataJson ?? {}) as Record<string, unknown>
+    const toneOfVoice = String(brandData.toneOfVoice ?? brandData.tone ?? brandData.brand_voice ?? '')
+    const clientName = client?.name ?? ''
+
+    // Extract source URLs embedded in the research text
+    const urlRegex = /https?:\/\/[^\s\)\]\>"',]+/g
+    const rawUrls = att.extractedText.match(urlRegex) ?? []
+    const sourceUrls = [...new Set(
+      rawUrls
+        .map((u) => u.replace(/[.,;:!?)]+$/, ''))
+        .filter((u) => !u.includes('fonts.googleapis') && !u.includes('cdn.jsdelivr') && u.length > 10),
+    )].slice(0, 20)
+
+    const systemPrompt = `You are a content strategist and expert B2B blog writer${clientName ? ` for ${clientName}` : ''}.
+Turn the research intelligence below into ${blogCount} distinct, publication-ready blog posts — each taking a different angle or insight from the research.
+${toneOfVoice ? `\nBrand voice: ${toneOfVoice}` : ''}
+
+For EACH blog post:
+- Title: compelling, SEO-friendly headline
+- 650–900 words of substantive content
+- Structure: engaging intro, 3–4 H2 sections, concise conclusion
+- Cite sources inline using the format [source: domain.com] wherever relevant
+- End with a "## Sources" section listing the actual URLs used
+
+For EACH blog post also write:
+- A LinkedIn post (150–200 words): punchy hook, 3 key takeaways as short bullets, a CTA to read the blog
+- An image generation prompt: describe a professional, brand-appropriate blog header image (style, subject, composition, mood)
+
+Return ONLY valid JSON — no markdown fences, nothing outside the JSON object:
+{
+  "blogs": [
+    {
+      "title": "string",
+      "slug": "url-friendly-slug",
+      "excerpt": "2-sentence teaser",
+      "content": "Full markdown blog with inline [source: x] citations and ## Sources section",
+      "sources": ["url1", "url2"],
+      "linkedIn": {
+        "post": "LinkedIn post text",
+        "imagePrompt": "Detailed image generation prompt"
+      }
+    }
+  ]
+}`
+
+    const userPrompt = `Research task: ${task.label}
+${sourceUrls.length > 0 ? `\nSource URLs found in this research:\n${sourceUrls.map((u, i) => `${i + 1}. ${u}`).join('\n')}\n` : ''}
+--- FULL RESEARCH OUTPUT ---
+${att.extractedText.slice(0, 13000)}`
+
+    const result = await callModel(
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        api_key_ref: 'ANTHROPIC_API_KEY',
+        temperature: 0.65,
+        max_tokens: 8192,
+        system_prompt: systemPrompt,
+      },
+      userPrompt,
+    )
+
+    let blogs: unknown[] = []
+    try {
+      const match = result.text.match(/\{[\s\S]*\}/)
+      if (match) {
+        const parsed = JSON.parse(match[0]) as { blogs?: unknown[] }
+        blogs = Array.isArray(parsed.blogs) ? parsed.blogs : []
+      }
+    } catch {
+      return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
+    }
+
+    return reply.send({ data: { blogs, sourceUrls, taskLabel: task.label, tokensUsed: result.tokens_used } })
   })
 
   // ── POST /api/v1/scheduled-tasks/seed-defaults ───────────────────────────
