@@ -40,23 +40,20 @@ async function fetchBrand(clientId: string, agencyId: string): Promise<BrandCont
   }
 
   try {
-    const [client, agency] = await Promise.all([
+    const [client, docStyle, agencySettings] = await Promise.all([
       prisma.client.findFirst({
         where: { id: clientId, agencyId },
-        select: {
-          name: true,
-          primaryColor: true,
-          headingFont: true,
-          bodyFont: true,
-        },
+        select: { name: true },
       }),
-      prisma.agency.findUnique({
-        where: { id: agencyId },
-        select: {
-          docPrimaryColor: true,
-          docHeadingFont: true,
-          docBodyFont: true,
-        },
+      // Brand colors/fonts live in ClientDocStyle, not Client directly
+      prisma.clientDocStyle.findUnique({
+        where: { clientId },
+        select: { primaryColor: true, headingFont: true, bodyFont: true },
+      }),
+      // Agency doc defaults live in AgencySettings, not Agency
+      prisma.agencySettings.findUnique({
+        where: { agencyId },
+        select: { docPrimaryColor: true, docHeadingFont: true, docBodyFont: true },
       }),
     ])
 
@@ -73,9 +70,9 @@ async function fetchBrand(clientId: string, agencyId: string): Promise<BrandCont
     } catch { /* non-fatal */ }
 
     return {
-      primaryColor: client?.primaryColor ?? agency?.docPrimaryColor ?? defaults.primaryColor,
-      headingFont:  client?.headingFont  ?? agency?.docHeadingFont  ?? defaults.headingFont,
-      bodyFont:     client?.bodyFont     ?? agency?.docBodyFont     ?? defaults.bodyFont,
+      primaryColor: docStyle?.primaryColor ?? agencySettings?.docPrimaryColor ?? defaults.primaryColor,
+      headingFont:  docStyle?.headingFont  ?? agencySettings?.docHeadingFont  ?? defaults.headingFont,
+      bodyFont:     docStyle?.bodyFont     ?? agencySettings?.docBodyFont     ?? defaults.bodyFont,
       toneNotes,
       clientName:   client?.name ?? '',
     }
