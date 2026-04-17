@@ -181,7 +181,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
   }>('/:id/generate-content', async (req, reply) => {
     const { agencyId } = req.auth
     const { id } = req.params
-    const blogCount = Math.min(Math.max(Number((req.body as { blogCount?: number })?.blogCount ?? 2), 2), 3)
+    const blogCount = Math.min(Math.max(Number((req.body as { blogCount?: number })?.blogCount ?? 2), 1), 5)
 
     const task = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
     if (!task) return reply.code(404).send({ error: 'Task not found' })
@@ -266,7 +266,7 @@ ${att.extractedText.slice(0, 13000)}`
         model: 'claude-sonnet-4-6',
         api_key_ref: 'ANTHROPIC_API_KEY',
         temperature: 0.65,
-        max_tokens: 8192,
+        max_tokens: 16000,
         system_prompt: systemPrompt,
       },
       userPrompt,
@@ -274,7 +274,9 @@ ${att.extractedText.slice(0, 13000)}`
 
     let blogs: unknown[] = []
     try {
-      const match = result.text.match(/\{[\s\S]*\}/)
+      // Strip markdown fences if present, then extract outermost JSON object
+      const cleaned = result.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+      const match = cleaned.match(/\{[\s\S]*\}/)
       if (match) {
         const parsed = JSON.parse(match[0]) as { blogs?: unknown[] }
         blogs = Array.isArray(parsed.blogs) ? parsed.blogs : []
@@ -282,6 +284,7 @@ ${att.extractedText.slice(0, 13000)}`
     } catch {
       return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
     }
+    if (!blogs.length) return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
 
     return reply.send({ data: { blogs, sourceUrls, taskLabel: task.label, tokensUsed: result.tokens_used } })
   })

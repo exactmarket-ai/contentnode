@@ -422,7 +422,8 @@ Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
 
     let blogs: GeneratedBlog[] = []
     try {
-      const match = result.text.match(/\{[\s\S]*\}/)
+      const cleaned = result.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+      const match = cleaned.match(/\{[\s\S]*\}/)
       if (match) {
         const p = JSON.parse(match[0]) as { blogs?: GeneratedBlog[] }
         blogs = Array.isArray(p.blogs) ? p.blogs : []
@@ -430,6 +431,7 @@ Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
     } catch {
       return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
     }
+    if (!blogs.length) return reply.code(500).send({ error: 'Failed to parse generated content — try again' })
 
     return reply.send({
       data: {
