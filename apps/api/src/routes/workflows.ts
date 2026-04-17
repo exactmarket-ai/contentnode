@@ -78,7 +78,8 @@ export async function workflowRoutes(app: FastifyInstance) {
     }
 
     const { agencyId, userId } = req.auth
-    const { name, clientId, description, connectivityMode } = parsed.data
+    const { name, description, connectivityMode, defaultModelConfig } = parsed.data
+    let { clientId } = parsed.data
 
     // Validate client belongs to this agency (only when clientId provided)
     if (clientId) {
@@ -89,10 +90,17 @@ export async function workflowRoutes(app: FastifyInstance) {
       if (client.requireOffline && connectivityMode !== 'offline') {
         return reply.code(422).send({ error: 'This client requires offline mode. Set connectivity mode to offline.' })
       }
-      const { defaultModelConfig } = parsed.data
       if (client.requireOffline && defaultModelConfig?.provider && defaultModelConfig.provider !== 'ollama') {
         return reply.code(422).send({ error: 'This client requires local AI models only. Use Ollama as the provider.' })
       }
+    } else {
+      // No client selected (prospect/org-level workflow).
+      // Until the DB migration making client_id nullable is deployed, fall back to the
+      // first client in the agency so the INSERT doesn't violate the NOT NULL constraint.
+      const fallback = await prisma.client.findFirst({ where: { agencyId }, select: { id: true }, orderBy: { createdAt: 'asc' } })
+      if (fallback) clientId = fallback.id
+      // If no clients exist at all, attempt the insert without a clientId —
+      // this will succeed once the migration has run, and fail gracefully before that.
     }
 
     const workflow = await prisma.workflow.create({
