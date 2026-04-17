@@ -1297,7 +1297,7 @@ function AssessmentDetail({
         )}
 
         {/* Slide Deck ── designed from exec presentation */}
-        {(slideDeck || slidesOpen) && (
+        {(slideDeck || slidesOpen || generatingSlides) && (
           <div className="rounded-xl border border-border bg-white overflow-hidden">
             <div className="flex items-center gap-2 border-b border-border px-5 py-3">
               <Icons.GalleryHorizontal className="h-4 w-4 text-indigo-500" />
