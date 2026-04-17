@@ -10,7 +10,7 @@ import { getWorkflowRunsQueue } from '../lib/queues.js'
 
 const createWorkflowBody = z.object({
   name: z.string().min(1).max(200),
-  clientId: z.string().min(1),
+  clientId: z.string().min(1).optional(),
   description: z.string().optional(),
   connectivityMode: z.enum(['online', 'offline']).default('online'),
   defaultModelConfig: z.record(z.unknown()).optional(),
@@ -80,23 +80,25 @@ export async function workflowRoutes(app: FastifyInstance) {
     const { agencyId, userId } = req.auth
     const { name, clientId, description, connectivityMode } = parsed.data
 
-    // Validate client belongs to this agency
-    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId } })
-    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    // Validate client belongs to this agency (only when clientId provided)
+    if (clientId) {
+      const client = await prisma.client.findFirst({ where: { id: clientId, agencyId } })
+      if (!client) return reply.code(404).send({ error: 'Client not found' })
 
-    // Policy enforcement: requireOffline clients must only use offline workflows
-    if (client.requireOffline && connectivityMode !== 'offline') {
-      return reply.code(422).send({ error: 'This client requires offline mode. Set connectivity mode to offline.' })
-    }
-    const { defaultModelConfig } = parsed.data
-    if (client.requireOffline && defaultModelConfig?.provider && defaultModelConfig.provider !== 'ollama') {
-      return reply.code(422).send({ error: 'This client requires local AI models only. Use Ollama as the provider.' })
+      // Policy enforcement: requireOffline clients must only use offline workflows
+      if (client.requireOffline && connectivityMode !== 'offline') {
+        return reply.code(422).send({ error: 'This client requires offline mode. Set connectivity mode to offline.' })
+      }
+      const { defaultModelConfig } = parsed.data
+      if (client.requireOffline && defaultModelConfig?.provider && defaultModelConfig.provider !== 'ollama') {
+        return reply.code(422).send({ error: 'This client requires local AI models only. Use Ollama as the provider.' })
+      }
     }
 
     const workflow = await prisma.workflow.create({
       data: {
         agencyId,
-        clientId,
+        ...(clientId ? { clientId } : {}),
         name,
         description: description ?? null,
         connectivityMode,
