@@ -223,9 +223,12 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         .filter((u) => !u.includes('fonts.googleapis') && !u.includes('cdn.jsdelivr') && u.length > 10),
     )].slice(0, 20)
 
-    const buildPrompt = (n: number, offset: number) => {
+    const buildPrompt = (n: number, offset: number, priorTitles: string[]) => {
+      const avoidClause = priorTitles.length > 0
+        ? `\nDo NOT cover the same angle as any of these already-written blogs:\n${priorTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}\nPick a fresh, distinct angle from the research.`
+        : ''
       const systemPrompt = `You are a content strategist and expert B2B blog writer${clientName ? ` for ${clientName}` : ''}.
-Turn the research intelligence below into ${n} distinct, publication-ready blog posts — each taking a different angle or insight from the research.${offset > 0 ? ` These are blogs ${offset + 1}–${offset + n} in a series; do not repeat angles already covered by earlier blogs.` : ''}
+Write ${n} publication-ready blog post${n > 1 ? 's' : ''} based on the research below, taking a unique angle not seen in other content on this topic.${avoidClause}
 ${toneOfVoice ? `\nBrand voice: ${toneOfVoice}` : ''}
 
 For EACH blog post:
@@ -294,8 +297,8 @@ ${att.extractedText.slice(0, 13000)}`
       }
     }
 
-    // Batch into calls of max 2 blogs to keep each call under ~60s
-    const BATCH = 2
+    // One blog per call — single-blog JSON is nearly never malformed
+    const BATCH = 1
     const batches: Array<{ n: number; offset: number }> = []
     for (let i = 0; i < blogCount; i += BATCH) {
       batches.push({ n: Math.min(BATCH, blogCount - i), offset: i })
@@ -304,7 +307,8 @@ ${att.extractedText.slice(0, 13000)}`
     let blogs: unknown[] = []
     let tokensUsed = 0
     for (const { n, offset } of batches) {
-      const { systemPrompt, userPrompt } = buildPrompt(n, offset)
+      const priorTitles = (blogs as Array<{ title?: string }>).map((b) => b.title ?? '').filter(Boolean)
+      const { systemPrompt, userPrompt } = buildPrompt(n, offset, priorTitles)
       try {
         const result = await callModel(
           {
@@ -320,8 +324,8 @@ ${att.extractedText.slice(0, 13000)}`
         tokensUsed += result.tokens_used ?? 0
         blogs = blogs.concat(parseBlogs(result.text))
       } catch (err) {
-        console.error(`[generate-content] batch ${offset}–${offset + n} failed:`, err)
-        // continue — return whatever batches succeeded
+        console.error(`[generate-content] blog ${offset + 1} failed:`, err)
+        // continue — return whatever blogs succeeded
       }
     }
 

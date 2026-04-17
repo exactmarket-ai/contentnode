@@ -437,8 +437,8 @@ Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
       }
     }
 
-    // Batch into calls of max 2 blogs to keep each call under ~60s
-    const BATCH = 2
+    // One blog per call — single-blog JSON is nearly never malformed
+    const BATCH = 1
     let blogs: GeneratedBlog[] = []
     let tokensUsed = 0
     for (let offset = 0; offset < blogCount; offset += BATCH) {
