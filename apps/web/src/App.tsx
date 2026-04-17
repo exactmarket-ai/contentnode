@@ -67,12 +67,12 @@ function ProtectedLayout() {
 
   useEffect(() => {
     if (!isSignedIn) return
-    apiFetch('/api/v1/settings')
+    apiFetch('/api/v1/team/me')
       .then((r) => r.json())
       .then(({ data }) => {
         if (Array.isArray(data?.ollamaModels)) setOllamaModels(data.ollamaModels)
       })
-      .catch(() => {/* settings load failure is non-fatal */})
+      .catch(() => {/* profile load failure is non-fatal */})
   }, [isSignedIn, setOllamaModels])
 
   if (!isLoaded) {

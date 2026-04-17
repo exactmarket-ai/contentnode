@@ -562,7 +562,7 @@ export async function teamRoutes(app: FastifyInstance) {
 
     let me = await prisma.user.findFirst({
       where: { agencyId, clerkUserId: userId },
-      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, createdAt: true },
+      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, createdAt: true },
     })
 
     // Fallback: clerkUserId in DB doesn't match current Clerk session (e.g. seeded with placeholder).
@@ -604,9 +604,12 @@ export async function teamRoutes(app: FastifyInstance) {
   app.patch('/me', async (req, reply) => {
     const { agencyId, userId } = req.auth
     const body = req.body as Record<string, unknown>
-    const name       = typeof body.name       === 'string' ? body.name.trim()       : undefined
-    const title      = typeof body.title      === 'string' ? body.title.trim()      : undefined
-    const department = typeof body.department === 'string' ? body.department.trim() : undefined
+    const name         = typeof body.name       === 'string' ? body.name.trim()       : undefined
+    const title        = typeof body.title      === 'string' ? body.title.trim()      : undefined
+    const department   = typeof body.department === 'string' ? body.department.trim() : undefined
+    const ollamaModels = Array.isArray(body.ollamaModels)
+      ? (body.ollamaModels as unknown[]).filter((m): m is string => typeof m === 'string' && m.length <= 100)
+      : undefined
 
     const user = await prisma.user.findFirst({ where: { agencyId, clerkUserId: userId } })
     if (!user) return reply.code(404).send({ error: 'User not found' })
@@ -614,11 +617,12 @@ export async function teamRoutes(app: FastifyInstance) {
     const updated = await prisma.user.update({
       where: { id: user.id },
       data: {
-        ...(name !== undefined       ? { name: name || null }       : {}),
-        ...(title !== undefined      ? { title: title || null }      : {}),
-        ...(department !== undefined ? { department: department || null } : {}),
+        ...(name !== undefined         ? { name: name || null }         : {}),
+        ...(title !== undefined        ? { title: title || null }        : {}),
+        ...(department !== undefined   ? { department: department || null } : {}),
+        ...(ollamaModels !== undefined ? { ollamaModels }               : {}),
       },
-      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, createdAt: true },
+      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, createdAt: true },
     })
 
     const { avatarStorageKey, ...rest } = updated

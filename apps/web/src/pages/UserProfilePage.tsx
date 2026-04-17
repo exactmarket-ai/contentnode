@@ -3,6 +3,8 @@ import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useCurrentUser, invalidateCurrentUser } from '@/hooks/useCurrentUser'
 import { cn } from '@/lib/utils'
+import { useSettingsStore } from '@/store/settingsStore'
+import { OLLAMA_MODELS } from '@/components/layout/config/shared'
 
 const ROLE_LABELS: Record<string, string> = {
   owner:          'Owner',
@@ -26,6 +28,129 @@ function getInitials(name: string | null, email: string): string {
   }
   return email.slice(0, 2).toUpperCase()
 }
+
+// ── OllamaModelsSection ───────────────────────────────────────────────────────
+
+function OllamaModelsSection() {
+  const { ollamaModels, setOllamaModels } = useSettingsStore()
+  const [models, setModels] = useState<string[]>([])
+  const [input, setInput]   = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved]   = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+
+  useEffect(() => { setModels(ollamaModels) }, [ollamaModels])
+
+  const isDirty = JSON.stringify(models) !== JSON.stringify(ollamaModels)
+
+  const addModel = () => {
+    const v = input.trim()
+    if (!v || models.includes(v)) return
+    setModels((prev) => [...prev, v])
+    setInput('')
+  }
+
+  const removeModel = (m: string) => setModels((prev) => prev.filter((x) => x !== m))
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/api/v1/team/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ollamaModels: models }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError((body as { error?: string }).error ?? `Failed to save (${res.status})`)
+        return
+      }
+      setOllamaModels(models)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch {
+      setError('Network error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const builtInSuggestions = OLLAMA_MODELS.map((m) => m.value).filter((v) => !models.includes(v))
+
+  return (
+    <div className="space-y-4 rounded-xl border border-border p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Icons.Cpu className="h-4 w-4 text-muted-foreground" />
+            Ollama Models
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Models available on your local Ollama server — appear as suggestions in every workflow model picker.
+          </p>
+        </div>
+        {isDirty && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50',
+              saved ? 'bg-emerald-600' : 'bg-primary',
+            )}
+          >
+            {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Icons.Check className="h-3 w-3" /> : <Icons.Save className="h-3 w-3" />}
+            {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          list="ollama-profile-suggestions"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addModel() } }}
+          placeholder="e.g. llama3.1:70b"
+          className="h-8 flex-1 rounded-md border border-border bg-background px-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+        <datalist id="ollama-profile-suggestions">
+          {builtInSuggestions.map((v) => <option key={v} value={v} />)}
+        </datalist>
+        <button
+          onClick={addModel}
+          disabled={!input.trim()}
+          className="flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+        >
+          <Icons.Plus className="h-3.5 w-3.5" />
+          Add
+        </button>
+      </div>
+
+      {models.length === 0 ? (
+        <p className="text-xs italic text-muted-foreground">
+          No models added — pickers will show built-in suggestions.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {models.map((m) => (
+            <div key={m} className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
+              <span className="text-sm font-mono">{m}</span>
+              <button onClick={() => removeModel(m)} className="text-muted-foreground hover:text-destructive transition-colors">
+                <Icons.X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+// ── Profile page ──────────────────────────────────────────────────────────────
 
 export function UserProfilePage() {
   const { user, setUser } = useCurrentUser()
@@ -259,6 +384,7 @@ export function UserProfilePage() {
           <button
             type="submit"
             disabled={saving}
+
             className={cn(
               'flex items-center gap-2 rounded-md px-5 py-2 text-sm font-medium transition-colors',
               saved
@@ -274,6 +400,9 @@ export function UserProfilePage() {
           </button>
         </div>
       </form>
+
+      {/* Ollama Models — separate save, outside the main form */}
+      <OllamaModelsSection />
     </div>
   )
 }

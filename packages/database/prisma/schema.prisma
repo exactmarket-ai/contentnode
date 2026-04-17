@@ -93,8 +93,6 @@ model AgencySettings {
   docApplyToGtm           Boolean  @default(true) @map("doc_apply_to_gtm")
   docApplyToDemandGen     Boolean  @default(false) @map("doc_apply_to_demand_gen")
   docApplyToBranding      Boolean  @default(false) @map("doc_apply_to_branding")
-  // Ollama models available to this agency — populates model picker datalists
-  ollamaModels            Json     @default("[]") @map("ollama_models")
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
@@ -415,6 +413,8 @@ model User {
   // Per-user permission override. Highest priority in the resolution chain.
   // If null, inherits from client → agency → role defaults.
   permissionsOverride Json? @map("permissions_override")
+  // Local Ollama model names for this user's machine — populates model picker datalists
+  ollamaModels    Json     @default("[]") @map("ollama_models")
   inviteToken     String?   @unique @map("invite_token")
   inviteExpiresAt DateTime? @map("invite_expires_at")
   lastActiveAt    DateTime? @map("last_active_at") // updated on every authenticated request (throttled to 5 min)

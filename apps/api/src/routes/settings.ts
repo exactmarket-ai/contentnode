@@ -38,7 +38,6 @@ export async function settingsRoutes(app: FastifyInstance) {
       docApplyToGtm:      z.boolean().optional(),
       docApplyToDemandGen: z.boolean().optional(),
       docApplyToBranding: z.boolean().optional(),
-      ollamaModels: z.array(z.string().max(100)).optional(),
     }).safeParse(req.body)
 
     if (!parsed.success) {

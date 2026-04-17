@@ -3,7 +3,6 @@ import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { formatBytes } from '@/components/layout/config/shared'
 import { DocTemplateEditor } from './DocTemplateEditor'
-import { useSettingsStore } from '@/store/settingsStore'
 
 interface AgencySettings {
   id: string
@@ -21,7 +20,6 @@ interface AgencySettings {
   docApplyToGtm: boolean
   docApplyToDemandGen: boolean
   docApplyToBranding: boolean
-  ollamaModels: string[]
 }
 
 const FONTS = ['Calibri', 'Arial', 'Georgia', 'Times New Roman', 'Garamond', 'Verdana', 'Helvetica']
@@ -1009,121 +1007,6 @@ function DocTemplateSection() {
   )
 }
 
-// ── OllamaModelsSection ───────────────────────────────────────────────────────
-
-function OllamaModelsSection() {
-  const { ollamaModels, setOllamaModels } = useSettingsStore()
-  const [models, setModels]   = useState<string[]>([])
-  const [input, setInput]     = useState('')
-  const [saving, setSaving]   = useState(false)
-  const [saved, setSaved]     = useState(false)
-  const [error, setError]     = useState<string | null>(null)
-
-  useEffect(() => { setModels(ollamaModels) }, [ollamaModels])
-
-  const isDirty = JSON.stringify(models) !== JSON.stringify(ollamaModels)
-
-  const addModel = () => {
-    const v = input.trim()
-    if (!v || models.includes(v)) return
-    setModels((prev) => [...prev, v])
-    setInput('')
-  }
-
-  const removeModel = (m: string) => setModels((prev) => prev.filter((x) => x !== m))
-
-  const handleSave = async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      const res = await apiFetch('/api/v1/settings', {
-        method: 'PATCH',
-        body: JSON.stringify({ ollamaModels: models }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setError((body as { error?: string }).error ?? `Failed to save (${res.status})`)
-        return
-      }
-      setOllamaModels(models)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch {
-      setError('Network error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <section>
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <Icons.Cpu className="h-4 w-4" style={{ color: '#b4b2a9' }} />
-          <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Ollama Models</h2>
-        </div>
-        {isDirty && (
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: '#a200ee' }}
-          >
-            {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Icons.Check className="h-3 w-3" /> : <Icons.Save className="h-3 w-3" />}
-            {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
-          </button>
-        )}
-      </div>
-      <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
-        Add the Ollama model names available on your local server. These populate the model picker
-        across all workflows — team members who use Ollama can pick from this list or type any name directly.
-      </p>
-
-      {/* Add input */}
-      <div className="flex gap-2 mb-3">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addModel() } }}
-          placeholder="e.g. llama3.1:70b"
-          className="h-8 flex-1 rounded-md border px-2.5 text-[13px] outline-none focus:border-purple-400 transition-colors"
-          style={{ borderColor: '#e8e7e1', backgroundColor: '#fff' }}
-        />
-        <button
-          onClick={addModel}
-          disabled={!input.trim()}
-          className="flex items-center gap-1 rounded-md px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-40 transition-colors"
-          style={{ backgroundColor: '#a200ee' }}
-        >
-          <Icons.Plus className="h-3.5 w-3.5" />
-          Add
-        </button>
-      </div>
-
-      {/* Model list */}
-      {models.length === 0 ? (
-        <p className="text-[12px] italic" style={{ color: '#b4b2a9' }}>No models added yet — model pickers will show built-in suggestions.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {models.map((m) => (
-            <div key={m} className="flex items-center justify-between rounded-md border px-3 py-2" style={{ borderColor: '#e8e7e1', backgroundColor: '#fff' }}>
-              <span className="text-[13px] font-mono" style={{ color: '#1a1a14' }}>{m}</span>
-              <button onClick={() => removeModel(m)} className="text-muted-foreground hover:text-red-500 transition-colors">
-                <Icons.X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {error && (
-        <p className="mt-2 text-[12px] text-red-600">{error}</p>
-      )}
-    </section>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -1133,7 +1016,6 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const setOllamaModels = useSettingsStore((s) => s.setOllamaModels)
 
   useEffect(() => {
     apiFetch('/api/v1/settings')
@@ -1142,10 +1024,9 @@ export function SettingsPage() {
         const days = data?.tempContactExpiryDays ?? null
         setSavedDays(days)
         setTempExpiryDays(days)
-        if (Array.isArray(data?.ollamaModels)) setOllamaModels(data.ollamaModels)
       })
       .catch(() => setLoadError(true))
-  }, [setOllamaModels])
+  }, [])
 
   const isDirty = tempExpiryDays !== savedDays
 
@@ -1216,9 +1097,6 @@ export function SettingsPage() {
 
           {/* ── Prompt Templates ─────────────────────────────────────────── */}
           <PromptsSection />
-
-          {/* ── Ollama Models ────────────────────────────────────────────── */}
-          <OllamaModelsSection />
 
           {/* ── External Contacts ────────────────────────────────────────── */}
           <section>
