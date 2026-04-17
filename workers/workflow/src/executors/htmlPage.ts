@@ -310,10 +310,57 @@ ${sections}
 </html>`
 }
 
+// ─── Section pre-parser ───────────────────────────────────────────────────────
+// Detects numbered sections, markdown headings, bold headers, or ALL-CAPS lines.
+// Used to give the model an exact slide count it can't second-guess.
+
+function parseSections(text: string): Array<{ title: string; content: string }> {
+  const lines = text.split('\n')
+  const sects: Array<{ title: string; content: string[] }> = []
+  let cur: { title: string; content: string[] } | null = null
+
+  for (const line of lines) {
+    const t = line.trim()
+    if (!t) continue
+    const isHeader =
+      /^\d+[\.\)]\s+\S/.test(t) ||              // "1. Title" or "1) Title"
+      /^#{1,4}\s+\S/.test(t) ||                 // "## Heading"
+      /^\*\*[^*\n]{3,60}\*\*\s*$/.test(t) ||   // "**Bold Header**"
+      (/^[A-Z][A-Z\s\-:]{3,}$/.test(t) && t.length < 70) // ALL CAPS LINE
+
+    if (isHeader) {
+      if (cur) sects.push({ title: cur.title, content: cur.content })
+      const title = t
+        .replace(/^\d+[\.\)]\s+/, '')
+        .replace(/^#{1,4}\s+/, '')
+        .replace(/^\*\*|\*\*$/g, '')
+        .trim()
+      cur = { title, content: [] }
+    } else if (cur) {
+      cur.content.push(t)
+    }
+  }
+  if (cur) sects.push({ title: cur.title, content: cur.content })
+  return sects.map(s => ({ title: s.title, content: s.content.join(' ').slice(0, 400) }))
+}
+
 // Slides are rendered programmatically — no second model call, no parsing failures.
+// Brand overrides are applied on top of the CD-generated palette so client colors
+// are always used regardless of what the upstream CD node chose.
 function buildSlidesFromBrief(
   brief: CreativeDirectorBrief,
+  brand?: BrandContext,
 ): { html: string; tokensUsed: number; inputTokens: number; outputTokens: number } {
+  // Apply client brand on top of whatever the CD node generated
+  if (brand) {
+    if (brand.primaryColor && brand.primaryColor !== '#1B1F3B') {
+      brief.palette.accent = brand.primaryColor
+    }
+    const hf = brand.headingFont.split(',')[0].trim().replace(/['"]/g, '')
+    const bf = brand.bodyFont.split(',')[0].trim().replace(/['"]/g, '')
+    if (hf && hf !== 'Inter' && hf !== 'system-ui') brief.fonts.heading = hf
+    if (bf && bf !== 'Inter' && bf !== 'system-ui') brief.fonts.body = bf
+  }
   const sections = brief.slides.map(slide => renderSlide(slide, brief)).join('\n\n')
   return {
     html:         buildHtmlShell(brief, sections),
@@ -323,19 +370,33 @@ function buildSlidesFromBrief(
   }
 }
 
-// Fallback: raw exec presentation text fed directly — run Creative Director inline
+// Fallback: raw presentation text — run Creative Director inline
 async function buildSlidesFromRawContent(
   content: string,
+  brand?: BrandContext,
 ): Promise<{ html: string; tokensUsed: number; inputTokens: number; outputTokens: number }> {
-  // Creative Director inline call
+  // Pre-parse sections so we can give the model an exact slide count
+  const parsedSections = parseSections(content)
+  const slideCount = parsedSections.length
+
+  const sectionList = slideCount > 0
+    ? `\n\nI detected ${slideCount} sections in the source. You MUST produce EXACTLY ${slideCount} slides — one per section, in order. Do NOT merge, skip, or add sections. Section titles:\n${parsedSections.map((s, i) => `  ${i + 1}. ${s.title}`).join('\n')}`
+    : ''
+
+  const brandBlock = brand && brand.primaryColor !== '#1B1F3B'
+    ? `\nBRAND COLORS (use these — do not invent your own palette):
+  accent/highlight: ${brand.primaryColor}
+  background: a dark navy/charcoal that complements the accent
+  heading font: ${brand.headingFont.split(',')[0].trim().replace(/['"]/g, '') || 'Inter'}
+  body font: ${brand.bodyFont.split(',')[0].trim().replace(/['"]/g, '') || 'Inter'}${brand.clientName ? `\n  client: ${brand.clientName}` : ''}`
+    : ''
+
   const cdSystem = `You are a senior creative director at a top-tier B2B design agency.
 Read the executive presentation and produce a structured creative brief for a slide deck.
-Return ONLY valid JSON — no markdown, no explanation, no trailing text after the closing brace.
-
-CRITICAL: Count every section/topic in the source. Your "slides" array MUST contain one entry per section — do not merge, skip, or truncate sections. If there are 13 sections, produce 13 slide objects.
-
+Return ONLY valid JSON — no markdown fences, no explanation, nothing after the closing brace.
+${brandBlock}
 {
-  "palette": { "background": "<dark hex>", "surface": "<slightly lighter hex>", "primary": "<brand hex>", "accent": "<vibrant hex>", "muted": "<muted hex>" },
+  "palette": { "background": "<dark hex>", "surface": "<slightly lighter hex>", "primary": "<light text hex>", "accent": "<brand accent hex>", "muted": "<muted hex>" },
   "fonts": { "heading": "<Google Font name>", "body": "<Google Font name>" },
   "style": "<one-line visual theme>",
   "slides": [
@@ -343,34 +404,49 @@ CRITICAL: Count every section/topic in the source. Your "slides" array MUST cont
       "number": 1,
       "title": "<slide title>",
       "layout": "<title-splash|two-column|stat-grid|timeline|quote-callout|comparison-table|icon-grid|closing-cta>",
-      "content": "<prose description for this slide — full sentences>",
-      "keyPoints": ["<bullet 1>", "<bullet 2>", "<bullet 3>"],
+      "content": "<prose for this slide — full sentences>",
+      "keyPoints": ["<point 1>", "<point 2>", "<point 3>"],
       "notes": "<optional speaker notes>"
     }
   ]
 }
 
-palette.background should be dark (e.g. #0F172A).
-Every slide must have a non-empty title and at least one keyPoint or non-empty content.`
+palette.background must be dark (e.g. #0F172A or #111827).
+Every slide must have a non-empty title and at least one keyPoint.`
 
   const cdResult = await callModel(
-    { ...SLIDE_MODEL, system_prompt: cdSystem, max_tokens: 8192, temperature: 0.4 },
-    `Create the creative brief and slide structure for this presentation:\n\n${content.slice(0, 14000)}`,
+    { ...SLIDE_MODEL, system_prompt: cdSystem, max_tokens: 16000, temperature: 0.4 },
+    `Create the creative brief and ALL slide objects for this presentation:${sectionList}\n\n${content.slice(0, 14000)}`,
   )
+
+  const fallbackBrief: CreativeDirectorBrief = {
+    palette: {
+      background: '#0F172A', surface: '#1E293B',
+      primary:    '#F1F5F9',
+      accent:     brand?.primaryColor ?? '#F59E0B',
+      muted:      '#64748B',
+    },
+    fonts: {
+      heading: brand?.headingFont.split(',')[0].trim().replace(/['"]/g, '') || 'Inter',
+      body:    brand?.bodyFont.split(',')[0].trim().replace(/['"]/g, '') || 'Inter',
+    },
+    style:  'Modern dark B2B',
+    slides: [],
+  }
 
   let brief: CreativeDirectorBrief
   try {
     const match = cdResult.text.match(/\{[\s\S]*\}/)
-    brief = match ? JSON.parse(match[0]) as CreativeDirectorBrief : { palette: { background: '#0F172A', surface: '#1E293B', primary: '#3B82F6', accent: '#F59E0B', muted: '#64748B' }, fonts: { heading: 'Inter', body: 'Inter' }, style: 'Modern dark B2B', slides: [] }
+    brief = match ? JSON.parse(match[0]) as CreativeDirectorBrief : fallbackBrief
   } catch {
-    brief = { palette: { background: '#0F172A', surface: '#1E293B', primary: '#3B82F6', accent: '#F59E0B', muted: '#64748B' }, fonts: { heading: 'Inter', body: 'Inter' }, style: 'Modern dark B2B', slides: [] }
+    brief = fallbackBrief
   }
 
-  const result = buildSlidesFromBrief(brief)
+  const result = buildSlidesFromBrief(brief, brand)
   return {
     ...result,
-    tokensUsed:  result.tokensUsed  + cdResult.tokens_used,
-    inputTokens: result.inputTokens + cdResult.input_tokens,
+    tokensUsed:   result.tokensUsed  + cdResult.tokens_used,
+    inputTokens:  result.inputTokens + cdResult.input_tokens,
     outputTokens: result.outputTokens + cdResult.output_tokens,
   }
 }
@@ -397,9 +473,19 @@ export class HtmlPageExecutor extends NodeExecutor {
 
     // ── Slide deck ────────────────────────────────────────────────────────────
     if (pageType === 'slide-deck') {
-      // If the upstream Creative Director node provided a structured brief, use it directly.
-      // Strip markdown fences first — Claude sometimes wraps JSON in ```json ... ``` even when
-      // instructed not to, which causes JSON.parse to hard-fail and drop into the raw fallback.
+      // Fetch client brand first — colours/fonts are applied regardless of whether
+      // the input is a CD brief (upstream node) or raw text (inline CD path).
+      let slideBrand: BrandContext = {
+        primaryColor: '#1B1F3B',
+        headingFont:  'Inter, system-ui, sans-serif',
+        bodyFont:     'Inter, system-ui, sans-serif',
+        toneNotes:    '',
+        clientName:   '',
+      }
+      if (useBrandColors && ctx.clientId) {
+        slideBrand = await fetchBrand(ctx.clientId, ctx.agencyId)
+      }
+
       let parsed: unknown = null
       const jsonMatch = content.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
@@ -407,8 +493,8 @@ export class HtmlPageExecutor extends NodeExecutor {
       }
 
       const { html, tokensUsed, inputTokens, outputTokens } = isCreativeDirectorBrief(parsed)
-        ? buildSlidesFromBrief(parsed as CreativeDirectorBrief)
-        : await buildSlidesFromRawContent(content)
+        ? buildSlidesFromBrief(parsed as CreativeDirectorBrief, slideBrand)
+        : await buildSlidesFromRawContent(content, slideBrand)
 
       return { output: { html }, tokensUsed, inputTokens, outputTokens, modelUsed: SLIDE_MODEL.model }
     }
