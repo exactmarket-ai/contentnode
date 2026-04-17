@@ -362,15 +362,16 @@ export async function contentGeneratorRoutes(app: FastifyInstance) {
       `${i + 1}. "${a.title}" (${a.source || 'unknown source'}, ${a.pubDate ? new Date(a.pubDate).toLocaleDateString() : 'recent'})\n   URL: ${a.url}\n   ${a.snippet || a.bodyText.slice(0, 200)}`,
     ).join('\n\n')
 
-    const systemPrompt = `You are a content strategist and expert B2B blog writer${client.name ? ` for ${client.name}` : ''}.
+    const buildSystemPrompt = (priorTitles: string[]) => {
+      const avoidClause = priorTitles.length > 0
+        ? `\nDo NOT cover the same angle as these already-written blogs:\n${priorTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}\nPick a completely fresh angle from the research.`
+        : ''
+      return `You are a content strategist and expert B2B blog writer${client.name ? ` for ${client.name}` : ''}.
 You have been given a curated set of recent industry news articles (from ${timeframeLabel}).
-Your job is to synthesise these into ${blogCount} distinct, publication-ready blog posts.
+Write ONE publication-ready blog post that synthesises insights from these articles.${avoidClause}
 ${toneOfVoice ? `\nBrand voice: ${toneOfVoice}` : ''}
 
-Each blog must take a DIFFERENT angle or insight from the research — no overlap in topic focus.
-${blogCount > 1 ? 'Do NOT repeat the same insight or conclusion across multiple blogs.' : ''}
-
-For EACH blog:
+Blog requirements:
 - Title: compelling, SEO-friendly (no clickbait)
 - 700–950 words of substantive content
 - Structure: engaging intro → 3–4 H2 sections → concise conclusion
@@ -378,74 +379,59 @@ For EACH blog:
 - End with a ## Sources section listing the actual URLs used from the articles above
 - No generic filler — every paragraph must add insight from the research
 
-For EACH blog also write:
+Also write:
 - LinkedIn post: 150–200 words, punchy hook, 3 key bullet takeaways, CTA to read the blog
 - Image prompt: describe a professional blog header image (subject, style, composition, lighting, mood — no text or logos)
 
-Return ONLY valid JSON — no markdown fences, nothing outside the JSON:
-{
-  "blogs": [
-    {
-      "title": "string",
-      "slug": "url-friendly-slug",
-      "excerpt": "2-sentence summary",
-      "content": "Full markdown with inline [source: x] citations and ## Sources section",
-      "sources": ["url1", "url2"],
-      "linkedIn": {
-        "post": "LinkedIn post text",
-        "imagePrompt": "Detailed image generation prompt"
-      }
+Use EXACTLY this format with these delimiter lines — nothing before or after:
+%%TITLE%%
+[title here]
+%%SLUG%%
+[url-friendly-slug]
+%%EXCERPT%%
+[2-sentence summary]
+%%CONTENT%%
+[full markdown blog content]
+%%LINKEDIN%%
+[linkedin post text]
+%%IMAGE_PROMPT%%
+[image generation prompt]
+%%SOURCES%%
+[one URL per line]`
     }
-  ]
-}`
 
     const userPrompt = `Research topics: ${topics.join(', ')}
 Client: ${client.name}
 Timeframe: ${timeframeLabel}
 
 NEWS ARTICLES FOUND (${articles.length} articles):
-${articleDigest}
+${articleDigest}`
 
-Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
-
-    const sanitizeJson = (raw: string): string => {
-      let inString = false, escaped = false, out = ''
-      for (const ch of raw) {
-        if (escaped) { out += ch; escaped = false; continue }
-        if (ch === '\\' && inString) { out += ch; escaped = true; continue }
-        if (ch === '"') { inString = !inString; out += ch; continue }
-        if (inString) {
-          if (ch === '\n') { out += '\\n'; continue }
-          if (ch === '\r') { out += '\\r'; continue }
-          if (ch === '\t') { out += '\\t'; continue }
-        }
-        out += ch
+    const parseBlog = (text: string): GeneratedBlog | null => {
+      const get = (key: string, nextKey: string) => {
+        const re = new RegExp(`%%${key}%%\\s*([\\s\\S]*?)\\s*(?=%%${nextKey}%%|$)`)
+        return text.match(re)?.[1]?.trim() ?? ''
       }
-      return out
+      const title       = get('TITLE',        'SLUG')
+      const slug        = get('SLUG',         'EXCERPT')
+      const excerpt     = get('EXCERPT',      'CONTENT')
+      const content     = get('CONTENT',      'LINKEDIN')
+      const post        = get('LINKEDIN',     'IMAGE_PROMPT')
+      const imagePrompt = get('IMAGE_PROMPT', 'SOURCES')
+      const sourcesRaw  = get('SOURCES',      'END_NEVER_MATCHES')
+      if (!title || !content) {
+        console.warn('[research-and-write] delimiter parse failed — missing title or content')
+        return null
+      }
+      const sources  = sourcesRaw.split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))
+      const autoSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      return { title, slug: slug || autoSlug, excerpt, content, sources, linkedIn: { post, imagePrompt } }
     }
 
-    const parseBlogs = (text: string): GeneratedBlog[] => {
-      try {
-        const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
-        const match = stripped.match(/\{[\s\S]*\}/)
-        if (!match) return []
-        const p = JSON.parse(sanitizeJson(match[0])) as { blogs?: GeneratedBlog[] }
-        return Array.isArray(p.blogs) ? p.blogs : []
-      } catch (e) {
-        console.warn('[research-and-write] JSON parse failed:', (e as Error).message)
-        return []
-      }
-    }
-
-    // One blog per call — single-blog JSON is nearly never malformed
-    const BATCH = 1
     let blogs: GeneratedBlog[] = []
     let tokensUsed = 0
-    for (let offset = 0; offset < blogCount; offset += BATCH) {
-      const n = Math.min(BATCH, blogCount - offset)
-      const batchSystemPrompt = systemPrompt
-        .replace(`into ${blogCount} distinct`, `into ${n} distinct`)
-        + (offset > 0 ? `\nThese are blogs ${offset + 1}–${offset + n} in a series; take fresh angles not covered by earlier blogs.` : '')
+    for (let i = 0; i < blogCount; i++) {
+      const priorTitles = blogs.map(b => b.title).filter(Boolean)
       try {
         const result = await callModel(
           {
@@ -454,15 +440,15 @@ Write ${blogCount} blog post${blogCount > 1 ? 's' : ''} from this research.`
             api_key_ref:   'ANTHROPIC_API_KEY',
             temperature:   0.65,
             max_tokens:    8192,
-            system_prompt: batchSystemPrompt,
+            system_prompt: buildSystemPrompt(priorTitles),
           },
           userPrompt,
         )
         tokensUsed += result.tokens_used ?? 0
-        blogs = blogs.concat(parseBlogs(result.text))
+        const blog = parseBlog(result.text)
+        if (blog) blogs.push(blog)
       } catch (err) {
-        console.error(`[research-and-write] batch ${offset}–${offset + n} failed:`, err)
-        // continue — return whatever batches succeeded
+        console.error(`[research-and-write] blog ${i + 1} failed:`, err)
       }
     }
     if (!blogs.length) return reply.code(500).send({ error: 'Generation failed — check API connectivity or try again' })
