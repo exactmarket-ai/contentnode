@@ -1020,6 +1020,18 @@ function AssessmentDetail({
             </Button>
           )}
 
+          {/* Send to Workflow — shown once exec presentation exists */}
+          {execPresentation && (
+            <Button
+              size="sm"
+              onClick={() => setSendToWorkflowOpen(true)}
+              className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Icons.Send className="h-3.5 w-3.5" />
+              Create Presentation
+            </Button>
+          )}
+
           {/* Save indicator */}
           {saving && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           {!saving && saved && <span className="text-[11px] text-emerald-600 font-medium">Saved</span>}
