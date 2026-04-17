@@ -38,6 +38,7 @@ interface Assessment {
   notes: string | null
   serviceMap: string | null
   execPresentation: string | null
+  slideDeck: string | null
   totalScore: number | null
   createdAt: string
   updatedAt: string
@@ -675,6 +676,10 @@ function AssessmentDetail({
   const [status,        setStatus]        = useState(initial.status)
   const [serviceMap,       setServiceMap]       = useState(initial.serviceMap ?? '')
   const [execPresentation, setExecPresentation] = useState(initial.execPresentation ?? '')
+  const [slideDeck,        setSlideDeck]        = useState(initial.slideDeck ?? '')
+  const [generatingSlides, setGeneratingSlides] = useState(false)
+  const [slidesError,      setSlidesError]      = useState<string | null>(null)
+  const [slidesOpen,       setSlidesOpen]       = useState(false)
   const [saving,           setSaving]           = useState(false)
   const [saved,            setSaved]            = useState(false)
   const [researching,      setResearching]      = useState(false)
@@ -704,6 +709,7 @@ function AssessmentDetail({
     setStatus(initial.status)
     setServiceMap(initial.serviceMap ?? '')
     setExecPresentation(initial.execPresentation ?? '')
+    setSlideDeck(initial.slideDeck ?? '')
   }, [initial.id]) // only re-sync on different assessment, not every update
 
   const save = useCallback(async (
@@ -883,6 +889,36 @@ function AssessmentDetail({
     } finally {
       setGeneratingExec(false)
     }
+  }
+
+  const handleGenerateSlides = async () => {
+    setGeneratingSlides(true)
+    setSlidesError(null)
+    try {
+      const res = await apiFetch(`/api/v1/prospect-assessments/${assessment.id}/generate-slides`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { setSlidesError(json?.error ?? `Error ${res.status}`); return }
+      const updated = json.data as Assessment
+      setSlideDeck(updated.slideDeck ?? '')
+      setAssessment(updated)
+      onUpdated(updated)
+      setSlidesOpen(true)
+    } catch {
+      setSlidesError('Network error — check your connection and try again')
+    } finally {
+      setGeneratingSlides(false)
+    }
+  }
+
+  const handleDownloadSlides = () => {
+    if (!slideDeck) return
+    const blob = new Blob([slideDeck], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_slides.html`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started
@@ -1248,6 +1284,95 @@ function AssessmentDetail({
                 <MarkdownBlock text={execPresentation} />
               ) : null}
             </div>
+          </div>
+        )}
+
+        {/* Slides error */}
+        {slidesError && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5">
+            <Icons.AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+            <p className="text-xs text-red-700 flex-1">{slidesError}</p>
+            <button onClick={() => setSlidesError(null)} className="text-red-400 hover:text-red-600"><Icons.X className="h-3.5 w-3.5" /></button>
+          </div>
+        )}
+
+        {/* Slide Deck ── designed from exec presentation */}
+        {(slideDeck || slidesOpen) && (
+          <div className="rounded-xl border border-border bg-white overflow-hidden">
+            <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+              <Icons.GalleryHorizontal className="h-4 w-4 text-indigo-500" />
+              <span className="text-sm font-semibold text-foreground flex-1">Slide Deck</span>
+              {slideDeck && (
+                <>
+                  <button
+                    onClick={() => void handleGenerateSlides()}
+                    disabled={generatingSlides}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    {generatingSlides ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.RefreshCw className="h-3.5 w-3.5" />}
+                    Regenerate
+                  </button>
+                  <a
+                    href={`data:text/html;charset=utf-8,${encodeURIComponent(slideDeck)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Icons.ExternalLink className="h-3.5 w-3.5" />
+                    Full screen
+                  </a>
+                  <button
+                    onClick={handleDownloadSlides}
+                    className="flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-700 transition-colors"
+                  >
+                    <Icons.Download className="h-3.5 w-3.5" />
+                    Download HTML
+                  </button>
+                </>
+              )}
+              <button onClick={() => setSlidesOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <Icons.ChevronUp className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              {generatingSlides && !slideDeck ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Icons.Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
+                  <p className="text-sm font-medium text-foreground">Creative Director is reviewing the content…</p>
+                  <p className="text-[11px] text-muted-foreground">Step 1 of 2 — designing layout and colour palette</p>
+                </div>
+              ) : slideDeck ? (
+                <div className="rounded-lg border border-border overflow-hidden" style={{ height: 420 }}>
+                  <iframe
+                    srcDoc={slideDeck}
+                    className="w-full h-full"
+                    sandbox="allow-same-origin allow-scripts"
+                    title="Slide Deck Preview"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Slide deck CTA — shown once exec presentation exists */}
+        {execPresentation && !slideDeck && !slidesOpen && !generatingSlides && (
+          <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 px-5 py-4 flex items-center gap-4">
+            <Icons.GalleryHorizontal className="h-5 w-5 text-indigo-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-foreground">Generate Slide Deck</p>
+              <p className="text-[11px] text-muted-foreground">A Creative Director designs each slide — layout, colours, typography — then builds a full Reveal.js HTML presentation you can present directly or refine in nodePILOT.</p>
+            </div>
+            <Button
+              size="sm"
+              className="gap-1.5 shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white"
+              onClick={() => void handleGenerateSlides()}
+              disabled={generatingSlides}
+            >
+              {generatingSlides ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Sparkles className="h-3.5 w-3.5" />}
+              Design Slides
+            </Button>
           </div>
         )}
 

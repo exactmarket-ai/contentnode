@@ -1678,6 +1678,7 @@ model ProspectAssessment {
   totalScore   Float?   @map("total_score")
   serviceMap       String?  @map("service_map")       @db.Text
   execPresentation String?  @map("exec_presentation") @db.Text
+  slideDeck        String?  @map("slide_deck")        @db.Text
   createdById      String?  @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")

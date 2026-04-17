@@ -1439,6 +1439,170 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
       .send(buffer)
   })
 
+  // ── Generate Slide Deck (two-step: Creative Director → Slide Builder) ────────
+  app.post('/:id/generate-slides', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
+    if (!assessment) return reply.code(404).send({ error: 'Not found' })
+    if (!assessment.execPresentation) {
+      return reply.code(400).send({ error: 'Generate the Executive Presentation first — slides are built from that content' })
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
+
+    const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
+
+    // ── Step 1: Creative Director ─────────────────────────────────────────────
+    // Reads the slide content and produces a concrete design brief
+    const cdResponse = await anthropic.messages.create({
+      model:      'claude-sonnet-4-5',
+      max_tokens: 2000,
+      system: `You are a senior creative director at a top-tier B2B design agency.
+Your job is to produce a concise DESIGN BRIEF for a presentation deck.
+Read the slide content provided and output a JSON design brief — nothing else.
+
+The brief must specify:
+{
+  "palette": {
+    "background": "<hex>",   // slide background (light or dark, your choice)
+    "surface":    "<hex>",   // card / section backgrounds
+    "primary":    "<hex>",   // headings and key text
+    "accent":     "<hex>",   // CTAs, highlights, callout numbers
+    "muted":      "<hex>"    // body text / labels
+  },
+  "fonts": {
+    "heading": "<Google Font name>",
+    "body":    "<Google Font name>"
+  },
+  "style": "<2-3 sentence visual direction: layout mood, spacing, iconography, etc.>",
+  "slideLayouts": [
+    { "slideNumber": 1, "layout": "title-splash|two-column|stat-grid|quote-pullout|icon-list|timeline|team-grid|cta-close", "notes": "<one line on what makes this slide distinctive>" }
+    // ... one entry per slide
+  ]
+}
+
+Choose layouts that match the slide's PURPOSE, not just its content:
+- Title/cover slides → title-splash
+- Bullet-heavy content → icon-list or two-column
+- Metrics or numbers → stat-grid
+- Customer quote or testimonial → quote-pullout
+- Process or phases → timeline
+- Team or headcount → team-grid
+- Final CTA or close → cta-close`,
+      messages: [{
+        role:    'user',
+        content: `Prospect: ${assessment.name}\n\nSLIDE CONTENT:\n\n${assessment.execPresentation.slice(0, 8000)}`,
+      }],
+    })
+
+    let designBrief: {
+      palette: Record<string, string>
+      fonts: { heading: string; body: string }
+      style: string
+      slideLayouts: Array<{ slideNumber: number; layout: string; notes: string }>
+    }
+    try {
+      const cdText = cdResponse.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('')
+      const jsonMatch = cdText.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('no JSON')
+      designBrief = JSON.parse(jsonMatch[0])
+    } catch {
+      // Fallback brief if parsing fails
+      designBrief = {
+        palette: { background: '#0F172A', surface: '#1E293B', primary: '#F8FAFC', accent: '#6366F1', muted: '#94A3B8' },
+        fonts:   { heading: 'Inter', body: 'Inter' },
+        style:   'Clean, dark executive presentation. Strong typographic hierarchy. Generous whitespace.',
+        slideLayouts: [],
+      }
+    }
+
+    // ── Step 2: Slide Builder ─────────────────────────────────────────────────
+    // Executes the design brief into a full Reveal.js HTML presentation
+    const layoutGuide = designBrief.slideLayouts.map((s) => `Slide ${s.slideNumber}: ${s.layout} — ${s.notes}`).join('\n')
+    const googleFonts = `${designBrief.fonts.heading}:wght@400;600;700|${designBrief.fonts.body}:wght@400;500`.replace(/ /g, '+')
+
+    const builderResponse = await anthropic.messages.create({
+      model:      'claude-sonnet-4-5',
+      max_tokens: 8096,
+      system: `You are an expert frontend developer turning design briefs into production-quality Reveal.js presentations.
+
+OUTPUT RULES:
+- Return ONLY the raw HTML file. No markdown fences, no explanation.
+- Start with <!DOCTYPE html>.
+- Use Reveal.js 4 via CDN: https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.esm.js
+- Load Reveal.js CSS: https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.css
+- Load Google Font: https://fonts.googleapis.com/css2?family=${googleFonts}&display=swap
+- Each slide is a <section> inside <div class="reveal"><div class="slides">
+- Apply the design brief PRECISELY — use the exact hex values provided.
+- Each slide layout must match its specified type exactly:
+  • title-splash: full-bleed background, company name large, tagline, logo placeholder
+  • two-column: 50/50 split, heading spans full width above columns
+  • stat-grid: 3-4 large metric numbers with labels in a grid, accent color numbers
+  • quote-pullout: large quotation mark, italic quote text, attribution below
+  • icon-list: heading + 3-5 items each with an emoji or unicode icon + short text
+  • timeline: horizontal or vertical phases with connectors
+  • team-grid: cards with name, title, 2-3 bullets
+  • cta-close: centered, large CTA headline, contact info, logo
+- NO bullets unless the layout specifically calls for a list.
+- Presenter notes via <aside class="notes"> on every slide.
+- Initialize Reveal: Reveal.initialize({ hash: true, transition: 'fade', backgroundTransition: 'fade' })`,
+      messages: [{
+        role:    'user',
+        content: `DESIGN BRIEF:
+Palette: ${JSON.stringify(designBrief.palette)}
+Fonts: ${designBrief.fonts.heading} (heading) / ${designBrief.fonts.body} (body)
+Style direction: ${designBrief.style}
+
+SLIDE LAYOUT ASSIGNMENTS:
+${layoutGuide}
+
+SLIDE CONTENT:
+${assessment.execPresentation}`,
+      }],
+    })
+
+    let html = builderResponse.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim()
+
+    // Strip accidental fences
+    if (html.startsWith('```html')) html = html.slice(7)
+    else if (html.startsWith('```')) html = html.slice(3)
+    if (html.endsWith('```')) html = html.slice(0, -3).trimEnd()
+
+    if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
+      return reply.code(500).send({ error: 'Slide generation failed — model did not return valid HTML' })
+    }
+
+    const updated = await prisma.prospectAssessment.update({
+      where: { id },
+      data:  { slideDeck: html },
+    })
+
+    return reply.send({ data: updated })
+  })
+
+  // ── Download Slide Deck as HTML ────────────────────────────────────────────
+  app.post('/:id/download/slides', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
+    if (!assessment) return reply.code(404).send({ error: 'Not found' })
+    if (!assessment.slideDeck) return reply.code(400).send({ error: 'No slide deck generated yet' })
+
+    const safeName = assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    return reply
+      .header('Content-Type', 'text/html; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="${safeName}_slides.html"`)
+      .send(assessment.slideDeck)
+  })
+
   // ── Download Assessment Report as .docx ────────────────────────────────────
   app.post('/:id/download/report', async (req, reply) => {
     const { agencyId } = req.auth
