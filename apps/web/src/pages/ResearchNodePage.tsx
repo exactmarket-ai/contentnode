@@ -30,6 +30,7 @@ interface Assessment {
   findings: Record<string, string> | null
   notes: string | null
   serviceMap: string | null
+  execPresentation: string | null
   totalScore: number | null
   createdAt: string
   updatedAt: string
@@ -381,18 +382,23 @@ function AssessmentDetail({
   const [findings,      setFindings]      = useState<Record<string, string>>(initial.findings ?? {})
   const [notes,         setNotes]         = useState(initial.notes ?? '')
   const [status,        setStatus]        = useState(initial.status)
-  const [serviceMap,    setServiceMap]    = useState(initial.serviceMap ?? '')
-  const [saving,        setSaving]        = useState(false)
-  const [saved,         setSaved]         = useState(false)
-  const [researching,   setResearching]   = useState(false)
-  const [researchError, setResearchError] = useState<string | null>(null)
-  const [generatingMap, setGeneratingMap] = useState(false)
-  const [mapError,      setMapError]      = useState<string | null>(null)
-  const [mapOpen,       setMapOpen]       = useState(false)
-  const [copied,        setCopied]        = useState(false)
+  const [serviceMap,       setServiceMap]       = useState(initial.serviceMap ?? '')
+  const [execPresentation, setExecPresentation] = useState(initial.execPresentation ?? '')
+  const [saving,           setSaving]           = useState(false)
+  const [saved,            setSaved]            = useState(false)
+  const [researching,      setResearching]      = useState(false)
+  const [researchError,    setResearchError]    = useState<string | null>(null)
+  const [generatingMap,    setGeneratingMap]    = useState(false)
+  const [mapError,         setMapError]         = useState<string | null>(null)
+  const [mapOpen,          setMapOpen]          = useState(false)
+  const [generatingExec,   setGeneratingExec]   = useState(false)
+  const [execError,        setExecError]        = useState<string | null>(null)
+  const [execOpen,         setExecOpen]         = useState(false)
+  const [downloading,      setDownloading]      = useState<string | null>(null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const serviceMapRef = useRef<HTMLDivElement>(null)
+  const serviceMapRef  = useRef<HTMLDivElement>(null)
+  const execRef        = useRef<HTMLDivElement>(null)
 
   const liveTotal = Object.keys(scores).length > 0 ? calcTotal(scores) : null
   const tier = tierFor(liveTotal)
@@ -406,6 +412,7 @@ function AssessmentDetail({
     setNotes(initial.notes ?? '')
     setStatus(initial.status)
     setServiceMap(initial.serviceMap ?? '')
+    setExecPresentation(initial.execPresentation ?? '')
   }, [initial.id]) // only re-sync on different assessment, not every update
 
   const save = useCallback(async (
@@ -534,10 +541,57 @@ function AssessmentDetail({
     }
   }
 
-  const handleCopyMap = async () => {
-    await navigator.clipboard.writeText(serviceMap)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const handleDownload = async (endpoint: string, filename: string, key: string) => {
+    setDownloading(key)
+    try {
+      const res = await apiFetch(`/api/v1/prospect-assessments/${assessment.id}/${endpoint}`, {
+        method: 'POST',
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error((json as Record<string,string>)?.error ?? `Error ${res.status}`)
+      }
+      const blob = await res.blob()
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(link.href)
+    } catch (err) {
+      console.error('Download failed:', err)
+    } finally {
+      setDownloading(null)
+    }
+  }
+
+  const handleGenerateExecPresentation = async () => {
+    setGeneratingExec(true)
+    setExecError(null)
+    try {
+      // Force-save first so the API reads the latest scores/findings
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      await save(scores, findings, notes, status)
+
+      const res = await apiFetch(
+        `/api/v1/prospect-assessments/${assessment.id}/generate-exec-presentation`,
+        { method: 'POST' },
+      )
+      const json = await res.json()
+      if (!res.ok) {
+        setExecError(json?.error ?? `Error ${res.status}`)
+        return
+      }
+      const updated = json.data as Assessment
+      setExecPresentation(updated.execPresentation ?? '')
+      setAssessment(updated)
+      onUpdated(updated)
+      setExecOpen(true)
+      setTimeout(() => execRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    } catch {
+      setExecError('Network error — check your connection and try again')
+    } finally {
+      setGeneratingExec(false)
+    }
   }
 
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started
@@ -755,11 +809,30 @@ function AssessmentDetail({
                     Regenerate
                   </button>
                   <button
-                    onClick={() => void handleCopyMap()}
-                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => void handleDownload(
+                      'download/service-map',
+                      `${assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_service_map.docx`,
+                      'service-map',
+                    )}
+                    disabled={downloading === 'service-map'}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                   >
-                    {copied ? <Icons.Check className="h-3.5 w-3.5 text-emerald-600" /> : <Icons.Copy className="h-3.5 w-3.5" />}
-                    {copied ? 'Copied' : 'Copy'}
+                    {downloading === 'service-map'
+                      ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Icons.Download className="h-3.5 w-3.5" />
+                    }
+                    Download docx
+                  </button>
+                  <button
+                    onClick={() => void handleGenerateExecPresentation()}
+                    disabled={generatingExec}
+                    className="flex items-center gap-1 text-[11px] text-violet-600 hover:text-violet-700 transition-colors disabled:opacity-50"
+                  >
+                    {generatingExec
+                      ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Icons.Presentation className="h-3.5 w-3.5" />
+                    }
+                    {execPresentation ? 'Regen Exec Deck' : 'Create Executive Presentation'}
                   </button>
                 </>
               )}
@@ -795,6 +868,93 @@ function AssessmentDetail({
             <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => void handleGenerateServiceMap()}>
               <Icons.Sparkles className="h-3.5 w-3.5" />
               Generate
+            </Button>
+          </div>
+        )}
+
+        {/* Executive Presentation ── generated from template */}
+        {execError && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 shrink-0">
+            <Icons.AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+            <p className="text-xs text-red-700 flex-1">{execError}</p>
+            <button onClick={() => setExecError(null)} className="text-red-400 hover:text-red-600">
+              <Icons.X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        {(execPresentation || execOpen) && (
+          <div ref={execRef} className="rounded-xl border border-border bg-white overflow-hidden">
+            {/* Exec presentation header */}
+            <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+              <Icons.Presentation className="h-4 w-4 text-violet-500" />
+              <span className="text-sm font-semibold text-foreground flex-1">Executive Presentation</span>
+              {execPresentation && (
+                <>
+                  <button
+                    onClick={() => void handleGenerateExecPresentation()}
+                    disabled={generatingExec}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    {generatingExec
+                      ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Icons.RefreshCw className="h-3.5 w-3.5" />
+                    }
+                    Regenerate
+                  </button>
+                  <button
+                    onClick={() => void handleDownload(
+                      'download/exec-presentation',
+                      `${assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exec_presentation.docx`,
+                      'exec',
+                    )}
+                    disabled={downloading === 'exec'}
+                    className="flex items-center gap-1 text-[11px] text-violet-600 hover:text-violet-700 transition-colors disabled:opacity-50"
+                  >
+                    {downloading === 'exec'
+                      ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Icons.Download className="h-3.5 w-3.5" />
+                    }
+                    Download docx
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setExecOpen(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Icons.ChevronUp className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {generatingExec && !execPresentation ? (
+                <div className="flex items-center gap-3 py-8 justify-center">
+                  <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Generating executive presentation from assessment data…</p>
+                </div>
+              ) : execPresentation ? (
+                <MarkdownBlock text={execPresentation} />
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Exec presentation CTA — shown after service map exists but no exec deck yet */}
+        {serviceMap && !execPresentation && !execOpen && !generatingExec && (
+          <div className="rounded-xl border border-dashed border-violet-200 bg-violet-50/40 px-5 py-4 flex items-center gap-4">
+            <Icons.Presentation className="h-5 w-5 text-violet-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-foreground">Create Executive Presentation</p>
+              <p className="text-[11px] text-muted-foreground">Generate a 13-slide capabilities deck tailored to this prospect's gaps and opportunities.</p>
+            </div>
+            <Button
+              size="sm"
+              className="gap-1.5 shrink-0 bg-violet-600 hover:bg-violet-700 text-white"
+              onClick={() => void handleGenerateExecPresentation()}
+            >
+              <Icons.Presentation className="h-3.5 w-3.5" />
+              Create
             </Button>
           </div>
         )}

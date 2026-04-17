@@ -5,19 +5,26 @@
  * Agency-scoped — no client attachment. Owner/admin only.
  *
  * Routes:
- *   GET    /                      — list
- *   POST   /                      — create
- *   GET    /:id                   — get one
- *   PATCH  /:id                   — update (scores, findings, status, notes)
- *   DELETE /:id                   — delete
- *   POST   /:id/run-research      — crawl prospect site → auto-populate findings
- *   POST   /:id/generate-service-map — use agency brain + scores → generate proposal map
+ *   GET    /                              — list
+ *   POST   /                              — create
+ *   GET    /:id                           — get one
+ *   PATCH  /:id                           — update
+ *   DELETE /:id                           — delete
+ *   POST   /:id/run-research              — crawl → findings (+ autoScore=true for quick)
+ *   POST   /:id/generate-service-map      — agency brain + scores → service map
+ *   POST   /:id/generate-exec-presentation — fill exec deck template with prospect data
+ *   POST   /:id/download/service-map      — download service map as .docx
+ *   POST   /:id/download/exec-presentation — download exec presentation as .docx
  */
 
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
 import { prisma }               from '@contentnode/database'
+import {
+  Document, Packer, Paragraph, TextRun, HeadingLevel,
+  BorderStyle, AlignmentType,
+} from 'docx'
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -516,6 +523,490 @@ Numbered list. Each entry: Exact Market service name in bold, one-line rationale
     .trim()
 }
 
+// ─── Markdown → .docx converter ──────────────────────────────────────────────
+
+const DOCX_BRAND  = '1B1B2F'
+const DOCX_ACCENT = '4F46E5'
+const DOCX_MID    = '6B7280'
+const DOCX_RULE   = 'E5E7EB'
+
+function pt(n: number) { return n * 20 }
+
+function parseInline(text: string): TextRun[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return parts.flatMap((p) =>
+    p.startsWith('**') && p.endsWith('**')
+      ? [new TextRun({ text: p.slice(2, -2), bold: true, color: DOCX_BRAND, font: 'Calibri' })]
+      : p ? [new TextRun({ text: p, color: DOCX_BRAND, font: 'Calibri', size: pt(11) })]
+      : [],
+  )
+}
+
+function mdToParagraphs(markdown: string): Paragraph[] {
+  const result: Paragraph[] = []
+  for (const raw of markdown.split('\n')) {
+    const line = raw.trimEnd()
+    const trimmed = line.trim()
+
+    // Horizontal rule or em-dash separator
+    if (!trimmed || trimmed === '---' || trimmed === '⸻' || trimmed === '—') {
+      result.push(new Paragraph({
+        spacing: { before: pt(6), after: pt(6) },
+        border: trimmed ? { bottom: { style: BorderStyle.SINGLE, size: 4, color: DOCX_RULE } } : undefined,
+        children: [],
+      }))
+      continue
+    }
+
+    // Slide heading: "Slide N — Title"
+    if (/^Slide \d+\s*[—–-]/.test(trimmed)) {
+      result.push(new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        pageBreakBefore: result.length > 0,
+        spacing: { before: pt(0), after: pt(10) },
+        children: [new TextRun({ text: trimmed, bold: true, size: pt(16), color: DOCX_ACCENT, font: 'Calibri' })],
+      }))
+      continue
+    }
+
+    // ## Section header
+    if (trimmed.startsWith('## ')) {
+      result.push(new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: pt(14), after: pt(4) },
+        children: [new TextRun({ text: trimmed.slice(3), bold: true, size: pt(13), color: DOCX_ACCENT, font: 'Calibri' })],
+      }))
+      continue
+    }
+
+    // ### Sub-header
+    if (trimmed.startsWith('### ')) {
+      result.push(new Paragraph({
+        heading: HeadingLevel.HEADING_3,
+        spacing: { before: pt(10), after: pt(2) },
+        children: [new TextRun({ text: trimmed.slice(4), bold: true, size: pt(12), color: DOCX_BRAND, font: 'Calibri' })],
+      }))
+      continue
+    }
+
+    // Standalone label line (no bullet, follows an empty line) — bold sub-label
+    if (!trimmed.startsWith('-') && !trimmed.startsWith('•') && !trimmed.startsWith('*') && !/^\d+\./.test(trimmed)
+        && trimmed.length < 80 && trimmed === trimmed.trimStart() && !/\s{2,}/.test(trimmed)) {
+      // Check if this is a standalone label (short, no punctuation at end or ends with colon)
+      const isLabel = /^[A-Z]/.test(trimmed) && (trimmed.endsWith(':') || !/[.!?]$/.test(trimmed))
+      if (isLabel && trimmed.length < 50) {
+        result.push(new Paragraph({
+          spacing: { before: pt(8), after: pt(2) },
+          children: [new TextRun({ text: trimmed, bold: true, size: pt(11), color: DOCX_BRAND, font: 'Calibri' })],
+        }))
+        continue
+      }
+    }
+
+    // Bullet point (-, •, *)
+    if (/^[-•*]\s+/.test(trimmed) || /^•\t/.test(trimmed)) {
+      const content = trimmed.replace(/^[-•*]\s+/, '').replace(/^•\t/, '')
+      result.push(new Paragraph({
+        bullet: { level: 0 },
+        spacing: { before: pt(2), after: pt(2) },
+        indent: { left: pt(24) },
+        children: parseInline(content),
+      }))
+      continue
+    }
+
+    // Numbered list
+    const numMatch = trimmed.match(/^(\d+)\.\s+(.+)$/)
+    if (numMatch) {
+      result.push(new Paragraph({
+        spacing: { before: pt(4), after: pt(2) },
+        indent: { left: pt(24), hanging: pt(16) },
+        children: [
+          new TextRun({ text: `${numMatch[1]}.  `, bold: true, color: DOCX_MID, font: 'Calibri', size: pt(11) }),
+          ...parseInline(numMatch[2]),
+        ],
+      }))
+      continue
+    }
+
+    // Normal paragraph
+    result.push(new Paragraph({
+      spacing: { before: pt(3), after: pt(3) },
+      children: parseInline(trimmed),
+    }))
+  }
+  return result
+}
+
+async function buildDocx(title: string, subtitle: string | null, content: string): Promise<Buffer> {
+  const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: { font: 'Calibri', size: pt(11), color: DOCX_BRAND },
+        },
+      },
+    },
+    sections: [{
+      properties: {
+        page: {
+          margin: { top: pt(72), bottom: pt(72), left: pt(72), right: pt(72) },
+        },
+      },
+      children: [
+        new Paragraph({
+          spacing: { before: 0, after: pt(4) },
+          children: [new TextRun({ text: title, bold: true, size: pt(22), color: DOCX_BRAND, font: 'Calibri' })],
+        }),
+        ...(subtitle ? [new Paragraph({
+          spacing: { before: 0, after: pt(16) },
+          children: [new TextRun({ text: subtitle, size: pt(11), color: DOCX_MID, font: 'Calibri' })],
+        })] : [new Paragraph({ spacing: { before: 0, after: pt(12) }, children: [] })]),
+        ...mdToParagraphs(content),
+      ],
+    }],
+  })
+  return Buffer.from(await Packer.toBuffer(doc))
+}
+
+// ─── Executive presentation template ─────────────────────────────────────────
+
+const EXEC_PRESENTATION_TEMPLATE = `Exact Market Executive Presentation
+
+Managed Services Opportunity Deck
+
+⸻
+
+Slide 1 — Who is Exact Market
+
+TRUST
+18 years in the technology industry
+Female-founded in 2007
+Proven track record supporting global enterprise and high-growth technology companies
+
+PRECISION
+Expert team of strategists, technical marketers, and ecosystem champions
+Deep alignment to complex partner ecosystems (SI, MSP, ISV, hyperscalers)
+Data-driven execution across the full GTM lifecycle
+
+VALUE
+Industry's first and only managed services model for marketing execution
+Flexible, scalable delivery aligned to business priorities
+Outcome-oriented engagement model
+
+SPEED
+Demand Factory of writers, designers, and producers
+Burst capacity for rapid execution
+Always-on delivery model with enterprise-grade velocity
+
+⸻
+
+Slide 2 — Industry Context
+
+Market Landscape Overview
+[Insert Customer Industry 1, 2, 3 context]
+
+Key Market Dynamics
+	•	Increasing competition across ecosystem-led growth models
+	•	Buyer expectations shifting toward solution-led, outcome-driven messaging
+	•	Partner ecosystems becoming primary revenue channels
+
+Analyst Insights (Tier 1)
+	•	[Insert Gartner/Forrester/IDC stat 1] and citation URL
+	•	[Insert Gartner/Forrester/IDC stat 2] and citation URL
+	•	[Insert Gartner/Forrester/IDC stat 3] and citation URL
+
+Why Act Now
+	•	Market consolidation accelerating
+	•	First movers capturing disproportionate partner and buyer mindshare
+	•	Delayed execution leads to lost pipeline, partner disengagement, and reduced competitive positioning
+
+⸻
+
+Slide 3 — The Opportunity
+
+Observed Gap
+	•	Misalignment between market demand and current GTM execution
+	•	Under-leveraged partner ecosystem potential
+	•	Fragmented messaging across priority solutions
+
+Market Opportunity
+	•	Capture unmet demand in [specific solution / segment]
+	•	Strengthen positioning in high-growth verticals
+	•	Accelerate partner-driven pipeline generation
+
+Strategic Focus Areas
+	•	Clear solution positioning aligned to buyer outcomes
+	•	Scalable content and campaign engine
+	•	Ecosystem-led growth activation
+
+How Exact Market Helps
+	•	Translate market signals into an actionable GTM strategy
+	•	Build and execute high-impact campaigns at speed
+	•	Operationalize partner-led demand generation
+
+⸻
+
+Slide 4 — Recommended Initiatives
+	1.	Solution-Led Positioning Transformation
+	•	Refine messaging aligned to buyer pain points
+	•	Create unified narrative across channels
+	2.	Ecosystem Activation Strategy
+	•	Enable co-sell and partner-led campaigns
+	•	Develop joint value propositions
+	3.	Always-On Demand Engine
+	•	Build scalable campaign infrastructure
+	•	Activate continuous pipeline generation
+	4.	Content & Asset Modernisation
+	•	Develop high-impact thought leadership and sales enablement assets
+	•	Align content to buyer journey stages
+
+⸻
+
+Slide 5 — Building the Strategy
+
+Executive Approach
+	•	Align business objectives to measurable GTM outcomes
+	•	Prioritize high-impact growth levers
+	•	Sequence execution for rapid value realization
+
+Core Components
+	•	Market and audience segmentation
+	•	Solution positioning framework
+	•	Campaign architecture design
+	•	Partner integration model
+
+Operating Model
+	•	Centralized strategy with distributed execution
+	•	Continuous optimization loop
+	•	Data-led decision making
+
+⸻
+
+Slide 6 — Content Engine Kickstart
+
+Phase 1: Foundation (Weeks 1–4)
+	•	Messaging alignment
+	•	Priority solution definition
+	•	Campaign planning
+
+Phase 2: Activation (Weeks 5–8)
+	•	Content production
+	•	Campaign launch
+	•	Partner enablement rollout
+
+Phase 3: Acceleration (Weeks 9–12)
+	•	Performance optimization
+	•	Expansion across channels
+
+Beyond
+	•	Scaled demand engine
+	•	Continuous content production
+	•	Integrated partner ecosystem growth
+
+⸻
+
+Slide 7 — The Full Scope of Engagement
+
+Content & Brand Assets
+	•	Customer-facing decks and presentations
+	•	White papers and thought leadership
+	•	Solution-specific content by vertical
+
+Sales & Channel Enablement
+	•	Battle cards and competitive positioning
+	•	Solution briefs by buyer role
+	•	Co-sell materials for partners
+
+Demand & Campaign Execution
+	•	Campaign strategy and execution
+	•	Email nurture flows and sequences
+	•	Webinar and event content strategy
+
+⸻
+
+Slide 8 — GTM Priorities at a Glance
+
+Priority 1: [Insert Priority]
+Priority 2: [Insert Priority]
+Priority 3: [Insert Priority]
+
+Outcomes Expected
+	•	Increased pipeline generation
+	•	Stronger partner engagement
+	•	Improved market positioning
+
+⸻
+
+Slide 9 — Priority 1 Deep Dive
+
+Focus Area
+[Insert detailed priority]
+
+Key Actions
+	•	Action 1
+	•	Action 2
+	•	Action 3
+
+Expected Outcomes
+	•	Outcome 1
+	•	Outcome 2
+
+⸻
+
+Slide 10 — Priority 2 Deep Dive
+
+Focus Area
+[Insert detailed priority]
+
+Key Actions
+	•	Action 1
+	•	Action 2
+	•	Action 3
+
+Expected Outcomes
+	•	Outcome 1
+	•	Outcome 2
+
+⸻
+
+Slide 11 — Priority 3 Deep Dive
+
+Focus Area
+[Insert detailed priority]
+
+Key Actions
+	•	Action 1
+	•	Action 2
+	•	Action 3
+
+Expected Outcomes
+	•	Outcome 1
+	•	Outcome 2
+
+⸻
+
+Slide 12 — Engagement Timeline
+
+Weeks 1–4
+	•	Discovery and alignment
+	•	Strategy definition
+
+Weeks 5–8
+	•	Content and campaign activation
+
+Weeks 9–12
+	•	Optimization and scaling
+
+Ongoing
+	•	Continuous execution and improvement
+
+⸻
+
+Slide 13 — Next Steps
+
+Immediate Actions
+	•	Align on strategic priorities
+	•	Define initial scope and success metrics
+	•	Initiate kickstart phase
+
+Why Exact Market
+	•	Built to integrate seamlessly with your team
+	•	Proven managed services model
+	•	Speed, precision, and measurable impact
+
+Outcome
+A scalable, high-performance GTM engine designed to accelerate growth and maximize market opportunity`
+
+const EXEC_PRESENTATION_SYSTEM = `You are generating an executive capabilities presentation for an Exact Market sales meeting. You will receive a presentation template and a prospect's assessment data.
+
+TASK: Fill in every [Insert ...] placeholder and generic section with specific, evidence-based content drawn from the assessment findings and service map.
+
+RULES:
+- Keep Slide 1 (Who is Exact Market) EXACTLY as written — do not change a single word.
+- Replace ALL [Insert ...] placeholders — none should remain in your output.
+- Keep the exact slide structure, numbering, and formatting from the template.
+- Reference the prospect by name throughout the presentation.
+- For Slide 2 (Industry Context): Pull analyst context from the findings. If specific stats aren't available, write directionally accurate market context based on what's known about their industry.
+- For Slide 3 (The Opportunity): Use the specific gaps identified by low-scoring dimensions.
+- For Slide 4 (Recommended Initiatives): Keep the 4 initiative names but fill their bullets with specific actions for this prospect.
+- For Slides 8–11 (GTM Priorities): Use the top 3 service opportunities from the service map as the 3 priorities.
+- For Slide 13 (Next Steps): Tailor to the specific engagement recommended.
+- Every bullet should be specific and concrete — no generic placeholders.
+- Return the COMPLETE presentation document, all 13 slides.`
+
+async function generateExecPresentation(
+  assessment: {
+    name: string
+    url: string | null
+    industry: string | null
+    scores: Record<string, number> | null
+    findings: Record<string, string> | null
+    totalScore: number | null
+    serviceMap: string | null
+    notes: string | null
+  },
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+
+  const scores = assessment.scores ?? {}
+  const scoresBlock = Object.entries(WEIGHTS)
+    .map(([key]) => `- ${DIMENSION_LABELS[key]}: ${scores[key] != null ? `${scores[key]}/5` : 'not scored'}`)
+    .join('\n')
+
+  const findings = assessment.findings ?? {}
+  const findingsBlock = Object.entries(DIMENSION_LABELS)
+    .map(([key, label]) => findings[key] ? `**${label}:**\n${findings[key]}` : null)
+    .filter(Boolean)
+    .join('\n\n')
+
+  const tier = assessment.totalScore == null ? 'not yet scored'
+    : assessment.totalScore >= 4.5 ? 'Category Leader'
+    : assessment.totalScore >= 3.5 ? 'Strong Performer'
+    : assessment.totalScore >= 2.5 ? 'Developing / Inconsistent'
+    : assessment.totalScore >= 1.5 ? 'Weak Positioning'
+    : 'At Risk / Undefined'
+
+  const userPrompt = `PROSPECT: ${assessment.name}
+${assessment.url ? `WEBSITE: ${assessment.url}` : ''}
+${assessment.industry ? `INDUSTRY: ${assessment.industry}` : ''}
+OVERALL SCORE: ${assessment.totalScore != null ? `${assessment.totalScore}/5 — ${tier}` : 'Not scored'}
+
+DIMENSION SCORES:
+${scoresBlock}
+
+RESEARCH FINDINGS:
+${findingsBlock || 'No findings recorded.'}
+
+${assessment.serviceMap ? `SERVICE MAP (already generated):\n${assessment.serviceMap}` : ''}
+${assessment.notes ? `ANALYST NOTES:\n${assessment.notes}` : ''}
+
+---
+
+PRESENTATION TEMPLATE TO FILL IN:
+${EXEC_PRESENTATION_TEMPLATE}
+
+---
+
+Fill in all [Insert ...] placeholders and generic text with specific content for ${assessment.name}. Return the complete 13-slide presentation.`
+
+  const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
+
+  const response = await anthropic.messages.create({
+    model:      'claude-sonnet-4-5',
+    max_tokens: 5000,
+    system:     EXEC_PRESENTATION_SYSTEM,
+    messages:   [{ role: 'user', content: userPrompt }],
+  })
+
+  return response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim()
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 export async function prospectAssessmentRoutes(app: FastifyInstance) {
@@ -718,5 +1209,90 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     })
 
     return reply.send({ data: updated })
+  })
+
+  // ── Generate Executive Presentation ──────────────────────────────────────────
+  // Uses exec presentation template + assessment data → Claude fills all placeholders
+  app.post('/:id/generate-exec-presentation', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
+    if (!assessment) return reply.code(404).send({ error: 'Not found' })
+
+    let execPresentation: string
+    try {
+      execPresentation = await generateExecPresentation({
+        name:       assessment.name,
+        url:        assessment.url,
+        industry:   assessment.industry,
+        scores:     (assessment.scores ?? {}) as Record<string, number>,
+        findings:   (assessment.findings ?? {}) as Record<string, string>,
+        totalScore: assessment.totalScore,
+        serviceMap: assessment.serviceMap,
+        notes:      assessment.notes,
+      })
+    } catch (err) {
+      return reply.code(500).send({ error: err instanceof Error ? err.message : 'Failed to generate executive presentation' })
+    }
+
+    const updated = await prisma.prospectAssessment.update({
+      where: { id },
+      data:  { execPresentation },
+    })
+
+    return reply.send({ data: updated })
+  })
+
+  // ── Download Service Map as .docx ─────────────────────────────────────────────
+  app.post('/:id/download/service-map', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
+    if (!assessment) return reply.code(404).send({ error: 'Not found' })
+    if (!assessment.serviceMap) return reply.code(400).send({ error: 'No service map generated yet' })
+
+    const title    = `Service Map — ${assessment.name}`
+    const subtitle = assessment.url ?? null
+
+    let buffer: Buffer
+    try {
+      buffer = await buildDocx(title, subtitle, assessment.serviceMap)
+    } catch (err) {
+      return reply.code(500).send({ error: 'Failed to generate .docx file' })
+    }
+
+    const safeName = assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      .header('Content-Disposition', `attachment; filename="${safeName}_service_map.docx"`)
+      .send(buffer)
+  })
+
+  // ── Download Executive Presentation as .docx ───────────────────────────────
+  app.post('/:id/download/exec-presentation', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
+    if (!assessment) return reply.code(404).send({ error: 'Not found' })
+    if (!assessment.execPresentation) return reply.code(400).send({ error: 'No executive presentation generated yet' })
+
+    const title    = `Exact Market — Executive Presentation`
+    const subtitle = assessment.name
+
+    let buffer: Buffer
+    try {
+      buffer = await buildDocx(title, subtitle, assessment.execPresentation)
+    } catch (err) {
+      return reply.code(500).send({ error: 'Failed to generate .docx file' })
+    }
+
+    const safeName = assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      .header('Content-Disposition', `attachment; filename="${safeName}_exec_presentation.docx"`)
+      .send(buffer)
   })
 }

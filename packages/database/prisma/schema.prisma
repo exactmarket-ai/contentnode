@@ -1668,8 +1668,9 @@ model ProspectAssessment {
   findings     Json?
   notes        String?  @db.Text
   totalScore   Float?   @map("total_score")
-  serviceMap   String?  @map("service_map") @db.Text
-  createdById  String?  @map("created_by_id")
+  serviceMap       String?  @map("service_map")       @db.Text
+  execPresentation String?  @map("exec_presentation") @db.Text
+  createdById      String?  @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

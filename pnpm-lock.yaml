@@ -56,6 +56,9 @@ importers:
       croner:
         specifier: ^10.0.1
         version: 10.0.1
+      docx:
+        specifier: ^9.6.1
+        version: 9.6.1
       docxtemplater:
         specifier: ^3.68.5
         version: 3.68.5
