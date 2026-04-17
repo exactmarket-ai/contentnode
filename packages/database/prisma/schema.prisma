@@ -59,7 +59,8 @@ model Agency {
   clientDocStyles    ClientDocStyle[]
   docTemplates       DocTemplate[]
   docTemplateAssignments DocTemplateAssignment[]
-  prospectAssessments ProspectAssessment[]
+  prospectAssessments    ProspectAssessment[]
+  assessmentSnapshots    AssessmentSnapshot[]
   agencyBrainAttachments         AgencyBrainAttachment[]
   verticalBrainAttachments       VerticalBrainAttachment[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
@@ -1681,10 +1682,33 @@ model ProspectAssessment {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  agency    Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  snapshots AssessmentSnapshot[]
 
   @@index([agencyId])
   @@map("prospect_assessments")
+}
+
+// ─────────────────────────────────────────────
+// AssessmentSnapshot — historical run records for a ProspectAssessment
+// ─────────────────────────────────────────────
+model AssessmentSnapshot {
+  id           String   @id @default(cuid())
+  agencyId     String   @map("agency_id")
+  assessmentId String   @map("assessment_id")
+  source       String   @default("full")   // "full" | "quick"
+  findings     Json?
+  scores       Json?
+  totalScore   Float?   @map("total_score")
+  pagesScraped Int?     @map("pages_scraped")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  agency     Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  assessment ProspectAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+  @@index([agencyId])
+  @@map("assessment_snapshots")
 }
 
 // ─────────────────────────────────────────────

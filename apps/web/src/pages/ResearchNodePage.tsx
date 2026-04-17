@@ -19,6 +19,13 @@ import { ResearchPilot } from '@/components/pilot/ResearchPilot'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface AssessmentSnapshot {
+  id: string
+  source: string
+  totalScore: number | null
+  createdAt: string
+}
+
 interface Assessment {
   id: string
   name: string
@@ -34,6 +41,8 @@ interface Assessment {
   totalScore: number | null
   createdAt: string
   updatedAt: string
+  _count?: { snapshots: number }
+  snapshots?: AssessmentSnapshot[]  // latest 1 from list endpoint
 }
 
 // ─── Dimension metadata ───────────────────────────────────────────────────────
@@ -188,21 +197,43 @@ function AssessmentCard({
   a,
   onOpen,
   onDelete,
+  compareMode,
+  selected,
+  onToggleSelect,
 }: {
   a: Assessment
   onOpen: (a: Assessment) => void
   onDelete: (id: string) => void
+  compareMode?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
-  const sc   = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.not_started
-  const tier = tierFor(a.totalScore)
+  const sc       = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.not_started
+  const tier     = tierFor(a.totalScore)
+  const runCount = a._count?.snapshots ?? 0
+
   return (
     <div
-      className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
-      onClick={() => onOpen(a)}
+      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors ${
+        selected ? 'border-violet-400 bg-violet-50' : 'border-border hover:bg-muted/30'
+      }`}
+      onClick={() => compareMode && onToggleSelect ? onToggleSelect(a.id) : onOpen(a)}
     >
+      {compareMode && (
+        <input
+          type="checkbox"
+          checked={selected ?? false}
+          onChange={() => onToggleSelect?.(a.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="accent-violet-600 shrink-0"
+        />
+      )}
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-foreground leading-snug truncate">{a.name}</p>
         {a.url && <p className="text-[10px] text-muted-foreground truncate">{a.url}</p>}
+        {runCount > 1 && (
+          <p className="text-[9px] text-violet-600 font-medium mt-0.5">{runCount} runs tracked</p>
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {a.totalScore != null && (
@@ -214,13 +245,178 @@ function AssessmentCard({
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${sc.color}`}>
           {sc.label}
         </span>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(a.id) }}
-          title="Delete"
-          className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
-        >
-          <Icons.Trash2 className="h-3 w-3" />
+        {!compareMode && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(a.id) }}
+            title="Delete"
+            className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"
+          >
+            <Icons.Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Compare view ─────────────────────────────────────────────────────────────
+
+function CompareView({
+  ids,
+  onBack,
+}: {
+  ids: string[]
+  onBack: () => void
+}) {
+  const [assessments, setAssessments] = useState<Assessment[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiFetch('/api/v1/prospect-assessments/compare', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+      .then((r) => r.json())
+      .then(({ data }) => setAssessments(data ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [ids])
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-full">
+      <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="shrink-0 border-b border-border px-6 py-3 flex items-center gap-3">
+        <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
+          <Icons.ChevronLeft className="h-4 w-4" />
         </button>
+        <p className="text-xs font-semibold">Comparing {assessments.length} assessments</p>
+      </div>
+
+      {/* Table */}
+      <div className="flex-1 overflow-auto p-6">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left py-2 pr-4 text-muted-foreground font-medium w-44">Dimension</th>
+              {assessments.map((a) => (
+                <th key={a.id} className="text-left py-2 px-3 font-semibold min-w-[160px]">
+                  <p className="truncate">{a.name}</p>
+                  {a.totalScore != null && (
+                    <p className={`text-[11px] font-bold mt-0.5 ${tierFor(a.totalScore)?.color ?? ''}`}>
+                      {a.totalScore.toFixed(1)} — {tierFor(a.totalScore)?.label}
+                    </p>
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {DIMENSIONS.map((dim) => {
+              const scores = assessments.map((a) => a.scores?.[dim.key] ?? null)
+              const validScores = scores.filter((s): s is number => s != null)
+              const best  = validScores.length ? Math.max(...validScores) : null
+              const worst = validScores.length ? Math.min(...validScores) : null
+
+              return (
+                <tr key={dim.key} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                  <td className="py-3 pr-4 text-muted-foreground font-medium leading-snug">
+                    <div className="flex items-center gap-1.5">
+                      <dim.icon className="h-3 w-3 shrink-0" />
+                      <span className="text-[10px]">{dim.label}</span>
+                    </div>
+                    <span className="text-[9px] text-muted-foreground/60">{dim.weight}% weight</span>
+                  </td>
+                  {assessments.map((a, i) => {
+                    const score    = scores[i]
+                    const isBest   = score != null && score === best  && validScores.length > 1
+                    const isWorst  = score != null && score === worst && validScores.length > 1 && best !== worst
+                    return (
+                      <td key={a.id} className="py-3 px-3 align-top">
+                        {score != null ? (
+                          <div className="space-y-1">
+                            <div className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold ${
+                              isBest  ? 'bg-emerald-100 text-emerald-700' :
+                              isWorst ? 'bg-red-100 text-red-600' :
+                                        'bg-muted text-foreground'
+                            }`}>
+                              {score.toFixed(1)}
+                              {isBest  && <Icons.TrendingUp   className="h-3 w-3" />}
+                              {isWorst && <Icons.TrendingDown  className="h-3 w-3" />}
+                            </div>
+                            {/* Score bar */}
+                            <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${isBest ? 'bg-emerald-500' : isWorst ? 'bg-red-400' : 'bg-blue-400'}`}
+                                style={{ width: `${(score / 5) * 100}%` }}
+                              />
+                            </div>
+                            {a.findings?.[dim.key] && (
+                              <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-3 mt-1">
+                                {a.findings[dim.key]}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground/40 italic">Not scored</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+
+            {/* Total score row */}
+            <tr className="border-t-2 border-border bg-muted/30">
+              <td className="py-3 pr-4 font-semibold text-foreground text-[11px]">Overall Score</td>
+              {assessments.map((a) => {
+                const tier = tierFor(a.totalScore)
+                return (
+                  <td key={a.id} className="py-3 px-3">
+                    {a.totalScore != null ? (
+                      <div className={`text-sm font-bold ${tier?.color ?? ''}`}>
+                        {a.totalScore.toFixed(1)}
+                        <p className="text-[9px] font-medium">{tier?.label}</p>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground/40 italic">—</span>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Snapshot history row */}
+        <div className="mt-6 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Assessment History</p>
+          <div className="grid gap-3" style={{ gridTemplateColumns: `160px repeat(${assessments.length}, 1fr)` }}>
+            <div />
+            {assessments.map((a) => (
+              <div key={a.id} className="space-y-1">
+                {(a.snapshots ?? []).map((snap) => (
+                  <div key={snap.id} className="flex items-center gap-2 rounded border border-border px-2 py-1">
+                    <span className={`text-[9px] rounded px-1 font-medium ${snap.source === 'quick' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {snap.source === 'quick' ? 'quick' : 'full'}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground flex-1">{new Date(snap.createdAt).toLocaleDateString()}</span>
+                    {snap.totalScore != null && (
+                      <span className="text-[10px] font-bold">{snap.totalScore.toFixed(1)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -234,32 +430,56 @@ function TwoColumnLayout({
   onQuick,
   onDelete,
   onOpen,
+  compareMode,
+  selectedIds,
+  onToggleCompareMode,
+  onToggleSelect,
+  onCompare,
 }: {
   assessments: Assessment[]
   onNew: () => void
   onQuick: () => void
   onDelete: (id: string) => void
   onOpen: (a: Assessment) => void
+  compareMode: boolean
+  selectedIds: string[]
+  onToggleCompareMode: () => void
+  onToggleSelect: (id: string) => void
+  onCompare: () => void
 }) {
-  const manual = assessments.filter((a) => a.source !== 'quick')
-  const quick  = assessments.filter((a) => a.source === 'quick')
+  const [searchManual, setSearchManual] = useState('')
+  const [searchQuick,  setSearchQuick]  = useState('')
+
+  const manual = assessments.filter((a) => a.source !== 'quick' &&
+    (!searchManual || a.name.toLowerCase().includes(searchManual.toLowerCase()) || (a.url ?? '').toLowerCase().includes(searchManual.toLowerCase()))
+  )
+  const quick = assessments.filter((a) => a.source === 'quick' &&
+    (!searchQuick || a.name.toLowerCase().includes(searchQuick.toLowerCase()) || (a.url ?? '').toLowerCase().includes(searchQuick.toLowerCase()))
+  )
 
   return (
-    <div className="flex h-full divide-x divide-border">
+    <div className="relative flex h-full divide-x divide-border">
 
       {/* ── Left: researchNODE (manual) ───────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
         {/* Column header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3 shrink-0">
-          <div>
+        <div className="flex items-center gap-2 border-b border-border px-5 py-3 shrink-0">
+          <div className="shrink-0">
             <p className="text-xs font-semibold flex items-center gap-1.5">
               <Icons.Telescope className="h-3.5 w-3.5 text-muted-foreground" />
               researchNODE
             </p>
             <p className="text-[10px] text-muted-foreground mt-0.5">AI finds it. Humans make it matter.</p>
           </div>
-          <Button size="sm" className="gap-1.5 h-7 text-xs shrink-0 ml-3" onClick={onNew}>
+          <input
+            type="text"
+            value={searchManual}
+            onChange={(e) => setSearchManual(e.target.value)}
+            placeholder="Search…"
+            className="h-6 flex-1 rounded-md border border-border bg-background px-2 text-[10px] outline-none focus:ring-1 focus:ring-ring"
+          />
+          <Button size="sm" className="gap-1.5 h-7 text-xs shrink-0" onClick={onNew}>
             <Icons.Plus className="h-3 w-3" />
             New
           </Button>
@@ -290,7 +510,15 @@ function TwoColumnLayout({
             </div>
           ) : (
             manual.map((a) => (
-              <AssessmentCard key={a.id} a={a} onOpen={onOpen} onDelete={onDelete} />
+              <AssessmentCard
+                key={a.id}
+                a={a}
+                onOpen={onOpen}
+                onDelete={onDelete}
+                compareMode={compareMode}
+                selected={selectedIds.includes(a.id)}
+                onToggleSelect={onToggleSelect}
+              />
             ))
           )}
         </div>
@@ -300,15 +528,22 @@ function TwoColumnLayout({
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
         {/* Column header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3 shrink-0">
-          <div>
+        <div className="flex items-center gap-2 border-b border-border px-5 py-3 shrink-0">
+          <div className="shrink-0">
             <p className="text-xs font-semibold flex items-center gap-1.5">
               <Icons.Zap className="h-3.5 w-3.5 text-violet-500" />
               <span>researchNODE-<span className="text-violet-600">quick</span></span>
             </p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Zero interaction. Instant insight.</p>
           </div>
-          <Button size="sm" className="gap-1.5 h-7 text-xs shrink-0 ml-3" onClick={onQuick}>
+          <input
+            type="text"
+            value={searchQuick}
+            onChange={(e) => setSearchQuick(e.target.value)}
+            placeholder="Search…"
+            className="h-6 flex-1 rounded-md border border-border bg-background px-2 text-[10px] outline-none focus:ring-1 focus:ring-ring"
+          />
+          <Button size="sm" className="gap-1.5 h-7 text-xs shrink-0" onClick={onQuick}>
             <Icons.Plus className="h-3 w-3" />
             New
           </Button>
@@ -338,12 +573,40 @@ function TwoColumnLayout({
                 {quick.length} assessment{quick.length !== 1 ? 's' : ''}
               </p>
               {quick.map((a) => (
-                <AssessmentCard key={a.id} a={a} onOpen={onOpen} onDelete={onDelete} />
+                <AssessmentCard
+                  key={a.id}
+                  a={a}
+                  onOpen={onOpen}
+                  onDelete={onDelete}
+                  compareMode={compareMode}
+                  selected={selectedIds.includes(a.id)}
+                  onToggleSelect={onToggleSelect}
+                />
               ))}
             </>
           )}
         </div>
       </div>
+
+      {/* Compare mode bar */}
+      {compareMode && (
+        <div className="absolute bottom-0 left-0 right-0 border-t border-violet-200 bg-violet-50 px-6 py-3 flex items-center justify-between z-10">
+          <p className="text-xs text-violet-700 font-medium">
+            {selectedIds.length === 0 ? 'Select assessments to compare' : `${selectedIds.length} selected`}
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={onToggleCompareMode} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+            <Button
+              size="sm"
+              disabled={selectedIds.length < 2}
+              onClick={onCompare}
+              className="h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              Compare ({selectedIds.length})
+            </Button>
+          </div>
+        </div>
+      )}
 
     </div>
   )
@@ -1263,6 +1526,9 @@ export function ResearchNodePage() {
   const [showNew,      setShowNew]      = useState(false)
   const [showQuick,    setShowQuick]    = useState(false)
   const [activeDetail, setActiveDetail] = useState<Assessment | null>(null)
+  const [compareMode,  setCompareMode]  = useState(false)
+  const [selectedIds,  setSelectedIds]  = useState<string[]>([])
+  const [comparing,    setComparing]    = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -1293,6 +1559,18 @@ export function ResearchNodePage() {
     setActiveDetail(updated)
   }
 
+  const handleToggleCompareMode = () => {
+    setCompareMode((v) => !v)
+    setSelectedIds([])
+    setComparing(false)
+  }
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
   const pilotAssessment = activeDetail ?? assessments[0] ?? null
 
   return (
@@ -1300,11 +1578,26 @@ export function ResearchNodePage() {
 
       {/* Standard site banner */}
       <div className="shrink-0 border-b border-border px-6 py-4">
-        <h1 className="text-sm font-semibold flex items-center gap-2">
-          <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
-          researchNODE
-        </h1>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">Market positioning & competitive intelligence</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-sm font-semibold flex items-center gap-2">
+              <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
+              researchNODE
+            </h1>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Market positioning & competitive intelligence</p>
+          </div>
+          {!activeDetail && !comparing && (
+            <button
+              onClick={handleToggleCompareMode}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                compareMode ? 'bg-violet-100 text-violet-700' : 'text-muted-foreground hover:text-foreground border border-border'
+              }`}
+            >
+              <Icons.ArrowLeftRight className="h-3.5 w-3.5" />
+              {compareMode ? 'Cancel compare' : 'Compare'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content — two-column list OR full-width detail */}
@@ -1313,6 +1606,8 @@ export function ResearchNodePage() {
           <div className="flex items-center justify-center h-full">
             <Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
+        ) : comparing && selectedIds.length >= 2 ? (
+          <CompareView ids={selectedIds} onBack={() => { setComparing(false); setCompareMode(true) }} />
         ) : activeDetail ? (
           <AssessmentDetail
             initial={activeDetail}
@@ -1327,6 +1622,11 @@ export function ResearchNodePage() {
             onQuick={() => setShowQuick(true)}
             onDelete={handleDelete}
             onOpen={setActiveDetail}
+            compareMode={compareMode}
+            selectedIds={selectedIds}
+            onToggleCompareMode={handleToggleCompareMode}
+            onToggleSelect={handleToggleSelect}
+            onCompare={() => setComparing(true)}
           />
         )}
       </div>

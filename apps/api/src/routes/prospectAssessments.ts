@@ -1002,11 +1002,24 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
   // ── List ────────────────────────────────────────────────────────────────────
   app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
-    const { status } = req.query as Record<string, string>
+    const { status, q } = req.query as Record<string, string>
 
     const assessments = await prisma.prospectAssessment.findMany({
-      where: { agencyId, ...(status ? { status } : {}) },
+      where: {
+        agencyId,
+        ...(status ? { status } : {}),
+        ...(q?.trim() ? {
+          OR: [
+            { name: { contains: q.trim(), mode: 'insensitive' } },
+            { url:  { contains: q.trim(), mode: 'insensitive' } },
+          ],
+        } : {}),
+      },
       orderBy: { createdAt: 'desc' },
+      include: {
+        _count: { select: { snapshots: true } },
+        snapshots: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, createdAt: true, totalScore: true, source: true } },
+      },
     })
 
     return reply.send({ data: assessments })
@@ -1031,6 +1044,26 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     })
 
     return reply.code(201).send({ data: assessment })
+  })
+
+  // ── Compare ──────────────────────────────────────────────────────────────────
+  app.post('/compare', async (req, reply) => {
+    const { agencyId } = req.auth
+    const body = req.body as { ids?: string[] }
+    const ids = Array.isArray(body?.ids) ? body.ids.slice(0, 6) : []
+    if (ids.length < 2) return reply.code(400).send({ error: 'Provide at least 2 assessment IDs' })
+
+    const assessments = await prisma.prospectAssessment.findMany({
+      where: { id: { in: ids }, agencyId },
+      include: {
+        snapshots: { orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, createdAt: true, totalScore: true, source: true } },
+      },
+    })
+
+    // Preserve requested order
+    const ordered = ids.map((id) => assessments.find((a) => a.id === id)).filter(Boolean)
+
+    return reply.send({ data: ordered })
   })
 
   // ── Get one ─────────────────────────────────────────────────────────────────
@@ -1073,6 +1106,22 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     })
 
     return reply.send({ data: updated })
+  })
+
+  // ── Snapshots ────────────────────────────────────────────────────────────────
+  app.get('/:id/snapshots', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
+    if (!assessment) return reply.code(404).send({ error: 'Not found' })
+
+    const snapshots = await prisma.assessmentSnapshot.findMany({
+      where: { assessmentId: id, agencyId },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return reply.send({ data: snapshots })
   })
 
   // ── Delete ──────────────────────────────────────────────────────────────────
@@ -1146,6 +1195,20 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
         where: { id },
         data:  { findings: result.findings, scores: result.scores, totalScore, status: 'complete' },
       })
+
+      // Create snapshot
+      await prisma.assessmentSnapshot.create({
+        data: {
+          agencyId,
+          assessmentId: id,
+          source: 'quick',
+          findings: result.findings as never,
+          scores: result.scores as never,
+          totalScore,
+          pagesScraped: pages.length,
+        },
+      })
+
       return reply.send({ data: updated, pagesScraped: pages.length })
     }
 
@@ -1167,6 +1230,17 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     const updated = await prisma.prospectAssessment.update({
       where: { id },
       data:  { findings: mergedFindings, status: 'scoring' },
+    })
+
+    // Create snapshot (findings only — scores added later when user completes scoring)
+    await prisma.assessmentSnapshot.create({
+      data: {
+        agencyId,
+        assessmentId: id,
+        source: 'full',
+        findings: mergedFindings as never,
+        pagesScraped: pages.length,
+      },
     })
 
     return reply.send({ data: updated, pagesScraped: pages.length })
