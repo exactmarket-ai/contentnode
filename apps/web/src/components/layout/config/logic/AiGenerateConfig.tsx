@@ -132,20 +132,14 @@ export function AiGenerateConfig({
             <Icons.WifiOff className="h-3.5 w-3.5 shrink-0 text-amber-600" />
             <span className="text-[11px] text-amber-700">Offline mode — Ollama (local) only</span>
           </div>
-          <FieldGroup label="Model">
-            <Select
+          <FieldGroup label="Model" description="Type any Ollama model name (e.g. llama3.1:70b, gemma3:12b)">
+            <input
+              type="text"
               value={overrideModel}
-              onValueChange={(v) =>
-                onChange('model_config', { provider: 'ollama', model: v })
-              }
-            >
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {modelsForProvider('ollama').map((m) => (
-                  <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(e) => onChange('model_config', { provider: 'ollama', model: e.target.value })}
+              placeholder="e.g. llama3.1:70b"
+              className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
+            />
           </FieldGroup>
         </div>
       ) : (
@@ -191,22 +185,32 @@ export function AiGenerateConfig({
                   </SelectContent>
                 </Select>
               </FieldGroup>
-              <FieldGroup label="Model">
-                <Select
-                  value={overrideModel}
-                  onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modelsForProvider(overrideProvider).map((m) => (
-                      <SelectItem key={m.value} value={m.value} className="text-xs">
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <FieldGroup label="Model" description={overrideProvider === 'ollama' ? 'Type any model name (e.g. llama3.1:70b, gemma3:12b)' : undefined}>
+                {overrideProvider === 'ollama' ? (
+                  <input
+                    type="text"
+                    value={overrideModel}
+                    onChange={(e) => onChange('model_config', { ...modelCfg, model: e.target.value })}
+                    placeholder="e.g. llama3.1:70b"
+                    className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
+                  />
+                ) : (
+                  <Select
+                    value={overrideModel}
+                    onValueChange={(v) => onChange('model_config', { ...modelCfg, model: v })}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modelsForProvider(overrideProvider).map((m) => (
+                        <SelectItem key={m.value} value={m.value} className="text-xs">
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </FieldGroup>
             </div>
           )}

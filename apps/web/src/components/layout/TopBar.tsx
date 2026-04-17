@@ -602,28 +602,48 @@ export function TopBar() {
           </Select>
         )}
 
-        <Select
-          value={workflow.default_model_config.model}
-          onValueChange={(v) =>
-            setWorkflow({
-              default_model_config: {
-                ...workflow.default_model_config,
-                provider: workflow.connectivity_mode === 'offline' ? 'ollama' : workflow.default_model_config.provider,
-                model: v,
-              },
-            })
-          }
-        >
-          <SelectTrigger className="h-7 gap-1 border border-border bg-transparent px-2 text-xs focus:ring-0">
-            <Icons.Cpu className="h-3 w-3 text-muted-foreground" />
-            <SelectValue>{modelLabel}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {modelList.map((m) => (
-              <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {(isOfflineWf || workflow.default_model_config.provider === 'ollama') ? (
+          <div className="flex items-center gap-1 rounded border border-border bg-transparent px-2 h-7">
+            <Icons.Cpu className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <input
+              type="text"
+              value={workflow.default_model_config.model}
+              onChange={(e) =>
+                setWorkflow({
+                  default_model_config: {
+                    ...workflow.default_model_config,
+                    provider: 'ollama',
+                    model: e.target.value,
+                  },
+                })
+              }
+              placeholder="model name"
+              className="h-full w-28 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+        ) : (
+          <Select
+            value={workflow.default_model_config.model}
+            onValueChange={(v) =>
+              setWorkflow({
+                default_model_config: {
+                  ...workflow.default_model_config,
+                  model: v,
+                },
+              })
+            }
+          >
+            <SelectTrigger className="h-7 gap-1 border border-border bg-transparent px-2 text-xs focus:ring-0">
+              <Icons.Cpu className="h-3 w-3 text-muted-foreground" />
+              <SelectValue>{modelLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {modelList.map((m) => (
+                <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Promote to template (admin only) */}

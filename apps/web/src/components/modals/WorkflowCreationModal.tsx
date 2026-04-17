@@ -395,14 +395,25 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
                   <SelectItem value="ollama" className="text-xs">Ollama (local)</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={effectiveModel} onValueChange={(v) => { if (!clientRequiresOffline) setModel(v) }} disabled={clientRequiresOffline}>
-                <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {modelList.map((m) => (
-                    <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {effectiveProvider === 'ollama' ? (
+                <input
+                  type="text"
+                  value={effectiveModel}
+                  onChange={(e) => { if (!clientRequiresOffline) setModel(e.target.value) }}
+                  disabled={clientRequiresOffline}
+                  placeholder="e.g. llama3.1:70b"
+                  className="h-8 flex-1 rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground disabled:opacity-50"
+                />
+              ) : (
+                <Select value={effectiveModel} onValueChange={(v) => { if (!clientRequiresOffline) setModel(v) }} disabled={clientRequiresOffline}>
+                  <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {modelList.map((m) => (
+                      <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 

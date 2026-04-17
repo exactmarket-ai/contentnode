@@ -157,22 +157,32 @@ export function ModelOverride({
               </SelectContent>
             </Select>
           </FieldGroup>
-          <FieldGroup label="Model">
-            <Select
-              value={model}
-              onValueChange={(v) => onChange('model_config', { provider, model: v })}
-            >
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {modelsForProvider(provider).map((m) => (
-                  <SelectItem key={m.value} value={m.value} className="text-xs">
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <FieldGroup label="Model" description={provider === 'ollama' ? 'Type any model name (e.g. llama3.1:70b, gemma3:12b)' : undefined}>
+            {provider === 'ollama' ? (
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => onChange('model_config', { provider, model: e.target.value })}
+                placeholder="e.g. llama3.1:70b"
+                className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
+              />
+            ) : (
+              <Select
+                value={model}
+                onValueChange={(v) => onChange('model_config', { provider, model: v })}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelsForProvider(provider).map((m) => (
+                    <SelectItem key={m.value} value={m.value} className="text-xs">
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </FieldGroup>
           {showTemperature && (
             <div className="space-y-1.5">
