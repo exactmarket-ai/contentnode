@@ -250,17 +250,13 @@ function TwoColumnLayout({
       {/* ── Left: researchNODE (manual) ───────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-        {/* Column header */}
-        <div className="flex items-start justify-between border-b border-border px-5 py-4 shrink-0 bg-white">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <Icons.Telescope className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span className="text-sm font-semibold text-foreground">researchNODE</span>
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-6">AI finds it. Humans make it matter.</p>
-          </div>
-          <Button size="sm" className="gap-1.5 shrink-0 ml-3" onClick={onNew}>
-            <Icons.Plus className="h-3.5 w-3.5" />
+        {/* Column sub-header */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-2 shrink-0">
+          <p className="text-[11px] text-muted-foreground">
+            {manual.length} assessment{manual.length !== 1 ? 's' : ''}
+          </p>
+          <Button size="sm" className="gap-1.5 h-7 text-xs" onClick={onNew}>
+            <Icons.Plus className="h-3 w-3" />
             New
           </Button>
         </div>
@@ -289,14 +285,9 @@ function TwoColumnLayout({
               </div>
             </div>
           ) : (
-            <>
-              <p className="text-[10px] text-muted-foreground px-1 mb-1">
-                {manual.length} assessment{manual.length !== 1 ? 's' : ''}
-              </p>
-              {manual.map((a) => (
-                <AssessmentCard key={a.id} a={a} onOpen={onOpen} onDelete={onDelete} />
-              ))}
-            </>
+            manual.map((a) => (
+              <AssessmentCard key={a.id} a={a} onOpen={onOpen} onDelete={onDelete} />
+            ))
           )}
         </div>
       </div>
@@ -304,24 +295,14 @@ function TwoColumnLayout({
       {/* ── Right: researchNODE-quick (automated) ────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-        {/* Column header */}
-        <div className="flex items-start justify-between border-b border-border px-5 py-4 shrink-0 bg-white">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <Icons.Zap className="h-4 w-4 text-violet-500 shrink-0" />
-              <span className="text-sm font-semibold text-foreground">
-                researchNODE-<span className="text-violet-600">quick</span>
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-6">Zero interaction. Instant insight.</p>
-          </div>
-          <Button
-            size="sm"
-            className="gap-1.5 shrink-0 ml-3 bg-violet-600 hover:bg-violet-700 text-white"
-            onClick={onQuick}
-          >
-            <Icons.Zap className="h-3.5 w-3.5" />
-            Run
+        {/* Column sub-header */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-2 shrink-0">
+          <p className="text-[11px] text-muted-foreground">
+            {quick.length} assessment{quick.length !== 1 ? 's' : ''}
+          </p>
+          <Button size="sm" className="gap-1.5 h-7 text-xs" onClick={onQuick}>
+            <Icons.Plus className="h-3 w-3" />
+            New
           </Button>
         </div>
 
@@ -338,13 +319,9 @@ function TwoColumnLayout({
                   Enter a company name + URL. researchNODE scores all 6 dimensions and generates a service map automatically.
                 </p>
               </div>
-              <Button
-                size="sm"
-                className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
-                onClick={onQuick}
-              >
-                <Icons.Zap className="h-3.5 w-3.5" />
-                Run Quick Assessment
+              <Button size="sm" className="gap-1.5" onClick={onQuick}>
+                <Icons.Plus className="h-3.5 w-3.5" />
+                New Quick Assessment
               </Button>
             </div>
           ) : (
@@ -1284,6 +1261,33 @@ export function ResearchNodePage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+
+      {/* Site-scheme top banner — hidden when detail is open */}
+      {!activeDetail && (
+        <div className="shrink-0 border-b border-border">
+          <div className="flex divide-x divide-border">
+
+            {/* Left — researchNODE */}
+            <div className="flex-1 px-6 py-4">
+              <h1 className="text-sm font-semibold flex items-center gap-2">
+                <Icons.Telescope className="h-4 w-4 text-muted-foreground" />
+                researchNODE
+              </h1>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">AI finds it. Humans make it matter.</p>
+            </div>
+
+            {/* Right — researchNODE-quick */}
+            <div className="flex-1 px-6 py-4">
+              <h1 className="text-sm font-semibold flex items-center gap-2">
+                <Icons.Zap className="h-4 w-4 text-violet-500" />
+                <span>researchNODE-<span className="text-violet-600">quick</span></span>
+              </h1>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Zero interaction. Instant insight.</p>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Content — two-column list OR full-width detail */}
       <div className="flex-1 overflow-hidden min-h-0">
