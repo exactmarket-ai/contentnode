@@ -20,7 +20,8 @@ const PAGE_TYPES = [
   { value: 'case-study',    label: 'Case Study',      desc: 'Challenge → solution → results' },
   { value: 'event-page',    label: 'Event Page',      desc: 'Date, agenda, speakers, registration' },
   { value: 'product-brief', label: 'Product Brief',   desc: 'Features, use cases, specs' },
-  { value: 'slide-deck',    label: 'Slide Deck',      desc: 'Reveal.js 4 presentation' },
+  { value: 'single-slide',  label: 'Single Slide',    desc: '1280×720px — one PPT-style slide' },
+  { value: 'slide-deck',    label: 'Slide Deck',      desc: 'Reveal.js 4 full presentation' },
 ]
 
 // ─── Preview / output section ─────────────────────────────────────────────────
@@ -53,12 +54,24 @@ export function HtmlPageOutput({
     void navigator.clipboard.writeText(html)
   }
 
+  const handleOpenTab = () => {
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    // Revoke after a short delay so the tab has time to load
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  }
+
+  const isSlidesDeck = html.includes('Reveal.initialize')
+
   return (
     <div className="space-y-2">
       {/* Preview header */}
       <div className="flex items-center gap-2 px-4 pt-3">
         <Icons.Globe className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-        <span className="text-xs font-semibold text-foreground flex-1">Page Preview</span>
+        <span className="text-xs font-semibold text-foreground flex-1">
+          {isSlidesDeck ? 'Slide Deck Preview' : 'Page Preview'}
+        </span>
         <button
           onClick={handleCopyHtml}
           className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
@@ -67,6 +80,16 @@ export function HtmlPageOutput({
           <Icons.Code className="h-3 w-3" />
           Copy HTML
         </button>
+        {isSlidesDeck && (
+          <button
+            onClick={handleOpenTab}
+            className="flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-600 transition-colors"
+            title="Open full presentation in new tab"
+          >
+            <Icons.ExternalLink className="h-3 w-3" />
+            Open
+          </button>
+        )}
         <button
           onClick={handleDownload}
           className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
@@ -88,14 +111,24 @@ export function HtmlPageOutput({
 
       {/* iframe preview */}
       {previewOpen && (
-        <div className="mx-4 rounded-lg border border-border overflow-hidden bg-white" style={{ height: 320 }}>
-          <iframe
-            srcDoc={html}
-            className="w-full h-full"
-            sandbox="allow-same-origin allow-scripts"
-            title="HTML Page Preview"
-          />
-        </div>
+        <>
+          <div className="mx-4 rounded-lg border border-border overflow-hidden bg-white" style={{ height: 320 }}>
+            <iframe
+              srcDoc={html}
+              className="w-full h-full"
+              sandbox="allow-same-origin allow-scripts"
+              title={isSlidesDeck ? 'Slide Deck Preview' : 'HTML Page Preview'}
+            />
+          </div>
+          {isSlidesDeck && (
+            <div className="mx-4 flex items-center gap-1.5 rounded-md bg-blue-50 border border-blue-100 px-2.5 py-1.5">
+              <Icons.MousePointerClick className="h-3 w-3 text-blue-400 shrink-0" />
+              <p className="text-[10px] text-blue-600 leading-snug">
+                Click the preview then use <kbd className="rounded bg-blue-100 px-1 py-0.5 font-mono text-[9px]">→</kbd> / <kbd className="rounded bg-blue-100 px-1 py-0.5 font-mono text-[9px]">←</kbd> arrow keys to navigate slides. Use <strong>Open</strong> above for the full presentation.
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       <div className="px-4 pb-1">

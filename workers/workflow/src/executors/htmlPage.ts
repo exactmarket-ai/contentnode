@@ -29,6 +29,7 @@ const PAGE_TYPE_INSTRUCTIONS: Record<string, string> = {
   'case-study':     'Structured story: client challenge → solution → measurable results. Highlight key metrics with large callout numbers. Quote from stakeholder.',
   'event-page':     'Event details prominent at top (date, location, format). Agenda section, speaker cards, registration CTA. Urgency / scarcity elements.',
   'product-brief':  'Product overview: headline value prop, key features in icon grid, use-case scenarios, technical specs table, CTA to learn more / demo.',
+  'single-slide':   'A single 1280×720px presentation slide. Fixed dimensions — no scrolling, no nav, no CTA. Exactly like a PowerPoint/Keynote slide: strong title at top, content area below (bullets, stats, two-column, or visual), brand-coloured accent bar or shape. The entire viewport IS the slide.',
 }
 
 // ─── Brand context ─────────────────────────────────────────────────────────────
@@ -102,28 +103,145 @@ function isCreativeDirectorBrief(input: unknown): input is CreativeDirectorBrief
   )
 }
 
-// ─── Slide HTML generator ─────────────────────────────────────────────────────
+// ─── Programmatic slide renderer ─────────────────────────────────────────────
+// Generates slide HTML directly from the Creative Director JSON — no second AI call.
+// This eliminates the model-compliance problem (models returning <!DOCTYPE> instead of
+// bare <section> elements) and makes slide generation deterministic.
 
-function buildSlideSystemPrompt(brief: CreativeDirectorBrief): string {
-  const { palette, fonts } = brief
-  return `You are an expert HTML/CSS developer building slides for a Reveal.js 4 presentation.
+function statValue(text: string): string {
+  const m = text.match(/(\$[\d,.]+[kmb+]*|[\d,.]+[%kmb+]*)/i)
+  return m ? m[0] : text.split(' ').slice(0, 2).join(' ')
+}
+function statLabel(text: string): string {
+  const m = text.match(/(\$[\d,.]+[kmb+]*|[\d,.]+[%kmb+]*)/i)
+  if (!m) return text
+  return text.slice(text.indexOf(m[0]) + m[0].length).trim() || text
+}
 
-DESIGN BRIEF:
-- Background: ${palette.background}
-- Surface (card bg): ${palette.surface}
-- Primary: ${palette.primary}
-- Accent: ${palette.accent}
-- Muted: ${palette.muted}
-- Heading font: ${fonts.heading}
-- Body font: ${fonts.body}
-- Style: ${brief.style}
+function renderSlide(slide: CreativeDirectorSlide, brief: CreativeDirectorBrief): string {
+  const { palette: p, fonts } = brief
+  const hf = `'${fonts.heading}',sans-serif`
+  const bf = `'${fonts.body}',sans-serif`
 
-OUTPUT RULES:
-- Return ONLY <section> elements — one per slide. No <!DOCTYPE>, no <html>, no <head>.
-- Each <section> is self-contained with inline style attributes using the palette above.
-- Layout types: title-splash | two-column | stat-grid | timeline | quote-callout | comparison-table | icon-grid | closing-cta
-- Include <aside class="notes"> with speaker notes for each slide.
-- Keep markup concise — no redundant wrapper divs.`
+  const accent  = (s: string) => `<span style="color:${p.accent}">${s}</span>`
+  const bar     = `<div style="position:absolute;top:0;left:0;right:0;height:4px;background:${p.accent}"></div>`
+  const h1      = (extra = '') => `<h2 style="margin:0 0 0.35em;font-family:${hf};color:${p.primary};font-size:1.65em;font-weight:700;line-height:1.15;flex-shrink:0${extra}">${slide.title}</h2>`
+  const body    = slide.content ? `<p style="margin:0 0 0.6em;font-family:${bf};color:#cbd5e1;font-size:0.82em;line-height:1.65">${slide.content}</p>` : ''
+  const bullets = slide.keyPoints.map(pt =>
+    `<li style="display:flex;gap:0.55em;align-items:flex-start;margin:0.3em 0">
+      ${accent('<span style="flex-shrink:0;font-size:0.7em;margin-top:0.32em">▶</span>')}
+      <span style="font-family:${bf};color:#e2e8f0;font-size:0.8em;line-height:1.55">${pt}</span>
+    </li>`).join('')
+  const bulletList = slide.keyPoints.length
+    ? `<ul style="margin:0;padding:0;list-style:none">${bullets}</ul>`
+    : ''
+  const notes   = `<aside class="notes">${slide.notes}</aside>`
+  const wrap    = (inner: string) =>
+    `<section style="background:${p.background};padding:2em 2.8em;box-sizing:border-box;display:flex;flex-direction:column;height:100%;position:relative;overflow:hidden">
+  ${bar}${inner}${notes}
+</section>`
+
+  switch (slide.layout) {
+
+    case 'title-splash':
+      return wrap(`
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+    <h1 style="margin:0 0 0.4em;font-family:${hf};color:${p.primary};font-size:2.3em;font-weight:800;line-height:1.1">${slide.title}</h1>
+    ${body}
+    ${bulletList}
+  </div>`)
+
+    case 'two-column':
+      return wrap(`
+  ${h1()}
+  <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1.8em;min-height:0">
+    <div>${body}</div>
+    <div style="background:${p.surface};border-radius:8px;padding:1.1em">${bulletList}</div>
+  </div>`)
+
+    case 'stat-grid': {
+      const items = slide.keyPoints.length ? slide.keyPoints : slide.content.split(/[.;]/).filter(s => s.trim())
+      const cols  = Math.min(Math.max(items.length, 1), 4)
+      const cards = items.slice(0, 4).map(s =>
+        `<div style="background:${p.surface};border-radius:8px;padding:1.1em;text-align:center;border-top:3px solid ${p.accent}">
+          <div style="font-family:${hf};color:${p.accent};font-size:2.1em;font-weight:800;line-height:1;margin-bottom:0.2em">${statValue(s)}</div>
+          <div style="font-family:${bf};color:#94a3b8;font-size:0.7em;line-height:1.35">${statLabel(s)}</div>
+        </div>`).join('')
+      return wrap(`
+  ${h1()}
+  ${body}
+  <div style="flex:1;display:grid;grid-template-columns:repeat(${cols},1fr);gap:1em;align-content:center">${cards}</div>`)
+    }
+
+    case 'quote-callout':
+      return wrap(`
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
+    <div style="font-family:${hf};color:${p.accent};font-size:4em;line-height:0.7;opacity:0.5;margin-bottom:0.3em">"</div>
+    <p style="font-family:${hf};color:${p.primary};font-size:1.2em;font-weight:600;line-height:1.55;max-width:78%;margin:0 0 0.7em">${slide.content || slide.title}</p>
+    ${slide.keyPoints[0] ? `<p style="font-family:${bf};color:${p.muted};font-size:0.75em;margin:0">— ${slide.keyPoints[0]}</p>` : ''}
+  </div>`)
+
+    case 'timeline': {
+      const steps = slide.keyPoints.length ? slide.keyPoints : [slide.content || slide.title]
+      const stepHtml = steps.map((s, i) =>
+        `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:0.5em;text-align:center">
+          <div style="width:2em;height:2em;border-radius:50%;background:${p.accent};color:#000;font-family:${hf};font-weight:700;font-size:0.85em;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
+          <div style="font-family:${bf};color:#e2e8f0;font-size:0.72em;line-height:1.4">${s}</div>
+        </div>`).join(`<div style="flex:0 0 1.5em;height:2px;background:${p.surface};margin-top:1em;align-self:flex-start"></div>`)
+      return wrap(`
+  ${h1()}
+  ${body}
+  <div style="flex:1;display:flex;align-items:center;padding:0.5em 0">${stepHtml}</div>`)
+    }
+
+    case 'comparison-table': {
+      const mid   = Math.ceil(slide.keyPoints.length / 2)
+      const left  = slide.keyPoints.slice(0, mid)
+      const right = slide.keyPoints.slice(mid)
+      const col   = (items: string[], icon: string, col: string) =>
+        `<div style="background:${p.surface};border-radius:8px;padding:1.1em">
+          <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.4em">
+            ${items.map(pt => `<li style="font-family:${bf};color:#e2e8f0;font-size:0.78em;display:flex;gap:0.5em;align-items:flex-start"><span style="color:${col};flex-shrink:0">${icon}</span><span>${pt}</span></li>`).join('')}
+          </ul>
+        </div>`
+      return wrap(`
+  ${h1()}
+  <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1.4em">
+    ${col(left, '✓', '#22c55e')}
+    ${col(right, '→', p.accent)}
+  </div>`)
+    }
+
+    case 'icon-grid': {
+      const items = slide.keyPoints.length ? slide.keyPoints : slide.content.split(/[.;]/).filter(s => s.trim())
+      const cols  = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3
+      const cards = items.map(s =>
+        `<div style="background:${p.surface};border-radius:8px;padding:1em;border-left:3px solid ${p.accent}">
+          <div style="font-family:${bf};color:#e2e8f0;font-size:0.78em;line-height:1.5">${s}</div>
+        </div>`).join('')
+      return wrap(`
+  ${h1()}
+  ${body}
+  <div style="flex:1;display:grid;grid-template-columns:repeat(${cols},1fr);gap:0.75em;align-content:start">${cards}</div>`)
+    }
+
+    case 'closing-cta':
+      return wrap(`
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+    <h1 style="margin:0 0 0.5em;font-family:${hf};color:${p.primary};font-size:2em;font-weight:800;line-height:1.15">${slide.title}</h1>
+    ${body}
+    ${bulletList}
+    <div style="margin-top:1.5em;display:inline-flex">
+      <span style="padding:0.55em 1.4em;background:${p.accent};color:#000;font-family:${hf};font-weight:700;font-size:0.82em;border-radius:4px">Next Steps</span>
+    </div>
+  </div>`)
+
+    default:
+      return wrap(`
+  ${h1()}
+  ${body}
+  ${bulletList}`)
+  }
 }
 
 function buildHtmlShell(brief: CreativeDirectorBrief, sections: string): string {
@@ -180,40 +298,16 @@ Reveal.initialize({ hash: true, transition: 'fade', progress: true, controls: tr
 </html>`
 }
 
-async function buildSlidesFromBrief(
+// Slides are rendered programmatically — no second model call, no parsing failures.
+function buildSlidesFromBrief(
   brief: CreativeDirectorBrief,
-): Promise<{ html: string; tokensUsed: number; inputTokens: number; outputTokens: number }> {
-  const sectionSystem = buildSlideSystemPrompt(brief)
-  const allSections: string[] = []
-  let totalTokens = 0, totalInput = 0, totalOutput = 0
-
-  for (let i = 0; i < brief.slides.length; i += SLIDE_BATCH_SIZE) {
-    const batch = brief.slides.slice(i, i + SLIDE_BATCH_SIZE)
-    const batchText = batch.map((s) =>
-      `[Slide ${s.number} — ${s.layout}]\nTitle: ${s.title}\n${s.content}\nKey points: ${s.keyPoints.join(' • ')}\nNotes: ${s.notes}`
-    ).join('\n\n---\n\n')
-
-    const result = await callModel(
-      { ...SLIDE_MODEL, system_prompt: sectionSystem, max_tokens: 4096 },
-      `Generate the <section> HTML for these ${batch.length} slides:\n\n${batchText}`,
-    )
-
-    let sections = result.text.trim()
-    const fence = sections.match(/^```(?:html)?\n?/)
-    if (fence) sections = sections.slice(fence[0].length)
-    if (sections.endsWith('```')) sections = sections.slice(0, -3).trimEnd()
-
-    allSections.push(sections)
-    totalTokens += result.tokens_used
-    totalInput  += result.input_tokens
-    totalOutput += result.output_tokens
-  }
-
+): { html: string; tokensUsed: number; inputTokens: number; outputTokens: number } {
+  const sections = brief.slides.map(slide => renderSlide(slide, brief)).join('\n\n')
   return {
-    html:        buildHtmlShell(brief, allSections.join('\n\n')),
-    tokensUsed:  totalTokens,
-    inputTokens: totalInput,
-    outputTokens: totalOutput,
+    html:         buildHtmlShell(brief, sections),
+    tokensUsed:   0,
+    inputTokens:  0,
+    outputTokens: 0,
   }
 }
 
@@ -245,7 +339,7 @@ Return ONLY valid JSON — no markdown, no explanation.
 Extract EVERY slide present in the presentation. Do not skip any.`
 
   const cdResult = await callModel(
-    { ...SLIDE_MODEL, system_prompt: cdSystem, max_tokens: 4096, temperature: 0.4 },
+    { ...SLIDE_MODEL, system_prompt: cdSystem, max_tokens: 8192, temperature: 0.4 },
     `Create the creative brief and slide structure for this presentation:\n\n${content.slice(0, 14000)}`,
   )
 
@@ -257,7 +351,7 @@ Extract EVERY slide present in the presentation. Do not skip any.`
     brief = { palette: { background: '#0F172A', surface: '#1E293B', primary: '#3B82F6', accent: '#F59E0B', muted: '#64748B' }, fonts: { heading: 'Inter', body: 'Inter' }, style: 'Modern dark B2B', slides: [] }
   }
 
-  const result = await buildSlidesFromBrief(brief)
+  const result = buildSlidesFromBrief(brief)
   return {
     ...result,
     tokensUsed:  result.tokensUsed  + cdResult.tokens_used,
@@ -289,12 +383,16 @@ export class HtmlPageExecutor extends NodeExecutor {
     // ── Slide deck ────────────────────────────────────────────────────────────
     if (pageType === 'slide-deck') {
       // If the upstream Creative Director node provided a structured brief, use it directly.
-      // Otherwise fall back to running the Creative Director inline (single-node usage).
-      let parsed: unknown
-      try { parsed = JSON.parse(content) } catch { parsed = null }
+      // Strip markdown fences first — Claude sometimes wraps JSON in ```json ... ``` even when
+      // instructed not to, which causes JSON.parse to hard-fail and drop into the raw fallback.
+      let parsed: unknown = null
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[0]) } catch { parsed = null }
+      }
 
       const { html, tokensUsed, inputTokens, outputTokens } = isCreativeDirectorBrief(parsed)
-        ? await buildSlidesFromBrief(parsed)
+        ? buildSlidesFromBrief(parsed as CreativeDirectorBrief)
         : await buildSlidesFromRawContent(content)
 
       return { output: { html }, tokensUsed, inputTokens, outputTokens, modelUsed: SLIDE_MODEL.model }
@@ -307,6 +405,53 @@ export class HtmlPageExecutor extends NodeExecutor {
     }
 
     const pageInstructions = PAGE_TYPE_INSTRUCTIONS[pageType] ?? PAGE_TYPE_INSTRUCTIONS['landing-page']
+
+    // ── Single slide gets its own tightly-scoped prompt ───────────────────────
+    if (pageType === 'single-slide') {
+      const slideSystemPrompt = `You are an expert presentation designer. Generate a single HTML slide that looks exactly like a professional PowerPoint or Keynote slide.
+
+SLIDE DIMENSIONS: Fixed 1280×720px (16:9). The slide fills the entire viewport. No scrolling.
+
+OUTPUT RULES:
+- Return ONLY the raw HTML document — no markdown fences, no explanation.
+- Start with <!DOCTYPE html>.
+- Use a <style> block for all CSS — no external CSS CDN needed.
+- html, body must be: margin:0; padding:0; width:1280px; height:720px; overflow:hidden;
+- The slide root div must be: width:1280px; height:720px; position:relative; overflow:hidden;
+
+SLIDE DESIGN:
+- Background: ${brand.primaryColor} (dark) or a clean white/light variant — your choice based on content
+- Heading font: ${brand.headingFont}
+- Body font: ${brand.bodyFont}
+- Brand accent colour: ${brand.primaryColor}
+- Strong title at the top (48–60px, bold)
+- Content area below: use the most appropriate layout for the content —
+    bullets with icon dots | two-column split | large stat callouts | quote block | icon grid
+- A thin brand-coloured accent bar or geometric shape adds polish
+- Text must be fully legible — high contrast
+- No navigation elements, no CTAs, no header/footer nav, no scrolling content
+${brand.clientName ? `- Client: ${brand.clientName}` : ''}
+${brand.toneNotes  ? `- Tone: ${brand.toneNotes}` : ''}
+${styleDirection   ? `- Style direction: ${styleDirection}` : ''}
+
+Generate a single, complete, beautiful slide now.`
+
+      const result = await callModel({ ...MODEL, system_prompt: slideSystemPrompt }, content)
+      let html = result.text.trim()
+      const fence = html.match(/^```(?:html)?\n?/)
+      if (fence) html = html.slice(fence[0].length)
+      if (html.endsWith('```')) html = html.slice(0, -3).trimEnd()
+      if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
+        throw new Error('HTML Page: model did not return valid HTML')
+      }
+      return {
+        output: { html },
+        tokensUsed:   result.tokens_used,
+        inputTokens:  result.input_tokens,
+        outputTokens: result.output_tokens,
+        modelUsed:    result.model_used,
+      }
+    }
 
     const systemPrompt = `You are an expert HTML/CSS developer and conversion copywriter.
 Generate a complete, self-contained, production-quality HTML page from the content provided.

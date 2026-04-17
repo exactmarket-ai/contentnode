@@ -1435,6 +1435,13 @@ function AssessmentDetail({
 
 interface Client { id: string; name: string; slug: string }
 
+interface DocStyle {
+  primaryColor?:   string
+  secondaryColor?: string
+  headingFont?:    string
+  bodyFont?:       string
+}
+
 function SendToWorkflowModal({
   assessmentName,
   execPresentation,
@@ -1448,12 +1455,14 @@ function SendToWorkflowModal({
   onClose: () => void
   onCreated: (workflowId: string) => void
 }) {
-  const [clients,      setClients]      = useState<Client[]>([])
-  const [clientId,     setClientId]     = useState('')
-  const [workflowName, setWorkflowName] = useState(`${assessmentName} — Slide Deck`)
-  const [loading,      setLoading]      = useState(true)
-  const [saving,        setSaving]        = useState(false)
-  const [error,         setError]         = useState<string | null>(null)
+  const [clients,         setClients]         = useState<Client[]>([])
+  const [clientId,        setClientId]        = useState('')
+  const [workflowName,    setWorkflowName]    = useState(`${assessmentName} — Slide Deck`)
+  const [loading,         setLoading]         = useState(true)
+  const [saving,          setSaving]          = useState(false)
+  const [error,           setError]           = useState<string | null>(null)
+  const [docStyle,        setDocStyle]        = useState<DocStyle | null>(null)
+  const [prospectUrl,     setProspectUrl]     = useState('')
 
   useEffect(() => {
     apiFetch('/api/v1/clients')
@@ -1461,14 +1470,23 @@ function SendToWorkflowModal({
       .then(j => {
         const list: Client[] = j.data ?? []
         setClients(list)
-        if (list.length > 0) setClientId(list[0].id)
+        // Don't auto-select — prospect may not be a client yet
       })
       .catch(() => setError('Could not load clients'))
       .finally(() => setLoading(false))
   }, [])
 
+  // Fetch brand colours whenever a client is selected
+  useEffect(() => {
+    if (!clientId) { setDocStyle(null); return }
+    apiFetch(`/api/v1/clients/${clientId}/doc-style`)
+      .then(r => r.json())
+      .then(j => setDocStyle((j.data ?? null) as DocStyle | null))
+      .catch(() => setDocStyle(null))
+  }, [clientId])
+
   const handleCreate = async () => {
-    if (!clientId || !workflowName.trim()) return
+    if (!workflowName.trim()) return
     setSaving(true)
     setError(null)
     try {
@@ -1478,13 +1496,27 @@ function SendToWorkflowModal({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: workflowName.trim(),
-          clientId,
+          ...(clientId ? { clientId } : {}),
           connectivityMode: 'online',
         }),
       })
       const wfJson = await wfRes.json()
       if (!wfRes.ok) throw new Error(wfJson?.error ?? `Error ${wfRes.status}`)
       const workflowId = wfJson.data.id
+
+      // Build brand context string to inject into Creative Director instructions
+      const brandParts: string[] = []
+      if (docStyle?.primaryColor)   brandParts.push(`Primary colour: ${docStyle.primaryColor}`)
+      if (docStyle?.secondaryColor) brandParts.push(`Secondary / accent colour: ${docStyle.secondaryColor}`)
+      if (docStyle?.headingFont)    brandParts.push(`Heading font: ${docStyle.headingFont}`)
+      if (docStyle?.bodyFont)       brandParts.push(`Body font: ${docStyle.bodyFont}`)
+      let brandInstructions = brandParts.length > 0
+        ? `Mandatory brand guidelines — use these in the palette: ${brandParts.join(', ')}.`
+        : ''
+      // If no client brand but user provided a prospect URL, hint the CD to mirror that site's aesthetic
+      if (!brandInstructions && prospectUrl.trim()) {
+        brandInstructions = `This presentation is for a prospect whose website is ${prospectUrl.trim()}. Mirror their brand aesthetic — infer colours, tone, and style from the company's typical industry and the site URL.`
+      }
 
       // 2. Seed 3 nodes: Text Input → Creative Director → Slide Deck
       //    Each step is visible on the canvas so the user can inspect intermediate output.
@@ -1523,7 +1555,7 @@ function SendToWorkflowModal({
             subtype: 'ai-generate',
             taskType: 'Generate',
             prompt: 'You are a senior creative director at a top-tier B2B design agency.\nRead the executive presentation and produce a structured creative brief for a Reveal.js slide deck.\nReturn ONLY valid JSON — no markdown fences, no explanation.\n\n{"palette":{"background":"<hex>","surface":"<hex>","primary":"<hex>","accent":"<hex>","muted":"<hex>"},"fonts":{"heading":"<Google Font>","body":"<Google Font>"},"style":"<one-line visual theme>","slides":[{"number":1,"title":"<slide title>","layout":"<title-splash|two-column|stat-grid|timeline|quote-callout|comparison-table|icon-grid|closing-cta>","content":"<full content for this slide>","keyPoints":["<bullet 1>"],"notes":"<speaker notes>"}]}\n\nExtract EVERY slide present in the presentation. Choose dark, professional B2B colour palettes.',
-            additionalInstructions: '',
+            additional_instructions: brandInstructions,
           },
         },
       })
@@ -1594,25 +1626,60 @@ function SendToWorkflowModal({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Client</label>
+            <label className="text-xs font-medium text-foreground">Client <span className="text-muted-foreground font-normal">(optional)</span></label>
             {loading ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
                 <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading clients…
               </div>
-            ) : clients.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No clients found. Create a client first.</p>
             ) : (
               <select
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
                 className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors"
               >
+                <option value="">— Prospect (no client yet) —</option>
                 {clients.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             )}
+            {clientId && docStyle && (docStyle.primaryColor || docStyle.headingFont) && (
+              <div className="flex items-center gap-1.5 rounded-md bg-emerald-50 border border-emerald-100 px-2.5 py-1.5">
+                <Icons.Palette className="h-3 w-3 text-emerald-500 shrink-0" />
+                <p className="text-[10px] text-emerald-700 leading-snug">
+                  Brand colours &amp; fonts will be applied to the slide design automatically.
+                </p>
+              </div>
+            )}
+            {clientId && (!docStyle || (!docStyle.primaryColor && !docStyle.headingFont)) && (
+              <p className="text-[10px] text-muted-foreground">No brand colours set for this client. Using default design.</p>
+            )}
+            {!clientId && (
+              <p className="text-[10px] text-muted-foreground">Prospect not in your client list yet? No problem — you can link the workflow to a client later.</p>
+            )}
           </div>
+
+          {/* Prospect website URL — shown when no client selected */}
+          {!clientId && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">
+                Prospect website <span className="text-muted-foreground font-normal">(optional)</span>
+              </label>
+              <input
+                type="url"
+                value={prospectUrl}
+                onChange={(e) => setProspectUrl(e.target.value)}
+                placeholder="https://acme.com"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 transition-colors"
+              />
+              {prospectUrl.trim() && (
+                <p className="text-[10px] text-emerald-600">The Creative Director will match their brand aesthetic.</p>
+              )}
+              {!prospectUrl.trim() && (
+                <p className="text-[10px] text-muted-foreground">Add their URL so the Creative Director can mirror their brand colours and style.</p>
+              )}
+            </div>
+          )}
 
         </div>
 
@@ -1622,7 +1689,7 @@ function SendToWorkflowModal({
           <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button
             size="sm"
-            disabled={!clientId || !workflowName.trim() || loading || saving}
+            disabled={!workflowName.trim() || loading || saving}
             onClick={() => void handleCreate()}
           >
             {saving
