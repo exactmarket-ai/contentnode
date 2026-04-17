@@ -396,14 +396,20 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
                 </SelectContent>
               </Select>
               {effectiveProvider === 'ollama' ? (
-                <input
-                  type="text"
-                  value={effectiveModel}
-                  onChange={(e) => { if (!clientRequiresOffline) setModel(e.target.value) }}
-                  disabled={clientRequiresOffline}
-                  placeholder="e.g. llama3.1:70b"
-                  className="h-8 flex-1 rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground disabled:opacity-50"
-                />
+                <>
+                  <input
+                    type="text"
+                    list="ollama-models-creation"
+                    value={effectiveModel}
+                    onChange={(e) => { if (!clientRequiresOffline) setModel(e.target.value) }}
+                    disabled={clientRequiresOffline}
+                    placeholder="e.g. llama3.1:70b"
+                    className="h-8 flex-1 rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground disabled:opacity-50"
+                  />
+                  <datalist id="ollama-models-creation">
+                    {OLLAMA_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </datalist>
+                </>
               ) : (
                 <Select value={effectiveModel} onValueChange={(v) => { if (!clientRequiresOffline) setModel(v) }} disabled={clientRequiresOffline}>
                   <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>

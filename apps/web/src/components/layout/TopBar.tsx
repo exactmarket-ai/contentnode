@@ -607,6 +607,7 @@ export function TopBar() {
             <Icons.Cpu className="h-3 w-3 shrink-0 text-muted-foreground" />
             <input
               type="text"
+              list="ollama-models-topbar"
               value={workflow.default_model_config.model}
               onChange={(e) =>
                 setWorkflow({
@@ -620,6 +621,9 @@ export function TopBar() {
               placeholder="model name"
               className="h-full w-28 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />
+            <datalist id="ollama-models-topbar">
+              {OLLAMA_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </datalist>
           </div>
         ) : (
           <Select

@@ -157,15 +157,21 @@ export function ModelOverride({
               </SelectContent>
             </Select>
           </FieldGroup>
-          <FieldGroup label="Model" description={provider === 'ollama' ? 'Type any model name (e.g. llama3.1:70b, gemma3:12b)' : undefined}>
+          <FieldGroup label="Model">
             {provider === 'ollama' ? (
-              <input
-                type="text"
-                value={model}
-                onChange={(e) => onChange('model_config', { provider, model: e.target.value })}
-                placeholder="e.g. llama3.1:70b"
-                className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
-              />
+              <>
+                <input
+                  type="text"
+                  list="ollama-models-override"
+                  value={model}
+                  onChange={(e) => onChange('model_config', { provider, model: e.target.value })}
+                  placeholder="e.g. llama3.1:70b"
+                  className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-xs outline-none focus:border-blue-400 transition-colors placeholder:text-muted-foreground"
+                />
+                <datalist id="ollama-models-override">
+                  {OLLAMA_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </datalist>
+              </>
             ) : (
               <Select
                 value={model}
