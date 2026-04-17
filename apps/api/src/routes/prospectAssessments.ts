@@ -25,6 +25,7 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   BorderStyle, AlignmentType,
 } from 'docx'
+import { fetchPage as sharedFetchPage, truncateWords } from '../lib/scraper.js'
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -102,25 +103,6 @@ function extractLinks(html: string, baseUrl: string): string[] {
   return [...new Set(links)]
 }
 
-function truncateWords(text: string, maxWords: number): string {
-  const words = text.split(/\s+/)
-  if (words.length <= maxWords) return text
-  return words.slice(0, maxWords).join(' ') + '…'
-}
-
-async function fetchPage(url: string): Promise<{ text: string; html: string } | null> {
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ContentNode/1.0; +https://contentnode.ai)' },
-      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
-    })
-    if (!res.ok) return null
-    const html = await res.text()
-    return { text: extractText(html), html }
-  } catch {
-    return null
-  }
-}
 
 // Priority URL path fragments — fetch these sub-pages if found on the site
 const PRIORITY_PATHS = [
@@ -130,18 +112,27 @@ const PRIORITY_PATHS = [
   '/blog', '/resources', '/insights',
 ]
 
-async function crawlProspect(seedUrl: string): Promise<Array<{ url: string; text: string }>> {
-  // Step 1: fetch homepage (needed to discover sub-page links)
-  const home = await fetchPage(seedUrl)
-  if (!home) return []
+async function crawlProspect(seedUrl: string): Promise<{ pages: Array<{ url: string; text: string }>; usage: Record<string, number> }> {
+  const usage: Record<string, number> = {}
+
+  // Step 1: fetch homepage (also used to extract links for sub-page discovery)
+  const home = await sharedFetchPage(seedUrl)
+  if (!home) return { pages: [], usage }
+  usage[home.source] = (usage[home.source] ?? 0) + 1
+
+  // For link extraction we still need raw HTML — do a lightweight raw fetch in parallel
+  const rawHomeHtml = await fetch(seedUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ContentNode/1.0; +https://contentnode.ai)' },
+    signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
+  }).then((r) => r.text()).catch(() => '')
 
   const pages: Array<{ url: string; text: string }> = []
   const homeTruncated = truncateWords(home.text, MAX_PAGE_WORDS)
   if (homeTruncated.length > 50) pages.push({ url: seedUrl, text: homeTruncated })
 
   // Step 2: build candidate list — priority paths first, then other discovered links
-  const allLinks   = extractLinks(home.html, seedUrl)
-  const base       = new URL(seedUrl).origin
+  const allLinks     = extractLinks(rawHomeHtml, seedUrl)
+  const base         = new URL(seedUrl).origin
   const priorityUrls = PRIORITY_PATHS
     .map((p) => `${base}${p}`)
     .filter((u) => allLinks.some((l) => l.startsWith(u)))
@@ -149,21 +140,22 @@ async function crawlProspect(seedUrl: string): Promise<Array<{ url: string; text
   const candidates = [
     ...priorityUrls,
     ...allLinks.filter((l) => !priorityUrls.includes(l) && l !== seedUrl),
-  ].slice(0, CRAWL_CONCURRENCY * 2) // limit candidates to avoid large allSettled arrays
+  ].slice(0, CRAWL_CONCURRENCY * 2)
 
-  // Step 3: fetch all candidates in parallel, keep the first MAX_CRAWL_PAGES-1 that return content
+  // Step 3: fetch all candidates in parallel
   const results = await Promise.allSettled(
-    candidates.map((url) => fetchPage(url).then((r) => (r ? { url, ...r } : null)))
+    candidates.map((url) => sharedFetchPage(url).then((r) => (r ? { url, ...r } : null)))
   )
 
   for (const r of results) {
     if (pages.length >= MAX_CRAWL_PAGES) break
     if (r.status !== 'fulfilled' || !r.value) continue
+    usage[r.value.source] = (usage[r.value.source] ?? 0) + 1
     const t = truncateWords(r.value.text, MAX_PAGE_WORDS)
     if (t.length > 50) pages.push({ url: r.value.url, text: t })
   }
 
-  return pages
+  return { pages, usage }
 }
 
 // ─── Research findings generator ─────────────────────────────────────────────
@@ -1112,8 +1104,11 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     await prisma.prospectAssessment.update({ where: { id }, data: { status: 'researching' } })
 
     let pages: Array<{ url: string; text: string }>
+    let scrapeUsage: Record<string, number> = {}
     try {
-      pages = await crawlProspect(assessment.url)
+      const crawlResult = await crawlProspect(assessment.url)
+      pages       = crawlResult.pages
+      scrapeUsage = crawlResult.usage
     } catch {
       await prisma.prospectAssessment.update({ where: { id }, data: { status: 'not_started' } })
       return reply.code(422).send({ error: 'Failed to fetch content from the prospect URL' })
@@ -1123,6 +1118,18 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
       await prisma.prospectAssessment.update({ where: { id }, data: { status: 'not_started' } })
       return reply.code(422).send({ error: 'No readable content found at prospect URL — the site may be JS-only or blocking crawlers' })
     }
+
+    // Record scrape usage (non-fatal)
+    const now = new Date()
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const periodEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    await Promise.all(
+      Object.entries(scrapeUsage).map(([source, count]) =>
+        prisma.usageRecord.create({
+          data: { agencyId, metric: 'scrape_pages', quantity: count, periodStart, periodEnd, metadata: { source, prospectAssessmentId: id } },
+        }).catch(() => { /* non-fatal */ })
+      )
+    )
 
     if (autoScore === 'true') {
       // Quick Assessment: findings + scores in a single Claude call

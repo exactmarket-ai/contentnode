@@ -385,6 +385,7 @@ export async function usageRoutes(app: FastifyInstance) {
           musicSecs: totalMusicSecs,
           videoCompSecs: totalVideoCompSecs,
           videoCompCostUsd: totalVideoCompCost,
+          scrapePages: allRecords.filter((r) => r.metric === 'scrape_pages').reduce((s, r) => s + r.quantity, 0),
         },
         llm: {
           totalTokens,
@@ -433,6 +434,19 @@ export async function usageRoutes(app: FastifyInstance) {
           totalSecs: totalVideoCompSecs,
           totalCostUsd: totalVideoCompCost,
         },
+        scraping: (() => {
+          const scrapeRecords = allRecords.filter((r) => r.metric === 'scrape_pages')
+          const totalPages = scrapeRecords.reduce((s, r) => s + r.quantity, 0)
+          const bySource: Record<string, number> = {}
+          for (const r of scrapeRecords) {
+            const source = ((r.metadata as Record<string, unknown>)['source'] as string) ?? 'raw'
+            bySource[source] = (bySource[source] ?? 0) + r.quantity
+          }
+          return {
+            totalPages,
+            bySource: Object.entries(bySource).map(([source, pages]) => ({ source, pages })).sort((a, b) => b.pages - a.pages),
+          }
+        })(),
         byClient: Object.values(tokensByClient).sort((a, b) => b.tokens - a.tokens),
         byWorkflow: Object.values(tokensByWorkflow).sort((a, b) => b.tokens - a.tokens),
         byUser: Object.values(byUserMap).sort((a, b) => b.tokens - a.tokens),

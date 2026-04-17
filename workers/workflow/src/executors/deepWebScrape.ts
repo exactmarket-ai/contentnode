@@ -1,5 +1,7 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
+import { prisma, withAgency } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+import { fetchPage as sharedFetchPage, truncateWords } from '../lib/scraper.js'
 
 const MAX_PAGE_WORDS = 2000
 const TIMEOUT_MS = 15_000
@@ -14,22 +16,6 @@ const MODEL: ModelConfig = {
 // ─────────────────────────────────────────────────────────────────────────────
 // HTML utilities
 // ─────────────────────────────────────────────────────────────────────────────
-
-function extractText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-    .replace(/<header[\s\S]*?<\/header>/gi, '')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/[ \t]{2,}/g, ' ')
-    .split('\n').map((l) => l.trim()).filter(Boolean).join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
 
 function extractLinks(html: string, baseUrl: string): string[] {
   const base = new URL(baseUrl)
@@ -50,26 +36,6 @@ function extractLinks(html: string, baseUrl: string): string[] {
   return [...new Set(links)]
 }
 
-function truncateWords(text: string, maxWords: number): string {
-  const words = text.split(/\s+/)
-  if (words.length <= maxWords) return text
-  return words.slice(0, maxWords).join(' ') + '…'
-}
-
-async function fetchPage(url: string): Promise<{ text: string; html: string } | null> {
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ContentNode/1.0; +https://contentnode.ai)' },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-    if (!res.ok) return null
-    const html = await res.text()
-    const text = extractText(html)
-    return { text, html }
-  } catch {
-    return null
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Synthesis target prompts
@@ -101,7 +67,7 @@ export class DeepWebScrapeExecutor extends NodeExecutor {
   async execute(
     _input: unknown,
     config: Record<string, unknown>,
-    _ctx: NodeExecutionContext,
+    ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const seedUrls = ((config.seedUrls as string | undefined) ?? '')
       .split('\n').map((u) => u.trim()).filter(Boolean)
@@ -119,23 +85,28 @@ export class DeepWebScrapeExecutor extends NodeExecutor {
     const visited = new Set<string>()
     const queue: string[] = [...seedUrls.slice(0, 3)]
     const pages: Array<{ url: string; text: string }> = []
+    const scrapeUsage: Record<string, number> = {}
 
     while (queue.length > 0 && pages.length < maxPages) {
       const url = queue.shift()!
       if (visited.has(url)) continue
       visited.add(url)
 
-      const result = await fetchPage(url)
+      const result = await sharedFetchPage(url)
       if (!result) continue
+
+      // Track usage per page scraped
+      scrapeUsage[result.source] = (scrapeUsage[result.source] ?? 0) + 1
 
       const truncated = truncateWords(result.text, MAX_PAGE_WORDS)
       if (truncated.length > 50) {
         pages.push({ url, text: truncated })
       }
 
-      // Extract links from this page
+      // Extract links from this page (need raw HTML for link extraction — raw fetch for links only)
       if (pages.length < maxPages) {
-        const links = extractLinks(result.html, url)
+        const rawForLinks = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ContentNode/1.0)' }, signal: AbortSignal.timeout(TIMEOUT_MS) }).then(r => r.text()).catch(() => '')
+        const links = extractLinks(rawForLinks, url)
         for (const link of links) {
           if (visited.has(link)) continue
           if (linkFilter && !linkFilter.test(link)) continue
@@ -150,6 +121,27 @@ export class DeepWebScrapeExecutor extends NodeExecutor {
     }
 
     if (pages.length === 0) throw new Error('Deep Web Scrape: no readable content found at provided URL(s)')
+
+    // ── Record scrape usage ───────────────────────────────────────────────────
+    const now = new Date()
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const periodEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    await Promise.all(
+      Object.entries(scrapeUsage).map(([source, count]) =>
+        withAgency(ctx.agencyId, () =>
+          prisma.usageRecord.create({
+            data: {
+              agencyId: ctx.agencyId,
+              metric: 'scrape_pages',
+              quantity: count,
+              periodStart,
+              periodEnd,
+              metadata: { source, workflowRunId: ctx.runId } as Record<string, unknown>,
+            },
+          })
+        ).catch(() => { /* non-fatal */ })
+      )
+    )
 
     // ── Assemble raw content ─────────────────────────────────────────────────
     const rawContent = pages

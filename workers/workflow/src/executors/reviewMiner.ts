@@ -1,5 +1,7 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
+import { prisma, withAgency } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+import { fetchPage as sharedFetchPage, stripHtml } from '../lib/scraper.js'
 
 const TIMEOUT_MS = 15_000
 const MODEL: ModelConfig = {
@@ -14,34 +16,9 @@ const MODEL: ModelConfig = {
 // Platform scrapers
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function fetchHtml(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-    if (!res.ok) return null
-    return res.text()
-  } catch {
-    return null
-  }
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/[ \t]{2,}/g, ' ')
-    .split('\n').map((l) => l.trim()).filter(Boolean).join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+async function fetchHtml(url: string): Promise<{ text: string; source: string } | null> {
+  const result = await sharedFetchPage(url)
+  return result ? { text: result.text, source: result.source } : null
 }
 
 /** Extract review text blocks from Trustpilot HTML (server-rendered) */
@@ -77,51 +54,46 @@ async function scrapeReviewPage(
   let url = ''
   let reviews: string[] = []
 
+  let scrapeSource: string = 'raw'
+
   if (platform === 'trustpilot') {
-    // Trustpilot uses domain as slug (e.g., "openai.com")
     url = `https://www.trustpilot.com/review/${slug}`
-    const html = await fetchHtml(url)
-    if (html) {
-      reviews = parseTrustpilotReviews(html, maxReviews)
-      // If no structured reviews found, grab all text and let Claude parse it
+    const result = await fetchHtml(url)
+    if (result) {
+      scrapeSource = result.source
+      reviews = parseTrustpilotReviews(result.text, maxReviews)
       if (reviews.length === 0) {
-        const text = stripHtml(html)
-        // Find review-like paragraphs (>50 chars, appear after star mentions)
-        const paras = text.split('\n').filter((l) => l.length > 60 && l.length < 600)
+        const paras = result.text.split('\n').filter((l) => l.length > 60 && l.length < 600)
         reviews = paras.slice(0, maxReviews)
       }
     }
   } else if (platform === 'g2') {
-    // G2 uses product slug (e.g., "salesforce-sales-cloud")
     url = `https://www.g2.com/products/${slug}/reviews`
-    const html = await fetchHtml(url)
-    if (html) {
-      // G2 is heavy JS — extract what we can from the initial HTML
-      const text = stripHtml(html)
-      const paras = text.split('\n').filter((l) => l.length > 80 && l.length < 800)
+    const result = await fetchHtml(url)
+    if (result) {
+      scrapeSource = result.source
+      const paras = result.text.split('\n').filter((l) => l.length > 80 && l.length < 800)
       reviews = paras.slice(0, maxReviews)
     }
   } else if (platform === 'capterra') {
-    // Capterra: e.g., "hubspot-crm"
     url = `https://www.capterra.com/reviews/${slug}`
-    const html = await fetchHtml(url)
-    if (html) {
-      const text = stripHtml(html)
-      const paras = text.split('\n').filter((l) => l.length > 80 && l.length < 800)
+    const result = await fetchHtml(url)
+    if (result) {
+      scrapeSource = result.source
+      const paras = result.text.split('\n').filter((l) => l.length > 80 && l.length < 800)
       reviews = paras.slice(0, maxReviews)
     }
   } else if (platform === 'custom_url') {
-    // User provides a direct review page URL
     url = slug
-    const html = await fetchHtml(url)
-    if (html) {
-      const text = stripHtml(html)
-      const paras = text.split('\n').filter((l) => l.length > 60 && l.length < 800)
+    const result = await fetchHtml(url)
+    if (result) {
+      scrapeSource = result.source
+      const paras = result.text.split('\n').filter((l) => l.length > 60 && l.length < 800)
       reviews = paras.slice(0, maxReviews)
     }
   }
 
-  return { platform, company: label, reviews, url }
+  return { platform, company: label, reviews, url, scrapeSource }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,7 +150,7 @@ export class ReviewMinerExecutor extends NodeExecutor {
   async execute(
     _input: unknown,
     config: Record<string, unknown>,
-    _ctx: NodeExecutionContext,
+    ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const companyName = (config.companyName as string | undefined)?.trim() ?? ''
     const companySlug = (config.companySlug as string | undefined)?.trim() || companyName
@@ -191,7 +163,7 @@ export class ReviewMinerExecutor extends NodeExecutor {
     if (!companySlug) throw new Error('Review Miner: company name is required')
 
     // ── Scrape all sources in parallel ───────────────────────────────────────
-    const scrapeJobs: Array<Promise<{ platform: string; company: string; reviews: string[]; url: string }>> = []
+    const scrapeJobs: Array<Promise<{ platform: string; company: string; reviews: string[]; url: string; scrapeSource: string }>> = []
 
     for (const platform of platforms) {
       scrapeJobs.push(scrapeReviewPage(platform, companySlug, false, maxReviews))
@@ -203,6 +175,31 @@ export class ReviewMinerExecutor extends NodeExecutor {
     }
 
     const results = await Promise.all(scrapeJobs)
+
+    // ── Record scrape usage ───────────────────────────────────────────────────
+    const usageBySrc: Record<string, number> = {}
+    for (const r of results) {
+      usageBySrc[r.scrapeSource] = (usageBySrc[r.scrapeSource] ?? 0) + 1
+    }
+    const now = new Date()
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const periodEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    await Promise.all(
+      Object.entries(usageBySrc).map(([source, count]) =>
+        withAgency(ctx.agencyId, () =>
+          prisma.usageRecord.create({
+            data: {
+              agencyId: ctx.agencyId,
+              metric: 'scrape_pages',
+              quantity: count,
+              periodStart,
+              periodEnd,
+              metadata: { source, workflowRunId: ctx.runId } as Record<string, unknown>,
+            },
+          })
+        ).catch(() => { /* non-fatal */ })
+      )
+    )
 
     // ── Format raw data ──────────────────────────────────────────────────────
     const sections: string[] = []
