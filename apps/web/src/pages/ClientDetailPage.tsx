@@ -16,6 +16,7 @@ import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientDocStyleTab } from './ClientDocStyleTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
 import { CampaignsTab } from './CampaignsTab'
+import { ThoughtLeadershipTab } from './ThoughtLeadershipTab'
 import { ClientBrainTab } from './ClientBrainTab'
 import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -69,6 +70,7 @@ interface Client {
   archivedAt: string | null
   createdAt: string
   requireOffline: boolean
+  isOrgClient: boolean
   stakeholders: Stakeholder[]
   workflows: Workflow[]
   insights: Insight[]
@@ -4491,6 +4493,24 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
     }
   }
 
+  // Org client toggle
+  const [togglingOrg, setTogglingOrg] = useState(false)
+  const toggleOrgClient = async () => {
+    setTogglingOrg(true)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${client.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOrgClient: !client.isOrgClient }),
+      })
+      if (!res.ok) throw new Error('Failed to update')
+      const body = await res.json()
+      onUpdate({ isOrgClient: body.data.isOrgClient })
+    } catch { /* silent */ } finally {
+      setTogglingOrg(false)
+    }
+  }
+
   const load = () => {
     setLoading(true)
     Promise.all([
@@ -4701,6 +4721,33 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
   return (
     <div className="space-y-4">
+
+      {/* ── Org Client ── */}
+      <div className={`rounded-xl border p-4 ${client.isOrgClient ? 'border-violet-300 bg-violet-50/40' : 'border-border bg-card'}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-2.5">
+            <Icons.Building2 className={`mt-0.5 h-4 w-4 shrink-0 ${client.isOrgClient ? 'text-violet-600' : 'text-muted-foreground'}`} />
+            <div>
+              <p className="text-sm font-medium">Our Organisation</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {client.isOrgClient
+                  ? 'This is your agency\'s own company. Prospect and internal workflows are filed here when no client is selected.'
+                  : 'Mark this as your own company to use it as the home for internal work and prospect workflows.'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => void toggleOrgClient()}
+            disabled={togglingOrg}
+            title={client.isOrgClient ? 'Unmark as org client' : 'Mark as org client'}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${client.isOrgClient ? 'bg-violet-500' : 'bg-border'}`}
+          >
+            {togglingOrg
+              ? <Icons.Loader2 className="h-3 w-3 animate-spin text-white mx-auto" />
+              : <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${client.isOrgClient ? 'translate-x-4' : 'translate-x-0'}`} />}
+          </button>
+        </div>
+      </div>
 
       {/* ── AI Policy ── */}
       <div className={`rounded-xl border p-4 ${client.requireOffline ? 'border-amber-300 bg-amber-50/60' : 'border-border bg-card'}`}>
@@ -5761,7 +5808,7 @@ function ScheduledTasksTab({ clientId }: { clientId: string }) {
 
 // ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'thought-leadership', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -5840,7 +5887,8 @@ export function ClientDetailPage() {
     workflows:     'Workflows',
     campaigns:     'Campaigns',
     deliverables:  'Deliverables',
-    library:       'Library',
+    library:             'Library',
+    'thought-leadership': 'Thought Leadership',
     framework:     'GTM Framework',
     demandgen:     'Demand Gen',
     branding:      'Branding',
@@ -5866,7 +5914,7 @@ export function ClientDetailPage() {
   // Tabs that live under the "Settings" group
   const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'scheduled-tasks', 'doc-style']
   // Tabs rendered before the Demand Gen group button
-  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'framework', 'branding', 'reviews']
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'thought-leadership', 'framework', 'branding', 'reviews']
   // Tabs rendered after the Demand Gen group button
   const POST_DEMAND_GEN_TABS: Tab[] = ['workflows', 'deliverables', 'insights']
   const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS]
@@ -6089,6 +6137,7 @@ export function ClientDetailPage() {
             </div>
           </div>
         )}
+        {activeTab === 'thought-leadership' && <ThoughtLeadershipTab clientId={client.id} />}
         {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'gtm-assessment' && <ClientGTMAssessmentTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}

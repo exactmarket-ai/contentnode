@@ -29,6 +29,7 @@ const updateClientBody = createClientBody.partial().extend({
   status: z.enum(['active', 'archived']).optional(),
   industry: z.string().nullable().optional(),
   requireOffline: z.boolean().optional(),
+  isOrgClient: z.boolean().optional(),
 })
 
 const createStakeholderBody = z.object({
@@ -776,6 +777,7 @@ export async function clientRoutes(app: FastifyInstance) {
         ...(isArchiving ? { archivedAt: new Date() } : {}),
         ...(isUnarchiving ? { archivedAt: null } : {}),
         ...(parsed.data.requireOffline !== undefined ? { requireOffline: parsed.data.requireOffline } : {}),
+        ...(parsed.data.isOrgClient !== undefined ? { isOrgClient: parsed.data.isOrgClient } : {}),
       },
     })
 

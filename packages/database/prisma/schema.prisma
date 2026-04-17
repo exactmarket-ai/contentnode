@@ -144,6 +144,7 @@ model Client {
   status         String    @default("active") // active | archived
   archivedAt     DateTime? @map("archived_at")
   requireOffline      Boolean @default(false) @map("require_offline")
+  isOrgClient         Boolean @default(false) @map("is_org_client") // Agency's own company — fallback for org-level workflows
   // Permissions override for all users working with this client.
   // Merged after the agency-level override; before user-level override.
   permissionsOverride Json?   @map("permissions_override")
