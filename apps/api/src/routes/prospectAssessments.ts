@@ -69,9 +69,10 @@ function calcTotalScore(scores: Record<string, number>): number {
 // ─── Web scraping utilities ───────────────────────────────────────────────────
 
 const SCRAPE_TIMEOUT_MS  = 10_000
-const MAX_PAGE_WORDS     = 1800
+const MAX_PAGE_WORDS     = 600  // ~750 tokens/page — keeps total content well under 200k token limit
 const MAX_CRAWL_PAGES    = 6   // fewer pages but fetched in parallel — keeps total crawl time ≤ ~10s
 const CRAWL_CONCURRENCY  = 6   // all candidate pages fetched simultaneously
+const MAX_CONTENT_CHARS  = 100_000 // hard cap on combined content (~25k tokens) sent to Claude
 
 function extractText(html: string): string {
   return html
@@ -195,6 +196,7 @@ async function generateFindings(
   const rawContent = pages
     .map((p, i) => `--- Page ${i + 1}: ${p.url} ---\n${p.text}`)
     .join('\n\n')
+    .slice(0, MAX_CONTENT_CHARS)
 
   const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
 
@@ -266,6 +268,7 @@ async function generateFindingsAndScores(
   const rawContent = pages
     .map((p, i) => `--- Page ${i + 1}: ${p.url} ---\n${p.text}`)
     .join('\n\n')
+    .slice(0, MAX_CONTENT_CHARS)
 
   const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
 
@@ -1432,6 +1435,64 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       .header('Content-Disposition', `attachment; filename="${safeName}_exec_presentation.docx"`)
+      .send(buffer)
+  })
+
+  // ── Download Assessment Report as .docx ────────────────────────────────────
+  app.post('/:id/download/report', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const assessment = await prisma.prospectAssessment.findFirst({ where: { id, agencyId } })
+    if (!assessment) return reply.code(404).send({ error: 'Not found' })
+
+    const scores   = (assessment.scores   ?? {}) as Record<string, number>
+    const findings = (assessment.findings ?? {}) as Record<string, string>
+
+    const dimKeys = ['website_messaging', 'social_outbound', 'positioning_segment', 'analyst_context', 'competitive_landscape', 'growth_signals']
+    const dimLabels: Record<string, string> = {
+      website_messaging: 'Website Messaging', social_outbound: 'Social Outbound',
+      positioning_segment: 'Positioning & Segment', analyst_context: 'Analyst Context',
+      competitive_landscape: 'Competitive Landscape', growth_signals: 'Growth Signals',
+    }
+    const dimWeights: Record<string, string> = {
+      website_messaging: '20%', social_outbound: '10%', positioning_segment: '20%',
+      analyst_context: '15%', competitive_landscape: '15%', growth_signals: '20%',
+    }
+
+    const lines: string[] = []
+
+    if (assessment.totalScore != null) {
+      lines.push(`## Overall Score: ${assessment.totalScore.toFixed(1)} / 5.0\n`)
+    }
+    if (assessment.url) lines.push(`**Website:** ${assessment.url}`)
+    if (assessment.industry) lines.push(`**Industry:** ${assessment.industry}`)
+    lines.push('')
+
+    lines.push(`## Dimension Scores\n`)
+    for (const key of dimKeys) {
+      const score = scores[key]
+      const label = dimLabels[key] ?? key
+      const weight = dimWeights[key] ?? ''
+      const finding = findings[key]
+      lines.push(`### ${label} (${weight})`)
+      lines.push(score != null ? `**Score: ${score} / 5**` : '**Score: Not scored**')
+      if (finding) lines.push(`\n${finding}`)
+      lines.push('')
+    }
+
+    if (assessment.notes?.trim()) {
+      lines.push(`## Notes\n\n${assessment.notes}`)
+    }
+
+    const title    = `researchNODE Report — ${assessment.name}`
+    const subtitle = assessment.url ?? assessment.industry ?? null
+    const buffer = await buildDocx(title, subtitle, lines.join('\n'))
+
+    const safeName = assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      .header('Content-Disposition', `attachment; filename="${safeName}_report.docx"`)
       .send(buffer)
   })
 }

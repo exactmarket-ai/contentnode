@@ -943,6 +943,26 @@ function AssessmentDetail({
             </Button>
           )}
 
+          {/* Download Report */}
+          {hasScores && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleDownload(
+                'download/report',
+                `${assessment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.docx`,
+                'report',
+              )}
+              disabled={downloading === 'report'}
+              className="gap-1.5"
+            >
+              {downloading === 'report'
+                ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+                : <><Icons.Download className="h-3.5 w-3.5" /> Download Report</>
+              }
+            </Button>
+          )}
+
           {/* Service Map */}
           {hasScores && (
             <Button
