@@ -64,6 +64,7 @@ function ProtectedLayout() {
   const { isLoaded, isSignedIn } = useAuth()
   const { signOut } = useClerk()
   const setOllamaModels = useSettingsStore((s) => s.setOllamaModels)
+  const setLocalMediaServices = useSettingsStore((s) => s.setLocalMediaServices)
 
   useEffect(() => {
     if (!isSignedIn) return
@@ -71,9 +72,10 @@ function ProtectedLayout() {
       .then((r) => r.json())
       .then(({ data }) => {
         if (Array.isArray(data?.ollamaModels)) setOllamaModels(data.ollamaModels)
+        if (Array.isArray(data?.localMediaServices)) setLocalMediaServices(data.localMediaServices)
       })
       .catch(() => {/* profile load failure is non-fatal */})
-  }, [isSignedIn, setOllamaModels])
+  }, [isSignedIn, setOllamaModels, setLocalMediaServices])
 
   if (!isLoaded) {
     return (

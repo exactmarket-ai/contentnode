@@ -415,7 +415,9 @@ model User {
   // If null, inherits from client → agency → role defaults.
   permissionsOverride Json? @map("permissions_override")
   // Local Ollama model names for this user's machine — populates model picker datalists
-  ollamaModels    Json     @default("[]") @map("ollama_models")
+  ollamaModels        Json     @default("[]") @map("ollama_models")
+  // Local media service endpoints (TTS, image gen, character animation, transcription)
+  localMediaServices  Json     @default("[]") @map("local_media_services")
   inviteToken     String?   @unique @map("invite_token")
   inviteExpiresAt DateTime? @map("invite_expires_at")
   lastActiveAt    DateTime? @map("last_active_at") // updated on every authenticated request (throttled to 5 min)

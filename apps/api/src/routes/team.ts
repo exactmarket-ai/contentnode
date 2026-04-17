@@ -562,7 +562,7 @@ export async function teamRoutes(app: FastifyInstance) {
 
     let me = await prisma.user.findFirst({
       where: { agencyId, clerkUserId: userId },
-      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, createdAt: true },
+      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, localMediaServices: true, createdAt: true },
     })
 
     // Fallback: clerkUserId in DB doesn't match current Clerk session (e.g. seeded with placeholder).
@@ -611,6 +611,18 @@ export async function teamRoutes(app: FastifyInstance) {
       ? (body.ollamaModels as unknown[]).filter((m): m is string => typeof m === 'string' && m.length <= 100)
       : undefined
 
+    const VALID_MEDIA_TYPES = ['tts', 'image-gen', 'character-animation', 'transcription']
+    const localMediaServices = Array.isArray(body.localMediaServices)
+      ? (body.localMediaServices as unknown[]).filter((s): s is { id: string; type: string; label: string; url: string } =>
+          typeof s === 'object' && s !== null &&
+          typeof (s as Record<string, unknown>).id === 'string' &&
+          VALID_MEDIA_TYPES.includes((s as Record<string, unknown>).type as string) &&
+          typeof (s as Record<string, unknown>).label === 'string' &&
+          typeof (s as Record<string, unknown>).url === 'string' &&
+          ((s as Record<string, unknown>).url as string).startsWith('http')
+        )
+      : undefined
+
     const user = await prisma.user.findFirst({ where: { agencyId, clerkUserId: userId } })
     if (!user) return reply.code(404).send({ error: 'User not found' })
 
@@ -620,9 +632,10 @@ export async function teamRoutes(app: FastifyInstance) {
         ...(name !== undefined         ? { name: name || null }         : {}),
         ...(title !== undefined        ? { title: title || null }        : {}),
         ...(department !== undefined   ? { department: department || null } : {}),
-        ...(ollamaModels !== undefined ? { ollamaModels }               : {}),
+        ...(ollamaModels !== undefined        ? { ollamaModels }               : {}),
+        ...(localMediaServices !== undefined  ? { localMediaServices }          : {}),
       },
-      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, createdAt: true },
+      select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, localMediaServices: true, createdAt: true },
     })
 
     const { avatarStorageKey, ...rest } = updated
