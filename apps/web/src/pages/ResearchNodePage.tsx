@@ -1486,49 +1486,67 @@ function SendToWorkflowModal({
       if (!wfRes.ok) throw new Error(wfJson?.error ?? `Error ${wfRes.status}`)
       const workflowId = wfJson.data.id
 
-      // 2. Seed nodes: Text Input with exec presentation + optionally HTML Page
+      // 2. Seed 3 nodes: Text Input → Creative Director → Slide Deck
+      //    Each step is visible on the canvas so the user can inspect intermediate output.
       const nodes: Array<{
         id: string; type: string; position: { x: number; y: number }
         data: Record<string, unknown>
       }> = []
       const edges: Array<{ id: string; source: string; target: string }> = []
 
-      // Use random UUIDs — hardcoded IDs like 'n1' collide with existing DB rows
       const textNodeId = crypto.randomUUID()
+      const cdNodeId   = crypto.randomUUID()
+      const htmlNodeId = crypto.randomUUID()
+
+      // Node 1: exec presentation content
       nodes.push({
         id: textNodeId,
         type: 'source',
-        position: { x: 80, y: 120 },
+        position: { x: 60, y: 160 },
         data: {
           label: 'Executive Presentation',
           subtype: 'text-input',
+          config: { subtype: 'text-input', text: execPresentation },
+        },
+      })
+
+      // Node 2: Creative Director — reads exec presentation, outputs structured JSON brief
+      // The HTML Page node detects this JSON and uses it directly for slide generation.
+      nodes.push({
+        id: cdNodeId,
+        type: 'logic',
+        position: { x: 480, y: 160 },
+        data: {
+          label: 'Creative Director',
+          subtype: 'ai-generate',
           config: {
-            subtype: 'text-input',
-            text: execPresentation,
+            subtype: 'ai-generate',
+            taskType: 'Generate',
+            prompt: 'You are a senior creative director at a top-tier B2B design agency.\nRead the executive presentation and produce a structured creative brief for a Reveal.js slide deck.\nReturn ONLY valid JSON — no markdown fences, no explanation.\n\n{"palette":{"background":"<hex>","surface":"<hex>","primary":"<hex>","accent":"<hex>","muted":"<hex>"},"fonts":{"heading":"<Google Font>","body":"<Google Font>"},"style":"<one-line visual theme>","slides":[{"number":1,"title":"<slide title>","layout":"<title-splash|two-column|stat-grid|timeline|quote-callout|comparison-table|icon-grid|closing-cta>","content":"<full content for this slide>","keyPoints":["<bullet 1>"],"notes":"<speaker notes>"}]}\n\nExtract EVERY slide present in the presentation. Choose dark, professional B2B colour palettes.',
+            additionalInstructions: '',
           },
         },
       })
 
-      // Always add an HTML Page (slide-deck) node so the workflow is ready to run.
-      // Pre-load the existing deck HTML if one was already generated in researchNODE.
-      const htmlNodeId = crypto.randomUUID()
+      // Node 3: Slide Deck HTML builder — receives Creative Director JSON, generates Reveal.js
       nodes.push({
         id: htmlNodeId,
         type: 'output',
-        position: { x: 520, y: 120 },
+        position: { x: 900, y: 160 },
         data: {
           label: 'Slide Deck',
           subtype: 'html-page',
           config: {
             subtype: 'html-page',
             pageType: 'slide-deck',
-            styleDirection: 'Reveal.js presentation — design layout and colour palette from the exec presentation content.',
+            styleDirection: '',
             useBrandColors: true,
-            ...(slideDeck ? { _generatedHtml: slideDeck } : {}),
           },
         },
       })
-      edges.push({ id: crypto.randomUUID(), source: textNodeId, target: htmlNodeId })
+
+      edges.push({ id: crypto.randomUUID(), source: textNodeId, target: cdNodeId })
+      edges.push({ id: crypto.randomUUID(), source: cdNodeId,   target: htmlNodeId })
 
       const graphRes = await apiFetch(`/api/v1/workflows/${workflowId}/graph`, {
         method: 'PUT',
@@ -1562,7 +1580,7 @@ function SendToWorkflowModal({
         </div>
 
         <p className="text-[12px] text-muted-foreground">
-          Creates a two-node workflow: the executive presentation as a Text Input connected to a Slide Deck node. Hit Run to generate the presentation, then refine it in nodePILOT.
+          Creates a 3-node workflow: <strong className="text-foreground">Executive Presentation</strong> → <strong className="text-foreground">Creative Director</strong> → <strong className="text-foreground">Slide Deck</strong>. Each step is visible on the canvas so you can inspect and refine the design brief before building the slides.
         </p>
 
         <div className="space-y-3">
