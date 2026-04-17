@@ -544,6 +544,22 @@ export async function teamRoutes(app: FastifyInstance) {
   app.get('/me', async (req, reply) => {
     const { agencyId, userId } = req.auth
 
+    // Dev bypass: no Clerk, so return a synthetic owner so role-gated UI unlocks
+    if (userId === 'dev-user') {
+      return reply.send({
+        data: {
+          id:         'dev-user',
+          email:      'dev@localhost',
+          name:       'Dev User',
+          title:      null,
+          department: null,
+          role:       'owner',
+          avatarUrl:  null,
+          createdAt:  new Date().toISOString(),
+        },
+      })
+    }
+
     let me = await prisma.user.findFirst({
       where: { agencyId, clerkUserId: userId },
       select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, createdAt: true },
