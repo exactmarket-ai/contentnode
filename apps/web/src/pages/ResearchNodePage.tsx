@@ -1436,11 +1436,10 @@ function SendToWorkflowModal({
   onClose: () => void
   onCreated: (workflowId: string) => void
 }) {
-  const [clients,       setClients]       = useState<Client[]>([])
-  const [clientId,      setClientId]      = useState('')
-  const [workflowName,  setWorkflowName]  = useState(`${assessmentName} — Slide Deck`)
-  const [includeSlides, setIncludeSlides] = useState(!!slideDeck)
-  const [loading,       setLoading]       = useState(true)
+  const [clients,      setClients]      = useState<Client[]>([])
+  const [clientId,     setClientId]     = useState('')
+  const [workflowName, setWorkflowName] = useState(`${assessmentName} — Slide Deck`)
+  const [loading,      setLoading]      = useState(true)
   const [saving,        setSaving]        = useState(false)
   const [error,         setError]         = useState<string | null>(null)
 
@@ -1497,26 +1496,26 @@ function SendToWorkflowModal({
         },
       })
 
-      if (includeSlides && slideDeck) {
-        const htmlNodeId = 'n2'
-        nodes.push({
-          id: htmlNodeId,
-          type: 'output',
-          position: { x: 480, y: 120 },
-          data: {
-            label: 'Slide Deck',
+      // Always add an HTML Page (slide-deck) node so the workflow is ready to run.
+      // Pre-load the existing deck HTML if one was already generated in researchNODE.
+      const htmlNodeId = 'n2'
+      nodes.push({
+        id: htmlNodeId,
+        type: 'output',
+        position: { x: 520, y: 120 },
+        data: {
+          label: 'Slide Deck',
+          subtype: 'html-page',
+          config: {
             subtype: 'html-page',
-            config: {
-              subtype: 'html-page',
-              pageType: 'slide-deck',
-              styleDirection: 'Reveal.js slide deck — import from exec presentation',
-              useBrandColors: true,
-              _generatedHtml: slideDeck,
-            },
+            pageType: 'slide-deck',
+            styleDirection: 'Reveal.js presentation — design layout and colour palette from the exec presentation content.',
+            useBrandColors: true,
+            ...(slideDeck ? { _generatedHtml: slideDeck } : {}),
           },
-        })
-        edges.push({ id: 'e1', source: textNodeId, target: htmlNodeId })
-      }
+        },
+      })
+      edges.push({ id: 'e1', source: textNodeId, target: htmlNodeId })
 
       await apiFetch(`/api/v1/workflows/${workflowId}/graph`, {
         method: 'PUT',
@@ -1546,7 +1545,7 @@ function SendToWorkflowModal({
         </div>
 
         <p className="text-[12px] text-muted-foreground">
-          Creates a new workflow with the executive presentation loaded as a Text Input node, ready to build on.
+          Creates a two-node workflow: the executive presentation as a Text Input connected to a Slide Deck node. Hit Run to generate the presentation, then refine it in nodePILOT.
         </p>
 
         <div className="space-y-3">
@@ -1580,17 +1579,6 @@ function SendToWorkflowModal({
             )}
           </div>
 
-          {slideDeck && (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeSlides}
-                onChange={(e) => setIncludeSlides(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span className="text-xs text-foreground">Also load the generated slide deck as an HTML Page node</span>
-            </label>
-          )}
         </div>
 
         {error && <p className="text-xs text-red-500">{error}</p>}
