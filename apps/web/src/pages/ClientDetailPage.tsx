@@ -5942,19 +5942,6 @@ export function ClientDetailPage() {
             {TAB_LABELS[tab]}
           </button>
         ))}
-        {/* Research group entry point */}
-        <button
-          onClick={() => switchTab('company')}
-          className={cn(
-            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-            inResearch
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Icons.Search className="h-3 w-3" />
-          Research
-        </button>
         {/* Settings group entry point */}
         <button
           onClick={() => switchTab('structure')}
@@ -5967,6 +5954,19 @@ export function ClientDetailPage() {
         >
           <Icons.Settings className="h-3 w-3" />
           Settings
+        </button>
+        {/* Research group entry point */}
+        <button
+          onClick={() => switchTab('company')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+            inResearch
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Icons.Search className="h-3 w-3" />
+          Research
         </button>
       </div>
 

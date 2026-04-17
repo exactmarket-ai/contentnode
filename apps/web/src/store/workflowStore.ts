@@ -780,8 +780,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ nodes: applyNodeChanges(changes, get().nodes), ...(meaningful ? { graphDirty: true } : {}) })
   },
 
-  onEdgesChange: (changes) =>
-    set({ edges: applyEdgeChanges(changes, get().edges), graphDirty: true }),
+  onEdgesChange: (changes) => {
+    // Only flag dirty for structural changes (add/remove), not selection updates
+    const meaningful = changes.some((c) => c.type !== 'select')
+    set({ edges: applyEdgeChanges(changes, get().edges), ...(meaningful ? { graphDirty: true } : {}) })
+  },
 
   onConnect: (connection) =>
     set({

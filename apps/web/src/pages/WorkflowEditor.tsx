@@ -53,6 +53,7 @@ export function WorkflowEditor() {
         nodes: [],
         edges: [],
         selectedNodeId: null,
+        canvasTool: 'select',
         runStatus: 'idle',
         nodeRunStatuses: {},
         activeRunId: null,
@@ -116,7 +117,6 @@ export function WorkflowEditor() {
           label: e.label as string | undefined,
           animated: false,
         }))
-        store.onNodesChange(rfNodes.map((n: { id: string }) => ({ type: 'reset' as const, item: n })))
         const defaultAssignee = data.defaultAssignee as { id: string; name: string | null } | null
         store.setWorkflow({
           id: data.id as string,
@@ -132,9 +132,9 @@ export function WorkflowEditor() {
           templateCategory: (data.templateCategory as string | null) ?? null,
           templateDescription: (data.templateDescription as string | null) ?? null,
         })
-        useWorkflowStore.setState({ graphDirty: false })
-        // Use internal React Flow method to set nodes/edges directly
-        useWorkflowStore.setState({ nodes: rfNodes, edges: rfEdges })
+        // Set nodes/edges directly — do NOT go through onNodesChange (which marks the
+        // graph dirty). Reset canvasTool and selection so reopening feels fresh.
+        useWorkflowStore.setState({ nodes: rfNodes, edges: rfEdges, graphDirty: false, canvasTool: 'select', selectedNodeId: null })
         store.setRunStatus('idle')
         useWorkflowStore.setState({ nodeRunStatuses: {} })
 

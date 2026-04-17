@@ -125,8 +125,8 @@ function TemplateDrawer({ template, onClose, onSaved: _onSaved, onUse, onFork }:
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-border px-5 py-3">
           <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { onFork(template); onClose() }}>
-            <Icons.GitFork className="h-3 w-3 mr-1" />
-            Edit as new
+            <Icons.Copy className="h-3 w-3 mr-1" />
+            Save as
           </Button>
           <Button size="sm" className="h-7 text-xs" onClick={() => { onUse(template.id); onClose() }}>
             Use template
@@ -224,9 +224,10 @@ interface CardProps {
   onDelete: (t: PromptTemplate) => void
   onCopyToGlobal: (t: PromptTemplate) => void
   onUse: (id: string) => void
+  onFork: (t: PromptTemplate) => void
 }
 
-function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onUse }: CardProps) {
+function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onUse, onFork }: CardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -292,12 +293,18 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
               <Icons.MoreHorizontal className="h-3.5 w-3.5" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 bottom-7 z-20 w-44 rounded-md border border-border bg-white shadow-lg py-1">
+              <div className="absolute right-0 bottom-7 z-20 w-48 rounded-md border border-border bg-white shadow-lg py-1">
                 <button
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
                   onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onOpen(template) }}
                 >
                   <Icons.Eye className="h-3.5 w-3.5" /> View / Edit
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onFork(template) }}
+                >
+                  <Icons.Copy className="h-3.5 w-3.5" /> Save as new
                 </button>
                 {isAdmin && template.clientId !== null && (
                   <button
@@ -339,7 +346,7 @@ function NewTemplateModal({
   onCreated: (t: PromptTemplate) => void
   initialValues?: { name: string; body: string; description: string; category: string }
 }) {
-  const [name, setName] = useState(initialValues?.name ?? '')
+  const [name, setName] = useState(initialValues ? `Copy of ${initialValues.name}` : '')
   const [body, setBody] = useState(initialValues?.body ?? '')
   const [description, setDescription] = useState(initialValues?.description ?? '')
   const [category, setCategory] = useState(initialValues?.category ?? 'Business')
@@ -619,6 +626,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
               onDelete={handleDelete}
               onCopyToGlobal={setCopyToGlobalTemplate}
               onUse={handleUse}
+              onFork={(tmpl) => { setOpenTemplate(null); setForkTemplate(tmpl) }}
             />
           ))}
         </div>
