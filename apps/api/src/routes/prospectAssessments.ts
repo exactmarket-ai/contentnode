@@ -67,9 +67,10 @@ function calcTotalScore(scores: Record<string, number>): number {
 
 // ─── Web scraping utilities ───────────────────────────────────────────────────
 
-const SCRAPE_TIMEOUT_MS = 12_000
-const MAX_PAGE_WORDS    = 1800
-const MAX_CRAWL_PAGES   = 8
+const SCRAPE_TIMEOUT_MS  = 10_000
+const MAX_PAGE_WORDS     = 1800
+const MAX_CRAWL_PAGES    = 6   // fewer pages but fetched in parallel — keeps total crawl time ≤ ~10s
+const CRAWL_CONCURRENCY  = 6   // all candidate pages fetched simultaneously
 
 function extractText(html: string): string {
   return html
@@ -130,41 +131,36 @@ const PRIORITY_PATHS = [
 ]
 
 async function crawlProspect(seedUrl: string): Promise<Array<{ url: string; text: string }>> {
-  const pages: Array<{ url: string; text: string }> = []
-  const visited = new Set<string>()
-
-  // Always fetch homepage first
+  // Step 1: fetch homepage (needed to discover sub-page links)
   const home = await fetchPage(seedUrl)
   if (!home) return []
-  visited.add(seedUrl)
 
-  const truncated = truncateWords(home.text, MAX_PAGE_WORDS)
-  if (truncated.length > 50) pages.push({ url: seedUrl, text: truncated })
+  const pages: Array<{ url: string; text: string }> = []
+  const homeTruncated = truncateWords(home.text, MAX_PAGE_WORDS)
+  if (homeTruncated.length > 50) pages.push({ url: seedUrl, text: homeTruncated })
 
-  // Extract all links from homepage
-  const allLinks = extractLinks(home.html, seedUrl)
-
-  // Prioritise key sections
-  const base = new URL(seedUrl).origin
+  // Step 2: build candidate list — priority paths first, then other discovered links
+  const allLinks   = extractLinks(home.html, seedUrl)
+  const base       = new URL(seedUrl).origin
   const priorityUrls = PRIORITY_PATHS
     .map((p) => `${base}${p}`)
     .filter((u) => allLinks.some((l) => l.startsWith(u)))
 
-  const queue = [
+  const candidates = [
     ...priorityUrls,
-    ...allLinks.filter((l) => !priorityUrls.includes(l)),
-  ]
+    ...allLinks.filter((l) => !priorityUrls.includes(l) && l !== seedUrl),
+  ].slice(0, CRAWL_CONCURRENCY * 2) // limit candidates to avoid large allSettled arrays
 
-  for (const url of queue) {
+  // Step 3: fetch all candidates in parallel, keep the first MAX_CRAWL_PAGES-1 that return content
+  const results = await Promise.allSettled(
+    candidates.map((url) => fetchPage(url).then((r) => (r ? { url, ...r } : null)))
+  )
+
+  for (const r of results) {
     if (pages.length >= MAX_CRAWL_PAGES) break
-    if (visited.has(url)) continue
-    visited.add(url)
-
-    const result = await fetchPage(url)
-    if (!result) continue
-
-    const t = truncateWords(result.text, MAX_PAGE_WORDS)
-    if (t.length > 50) pages.push({ url, text: t })
+    if (r.status !== 'fulfilled' || !r.value) continue
+    const t = truncateWords(r.value.text, MAX_PAGE_WORDS)
+    if (t.length > 50) pages.push({ url: r.value.url, text: t })
   }
 
   return pages
