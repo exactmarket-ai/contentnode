@@ -421,6 +421,11 @@ function AssessmentDetail({
     setGeneratingMap(true)
     setMapError(null)
     try {
+      // Force-save current scores/findings to DB first so the API sees them.
+      // Cancel any pending auto-save and wait for a fresh save to complete.
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      await save(scores, findings, notes, status)
+
       const res = await apiFetch(`/api/v1/prospect-assessments/${assessment.id}/generate-service-map`, {
         method: 'POST',
       })
@@ -434,7 +439,6 @@ function AssessmentDetail({
       setAssessment(updated)
       onUpdated(updated)
       setMapOpen(true)
-      // Scroll to service map section
       setTimeout(() => serviceMapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch {
       setMapError('Network error — check your connection and try again')
@@ -513,7 +517,7 @@ function AssessmentDetail({
               size="sm"
               variant="outline"
               onClick={() => serviceMap ? setMapOpen(!mapOpen) : void handleGenerateServiceMap()}
-              disabled={generatingMap || saving}
+              disabled={generatingMap}
               className="gap-1.5"
             >
               {generatingMap

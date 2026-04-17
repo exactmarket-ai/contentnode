@@ -256,9 +256,64 @@ async function buildAgencyContext(agencyId: string): Promise<string> {
 
 // ─── Service map generator ────────────────────────────────────────────────────
 
-const SERVICE_MAP_SYSTEM = `You are a senior strategic advisor at a B2B content and GTM agency. Given a completed prospect assessment and agency context, generate a professional service mapping document that the agency team will use to shape a capabilities presentation and proposal.
+// Exact Market's full service catalogue mapped to each assessment dimension.
+// Source: exact_market_service_mapping_v2.md
+const EXACT_MARKET_CATALOGUE = `
+EXACT MARKET — SERVICE CATALOGUE & ENGAGEMENT MODELS
 
-The document must be specific, evidence-driven, and immediately actionable. Reference actual findings and scores. No generic filler.
+Exact Market operates as an end-to-end GTM partner across Strategy, Execution, and Optimization.
+
+DIMENSION → SERVICE MAPPING:
+
+1. Website & Messaging Audit → Narrative, Messaging & Conversion
+   Services: GTM Messaging & Positioning Strategy, Product Marketing & Value Proposition Design,
+             Website & Conversion Optimisation, Content Strategy & SEO Alignment
+   Outputs:  Messaging architecture (ICP-aligned), homepage & product page rewrites,
+             conversion journey redesign, SEO/content roadmap
+
+2. Social Media & Outbound Content → Demand & Thought Leadership
+   Services: Content Strategy & Thought Leadership, Executive Positioning (LinkedIn),
+             Campaign & Demand Generation, Channel & Media Strategy
+   Outputs:  Editorial calendar & POV themes, executive content playbooks,
+             campaign architecture, channel expansion roadmap
+
+3. Positioning & Segment Analysis → GTM Strategy
+   Services: ICP & Segmentation Design, Category & Positioning Strategy,
+             Product Marketing, Pricing & Packaging Strategy
+   Outputs:  ICP definitions, positioning narrative, segment prioritisation,
+             pricing model recommendations
+
+4. Industry Vertical & Analyst Context → Market Intelligence
+   Services: Market & Category Analysis, Strategic GTM Advisory,
+             Analyst Alignment & Narrative Calibration
+   Outputs:  Market landscape report, category positioning refinement,
+             strategic narrative aligned to AI, regulation, and category trends
+
+5. Competitive Landscape → Competitive Intelligence & Sales Enablement
+   Services: Competitive Intelligence, Differentiation Strategy,
+             Sales Enablement & Battlecards
+   Outputs:  Competitive landscape map, differentiation framework,
+             sales battlecards & objection handling
+
+6. Growth Opportunity Signals → Growth & Expansion Strategy
+   Services: Growth Opportunity Mapping, Demand Factory (execution engine),
+             Channel & Ecosystem Strategy, GTM Expansion Planning
+   Outputs:  Growth opportunity matrix, expansion roadmap (segments, geos, channels),
+             content & distribution expansion plan
+
+ENGAGEMENT MODELS:
+- Strategy Sprint: 4–6 week engagement → outputs: positioning, ICP, GTM strategy
+- GTM Build: 8–12 week program → outputs: messaging, campaigns, sales enablement
+- Ongoing Execution (Demand Factory): continuous → outputs: pipeline generation, content engine, optimization
+`
+
+const SERVICE_MAP_SYSTEM = `You are a senior strategic advisor at Exact Market, a B2B content and GTM agency. You are generating a service mapping document for an internal capabilities presentation and sales conversation.
+
+IMPORTANT: Always reference Exact Market's specific services by name. Every recommendation must map directly to a named Exact Market service from the catalogue below. Never recommend generic or hypothetical services.
+
+${EXACT_MARKET_CATALOGUE}
+
+The document must be specific, evidence-driven, and immediately actionable. Reference the actual assessment scores and findings. No generic filler. All service recommendations must come from the Exact Market catalogue above.
 
 Format in clean markdown with clear section headers.`
 
@@ -272,12 +327,12 @@ const DIMENSION_LABELS: Record<string, string> = {
 }
 
 const SERVICE_OPPORTUNITIES: Record<string, string[]> = {
-  website_messaging:     ['GTM Messaging & Positioning Strategy', 'Website & Conversion Optimisation', 'Content Strategy & SEO Alignment'],
-  social_outbound:       ['Content Strategy & Thought Leadership', 'Executive Positioning Programme', 'Campaign & Demand Generation'],
-  positioning_segment:   ['ICP & Segmentation Design', 'Category & Positioning Strategy', 'Pricing & Packaging Strategy'],
+  website_messaging:     ['GTM Messaging & Positioning Strategy', 'Product Marketing & Value Proposition Design', 'Website & Conversion Optimisation', 'Content Strategy & SEO Alignment'],
+  social_outbound:       ['Content Strategy & Thought Leadership', 'Executive Positioning (LinkedIn)', 'Campaign & Demand Generation', 'Channel & Media Strategy'],
+  positioning_segment:   ['ICP & Segmentation Design', 'Category & Positioning Strategy', 'Product Marketing', 'Pricing & Packaging Strategy'],
   analyst_context:       ['Market & Category Analysis', 'Strategic GTM Advisory', 'Analyst Alignment & Narrative Calibration'],
   competitive_landscape: ['Competitive Intelligence', 'Differentiation Strategy', 'Sales Enablement & Battlecards'],
-  growth_signals:        ['Growth Opportunity Mapping', 'Demand Factory', 'Channel & Ecosystem Strategy'],
+  growth_signals:        ['Growth Opportunity Mapping', 'Demand Factory', 'Channel & Ecosystem Strategy', 'GTM Expansion Planning'],
 }
 
 async function generateServiceMap(
@@ -341,25 +396,25 @@ ${assessment.notes ? `ANALYST NOTES:\n${assessment.notes}` : ''}
 ${agencyContext ? `AGENCY CONTEXT:\n${agencyContext}` : ''}
 
 ---
-Generate a service mapping document with these sections:
+Generate an Exact Market service mapping document with these sections. Every service you name MUST be from Exact Market's catalogue. Do not invent services.
 
 ## Executive Summary
-2-3 sentences: where this prospect stands, their biggest positioning challenge, and the opportunity for our agency.
+2-3 sentences: where this prospect stands, their biggest positioning challenge, and why Exact Market is the right partner.
 
-## Dimension Assessment
-For each dimension scored below 4.0, one short paragraph: what the specific gap is (from the findings), why it matters commercially, and which 1-2 services directly address it.
+## Where Exact Market Fits
+For each dimension scored below 4.0: one short paragraph naming the specific gap (evidence from the findings), why it matters commercially, and which named Exact Market service(s) directly address it — including what the engagement would produce.
 
 ## Recommended Engagement Model
-Which model fits best (Strategy Sprint / GTM Build / Ongoing Demand Factory) and why, based on the size and urgency of the gaps.
+Which Exact Market engagement model fits best (Strategy Sprint / GTM Build / Ongoing Execution — Demand Factory) and why, based on the number, severity, and urgency of the gaps.
 
-## Top 3 Service Opportunities
-Numbered list. Each: service name, one-line rationale tied to a specific finding, expected outcome for the prospect.
+## Top 3 Exact Market Service Opportunities
+Numbered list. Each entry: Exact Market service name in bold, one-line rationale tied to a specific finding, and the concrete outcome it delivers for this prospect.
 
 ## Quick Wins
-3-5 bullet points — things the prospect could visibly improve within 30 days with the right support.
+3-5 bullets — specific things Exact Market can deliver within 30 days that would produce a visible result for this prospect.
 
-## Suggested Next Steps
-2-3 sentences on how to frame the capabilities conversation with this prospect.
+## How to Open the Conversation
+2-3 sentences framing how to position this assessment in a first capabilities meeting with this specific prospect.
 `
 
   const anthropic = new Anthropic({ apiKey, timeout: 90_000, maxRetries: 1 })
