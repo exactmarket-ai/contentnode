@@ -270,6 +270,7 @@ function CompareView({
 }) {
   const [assessments, setAssessments] = useState<Assessment[]>([])
   const [loading, setLoading] = useState(true)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     apiFetch('/api/v1/prospect-assessments/compare', {
@@ -282,6 +283,29 @@ function CompareView({
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [ids])
+
+  async function handleDownload() {
+    setDownloading(true)
+    try {
+      const res = await apiFetch('/api/v1/prospect-assessments/compare/download', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const slug = assessments.map((a) => a.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 20)).join('_vs_')
+      link.download = `comparison_${slug}.docx`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // silent
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   if (loading) return (
     <div className="flex items-center justify-center h-full">
@@ -296,7 +320,11 @@ function CompareView({
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
           <Icons.ChevronLeft className="h-4 w-4" />
         </button>
-        <p className="text-xs font-semibold">Comparing {assessments.length} assessments</p>
+        <p className="text-xs font-semibold flex-1">Comparing {assessments.length} assessments</p>
+        <Button size="sm" variant="outline" onClick={handleDownload} disabled={downloading || assessments.length === 0}>
+          {downloading ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Icons.Download className="h-3.5 w-3.5 mr-1.5" />}
+          {downloading ? 'Generating…' : 'Download .docx'}
+        </Button>
       </div>
 
       {/* Table */}
@@ -458,7 +486,40 @@ function TwoColumnLayout({
   )
 
   return (
-    <div className="relative flex h-full divide-x divide-border">
+    <div className="flex flex-col h-full">
+
+      {/* ── Compare card ──────────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-border bg-background px-5 py-2 flex items-center gap-3">
+        <Icons.ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        {compareMode ? (
+          <>
+            <p className="text-xs text-violet-700 font-medium flex-1">
+              {selectedIds.length === 0 ? 'Select assessments to compare' : `${selectedIds.length} selected`}
+            </p>
+            <button onClick={onToggleCompareMode} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Cancel
+            </button>
+            <Button
+              size="sm"
+              disabled={selectedIds.length < 2}
+              onClick={onCompare}
+              className="h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              Compare ({selectedIds.length})
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground flex-1">Compare assessments side by side</p>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onToggleCompareMode}>
+              Compare
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* ── Columns ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 min-h-0 divide-x divide-border overflow-hidden">
 
       {/* ── Left: researchNODE (manual) ───────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -588,26 +649,8 @@ function TwoColumnLayout({
         </div>
       </div>
 
-      {/* Compare mode bar */}
-      {compareMode && (
-        <div className="absolute bottom-0 left-0 right-0 border-t border-violet-200 bg-violet-50 px-6 py-3 flex items-center justify-between z-10">
-          <p className="text-xs text-violet-700 font-medium">
-            {selectedIds.length === 0 ? 'Select assessments to compare' : `${selectedIds.length} selected`}
-          </p>
-          <div className="flex items-center gap-2">
-            <button onClick={onToggleCompareMode} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
-            <Button
-              size="sm"
-              disabled={selectedIds.length < 2}
-              onClick={onCompare}
-              className="h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
-            >
-              Compare ({selectedIds.length})
-            </Button>
-          </div>
-        </div>
-      )}
 
+      </div>{/* end columns */}
     </div>
   )
 }
@@ -1586,17 +1629,6 @@ export function ResearchNodePage() {
             </h1>
             <p className="mt-0.5 text-[11px] text-muted-foreground">Market positioning & competitive intelligence</p>
           </div>
-          {!activeDetail && !comparing && (
-            <button
-              onClick={handleToggleCompareMode}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                compareMode ? 'bg-violet-100 text-violet-700' : 'text-muted-foreground hover:text-foreground border border-border'
-              }`}
-            >
-              <Icons.ArrowLeftRight className="h-3.5 w-3.5" />
-              {compareMode ? 'Cancel compare' : 'Compare'}
-            </button>
-          )}
         </div>
       </div>
 

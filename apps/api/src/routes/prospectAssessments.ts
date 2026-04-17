@@ -1066,6 +1066,68 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     return reply.send({ data: ordered })
   })
 
+  // ── Compare download ─────────────────────────────────────────────────────────
+  app.post('/compare/download', async (req, reply) => {
+    const { agencyId } = req.auth
+    const body = req.body as { ids?: string[] }
+    const ids = Array.isArray(body?.ids) ? body.ids.slice(0, 6) : []
+    if (ids.length < 2) return reply.code(400).send({ error: 'Provide at least 2 assessment IDs' })
+
+    const assessments = await prisma.prospectAssessment.findMany({
+      where: { id: { in: ids }, agencyId },
+    })
+    if (assessments.length === 0) return reply.code(404).send({ error: 'No assessments found' })
+
+    const ordered = ids.map((id) => assessments.find((a) => a.id === id)).filter(Boolean) as typeof assessments
+
+    // Build markdown content for the docx
+    const dimKeys = ['positioning', 'messaging', 'content', 'seo', 'competitive', 'demand_gen']
+    const dimLabels: Record<string, string> = {
+      positioning: 'Positioning', messaging: 'Messaging', content: 'Content',
+      seo: 'SEO', competitive: 'Competitive', demand_gen: 'Demand Gen',
+    }
+
+    const lines: string[] = []
+    lines.push(`## Overall Scores\n`)
+    for (const a of ordered) {
+      const score = a.totalScore != null ? a.totalScore.toFixed(1) : 'N/A'
+      lines.push(`**${a.name}** — ${score} / 5.0`)
+    }
+    lines.push('')
+
+    lines.push(`## Dimension Breakdown\n`)
+    for (const key of dimKeys) {
+      lines.push(`### ${dimLabels[key] ?? key}\n`)
+      const scores = ordered.map((a) => (a.scores as Record<string, number> | null)?.[key] ?? null)
+      const valid = scores.filter((s): s is number => s != null)
+      const best  = valid.length ? Math.max(...valid) : null
+      const worst = valid.length ? Math.min(...valid) : null
+      for (let i = 0; i < ordered.length; i++) {
+        const a = ordered[i]
+        const score = scores[i]
+        let badge = ''
+        if (score != null && valid.length > 1) {
+          if (score === best)  badge = ' ★ Best'
+          else if (score === worst && best !== worst) badge = ' ▼ Lowest'
+        }
+        const finding = (a.findings as Record<string, string> | null)?.[key]
+        lines.push(`**${a.name}**: ${score != null ? score.toFixed(1) : 'N/A'}${badge}`)
+        if (finding) lines.push(`> ${finding}`)
+        lines.push('')
+      }
+    }
+
+    const title = `researchNODE — Comparison Report`
+    const subtitle = ordered.map((a) => a.name).join(' vs ')
+    const buffer = await buildDocx(title, subtitle, lines.join('\n'))
+
+    const slug = ordered.map((a) => a.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 20)).join('_vs_')
+    reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      .header('Content-Disposition', `attachment; filename="comparison_${slug}.docx"`)
+      .send(buffer)
+  })
+
   // ── Get one ─────────────────────────────────────────────────────────────────
   app.get('/:id', async (req, reply) => {
     const { agencyId } = req.auth
