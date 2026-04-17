@@ -176,7 +176,7 @@ const TEMPLATE_SPECS: TemplateSpec[] = [
   {
     name: 'LinkedIn thought leadership post',
     category: 'Copy',
-    description: 'Executive thought leadership post for a C-suite leader's personal LinkedIn feed',
+    description: 'Executive thought leadership post for a C-suite leader\'s personal LinkedIn feed',
     usedFields: ['brandVoice', 'signaturePhrases', 'keyAchievements', 'primaryBuyer'],
     generationHint: 'Write a prompt that generates a LinkedIn thought leadership post in the voice of a senior executive — not a company ad, but a personal perspective. Structure: bold hook (1 sentence), POV or lesson learned (3 short paragraphs), closing question that invites reflection. 150-200 words total. Uses the executive\'s authentic brand voice and any signature phrases. No corporate buzzwords, no hard sell.',
   },
