@@ -533,7 +533,7 @@ export function NodePalette() {
         <button
           onClick={() => setCollapsed(false)}
           title="Expand palette"
-          className="absolute right-0 top-2 z-10 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+          className="absolute right-0 top-[30%] z-10 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
         >
           <Icons.ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
         </button>
@@ -549,7 +549,7 @@ export function NodePalette() {
       <button
         onClick={() => setCollapsed(true)}
         title="Collapse palette"
-        className="absolute right-0 top-2 z-10 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+        className="absolute right-0 top-[30%] z-10 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
       >
         <Icons.ChevronLeft className="h-2.5 w-2.5 text-muted-foreground" />
       </button>
