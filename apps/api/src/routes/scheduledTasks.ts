@@ -9,13 +9,15 @@ import {
 import { seedDefaultTasksForAllClients } from '../lib/defaultScheduledTasks.js'
 
 const createBody = z.object({
-  label: z.string().min(1).max(120),
-  scope: z.enum(['company', 'client', 'vertical']),
-  type: z.enum(['web_scrape', 'review_miner', 'audience_signal', 'seo_intent', 'research_brief']),
-  frequency: z.enum(['daily', 'weekly', 'monthly']),
-  clientId: z.string().optional(),
-  verticalId: z.string().nullish(),
-  config: z.record(z.unknown()).default({}),
+  label:                z.string().min(1).max(120),
+  scope:                z.enum(['company', 'client', 'vertical']),
+  type:                 z.enum(['web_scrape', 'review_miner', 'audience_signal', 'seo_intent', 'research_brief']),
+  frequency:            z.enum(['daily', 'weekly', 'monthly']),
+  clientId:             z.string().optional(),
+  verticalId:           z.string().nullish(),
+  config:               z.record(z.unknown()).default({}),
+  autoGenerate:         z.boolean().optional(),
+  autoGenerateBlogCount: z.number().int().min(1).max(5).optional(),
 })
 
 const updateBody = createBody
@@ -53,7 +55,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const parsed = createBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
-    const { label, scope, type, frequency, clientId, verticalId, config } = parsed.data
+    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount } = parsed.data
 
     if (scope === 'client' && !clientId) {
       return reply.code(400).send({ error: 'clientId required for client-scoped tasks' })
@@ -73,6 +75,8 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         frequency,
         config: config as object,
         nextRunAt: computeNextRunAt(frequency),
+        ...(autoGenerate !== undefined ? { autoGenerate } : {}),
+        ...(autoGenerateBlogCount !== undefined ? { autoGenerateBlogCount } : {}),
       },
     })
     return reply.code(201).send({ data: task })
@@ -88,7 +92,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const existing = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Task not found' })
 
-    const { label, frequency, config, enabled, clientId, verticalId } = parsed.data
+    const { label, frequency, config, enabled, clientId, verticalId, autoGenerate, autoGenerateBlogCount } = parsed.data
     const updateData: Record<string, unknown> = {}
     if (label !== undefined) updateData.label = label
     if (frequency !== undefined) {
@@ -103,6 +107,8 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
       // Scope follows vertical selection: vertical set → 'vertical', cleared → 'client'
       updateData.scope = verticalId ? 'vertical' : 'client'
     }
+    if (autoGenerate !== undefined) updateData.autoGenerate = autoGenerate
+    if (autoGenerateBlogCount !== undefined) updateData.autoGenerateBlogCount = autoGenerateBlogCount
 
     const task = await prisma.scheduledTask.update({
       where: { id },

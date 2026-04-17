@@ -5177,6 +5177,7 @@ interface ScheduledTask {
   lastChangeSummary: string | null; config: Record<string, unknown>
   clientId: string | null; verticalId: string | null
   vertical?: { id: string; name: string } | null
+  autoGenerate: boolean; autoGenerateBlogCount: number
 }
 
 const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
@@ -5355,6 +5356,8 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
   const [config, setConfig] = useState<Record<string, unknown>>(editTask?.config ?? {})
   const [verticalId, setVerticalId] = useState<string>(editTask?.verticalId ?? '__client__')
   const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
+  const [autoGenerate, setAutoGenerate] = useState(editTask?.autoGenerate ?? false)
+  const [autoGenerateBlogCount, setAutoGenerateBlogCount] = useState(editTask?.autoGenerateBlogCount ?? 2)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -5380,6 +5383,8 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
             frequency,
             config,
             verticalId: isVertical ? verticalId : null,
+            autoGenerate,
+            autoGenerateBlogCount,
           }),
         })
         const { data, error: err } = await res.json()
@@ -5398,6 +5403,8 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
             clientId,
             ...(isVertical ? { verticalId } : {}),
             config,
+            autoGenerate,
+            autoGenerateBlogCount,
           }),
         })
         const { data, error: err } = await res.json()
@@ -5426,6 +5433,8 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
           clientId,
           ...(isVertical ? { verticalId } : {}),
           config,
+          autoGenerate,
+          autoGenerateBlogCount,
         }),
       })
       const { data, error: err } = await res.json()
@@ -5524,6 +5533,44 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
           <div className="space-y-1.5">
             <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Configuration</p>
             <TaskConfigFields type={type} config={config} onChange={setConfig} />
+          </div>
+
+          {/* Auto-generate blogs toggle */}
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium" style={{ color: '#111827' }}>Auto-generate blogs after each run</p>
+                <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>Automatically generate blog posts from the research output and send to review queue.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoGenerate(!autoGenerate)}
+                style={{
+                  width: 40, height: 22, borderRadius: 11,
+                  backgroundColor: autoGenerate ? '#a200ee' : '#d1d5db',
+                  border: 'none', cursor: 'pointer', position: 'relative',
+                  transition: 'background-color 0.2s', flexShrink: 0,
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2, left: autoGenerate ? 20 : 2,
+                  width: 18, height: 18, borderRadius: '50%', backgroundColor: '#ffffff',
+                  transition: 'left 0.2s', display: 'block',
+                }} />
+              </button>
+            </div>
+            {autoGenerate && (
+              <div className="mt-3 flex items-center gap-3">
+                <p className="text-xs font-medium" style={{ color: '#6b7280', flexShrink: 0 }}>Number of blogs</p>
+                <select
+                  value={autoGenerateBlogCount}
+                  onChange={(e) => setAutoGenerateBlogCount(Number(e.target.value))}
+                  style={{ width: 80, height: 32, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 10px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+                >
+                  {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           {error && <p className="text-xs" style={{ color: '#dc2626' }}>{error}</p>}

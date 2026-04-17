@@ -1620,7 +1620,9 @@ model ScheduledTask {
   lastStatus        String    @default("idle") @map("last_status")
   lastOutputHash    String?   @map("last_output_hash")
   lastChangeSummary String?   @db.Text @map("last_change_summary")
-  changeDetected    Boolean   @default(false) @map("change_detected")
+  changeDetected         Boolean  @default(false) @map("change_detected")
+  autoGenerate           Boolean  @default(false) @map("auto_generate")
+  autoGenerateBlogCount  Int      @default(2)     @map("auto_generate_blog_count")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
