@@ -1493,7 +1493,8 @@ function SendToWorkflowModal({
       }> = []
       const edges: Array<{ id: string; source: string; target: string }> = []
 
-      const textNodeId = 'n1'
+      // Use random UUIDs — hardcoded IDs like 'n1' collide with existing DB rows
+      const textNodeId = crypto.randomUUID()
       nodes.push({
         id: textNodeId,
         type: 'source',
@@ -1510,7 +1511,7 @@ function SendToWorkflowModal({
 
       // Always add an HTML Page (slide-deck) node so the workflow is ready to run.
       // Pre-load the existing deck HTML if one was already generated in researchNODE.
-      const htmlNodeId = 'n2'
+      const htmlNodeId = crypto.randomUUID()
       nodes.push({
         id: htmlNodeId,
         type: 'output',
@@ -1527,13 +1528,17 @@ function SendToWorkflowModal({
           },
         },
       })
-      edges.push({ id: 'e1', source: textNodeId, target: htmlNodeId })
+      edges.push({ id: crypto.randomUUID(), source: textNodeId, target: htmlNodeId })
 
-      await apiFetch(`/api/v1/workflows/${workflowId}/graph`, {
+      const graphRes = await apiFetch(`/api/v1/workflows/${workflowId}/graph`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ nodes, edges, name: workflowName.trim() }),
       })
+      if (!graphRes.ok) {
+        const graphJson = await graphRes.json().catch(() => ({}))
+        throw new Error(graphJson?.error ?? `Failed to save nodes (${graphRes.status})`)
+      }
 
       onCreated(workflowId)
     } catch (err) {
