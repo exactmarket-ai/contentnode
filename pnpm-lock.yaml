@@ -7,7 +7,7 @@ settings:
 overrides:
   axios: '>=1.15.0'
   follow-redirects: '>=1.16.0'
-  '@clerk/shared': '>=3.47.4'
+  '@clerk/shared': 3.47.4
 
 pnpmfileChecksum: sha256-PqZPmANVox6e2id4qY/w/DOOkJRFqv2iGZ4Bs0Fu5qw=
 
