@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useState, useMemo } from 'react'
+import { useCallback, useRef, useEffect, useState } from 'react'
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -88,12 +88,6 @@ export function WorkflowCanvas() {
   const hasFitRef = useRef(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [nodeContextMenu, setNodeContextMenu] = useState<{ x: number; y: number; nodeId: string; subtype: string } | null>(null)
-  const [zoom, setZoom] = useState(1)
-  // Keep snap grid ~20px on screen regardless of zoom level
-  const snapGrid = useMemo<[number, number]>(() => {
-    const px = Math.max(5, Math.round(20 / zoom))
-    return [px, px]
-  }, [zoom])
 
   // Fit view once after workflow nodes load asynchronously
   useEffect(() => {
@@ -241,8 +235,7 @@ export function WorkflowCanvas() {
         }}
         nodeTypes={nodeTypes}
         snapToGrid
-        snapGrid={snapGrid}
-        onMove={(_, vp) => setZoom(vp.zoom)}
+        snapGrid={[20, 20]}
         minZoom={0.05}
         maxZoom={2}
         fitView
