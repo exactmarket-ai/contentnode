@@ -25,7 +25,8 @@
   "pnpm": {
     "overrides": {
       "axios": ">=1.15.0",
-      "follow-redirects": ">=1.16.0"
+      "follow-redirects": ">=1.16.0",
+      "@clerk/shared": ">=3.47.4"
     }
   }
 }
