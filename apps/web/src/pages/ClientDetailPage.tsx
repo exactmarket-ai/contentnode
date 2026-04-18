@@ -6778,9 +6778,9 @@ export function ClientDetailPage() {
   // Tabs that live under the "Demand Gen" group
   const DEMAND_GEN_TABS: Tab[] = ['demandgen', 'campaigns']
   // Tabs that live under the "Research" group
-  const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment']
+  const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment', 'scheduled-tasks']
   // Tabs that live under the "Settings" group
-  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'scheduled-tasks', 'doc-style']
+  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'thought-leadership', 'framework', 'branding', 'reviews']
   // Tabs rendered after the Demand Gen group button
