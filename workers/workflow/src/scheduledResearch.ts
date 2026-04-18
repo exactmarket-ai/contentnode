@@ -172,11 +172,32 @@ ${att.extractedText.slice(0, 13000)}`
   console.log(`[auto-generate] task ${task.id} → ${blogs.length} blog(s) created, saved to review`)
 }
 
-function computeNextRunAt(frequency: string): Date {
+function computeNextRunAt(frequency: string, scheduledDay?: number | null): Date {
   const now = new Date()
   if (frequency === 'daily') return new Date(now.getTime() + 86_400_000)
-  if (frequency === 'monthly') return new Date(now.getTime() + 30 * 86_400_000)
-  return new Date(now.getTime() + 7 * 86_400_000) // weekly default
+  if (frequency === 'weekly') {
+    if (scheduledDay != null) {
+      const jsTarget = scheduledDay === 6 ? 0 : scheduledDay + 1
+      const current  = now.getDay()
+      let daysUntil  = jsTarget - current
+      if (daysUntil <= 0) daysUntil += 7
+      const next = new Date(now)
+      next.setDate(now.getDate() + daysUntil)
+      next.setHours(9, 0, 0, 0)
+      return next
+    }
+    return new Date(now.getTime() + 7 * 86_400_000)
+  }
+  if (frequency === 'monthly') {
+    if (scheduledDay != null) {
+      const day  = Math.min(Math.max(scheduledDay, 1), 28)
+      const next = new Date(now.getFullYear(), now.getMonth(), day, 9, 0, 0, 0)
+      if (next <= now) next.setMonth(next.getMonth() + 1)
+      return next
+    }
+    return new Date(now.getTime() + 30 * 86_400_000)
+  }
+  return new Date(now.getTime() + 7 * 86_400_000)
 }
 
 // Minimal fake context — research executors only need these fields
@@ -389,7 +410,7 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
         data: {
           lastStatus: 'success',
           lastRunAt: new Date(),
-          nextRunAt: computeNextRunAt(task.frequency),
+          nextRunAt: computeNextRunAt(task.frequency, task.scheduledDay),
           lastOutputHash: newHash,
           ...(changed && { changeDetected: true, lastChangeSummary: changeSummary }),
         },
@@ -418,7 +439,7 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
         data: {
           lastStatus: 'failed',
           lastRunAt: new Date(),
-          nextRunAt: computeNextRunAt(task.frequency),
+          nextRunAt: computeNextRunAt(task.frequency, task.scheduledDay),
         },
       })
       throw err

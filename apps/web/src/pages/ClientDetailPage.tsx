@@ -5178,6 +5178,7 @@ interface ScheduledTask {
   clientId: string | null; verticalId: string | null
   vertical?: { id: string; name: string } | null
   autoGenerate: boolean; autoGenerateBlogCount: number
+  scheduledDay: number | null
 }
 
 const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
@@ -6153,12 +6154,13 @@ function QuickScheduleModal({ task, onClose, onUpdated, onGenerate }: {
 }) {
   const meta = TASK_TYPE_META[task.type]
   const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
-  const [frequency, setFrequency] = useState<ScheduledTaskFrequency>(task.frequency)
-  const [enabled, setEnabled]     = useState(task.enabled)
+  const [frequency, setFrequency]   = useState<ScheduledTaskFrequency>(task.frequency)
+  const [scheduledDay, setScheduledDay] = useState<number | null>(task.scheduledDay ?? null)
+  const [enabled, setEnabled]       = useState(task.enabled)
   const [autoGenerate, setAutoGenerate]             = useState(task.autoGenerate)
   const [autoGenerateBlogCount, setAutoGenerateBlogCount] = useState(task.autoGenerateBlogCount ?? 2)
-  const [saving, setSaving]       = useState(false)
-  const [running, setRunning]     = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [running, setRunning]       = useState(false)
 
   const save = async () => {
     setSaving(true)
@@ -6166,7 +6168,7 @@ function QuickScheduleModal({ task, onClose, onUpdated, onGenerate }: {
       const res = await apiFetch(`/api/v1/scheduled-tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ frequency, enabled, autoGenerate, autoGenerateBlogCount }),
+        body: JSON.stringify({ frequency, scheduledDay, enabled, autoGenerate, autoGenerateBlogCount }),
       })
       const { data } = await res.json()
       if (res.ok) onUpdated(data)
@@ -6220,6 +6222,46 @@ function QuickScheduleModal({ task, onClose, onUpdated, onGenerate }: {
               ))}
             </div>
           </div>
+
+          {/* Day picker — shown for weekly and monthly */}
+          {frequency === 'weekly' && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: '#374151' }}>Run on</p>
+              <div className="flex gap-1.5">
+                {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setScheduledDay(scheduledDay === i ? null : i)}
+                    className="flex-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors"
+                    style={{
+                      border: scheduledDay === i ? '1px solid #7c3aed' : '1px solid #e5e7eb',
+                      backgroundColor: scheduledDay === i ? '#f5f3ff' : '#f9fafb',
+                      color: scheduledDay === i ? '#7c3aed' : '#374151',
+                    }}
+                  >{d}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {frequency === 'monthly' && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: '#374151' }}>Run on day of month</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setScheduledDay(scheduledDay === d ? null : d)}
+                    className="h-7 w-7 rounded-lg text-[11px] font-medium transition-colors"
+                    style={{
+                      border: scheduledDay === d ? '1px solid #7c3aed' : '1px solid #e5e7eb',
+                      backgroundColor: scheduledDay === d ? '#f5f3ff' : '#f9fafb',
+                      color: scheduledDay === d ? '#7c3aed' : '#374151',
+                    }}
+                  >{d}</button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Enable toggle */}
           <div className="flex items-center justify-between">

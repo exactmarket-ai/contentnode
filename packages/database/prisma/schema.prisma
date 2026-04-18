@@ -1623,6 +1623,7 @@ model ScheduledTask {
   changeDetected         Boolean  @default(false) @map("change_detected")
   autoGenerate           Boolean  @default(false) @map("auto_generate")
   autoGenerateBlogCount  Int      @default(2)     @map("auto_generate_blog_count")
+  scheduledDay           Int?                     @map("scheduled_day")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 

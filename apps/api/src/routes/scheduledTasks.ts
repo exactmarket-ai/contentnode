@@ -18,6 +18,7 @@ const createBody = z.object({
   config:               z.record(z.unknown()).default({}),
   autoGenerate:         z.boolean().optional(),
   autoGenerateBlogCount: z.number().int().min(1).max(5).optional(),
+  scheduledDay:         z.number().int().min(0).max(27).nullish(),
 })
 
 const updateBody = createBody
@@ -25,10 +26,33 @@ const updateBody = createBody
   .omit({ scope: true, type: true })
   .extend({ enabled: z.boolean().optional() })
 
-function computeNextRunAt(frequency: string): Date {
+function computeNextRunAt(frequency: string, scheduledDay?: number | null): Date {
   const now = new Date()
   if (frequency === 'daily') return new Date(now.getTime() + 86_400_000)
-  if (frequency === 'monthly') return new Date(now.getTime() + 30 * 86_400_000)
+  if (frequency === 'weekly') {
+    if (scheduledDay != null) {
+      // scheduledDay: 0=Mon … 6=Sun (matches UI Mon-first order)
+      // Convert to JS getDay(): Sun=0, Mon=1 … Sat=6
+      const jsTarget = scheduledDay === 6 ? 0 : scheduledDay + 1
+      const current  = now.getDay()
+      let daysUntil  = jsTarget - current
+      if (daysUntil <= 0) daysUntil += 7
+      const next = new Date(now)
+      next.setDate(now.getDate() + daysUntil)
+      next.setHours(9, 0, 0, 0)
+      return next
+    }
+    return new Date(now.getTime() + 7 * 86_400_000)
+  }
+  if (frequency === 'monthly') {
+    if (scheduledDay != null) {
+      const day  = Math.min(Math.max(scheduledDay, 1), 28)
+      const next = new Date(now.getFullYear(), now.getMonth(), day, 9, 0, 0, 0)
+      if (next <= now) next.setMonth(next.getMonth() + 1)
+      return next
+    }
+    return new Date(now.getTime() + 30 * 86_400_000)
+  }
   return new Date(now.getTime() + 7 * 86_400_000)
 }
 
@@ -55,7 +79,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const parsed = createBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
-    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount } = parsed.data
+    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount, scheduledDay } = parsed.data
 
     if (scope === 'client' && !clientId) {
       return reply.code(400).send({ error: 'clientId required for client-scoped tasks' })
@@ -74,9 +98,10 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         label,
         frequency,
         config: config as object,
-        nextRunAt: computeNextRunAt(frequency),
+        nextRunAt: computeNextRunAt(frequency, scheduledDay),
         ...(autoGenerate !== undefined ? { autoGenerate } : {}),
         ...(autoGenerateBlogCount !== undefined ? { autoGenerateBlogCount } : {}),
+        ...(scheduledDay !== undefined ? { scheduledDay: scheduledDay ?? null } : {}),
       },
     })
     return reply.code(201).send({ data: task })
@@ -92,12 +117,17 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const existing = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Task not found' })
 
-    const { label, frequency, config, enabled, clientId, verticalId, autoGenerate, autoGenerateBlogCount } = parsed.data
+    const { label, frequency, config, enabled, clientId, verticalId, autoGenerate, autoGenerateBlogCount, scheduledDay } = parsed.data
     const updateData: Record<string, unknown> = {}
     if (label !== undefined) updateData.label = label
+    if (scheduledDay !== undefined) updateData.scheduledDay = scheduledDay ?? null
     if (frequency !== undefined) {
       updateData.frequency = frequency
-      updateData.nextRunAt = computeNextRunAt(frequency)
+      const effectiveDay = scheduledDay !== undefined ? (scheduledDay ?? null) : (existing.scheduledDay ?? null)
+      updateData.nextRunAt = computeNextRunAt(frequency, effectiveDay)
+    } else if (scheduledDay !== undefined) {
+      // scheduledDay changed without frequency change — recompute nextRunAt
+      updateData.nextRunAt = computeNextRunAt(existing.frequency, scheduledDay ?? null)
     }
     if (config !== undefined) updateData.config = config
     if (enabled !== undefined) updateData.enabled = enabled
