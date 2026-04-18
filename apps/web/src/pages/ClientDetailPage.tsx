@@ -5344,19 +5344,26 @@ function TaskConfigFields({ type, config, onChange }: {
   return null
 }
 
-function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initialType }: {
+interface TaskDraft {
+  label?: string
+  frequency?: ScheduledTaskFrequency
+  config?: Record<string, unknown>
+}
+
+function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initialType, initialDraft }: {
   clientId: string
   onClose: () => void
   onCreated?: (t: ScheduledTask) => void
   onUpdated?: (t: ScheduledTask) => void
   editTask?: ScheduledTask
   initialType?: ScheduledTaskType
+  initialDraft?: TaskDraft
 }) {
   const isEdit = !!editTask
   const [type, setType] = useState<ScheduledTaskType>(editTask?.type ?? initialType ?? 'web_scrape')
-  const [label, setLabel] = useState(editTask?.label ?? '')
-  const [frequency, setFrequency] = useState<ScheduledTaskFrequency>(editTask?.frequency ?? 'weekly')
-  const [config, setConfig] = useState<Record<string, unknown>>(editTask?.config ?? {})
+  const [label, setLabel] = useState(editTask?.label ?? initialDraft?.label ?? '')
+  const [frequency, setFrequency] = useState<ScheduledTaskFrequency>(editTask?.frequency ?? initialDraft?.frequency ?? 'weekly')
+  const [config, setConfig] = useState<Record<string, unknown>>(editTask?.config ?? initialDraft?.config ?? {})
   const [verticalId, setVerticalId] = useState<string>(editTask?.verticalId ?? '__client__')
   const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
   const [autoGenerate, setAutoGenerate] = useState(editTask?.autoGenerate ?? false)
@@ -6350,6 +6357,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
   const [loading, setLoading]                 = useState(true)
   const [showAdd, setShowAdd]                 = useState(false)
   const [addTaskType, setAddTaskType]         = useState<ScheduledTaskType | undefined>(undefined)
+  const [addTaskDraft, setAddTaskDraft]       = useState<TaskDraft | undefined>(undefined)
   const [editingTask, setEditingTask]         = useState<ScheduledTask | null>(null)
   const [viewingTask, setViewingTask]         = useState<ScheduledTask | null>(null)
   const [generatingTask, setGeneratingTask]   = useState<ScheduledTask | null>(null)
@@ -6643,7 +6651,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
       clientId={clientId}
       clientName={clientName}
       tasks={tasks}
-      onAddTask={(type) => { setAddTaskType(type as ScheduledTaskType); setShowAdd(true) }}
+      onAddTask={(type, draft) => { setAddTaskType(type as ScheduledTaskType); setAddTaskDraft(draft); setShowAdd(true) }}
       onRunTask={(id) => runNow(id)}
       onViewOutput={(id) => { const t = tasks.find((x) => x.id === id); if (t) setViewingTask(t) }}
       onScheduleTask={(id) => { const t = tasks.find((x) => x.id === id); if (t) setSchedulingTask(t) }}
@@ -6653,8 +6661,9 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
         <AddTaskModal
           clientId={clientId}
           initialType={addTaskType}
-          onClose={() => { setShowAdd(false); setAddTaskType(undefined) }}
-          onCreated={(t) => { setTasks((prev) => [t, ...prev]); setAddTaskType(undefined) }}
+          initialDraft={addTaskDraft}
+          onClose={() => { setShowAdd(false); setAddTaskType(undefined); setAddTaskDraft(undefined) }}
+          onCreated={(t) => { setTasks((prev) => [t, ...prev]); setAddTaskType(undefined); setAddTaskDraft(undefined) }}
         />
       )}
 

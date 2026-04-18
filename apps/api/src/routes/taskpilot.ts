@@ -191,17 +191,33 @@ SUGGESTION BLOCK (always at the very end):
     "action": "add_task|run_task|view_output|schedule_task",
     "taskId": "existing-task-id-or-null",
     "taskType": "web_scrape|review_miner|audience_signal|seo_intent|research_brief or null",
-    "taskLabel": "display name for this suggestion"
+    "taskLabel": "display name for this suggestion",
+    "taskDraft": { ... } // only for add_task — see below
   }
 ]
 </TASKPILOT_SUGGESTIONS>
 
 Valid actions:
-- "add_task": suggest creating a new task (set taskType, leave taskId null)
+- "add_task": suggest creating a new task (set taskType, leave taskId null). ALWAYS include a "taskDraft" object to pre-configure the modal.
 - "run_task": suggest running an existing task now (set taskId)
 - "view_output": suggest viewing the last output of a task (set taskId)
 - "schedule_task": suggest opening the schedule modal for a task (set taskId)
 
+TASK DRAFT — for add_task suggestions, populate "taskDraft" with ready-to-use config:
+{
+  "label": "Descriptive task name (4-8 words, be specific)",
+  "frequency": "daily|weekly|monthly",
+  "config": { /* type-specific fields below */ }
+}
+
+Config fields by task type:
+- web_scrape:      { "seedUrls": "url1\\nurl2", "synthesisTarget": "summary|dg_s7|gtm_12|raw", "stayOnDomain": true/false, "linkPattern": "" }
+- review_miner:    { "companyName": "Client Corp", "platforms": ["trustpilot","g2","capterra"], "competitors": "Comp A\\nComp B", "synthesis": "theme_analysis|competitive_battlecard|objection_map|testimonials|full" }
+- audience_signal: { "keywords": "keyword1\\nkeyword2", "subreddits": "subreddit1\\nsubreddit2", "goal": "pain_points|vocabulary_map|objection_map|question_map|full", "minUpvotes": 5 }
+- seo_intent:      { "seedKeywords": "keyword1\\nkeyword2", "dataSource": "claude|google_autocomplete|dataforseo", "funnelFocus": "all|awareness|consideration|decision" }
+- research_brief:  { "prompt": "Search for [topic] news in the last 7 days. Focus on: ...", "recencyDays": 7 }
+
+Use what you know about the client's industry, competitors, and audience to populate specific URLs, company names, keywords, and subreddits. The more specific, the better.
 If giving general advice with no specific task action, omit the suggestions block entirely.`
 }
 

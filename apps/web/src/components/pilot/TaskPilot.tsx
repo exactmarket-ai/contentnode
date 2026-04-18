@@ -13,6 +13,12 @@ import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface TaskDraft {
+  label?: string
+  frequency?: 'daily' | 'weekly' | 'monthly'
+  config?: Record<string, unknown>
+}
+
 export interface TaskSuggestion {
   id: string
   title: string
@@ -21,6 +27,7 @@ export interface TaskSuggestion {
   taskId: string | null
   taskType: string | null
   taskLabel: string
+  taskDraft?: TaskDraft
 }
 
 interface TaskMessage {
@@ -47,7 +54,7 @@ export interface TaskPilotProps {
   clientId: string
   clientName: string
   tasks: ScheduledTaskSummary[]
-  onAddTask: (taskType: string) => void
+  onAddTask: (taskType: string, draft?: TaskDraft) => void
   onRunTask: (taskId: string) => void
   onViewOutput: (taskId: string) => void
   onScheduleTask: (taskId: string) => void
@@ -85,7 +92,7 @@ function SuggestionCard({
   onSendMessage,
 }: {
   suggestion: TaskSuggestion
-  onAddTask: (type: string) => void
+  onAddTask: (type: string, draft?: TaskDraft) => void
   onRunTask: (id: string) => void
   onViewOutput: (id: string) => void
   onScheduleTask: (id: string) => void
@@ -96,8 +103,11 @@ function SuggestionCard({
 
   const handleAction = () => {
     if (suggestion.action === 'add_task' && suggestion.taskType) {
-      onAddTask(suggestion.taskType)
-      onSendMessage(`I'm setting up a new ${suggestion.taskLabel} task. What config do you recommend for ${suggestion.taskLabel}?`)
+      onAddTask(suggestion.taskType, suggestion.taskDraft)
+      const autoMsg = suggestion.taskDraft?.label
+        ? `I've pre-filled "${suggestion.taskDraft.label}" — review and save when ready.`
+        : `I'm setting up a new ${suggestion.taskLabel} task. What config do you recommend?`
+      onSendMessage(autoMsg)
     } else if (suggestion.action === 'run_task' && suggestion.taskId) {
       onRunTask(suggestion.taskId)
       onSendMessage(`I ran "${suggestion.taskLabel}" now. What should I look for in the output?`)
@@ -142,7 +152,7 @@ function MessageBubble({
   onSendMessage,
 }: {
   msg: TaskMessage
-  onAddTask: (type: string) => void
+  onAddTask: (type: string, draft?: TaskDraft) => void
   onRunTask: (id: string) => void
   onViewOutput: (id: string) => void
   onScheduleTask: (id: string) => void
