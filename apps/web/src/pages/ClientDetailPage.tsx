@@ -6437,8 +6437,8 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
   }
 
   return (
-    <div className="flex flex-col gap-4">
-    <div className="flex gap-4 items-start">
+    <div className="flex flex-col h-full">
+    <div className="flex flex-1 gap-4 items-start overflow-y-auto p-6 min-h-0">
 
       {/* ── Left: Task Templates ────────────────────────────────── */}
       <div className="w-64 shrink-0 rounded-xl border border-border bg-card">
@@ -7001,6 +7001,8 @@ export function ClientDetailPage() {
         ? <div className="flex-1 overflow-hidden"><ClientDemandGenTab clientId={client.id} /></div>
         : activeTab === 'branding'
         ? <div className="flex-1 overflow-hidden"><ClientBrandingTab clientId={client.id} clientName={client.name} /></div>
+        : activeTab === 'scheduled-tasks'
+        ? <div className="flex-1 overflow-hidden"><ScheduledTasksTab clientId={client.id} clientName={client.name} /></div>
         : <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={switchTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
@@ -7031,7 +7033,6 @@ export function ClientDetailPage() {
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'company' && <CompanyProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'structure' && <StructureTab client={client} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
-        {activeTab === 'scheduled-tasks' && <ScheduledTasksTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'doc-style' && <ClientDocStyleTab clientId={client.id} />}
       </div>}
 
