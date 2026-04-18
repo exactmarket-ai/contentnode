@@ -20,6 +20,7 @@ import { ThoughtLeadershipTab } from './ThoughtLeadershipTab'
 import { ClientBrainTab } from './ClientBrainTab'
 import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { TaskPilot } from '@/components/pilot/TaskPilot'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -6436,6 +6437,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
   }
 
   return (
+    <div className="flex flex-col gap-4">
     <div className="flex gap-4 items-start">
 
       {/* ── Left: Task Templates ────────────────────────────────── */}
@@ -6634,6 +6636,18 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
           )}
         </div>
       </div>
+
+    </div>
+
+    <TaskPilot
+      clientId={clientId}
+      clientName={clientName}
+      tasks={tasks}
+      onAddTask={(type) => { setAddTaskType(type as ScheduledTaskType); setShowAdd(true) }}
+      onRunTask={(id) => runNow(id)}
+      onViewOutput={(id) => { const t = tasks.find((x) => x.id === id); if (t) setViewingTask(t) }}
+      onScheduleTask={(id) => { const t = tasks.find((x) => x.id === id); if (t) setSchedulingTask(t) }}
+    />
 
       {showAdd && (
         <AddTaskModal
