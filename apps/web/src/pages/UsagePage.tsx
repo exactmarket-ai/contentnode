@@ -44,9 +44,9 @@ interface UsageData {
   characterAnimation?: { totalSecs: number; byProvider: { provider: string; secs: number; costUsd: number }[] }
   musicGeneration?: { totalSecs: number; byProvider: { provider: string; secs: number; costUsd: number }[] }
   videoComposition?: { totalSecs: number; totalCostUsd: number }
-  byClient: { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls?: number; videosGenerated?: number; imagesGenerated?: number }[]
+  byClient: { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls?: number; videosGenerated?: number; imagesGenerated?: number; voiceSecs?: number; charAnimSecs?: number; musicSecs?: number; videoCompSecs?: number; mediaCostUsd?: number }[]
   byWorkflow: { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }[]
-  byUser: { userId: string; userName: string; tokens: number; humanizerWords: number; imagesGenerated: number; videosGenerated: number; translationChars: number }[]
+  byUser: { userId: string; userName: string; tokens: number; humanizerWords: number; imagesGenerated: number; videosGenerated: number; translationChars: number; voiceSecs?: number; charAnimSecs?: number; musicSecs?: number; videoCompSecs?: number; mediaCostUsd?: number }[]
   dailyUsage: { date: string; tokens: number }[]
 }
 
@@ -134,8 +134,9 @@ function Section({ title, icon: Icon, color = 'text-muted-foreground', total, ch
   )
 }
 
-function Bar({ label, sub, value, max, color = 'bg-blue-600' }: { label: string; sub?: string; value: number; max: number; color?: string }) {
+function Bar({ label, sub, value, max, color = 'bg-blue-600', unit = '', unitPrefix = false }: { label: string; sub?: string; value: number; max: number; color?: string; unit?: string; unitPrefix?: boolean }) {
   const pct = max > 0 ? (value / max) * 100 : 0
+  const display = unitPrefix ? `${unit}${fmt(value)}` : fmt(value, unit)
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
@@ -143,7 +144,7 @@ function Bar({ label, sub, value, max, color = 'bg-blue-600' }: { label: string;
           <span className="text-sm font-medium">{label}</span>
           {sub && <span className="ml-1.5 text-xs text-muted-foreground">{sub}</span>}
         </div>
-        <span className="text-sm font-semibold tabular-nums">{fmt(value)}</span>
+        <span className="text-sm font-semibold tabular-nums">{display}</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div className={cn('h-full rounded-full transition-all', color)} style={{ width: `${pct}%` }} />
@@ -620,6 +621,46 @@ export function UsagePage() {
                     ))}
                   </>
                 )}
+                {data.byClient.some((c) => (c.voiceSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Voice TTS (seconds)</p>
+                    {data.byClient.filter((c) => (c.voiceSecs ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={Math.round(c.voiceSecs ?? 0)} max={Math.max(...data.byClient.map((x) => x.voiceSecs ?? 0))} color="bg-indigo-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byClient.some((c) => (c.charAnimSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Character Animation (seconds)</p>
+                    {data.byClient.filter((c) => (c.charAnimSecs ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={Math.round(c.charAnimSecs ?? 0)} max={Math.max(...data.byClient.map((x) => x.charAnimSecs ?? 0))} color="bg-sky-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byClient.some((c) => (c.musicSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Music Generation (seconds)</p>
+                    {data.byClient.filter((c) => (c.musicSecs ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={Math.round(c.musicSecs ?? 0)} max={Math.max(...data.byClient.map((x) => x.musicSecs ?? 0))} color="bg-teal-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byClient.some((c) => (c.videoCompSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Video Composition (seconds)</p>
+                    {data.byClient.filter((c) => (c.videoCompSecs ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={Math.round(c.videoCompSecs ?? 0)} max={Math.max(...data.byClient.map((x) => x.videoCompSecs ?? 0))} color="bg-orange-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byClient.some((c) => (c.mediaCostUsd ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Media Cost (USD)</p>
+                    {data.byClient.filter((c) => (c.mediaCostUsd ?? 0) > 0).slice(0, 10).map((c) => (
+                      <Bar key={c.clientId} label={c.clientName} value={+(c.mediaCostUsd ?? 0).toFixed(2)} max={Math.max(...data.byClient.map((x) => x.mediaCostUsd ?? 0))} color="bg-rose-500" unit="$" unitPrefix />
+                    ))}
+                  </>
+                )}
               </Section>
             )}
 
@@ -681,6 +722,46 @@ export function UsagePage() {
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Translation Chars</p>
                     {data.byUser.filter((u) => u.translationChars > 0).slice(0, 15).map((u) => (
                       <Bar key={u.userId} label={u.userName} value={u.translationChars} max={data.totals.translationChars} color="bg-cyan-600" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => (u.voiceSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Voice TTS (seconds)</p>
+                    {data.byUser.filter((u) => (u.voiceSecs ?? 0) > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={Math.round(u.voiceSecs ?? 0)} max={Math.max(...data.byUser.map((x) => x.voiceSecs ?? 0))} color="bg-indigo-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => (u.charAnimSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Character Animation (seconds)</p>
+                    {data.byUser.filter((u) => (u.charAnimSecs ?? 0) > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={Math.round(u.charAnimSecs ?? 0)} max={Math.max(...data.byUser.map((x) => x.charAnimSecs ?? 0))} color="bg-sky-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => (u.musicSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Music Generation (seconds)</p>
+                    {data.byUser.filter((u) => (u.musicSecs ?? 0) > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={Math.round(u.musicSecs ?? 0)} max={Math.max(...data.byUser.map((x) => x.musicSecs ?? 0))} color="bg-teal-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => (u.videoCompSecs ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Video Composition (seconds)</p>
+                    {data.byUser.filter((u) => (u.videoCompSecs ?? 0) > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={Math.round(u.videoCompSecs ?? 0)} max={Math.max(...data.byUser.map((x) => x.videoCompSecs ?? 0))} color="bg-orange-500" unit="s" />
+                    ))}
+                  </>
+                )}
+                {data.byUser.some((u) => (u.mediaCostUsd ?? 0) > 0) && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pt-2">Media Cost (USD)</p>
+                    {data.byUser.filter((u) => (u.mediaCostUsd ?? 0) > 0).slice(0, 15).map((u) => (
+                      <Bar key={u.userId} label={u.userName} value={+(u.mediaCostUsd ?? 0).toFixed(2)} max={Math.max(...data.byUser.map((x) => x.mediaCostUsd ?? 0))} color="bg-rose-500" unit="$" unitPrefix />
                     ))}
                   </>
                 )}

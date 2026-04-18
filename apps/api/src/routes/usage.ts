@@ -187,7 +187,7 @@ export async function usageRoutes(app: FastifyInstance) {
     )]
     const runMap: Record<string, unknown> = {}
 
-    // Also gather run IDs from translation + video generation records for client/workflow attribution
+    // Also gather run IDs from translation + video + media generation records for client/workflow attribution
     const allRunIds = [...new Set([
       ...runIds,
       ...translationRecords
@@ -197,6 +197,18 @@ export async function usageRoutes(app: FastifyInstance) {
         .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
         .filter(Boolean) as string[],
       ...imageRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[],
+      ...voiceRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[],
+      ...charAnimRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[],
+      ...musicRecords
+        .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
+        .filter(Boolean) as string[],
+      ...videoCompRecords
         .map((r) => (r.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined)
         .filter(Boolean) as string[],
     ])]
@@ -213,7 +225,7 @@ export async function usageRoutes(app: FastifyInstance) {
     // Replace runMap with the broader allRunMap
     Object.assign(runMap, allRunMap)
 
-    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls: number; videosGenerated: number; imagesGenerated: number }> = {}
+    const tokensByClient: Record<string, { clientId: string; clientName: string; tokens: number; translationChars: number; videoIntelligenceCalls: number; videosGenerated: number; imagesGenerated: number; voiceSecs: number; charAnimSecs: number; musicSecs: number; videoCompSecs: number; mediaCostUsd: number }> = {}
     const tokensByWorkflow: Record<string, { workflowId: string; workflowName: string; clientName: string; tokens: number; translationChars: number }> = {}
     for (const record of tokenRecords) {
       const runId = (record.metadata as Record<string, unknown>)['workflowRunId'] as string | undefined
@@ -222,7 +234,7 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0, voiceSecs: 0, charAnimSecs: 0, musicSecs: 0, videoCompSecs: 0, mediaCostUsd: 0 }
         tokensByClient[cid].tokens += record.quantity
         tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
         tokensByWorkflow[wf.id].tokens += record.quantity
@@ -235,7 +247,7 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0, voiceSecs: 0, charAnimSecs: 0, musicSecs: 0, videoCompSecs: 0, mediaCostUsd: 0 }
         tokensByClient[cid].translationChars += record.quantity
         tokensByWorkflow[wf.id] = tokensByWorkflow[wf.id] ?? { workflowId: wf.id, workflowName: wf.name, clientName: cname, tokens: 0, translationChars: 0 }
         tokensByWorkflow[wf.id].translationChars += record.quantity
@@ -248,7 +260,7 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf?.clientId) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0, voiceSecs: 0, charAnimSecs: 0, musicSecs: 0, videoCompSecs: 0, mediaCostUsd: 0 }
         tokensByClient[cid].videoIntelligenceCalls += 1
       }
     }
@@ -260,7 +272,7 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf?.clientId) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0, voiceSecs: 0, charAnimSecs: 0, musicSecs: 0, videoCompSecs: 0, mediaCostUsd: 0 }
         tokensByClient[cid].videosGenerated += record.quantity
       }
     }
@@ -272,8 +284,27 @@ export async function usageRoutes(app: FastifyInstance) {
       if (wf?.clientId) {
         const cid = wf.clientId
         const cname = wf.client?.name ?? 'Unknown'
-        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0 }
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0, voiceSecs: 0, charAnimSecs: 0, musicSecs: 0, videoCompSecs: 0, mediaCostUsd: 0 }
         tokensByClient[cid].imagesGenerated += record.quantity
+      }
+    }
+    // Include media usage (voice/char-anim/music/video-comp) in byClient
+    const mediaRecordsForClient = [...voiceRecords, ...charAnimRecords, ...musicRecords, ...videoCompRecords]
+    for (const record of mediaRecordsForClient) {
+      const meta  = record.metadata as Record<string, unknown>
+      const runId = meta['workflowRunId'] as string | undefined
+      const run   = runId ? runMap[runId] : undefined
+      const wf    = (run as any)?.workflow
+      if (wf?.clientId) {
+        const cid   = wf.clientId
+        const cname = wf.client?.name ?? 'Unknown'
+        tokensByClient[cid] = tokensByClient[cid] ?? { clientId: cid, clientName: cname, tokens: 0, translationChars: 0, videoIntelligenceCalls: 0, videosGenerated: 0, imagesGenerated: 0, voiceSecs: 0, charAnimSecs: 0, musicSecs: 0, videoCompSecs: 0, mediaCostUsd: 0 }
+        const secs = (meta['durationSecs'] as number) ?? 0
+        const cost = (meta['estimatedCostUsd'] as number) ?? 0
+        if (record.metric === 'voice_generation_chars')    { tokensByClient[cid].voiceSecs    += secs; tokensByClient[cid].mediaCostUsd += cost }
+        if (record.metric === 'character_animation_secs')  { tokensByClient[cid].charAnimSecs += secs; tokensByClient[cid].mediaCostUsd += cost }
+        if (record.metric === 'music_generation_secs')     { tokensByClient[cid].musicSecs    += secs; tokensByClient[cid].mediaCostUsd += cost }
+        if (record.metric === 'video_composition_secs')    { tokensByClient[cid].videoCompSecs += secs; tokensByClient[cid].mediaCostUsd += cost }
       }
     }
 
@@ -334,12 +365,15 @@ export async function usageRoutes(app: FastifyInstance) {
       tokens: number; humanizerWords: number
       imagesGenerated: number; videosGenerated: number
       translationChars: number
+      voiceSecs: number; charAnimSecs: number; musicSecs: number; videoCompSecs: number
+      mediaCostUsd: number
     }
     const byUserMap: Record<string, UserBucket> = {}
     const ensureUser = (uid: string) => {
       if (!byUserMap[uid]) byUserMap[uid] = {
         userId: uid, userName: userNameMap[uid] ?? uid,
         tokens: 0, humanizerWords: 0, imagesGenerated: 0, videosGenerated: 0, translationChars: 0,
+        voiceSecs: 0, charAnimSecs: 0, musicSecs: 0, videoCompSecs: 0, mediaCostUsd: 0,
       }
       return byUserMap[uid]
     }
@@ -347,11 +381,18 @@ export async function usageRoutes(app: FastifyInstance) {
       const uid = (r.metadata as Record<string, unknown>)['userId'] as string | undefined
       if (!uid) continue
       const bucket = ensureUser(uid)
-      if (r.metric === 'ai_tokens')         bucket.tokens          += r.quantity
-      if (r.metric === 'humanizer_words')   bucket.humanizerWords  += r.quantity
-      if (r.metric === 'image_generations') bucket.imagesGenerated += r.quantity
-      if (r.metric === 'video_generations') bucket.videosGenerated += r.quantity
-      if (r.metric === 'translation_chars') bucket.translationChars += r.quantity
+      if (r.metric === 'ai_tokens')              bucket.tokens          += r.quantity
+      if (r.metric === 'humanizer_words')        bucket.humanizerWords  += r.quantity
+      if (r.metric === 'image_generations')      bucket.imagesGenerated += r.quantity
+      if (r.metric === 'video_generations')      bucket.videosGenerated += r.quantity
+      if (r.metric === 'translation_chars')      bucket.translationChars += r.quantity
+      const meta = r.metadata as Record<string, unknown>
+      const secs = (meta['durationSecs'] as number) ?? 0
+      const cost = (meta['estimatedCostUsd'] as number) ?? 0
+      if (r.metric === 'voice_generation_chars')   { bucket.voiceSecs    += secs; bucket.mediaCostUsd += cost }
+      if (r.metric === 'character_animation_secs') { bucket.charAnimSecs += secs; bucket.mediaCostUsd += cost }
+      if (r.metric === 'music_generation_secs')    { bucket.musicSecs    += secs; bucket.mediaCostUsd += cost }
+      if (r.metric === 'video_composition_secs')   { bucket.videoCompSecs += secs; bucket.mediaCostUsd += cost }
     }
 
     // ── Daily token usage (last 30 days) ─────────────────────────────────────

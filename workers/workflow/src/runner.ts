@@ -937,6 +937,7 @@ export class WorkflowRunner {
                 prisma.usageRecord.create({
                   data: {
                     agencyId:    this.agencyId,
+                    clientId:    workflow.clientId ?? undefined,
                     metric:      metricKey,
                     quantity,
                     periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
