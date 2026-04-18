@@ -6145,6 +6145,162 @@ function GenerateContentModal({ task, onClose }: { task: ScheduledTask; onClose:
   )
 }
 
+function QuickScheduleModal({ task, onClose, onUpdated, onGenerate }: {
+  task: ScheduledTask
+  onClose: () => void
+  onUpdated: (t: ScheduledTask) => void
+  onGenerate: (t: ScheduledTask) => void
+}) {
+  const meta = TASK_TYPE_META[task.type]
+  const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+  const [frequency, setFrequency] = useState<ScheduledTaskFrequency>(task.frequency)
+  const [enabled, setEnabled]     = useState(task.enabled)
+  const [autoGenerate, setAutoGenerate]             = useState(task.autoGenerate)
+  const [autoGenerateBlogCount, setAutoGenerateBlogCount] = useState(task.autoGenerateBlogCount ?? 2)
+  const [saving, setSaving]       = useState(false)
+  const [running, setRunning]     = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/v1/scheduled-tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frequency, enabled, autoGenerate, autoGenerateBlogCount }),
+      })
+      const { data } = await res.json()
+      if (res.ok) onUpdated(data)
+    } finally { setSaving(false) }
+  }
+
+  const runNow = async () => {
+    setRunning(true)
+    await apiFetch(`/api/v1/scheduled-tasks/${task.id}/run-now`, { method: 'POST' }).catch(() => {})
+    setRunning(false)
+    onClose()
+  }
+
+  const FREQS: ScheduledTaskFrequency[] = ['daily', 'weekly', 'monthly']
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[400px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 py-4 flex items-center gap-3" style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/20">
+            <Icon className="h-4 w-4 text-white" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-white truncate">{task.label}</p>
+            <p className="text-[11px] text-white/70">{meta.label}{task.vertical ? ` · ${task.vertical.name}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-white/60 hover:text-white hover:bg-white/20 transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-5 space-y-5">
+          {/* Frequency */}
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: '#374151' }}>Frequency</p>
+            <div className="flex gap-2">
+              {FREQS.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFrequency(f)}
+                  className="flex-1 rounded-lg py-2 text-xs font-medium capitalize transition-colors"
+                  style={{
+                    border: frequency === f ? '1px solid #7c3aed' : '1px solid #e5e7eb',
+                    backgroundColor: frequency === f ? '#f5f3ff' : '#f9fafb',
+                    color: frequency === f ? '#7c3aed' : '#374151',
+                  }}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium" style={{ color: '#111827' }}>Enabled</p>
+              <p className="text-[11px]" style={{ color: '#6b7280' }}>Task runs automatically on schedule</p>
+            </div>
+            <button
+              onClick={() => setEnabled(!enabled)}
+              style={{ width: 40, height: 22, borderRadius: 11, backgroundColor: enabled ? '#7c3aed' : '#d1d5db', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background-color 0.2s', flexShrink: 0 }}
+            >
+              <span style={{ position: 'absolute', top: 2, left: enabled ? 20 : 2, width: 18, height: 18, borderRadius: '50%', backgroundColor: '#ffffff', transition: 'left 0.2s', display: 'block' }} />
+            </button>
+          </div>
+
+          {/* Auto-generate toggle */}
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium" style={{ color: '#111827' }}>Auto-generate blogs</p>
+                <p className="text-[11px]" style={{ color: '#6b7280' }}>Generate & send to review after each run</p>
+              </div>
+              <button
+                onClick={() => setAutoGenerate(!autoGenerate)}
+                style={{ width: 40, height: 22, borderRadius: 11, backgroundColor: autoGenerate ? '#7c3aed' : '#d1d5db', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background-color 0.2s', flexShrink: 0 }}
+              >
+                <span style={{ position: 'absolute', top: 2, left: autoGenerate ? 20 : 2, width: 18, height: 18, borderRadius: '50%', backgroundColor: '#ffffff', transition: 'left 0.2s', display: 'block' }} />
+              </button>
+            </div>
+            {autoGenerate && (
+              <div className="mt-3 flex items-center gap-3">
+                <p className="text-[11px]" style={{ color: '#6b7280', flexShrink: 0 }}>Blogs per run</p>
+                <div className="flex gap-1.5">
+                  {[1,2,3,4,5].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setAutoGenerateBlogCount(n)}
+                      className="h-7 w-7 rounded-lg text-xs font-medium transition-colors"
+                      style={{ border: autoGenerateBlogCount === n ? '1px solid #7c3aed' : '1px solid #e5e7eb', backgroundColor: autoGenerateBlogCount === n ? '#f5f3ff' : '#f9fafb', color: autoGenerateBlogCount === n ? '#7c3aed' : '#374151' }}
+                    >{n}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="px-5 py-4 flex items-center gap-2" style={{ borderTop: '1px solid #e5e7eb' }}>
+          {task.lastStatus === 'success' && (
+            <button
+              onClick={() => onGenerate(task)}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium"
+              style={{ border: '1px solid #ddd6fe', backgroundColor: '#f5f3ff', color: '#7c3aed' }}
+            >
+              <Icons.Sparkles className="h-3.5 w-3.5" /> Generate Now
+            </button>
+          )}
+          <button
+            onClick={runNow}
+            disabled={running}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
+          >
+            {running ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Play className="h-3.5 w-3.5" />}
+            Run Now
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="ml-auto flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+            style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}
+          >
+            {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="h-3.5 w-3.5" />}
+            Save Schedule
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const [tasks, setTasks]                     = useState<ScheduledTask[]>([])
   const [loading, setLoading]                 = useState(true)
@@ -6152,7 +6308,8 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
   const [editingTask, setEditingTask]         = useState<ScheduledTask | null>(null)
   const [viewingTask, setViewingTask]         = useState<ScheduledTask | null>(null)
   const [generatingTask, setGeneratingTask]   = useState<ScheduledTask | null>(null)
-  const [showResearch, setShowResearch]       = useState(false)
+  const [showResearchMenu, setShowResearchMenu] = useState(false)
+  const [schedulingTask, setSchedulingTask]     = useState<ScheduledTask | null>(null)
   const [running, setRunning]                 = useState<Set<string>>(new Set())
   const [search, setSearch]                   = useState('')
   const [verticals, setVerticals]             = useState<{ id: string; name: string }[]>([])
@@ -6234,14 +6391,53 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
           <p className="text-xs text-muted-foreground mt-0.5">Research tasks that run automatically and feed results into the client brain.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowResearch(true)}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
-            style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}
-          >
-            <Icons.Newspaper className="h-3.5 w-3.5" />
-            Research &amp; Publish
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowResearchMenu((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
+              style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}
+            >
+              <Icons.CalendarClock className="h-3.5 w-3.5" />
+              Research &amp; Publish
+              <Icons.ChevronDown className="h-3 w-3 opacity-70" />
+            </button>
+            {showResearchMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowResearchMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Select a task to schedule</p>
+                  </div>
+                  {tasks.length === 0 ? (
+                    <div className="px-3 py-4 text-center">
+                      <p className="text-xs text-muted-foreground">No tasks yet — add one first</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-72 overflow-y-auto py-1">
+                      {tasks.map((task) => {
+                        const meta = TASK_TYPE_META[task.type]
+                        const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+                        return (
+                          <button
+                            key={task.id}
+                            onClick={() => { setSchedulingTask(task); setShowResearchMenu(false) }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
+                          >
+                            <Icon className={cn('h-3.5 w-3.5 shrink-0', meta.color)} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium truncate">{task.label}</p>
+                              <p className="text-[10px] text-muted-foreground capitalize">{meta.label} · {task.frequency} · {task.enabled ? 'enabled' : 'disabled'}</p>
+                            </div>
+                            {statusBadge(task.lastStatus)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
             <Icons.Plus className="h-3.5 w-3.5" />
@@ -6363,12 +6559,12 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
       {viewingTask && <TaskOutputModal task={viewingTask} onClose={() => setViewingTask(null)} />}
       {generatingTask && <GenerateContentModal task={generatingTask} onClose={() => setGeneratingTask(null)} />}
-      {showResearch && (
-        <ResearchPublishModal
-          clientId={clientId}
-          clientName={clientName}
-          verticals={verticals}
-          onClose={() => setShowResearch(false)}
+      {schedulingTask && (
+        <QuickScheduleModal
+          task={schedulingTask}
+          onClose={() => setSchedulingTask(null)}
+          onUpdated={(t) => { setTasks((prev) => prev.map((x) => x.id === t.id ? t : x)); setSchedulingTask(null) }}
+          onGenerate={(t) => { setSchedulingTask(null); setGeneratingTask(t) }}
         />
       )}
 
