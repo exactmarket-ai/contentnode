@@ -430,6 +430,7 @@ model User {
   workflowRuns         WorkflowRun[] @relation("RunTriggeredBy")
   assignedRuns         WorkflowRun[] @relation("RunAssignee")
   defaultAssigneeOf    Workflow[]    @relation("WorkflowDefaultAssignee")
+  comments             Comment[]
 
   @@index([agencyId])
   @@map("users")
@@ -662,6 +663,7 @@ model WorkflowRun {
   deliverableAccess DeliverableAccess[]
   division          Division?             @relation(fields: [divisionId], references: [id])
   job               Job?                  @relation(fields: [jobId], references: [id])
+  comments          Comment[]
 
   @@index([agencyId])
   @@index([workflowId])
@@ -738,6 +740,25 @@ model ContentQualityRecord {
   @@index([agencyId, clientId])
   @@index([createdAt])
   @@map("content_quality_records")
+}
+
+// ─────────────────────────────────────────────
+// Comment — internal team comment on a workflow run (not visible to clients)
+// ─────────────────────────────────────────────
+model Comment {
+  id            String      @id @default(cuid())
+  agencyId      String      @map("agency_id")
+  workflowRunId String      @map("workflow_run_id")
+  userId        String      @map("user_id")
+  body          String
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id])
+
+  @@index([workflowRunId])
+  @@index([agencyId])
+  @@map("comments")
 }
 
 // ─────────────────────────────────────────────

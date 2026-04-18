@@ -16,6 +16,7 @@ import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientDocStyleTab } from './ClientDocStyleTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
 import { CampaignsTab } from './CampaignsTab'
+import { ContentBoardTab } from './ContentBoardTab'
 import { ThoughtLeadershipTab } from './ThoughtLeadershipTab'
 import { ClientBrainTab } from './ClientBrainTab'
 import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
@@ -6699,7 +6700,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
 // ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'deliverables', 'library', 'thought-leadership', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'campaigns', 'board', 'deliverables', 'library', 'thought-leadership', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -6783,6 +6784,7 @@ export function ClientDetailPage() {
     framework:     'GTM Framework',
     demandgen:     'Demand Gen',
     branding:      'Branding',
+    board:         'Board',
     brain:         'Client Brain',
     'gtm-assessment': 'Company Assessment',
     stakeholders:  'Contacts',
@@ -6807,7 +6809,7 @@ export function ClientDetailPage() {
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'thought-leadership', 'framework', 'branding', 'reviews']
   // Tabs rendered after the Demand Gen group button
-  const POST_DEMAND_GEN_TABS: Tab[] = ['workflows', 'deliverables', 'insights']
+  const POST_DEMAND_GEN_TABS: Tab[] = ['workflows', 'board', 'deliverables', 'insights']
   const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS]
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
@@ -7012,6 +7014,8 @@ export function ClientDetailPage() {
         ? <div className="flex-1 overflow-hidden"><ClientBrandingTab clientId={client.id} clientName={client.name} /></div>
         : activeTab === 'scheduled-tasks'
         ? <div className="flex-1 overflow-hidden"><ScheduledTasksTab clientId={client.id} clientName={client.name} /></div>
+        : activeTab === 'board'
+        ? <div className="flex-1 overflow-hidden"><ContentBoardTab clientId={client.id} /></div>
         : <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={switchTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}

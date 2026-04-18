@@ -1064,4 +1064,52 @@ export async function runRoutes(app: FastifyInstance) {
 
     return reply.code(202).send({ data: { id, status: 'cancelled' } })
   })
+
+  // ── GET /:id/comments ─────────────────────────────────────────────────────
+  app.get('/:id/comments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const run = await prisma.workflowRun.findFirst({ where: { id, agencyId }, select: { id: true } })
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+
+    const comments = await prisma.comment.findMany({
+      where: { workflowRunId: id, agencyId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true, body: true, createdAt: true,
+        user: { select: { id: true, name: true, avatarStorageKey: true } },
+      },
+    })
+
+    return reply.send({ data: comments })
+  })
+
+  // ── POST /:id/comments ────────────────────────────────────────────────────
+  app.post('/:id/comments', async (req, reply) => {
+    const { agencyId, userId: clerkUserId } = req.auth
+    const { id } = req.params as { id: string }
+
+    const parsed = z.object({ body: z.string().min(1).max(2000) }).safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'body is required' })
+
+    const run = await prisma.workflowRun.findFirst({ where: { id, agencyId }, select: { id: true } })
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+
+    const user = await prisma.user.findFirst({
+      where: { clerkUserId, agencyId },
+      select: { id: true, name: true, avatarStorageKey: true },
+    })
+    if (!user) return reply.code(403).send({ error: 'User not found' })
+
+    const comment = await prisma.comment.create({
+      data: { agencyId, workflowRunId: id, userId: user.id, body: parsed.data.body },
+      select: {
+        id: true, body: true, createdAt: true,
+        user: { select: { id: true, name: true, avatarStorageKey: true } },
+      },
+    })
+
+    return reply.code(201).send({ data: comment })
+  })
 }
