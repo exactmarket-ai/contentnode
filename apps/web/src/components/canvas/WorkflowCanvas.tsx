@@ -234,6 +234,8 @@ export function WorkflowCanvas() {
           setRfInstance(instance)
         }}
         nodeTypes={nodeTypes}
+        snapToGrid
+        snapGrid={[20, 20]}
         minZoom={0.05}
         maxZoom={2}
         fitView
