@@ -5343,15 +5343,16 @@ function TaskConfigFields({ type, config, onChange }: {
   return null
 }
 
-function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask }: {
+function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initialType }: {
   clientId: string
   onClose: () => void
   onCreated?: (t: ScheduledTask) => void
   onUpdated?: (t: ScheduledTask) => void
   editTask?: ScheduledTask
+  initialType?: ScheduledTaskType
 }) {
   const isEdit = !!editTask
-  const [type, setType] = useState<ScheduledTaskType>(editTask?.type ?? 'web_scrape')
+  const [type, setType] = useState<ScheduledTaskType>(editTask?.type ?? initialType ?? 'web_scrape')
   const [label, setLabel] = useState(editTask?.label ?? '')
   const [frequency, setFrequency] = useState<ScheduledTaskFrequency>(editTask?.frequency ?? 'weekly')
   const [config, setConfig] = useState<Record<string, unknown>>(editTask?.config ?? {})
@@ -6347,6 +6348,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
   const [tasks, setTasks]                     = useState<ScheduledTask[]>([])
   const [loading, setLoading]                 = useState(true)
   const [showAdd, setShowAdd]                 = useState(false)
+  const [addTaskType, setAddTaskType]         = useState<ScheduledTaskType | undefined>(undefined)
   const [editingTask, setEditingTask]         = useState<ScheduledTask | null>(null)
   const [viewingTask, setViewingTask]         = useState<ScheduledTask | null>(null)
   const [generatingTask, setGeneratingTask]   = useState<ScheduledTask | null>(null)
@@ -6425,177 +6427,220 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
     .filter((t) => t.label.toLowerCase().includes(search.toLowerCase()) || (t.vertical?.name ?? '').toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => a.label.localeCompare(b.label))
 
+  const TEMPLATE_DESCRIPTIONS: Record<ScheduledTaskType, string> = {
+    web_scrape:      'Crawl competitor or industry sites for signals and summaries.',
+    review_miner:    'Scrape Trustpilot, G2, or Capterra reviews for themes.',
+    audience_signal: 'Mine Reddit threads for pain points and vocabulary.',
+    seo_intent:      'Expand keywords and map funnel intent.',
+    research_brief:  'Generate structured research briefs from multiple sources.',
+  }
+
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold">Scheduled Tasks</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Research tasks that run automatically and feed results into the client brain.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <button
-              onClick={() => setShowResearchMenu((v) => !v)}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
-              style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}
-            >
-              <Icons.CalendarClock className="h-3.5 w-3.5" />
-              Research &amp; Publish
-              <Icons.ChevronDown className="h-3 w-3 opacity-70" />
-            </button>
-            {showResearchMenu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowResearchMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
-                  <div className="px-3 py-2 border-b border-border">
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Select a task to schedule</p>
-                  </div>
-                  {tasks.length === 0 ? (
-                    <div className="px-3 py-4 text-center">
-                      <p className="text-xs text-muted-foreground">No tasks yet — add one first</p>
-                    </div>
-                  ) : (
-                    <div className="max-h-72 overflow-y-auto py-1">
-                      {tasks.map((task) => {
-                        const meta = TASK_TYPE_META[task.type]
-                        const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
-                        return (
-                          <button
-                            key={task.id}
-                            onClick={() => { setSchedulingTask(task); setShowResearchMenu(false) }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
-                          >
-                            <Icon className={cn('h-3.5 w-3.5 shrink-0', meta.color)} />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium truncate">{task.label}</p>
-                              <p className="text-[10px] text-muted-foreground capitalize">{meta.label} · {task.frequency} · {task.enabled ? 'enabled' : 'disabled'}</p>
-                            </div>
-                            {statusBadge(task.lastStatus)}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-          <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
-            <Icons.Plus className="h-3.5 w-3.5" />
-            Add Task
-          </button>
-        </div>
-      </div>
+    <div className="flex gap-4 items-start">
 
-      <div className="relative">
-        <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search tasks..."
-          className="w-full rounded-lg border border-border bg-muted/30 py-1.5 pl-8 pr-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+      {/* ── Left: Task Templates ────────────────────────────────── */}
+      <div className="w-64 shrink-0 rounded-xl border border-border bg-card">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-xs font-semibold">Task Templates</h3>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">Click to create a new task</p>
         </div>
-      ) : tasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
-          <Icons.Clock className="h-8 w-8 text-muted-foreground/40" />
-          <p className="text-sm font-medium text-muted-foreground">No scheduled tasks yet</p>
-          <p className="max-w-xs text-xs text-muted-foreground/70">Add a task to automatically gather industry signals, competitor reviews, or SEO data on a recurring basis.</p>
-          <button onClick={() => setShowAdd(true)} className="mt-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
-            Add your first task
-          </button>
-        </div>
-      ) : filteredTasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
-          <Icons.Search className="h-6 w-6 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">No tasks match &ldquo;{search}&rdquo;</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {filteredTasks.map((task) => {
-            const meta = TASK_TYPE_META[task.type]
+        <div className="p-2 space-y-1">
+          {(Object.entries(TASK_TYPE_META) as [ScheduledTaskType, typeof TASK_TYPE_META[ScheduledTaskType]][]).map(([type, meta]) => {
             const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
             return (
-              <div key={task.id} className={cn('rounded-xl border bg-card p-4', task.changeDetected ? 'border-amber-500/40' : 'border-border')}>
-                <div className="flex items-start gap-3">
-                  <div className={cn('mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/30')}>
-                    <Icon className={cn('h-3.5 w-3.5', meta.color)} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium">{task.label}</span>
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{meta.label}</span>
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground capitalize">{task.frequency}</span>
-                      {task.vertical && (
-                        <span className="rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">{task.vertical.name}</span>
-                      )}
-                      {statusBadge(task.lastStatus)}
-                      {task.changeDetected && (
-                        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">update detected</span>
-                      )}
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
-                      <span>Last run: {relTime(task.lastRunAt)}</span>
-                      <span>·</span>
-                      <span>Next: {nextIn(task.nextRunAt)}</span>
-                    </div>
-                    {task.changeDetected && task.lastChangeSummary && (
-                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{task.lastChangeSummary}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {/* Enable/disable toggle */}
-                    <button onClick={() => toggle(task)}
-                      className={cn('relative h-5 w-9 rounded-full transition-colors', task.enabled ? 'bg-blue-600' : 'bg-muted')}
-                      title={task.enabled ? 'Disable' : 'Enable'}>
-                      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', task.enabled ? 'left-4' : 'left-0.5')} />
-                    </button>
-                    {task.lastStatus === 'success' && (
-                      <>
-                        <button onClick={() => setViewingTask(task)}
-                          className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-                          title="View output">
-                          <Icons.FileText className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setGeneratingTask(task)}
-                          className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-600 hover:bg-violet-100 flex items-center gap-1"
-                          title="Generate blogs + LinkedIn posts"
-                        >
-                          <Icons.Sparkles className="h-3 w-3" /> Generate
-                        </button>
-                      </>
-                    )}
-                    <button onClick={() => runNow(task.id)} disabled={running.has(task.id) || task.lastStatus === 'running'}
-                      className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
-                      title="Run now">
-                      {running.has(task.id) ? '…' : '▶'}
-                    </button>
-                    <button onClick={() => setEditingTask(task)} className="rounded p-1 text-muted-foreground hover:text-foreground" title="Edit">
-                      <Icons.Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => del(task.id)} className="rounded p-1 text-muted-foreground hover:text-red-500" title="Delete">
-                      <Icons.Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+              <button
+                key={type}
+                onClick={() => { setAddTaskType(type); setShowAdd(true) }}
+                className="flex w-full items-start gap-3 rounded-lg p-3 text-left hover:bg-muted/50 transition-colors group"
+              >
+                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 group-hover:border-border/80">
+                  <Icon className={cn('h-3.5 w-3.5', meta.color)} />
                 </div>
-              </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium leading-tight">{meta.label}</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground leading-tight">{TEMPLATE_DESCRIPTIONS[type]}</p>
+                </div>
+              </button>
             )
           })}
         </div>
-      )}
+      </div>
+
+      {/* ── Right: Scheduled Tasks ──────────────────────────────── */}
+      <div className="min-w-0 flex-1 rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div>
+            <h3 className="text-xs font-semibold">Scheduled Tasks</h3>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Research tasks that run automatically and feed results into the client brain.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowResearchMenu((v) => !v)}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-white"
+                style={{ background: 'linear-gradient(135deg,#6d28d9,#2563eb)' }}
+              >
+                <Icons.CalendarClock className="h-3.5 w-3.5" />
+                Research &amp; Publish
+                <Icons.ChevronDown className="h-3 w-3 opacity-70" />
+              </button>
+              {showResearchMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowResearchMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-border bg-white shadow-2xl overflow-hidden">
+                    <div className="px-3 py-2 border-b border-border">
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Select a task to schedule</p>
+                    </div>
+                    {tasks.length === 0 ? (
+                      <div className="px-3 py-4 text-center">
+                        <p className="text-xs text-muted-foreground">No tasks yet — add one first</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-72 overflow-y-auto py-1">
+                        {tasks.map((task) => {
+                          const meta = TASK_TYPE_META[task.type]
+                          const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+                          return (
+                            <button
+                              key={task.id}
+                              onClick={() => { setSchedulingTask(task); setShowResearchMenu(false) }}
+                              className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
+                            >
+                              <Icon className={cn('h-3.5 w-3.5 shrink-0', meta.color)} />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium truncate">{task.label}</p>
+                                <p className="text-[10px] text-muted-foreground capitalize">{meta.label} · {task.frequency} · {task.enabled ? 'enabled' : 'disabled'}</p>
+                              </div>
+                              {statusBadge(task.lastStatus)}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <button onClick={() => { setAddTaskType(undefined); setShowAdd(true) }}
+              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+              <Icons.Plus className="h-3.5 w-3.5" />
+              Add Task
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div className="relative">
+            <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tasks..."
+              className="w-full rounded-lg border border-border bg-muted/30 py-1.5 pl-8 pr-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
+              <Icons.Clock className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-muted-foreground">No scheduled tasks yet</p>
+              <p className="max-w-xs text-xs text-muted-foreground/70">Pick a template on the left or add a custom task to get started.</p>
+              <button onClick={() => { setAddTaskType(undefined); setShowAdd(true) }} className="mt-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+                Add your first task
+              </button>
+            </div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
+              <Icons.Search className="h-6 w-6 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">No tasks match &ldquo;{search}&rdquo;</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredTasks.map((task) => {
+                const meta = TASK_TYPE_META[task.type]
+                const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+                return (
+                  <div key={task.id} className={cn('rounded-xl border bg-transparent p-4', task.changeDetected ? 'border-amber-500/40' : 'border-border')}>
+                    <div className="flex items-start gap-3">
+                      <div className={cn('mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/30')}>
+                        <Icon className={cn('h-3.5 w-3.5', meta.color)} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">{task.label}</span>
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{meta.label}</span>
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground capitalize">{task.frequency}</span>
+                          {task.vertical && (
+                            <span className="rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">{task.vertical.name}</span>
+                          )}
+                          {statusBadge(task.lastStatus)}
+                          {task.changeDetected && (
+                            <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">update detected</span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
+                          <span>Last run: {relTime(task.lastRunAt)}</span>
+                          <span>·</span>
+                          <span>Next: {nextIn(task.nextRunAt)}</span>
+                        </div>
+                        {task.changeDetected && task.lastChangeSummary && (
+                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{task.lastChangeSummary}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Enable/disable toggle */}
+                        <button onClick={() => toggle(task)}
+                          className={cn('relative h-5 w-9 rounded-full transition-colors', task.enabled ? 'bg-blue-600' : 'bg-muted')}
+                          title={task.enabled ? 'Disable' : 'Enable'}>
+                          <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', task.enabled ? 'left-4' : 'left-0.5')} />
+                        </button>
+                        {task.lastStatus === 'success' && (
+                          <>
+                            <button onClick={() => setViewingTask(task)}
+                              className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                              title="View output">
+                              <Icons.FileText className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setGeneratingTask(task)}
+                              className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-600 hover:bg-violet-100 flex items-center gap-1"
+                              title="Generate blogs + LinkedIn posts"
+                            >
+                              <Icons.Sparkles className="h-3 w-3" /> Generate
+                            </button>
+                          </>
+                        )}
+                        <button onClick={() => runNow(task.id)} disabled={running.has(task.id) || task.lastStatus === 'running'}
+                          className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+                          title="Run now">
+                          {running.has(task.id) ? '…' : '▶'}
+                        </button>
+                        <button onClick={() => setEditingTask(task)} className="rounded p-1 text-muted-foreground hover:text-foreground" title="Edit">
+                          <Icons.Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => del(task.id)} className="rounded p-1 text-muted-foreground hover:text-red-500" title="Delete">
+                          <Icons.Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {showAdd && (
         <AddTaskModal
           clientId={clientId}
-          onClose={() => setShowAdd(false)}
-          onCreated={(t) => setTasks((prev) => [t, ...prev])}
+          initialType={addTaskType}
+          onClose={() => { setShowAdd(false); setAddTaskType(undefined) }}
+          onCreated={(t) => { setTasks((prev) => [t, ...prev]); setAddTaskType(undefined) }}
         />
       )}
 
