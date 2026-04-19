@@ -479,9 +479,10 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
 
+    const downloadKey = template.processedKey ?? template.originalKey
     let buffer: Buffer
     try {
-      buffer = await downloadBuffer(template.originalKey)
+      buffer = await downloadBuffer(downloadKey)
     } catch (err) {
       console.error('[docTemplates/fill] download failed:', err)
       return reply.code(500).send({ error: 'Could not load template file from storage.' })
@@ -527,7 +528,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       // [placeholder] spanning multiple w:t runs and rewrite the w:t content so the
       // first run contains {{placeholder}} and the others are emptied. This keeps the
       // w:r structure intact (no corruption) while giving docxtemplater single-run tags.
-      if (hasBracket && !hasCurly) {
+      if (hasBracket) {
         const edits: Array<{ xmlStart: number; xmlEnd: number; replacement: string }> = []
         const bracketRx = /\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g
         let bm: RegExpExecArray | null
