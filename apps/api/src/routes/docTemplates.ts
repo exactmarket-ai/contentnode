@@ -164,9 +164,25 @@ Respond with ONLY a JSON array, no markdown, no explanation.`
 }
 
 /**
- * Replace sampleText with replacement in OOXML, handling Word's split-run problem.
- * Word often splits a single visible string across multiple <w:r><w:t>...</w:t></w:r> elements.
- * This tries a direct string match first, then falls back to a regex that bridges run boundaries.
+ * Find the last actual <w:r> run element start before position `before`.
+ * Skips <w:rPr>, <w:rFonts>, <w:rStyle> etc. which also start with <w:r but are NOT run containers.
+ */
+function findLastRunStart(xml: string, before: number): number {
+  let pos = before
+  while (pos > 0) {
+    const idx = xml.lastIndexOf('<w:r', pos - 1)
+    if (idx === -1) return -1
+    const next = xml[idx + 4]
+    if (next === '>' || next === ' ') return idx   // <w:r> or <w:r ...> — actual run
+    pos = idx                                       // <w:rPr> etc. — skip and keep looking
+  }
+  return -1
+}
+
+/**
+ * Replace searchText with replacement in OOXML, handling Word's split-run problem.
+ * Word often fragments a single visible string across multiple <w:r><w:t> elements.
+ * Tries direct string match first, then a run-boundary-bridging regex.
  */
 function xmlReplaceText(xml: string, searchText: string, replacement: string): string {
   const xmlEsc = (s: string) =>
@@ -174,38 +190,46 @@ function xmlReplaceText(xml: string, searchText: string, replacement: string): s
 
   const escaped = xmlEsc(searchText)
 
-  // 1. Simple replacement (text exists in a single run — most common case)
+  // 1. Simple replacement — text sits in a single <w:t> node (most common)
   for (const needle of [escaped, searchText]) {
     if (xml.includes(needle)) return xml.replace(needle, replacement)
   }
 
-  // 2. Split-run match: build a regex where each character may be separated by
-  //    </w:t>....<w:t...> (a run boundary crossing)
-  if (escaped.length > 200) return xml   // skip regex for very long texts
+  // 2. Split-run match — only for short texts, never crossing paragraph/cell boundaries
+  if (escaped.length > 100) return xml
+
   const chars = [...escaped].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  const SEP = '(?:</w:t>[\\s\\S]*?<w:t(?:\\s[^>]*)?>)?'
+  // SEP: optional run-boundary gap that must not cross </w:p>, </w:tc>, or </w:tr>
+  const SEP = '(?:</w:t>(?:(?!<(?:\\/w:p|\\/w:tc|\\/w:tr))[\\s\\S])*?<w:t(?:[^>]*)>)?'
+
   let match: RegExpExecArray | null
   try {
     match = new RegExp(chars.join(SEP)).exec(xml)
   } catch {
     return xml
   }
-  if (!match) return xml
+  // Reject if no match or the matched span is suspiciously large
+  if (!match || match[0].length > 1500) return xml
 
   const matchStart = match.index
   const matchEnd   = matchStart + match[0].length
 
-  // Find the <w:r that opens before matchStart and the </w:r> that closes after matchEnd
-  const runStart = xml.lastIndexOf('<w:r', matchStart)
+  // Find the enclosing <w:r> (not <w:rPr> etc.) before matchStart
+  const runStart = findLastRunStart(xml, matchStart + 1)
   if (runStart === -1) return xml
+
   const runEndIdx = xml.indexOf('</w:r>', matchEnd)
   if (runEndIdx === -1) return xml
   const runEnd = runEndIdx + '</w:r>'.length
 
-  // Preserve the rPr (run properties / formatting) from the first run
-  const firstRunXml = xml.substring(runStart, xml.indexOf('</w:r>', runStart) + '</w:r>'.length)
-  const rPrMatch    = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)
-  const rPr         = rPrMatch ? rPrMatch[0] : ''
+  // Safety: the replaced span must be a reasonable size
+  if (runEnd - runStart > 2000) return xml
+
+  // Preserve rPr (formatting) from the first matched run
+  const firstRunClose = xml.indexOf('</w:r>', runStart)
+  const firstRunXml   = xml.substring(runStart, firstRunClose + '</w:r>'.length)
+  const rPrMatch      = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)
+  const rPr           = rPrMatch ? rPrMatch[0] : ''
 
   const newRun = `<w:r>${rPr}<w:t xml:space="preserve">${replacement}</w:t></w:r>`
   return xml.substring(0, runStart) + newRun + xml.substring(runEnd)
