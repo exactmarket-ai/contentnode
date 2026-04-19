@@ -371,6 +371,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
   })
 
   // POST /:id/fill — fill template with variable values, return binary .docx
+  // Designer templates use ANY {{placeholder}} names — we normalize and match automatically.
   app.post('/:id/fill', async (req, reply) => {
     const { agencyId } = req.auth
     const { id } = req.params as { id: string }
@@ -379,15 +380,16 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
 
-    // Prefer processed (variable-injected) file; fall back to original
-    const storageKey = template.processedKey ?? template.originalKey
+    // Always use the original uploaded file — it has the designer's {{placeholders}}
+    // The processedKey approach (replacing sample text) is unreliable with Word's XML structure
+    const storageKey = template.originalKey
 
     let buffer: Buffer
     try {
       buffer = await downloadBuffer(storageKey)
     } catch (err) {
       console.error('[docTemplates/fill] storage download failed:', err)
-      return reply.code(500).send({ error: 'Could not load template file from storage. It may have been deleted or not yet uploaded.' })
+      return reply.code(500).send({ error: 'Could not load template file from storage.' })
     }
 
     try {
@@ -397,17 +399,117 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       const DocxtemplaterCtor = (Docxtemplater as any).default ?? Docxtemplater
 
       const zip = new PizZipCtor(buffer)
+
+      // ── Step 1: extract all {{var}} names the designer put in the template ──
+      const xmlFile = zip.files['word/document.xml']
+      const rawXml: string = xmlFile ? xmlFile.asText() : ''
+      // Word often splits a placeholder across <w:t> XML runs — join adjacent text
+      // nodes first so we can reliably find {{...}} spans
+      const flatText = rawXml.replace(/<\/w:t>[\s\S]*?<w:t[^>]*>/g, '')
+      const foundNames = [...new Set(
+        [...flatText.matchAll(/\{\{([^{}]+?)\}\}/g)].map((m) => m[1].trim()),
+      )]
+
+      // ── Step 2: build a normalized lookup from every variable we have ────────
+      const sourceVars = body.variables ?? {}
+
+      // Normalize: lowercase, camelCase→snake, collapse non-alphanumeric → _
+      const norm = (s: string) =>
+        s
+          .replace(/([a-z])([A-Z])/g, '$1_$2')   // camelCase → camel_case
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '')
+
+      // Build a lookup: normalised(key) → value
+      const lookup: Record<string, string> = {}
+      for (const [k, v] of Object.entries(sourceVars)) {
+        lookup[k]       = v   // exact
+        lookup[norm(k)] = v   // normalised
+      }
+
+      // Broad alias dictionary — covers common designer placeholder names
+      const ALIASES: Record<string, string> = {
+        // Meta
+        company: 'client_name', company_name: 'client_name', client: 'client_name',
+        organization: 'client_name', organisation: 'client_name', brand: 'client_name',
+        industry: 'vertical_name', vertical: 'vertical_name', sector: 'vertical_name',
+        date: 'document_date', doc_date: 'document_date', report_date: 'document_date',
+        // §01
+        positioning: 's01_positioning_statement', position: 's01_positioning_statement',
+        positioning_statement: 's01_positioning_statement',
+        tagline: 's01_tagline_options', taglines: 's01_tagline_options',
+        headline: 's01_tagline_options', headlines: 's01_tagline_options',
+        platform: 's01_platform_name', product: 's01_platform_name', solution: 's01_platform_name',
+        core_benefit: 's01_platform_benefit', value_prop: 's01_platform_benefit',
+        // §02
+        target_industry: 's02_industry', target_market: 's02_industry',
+        company_size: 's02_company_size', employee_count: 's02_company_size',
+        geography: 's02_geography', region: 's02_geography', location: 's02_geography',
+        // §03
+        founding_story: 's03_founding_story', history: 's03_founding_story', story: 's03_founding_story',
+        milestones: 's03_key_milestones', achievements: 's03_key_milestones',
+        unique_capability: 's03_unique_capability', differentiator: 's03_unique_capability',
+        // §04
+        triggers: 's04_trigger_events', trigger_events: 's04_trigger_events',
+        pain_points: 's04_pain_points', challenges: 's04_pain_points', pains: 's04_pain_points',
+        // §05
+        business_outcomes: 's05_business_outcomes', outcomes: 's05_business_outcomes',
+        capabilities: 's05_core_capabilities', features: 's05_core_capabilities',
+        // §06
+        differentiators: 's06_differentiators', why_us: 's06_differentiators',
+        win_themes: 's06_win_themes',
+        // §07
+        icp: 's07_ideal_customer_profile', ideal_customer: 's07_ideal_customer_profile',
+        target_accounts: 's07_target_accounts', accounts: 's07_target_accounts',
+        // §08
+        personas: 's08_persona_names', buyer_personas: 's08_persona_names',
+        persona_goals: 's08_persona_goals', goals: 's08_persona_goals',
+        // §09
+        objections: 's09_objections', common_objections: 's09_objections',
+        objection_responses: 's09_objection_responses', responses: 's09_objection_responses',
+        // §10
+        proof_points: 's10_proof_points', proof: 's10_proof_points', stats: 's10_proof_points',
+        case_studies: 's10_case_study_results', results: 's10_case_study_results',
+        // §12
+        competitors: 's12_competitor_names', competition: 's12_competitor_names',
+        competitive_positioning: 's12_competitive_positioning', vs_competitors: 's12_competitive_positioning',
+        // §13
+        discovery_questions: 's13_discovery_questions', questions: 's13_discovery_questions',
+        // §14
+        email_templates: 's14_email_templates', emails: 's14_email_templates',
+        call_scripts: 's14_call_scripts', scripts: 's14_call_scripts',
+        // §15
+        marketing_channels: 's15_marketing_channels', channels: 's15_marketing_channels',
+        content_themes: 's15_content_themes', themes: 's15_content_themes',
+        // §17
+        kpis: 's17_kpis', metrics: 's17_kpis', success_metrics: 's17_kpis',
+      }
+
+      // ── Step 3: build render map — one entry per name found in the template ──
+      const renderVars: Record<string, string> = {}
+      for (const found of foundNames) {
+        const n = norm(found)
+        // Try: exact → normalised → alias chain → empty string
+        const resolved = sourceVars[found]
+          ?? lookup[n]
+          ?? (ALIASES[n] ? sourceVars[ALIASES[n]] ?? lookup[norm(ALIASES[n])] : undefined)
+          ?? ''
+        renderVars[found] = resolved
+      }
+
+      console.log(`[docTemplates/fill] template vars found: ${foundNames.join(', ')}`)
+      console.log(`[docTemplates/fill] matched: ${Object.entries(renderVars).filter(([,v]) => v).length}/${foundNames.length}`)
+
       const doc = new DocxtemplaterCtor(zip, {
         paragraphLoop: true,
         linebreaks: true,
         delimiters: { start: '{{', end: '}}' },
-        // Return empty string for any missing variable rather than throwing
         nullGetter: () => '',
-        // Don't throw on unrecognised tags — just leave them blank
         errorLogging: false,
       })
 
-      doc.render(body.variables ?? {})
+      doc.render(renderVars)
 
       const out: Buffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
       const outFilename = body.filename ?? `${template.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`
@@ -417,16 +519,11 @@ export async function docTemplateRoutes(app: FastifyInstance) {
         .header('Content-Disposition', `attachment; filename="${outFilename}"`)
         .send(out)
     } catch (err: unknown) {
-      // Docxtemplater parse/render errors include a `properties.errors` array
       const dtErr = err as { properties?: { errors?: Array<{ message: string }> } }
       const detail = dtErr?.properties?.errors?.map((e) => e.message).join('; ')
         ?? (err instanceof Error ? err.message : String(err))
       console.error('[docTemplates/fill] render failed:', detail)
-      return reply.code(422).send({
-        error: 'Template rendering failed',
-        detail,
-        hint: 'Check that your .docx template uses {variable_name} placeholders and is not corrupted.',
-      })
+      return reply.code(422).send({ error: 'Template rendering failed', detail })
     }
   })
 
