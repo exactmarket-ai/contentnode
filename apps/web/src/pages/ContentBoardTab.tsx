@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch, assetUrl } from '@/lib/api'
@@ -135,61 +136,62 @@ function AssigneePicker({
   current,
   members,
   onAssign,
-  align = 'left',
 }: {
   current: BoardRun['assignee']
   members: TeamMember[]
   onAssign: (member: TeamMember | null) => void
-  align?: 'left' | 'right'
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
 
+  // Position the portal dropdown below the trigger button
+  const openPicker = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (open) { setOpen(false); return }
+    const rect = btnRef.current!.getBoundingClientRect()
+    setCoords({ top: rect.bottom + 6, left: rect.left })
+    setOpen(true)
+  }
+
+  // Close on outside click
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        btnRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  // Close on scroll so it doesn't float detached
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [open])
+
   const initials = (name: string | null) =>
     name?.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() ?? '?'
 
-  return (
-    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        title={current ? `Assigned to ${current.name ?? current.id} — click to change` : 'Assign someone'}
-        className={cn(
-          'flex items-center justify-center rounded-full border transition-all',
-          'hover:ring-2 hover:ring-blue-400 hover:ring-offset-1',
-          current ? 'h-5 w-5 border-primary/20' : 'h-5 w-5 border-dashed border-muted-foreground/40 text-muted-foreground/50 hover:border-blue-400 hover:text-blue-500',
-        )}
-      >
-        {current ? (
-          current.avatarStorageKey
-            ? <img src={assetUrl(current.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
-            : <span className="text-[9px] font-semibold text-primary">{initials(current.name)}</span>
-        ) : (
-          <Icons.Plus className="h-2.5 w-2.5" />
-        )}
-      </button>
-
-      {open && (
+  const dropdown = open && coords
+    ? createPortal(
         <div
-          className={cn(
-            'absolute z-50 top-7 w-52 rounded-xl border border-border bg-white shadow-xl py-1',
-            align === 'right' ? 'right-0' : 'left-0',
-          )}
+          ref={dropRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 }}
+          className="w-56 rounded-xl border border-gray-200 bg-white shadow-2xl py-1"
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+          <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
             Assign to
           </p>
 
-          {/* Unassign */}
           {current && (
             <button
               onClick={() => { onAssign(null); setOpen(false) }}
@@ -200,8 +202,7 @@ function AssigneePicker({
             </button>
           )}
 
-          {/* Team members */}
-          <div className="max-h-52 overflow-y-auto">
+          <div className="max-h-56 overflow-y-auto">
             {members.map((m) => {
               const isSelected = current?.id === m.id
               return (
@@ -209,13 +210,13 @@ function AssigneePicker({
                   key={m.id}
                   onClick={() => { onAssign(m); setOpen(false) }}
                   className={cn(
-                    'flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors',
-                    isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-muted/60',
+                    'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
+                    isSelected ? 'bg-blue-50' : 'hover:bg-gray-50',
                   )}
                 >
                   <div className={cn(
-                    'h-6 w-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold border',
-                    isSelected ? 'bg-blue-500 text-white border-blue-500' : 'bg-primary/10 text-primary border-primary/20',
+                    'h-6 w-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold',
+                    isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600',
                   )}>
                     {m.avatarStorageKey
                       ? <img src={assetUrl(m.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
@@ -223,17 +224,45 @@ function AssigneePicker({
                     }
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className={cn('text-[12px] font-medium truncate', isSelected && 'text-blue-700')}>{m.name ?? m.email}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{m.email}</p>
+                    <p className={cn('text-[12px] font-medium truncate', isSelected ? 'text-blue-700' : 'text-gray-800')}>
+                      {m.name ?? m.email}
+                    </p>
+                    <p className="text-[10px] text-gray-400 truncate">{m.email}</p>
                   </div>
                   {isSelected && <Icons.Check className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
                 </button>
               )
             })}
           </div>
-        </div>
-      )}
-    </div>
+        </div>,
+        document.body,
+      )
+    : null
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={openPicker}
+        title={current ? `${current.name ?? 'Assigned'} — click to change` : 'Assign someone'}
+        className={cn(
+          'flex items-center justify-center rounded-full border transition-all shrink-0',
+          'hover:ring-2 hover:ring-blue-400 hover:ring-offset-1',
+          current
+            ? 'h-5 w-5 bg-blue-500 border-blue-500 text-white'
+            : 'h-5 w-5 border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500',
+        )}
+      >
+        {current ? (
+          current.avatarStorageKey
+            ? <img src={assetUrl(current.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
+            : <span className="text-[9px] font-bold">{initials(current.name)}</span>
+        ) : (
+          <Icons.Plus className="h-2.5 w-2.5" />
+        )}
+      </button>
+      {dropdown}
+    </>
   )
 }
 
@@ -306,7 +335,6 @@ function BoardCard({
           current={run.assignee}
           members={members}
           onAssign={(m) => onAssign(run.id, m)}
-          align="right"
         />
         <span className="text-[10px] text-muted-foreground">{timeAgo(run.createdAt)}</span>
       </div>
