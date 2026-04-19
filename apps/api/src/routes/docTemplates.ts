@@ -164,6 +164,78 @@ Respond with ONLY a JSON array, no markdown, no explanation.`
 }
 
 /**
+ * Replace sampleText with replacement in OOXML, handling Word's split-run problem.
+ * Word often splits a single visible string across multiple <w:r><w:t>...</w:t></w:r> elements.
+ * This tries a direct string match first, then falls back to a regex that bridges run boundaries.
+ */
+function xmlReplaceText(xml: string, searchText: string, replacement: string): string {
+  const xmlEsc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  const escaped = xmlEsc(searchText)
+
+  // 1. Simple replacement (text exists in a single run — most common case)
+  for (const needle of [escaped, searchText]) {
+    if (xml.includes(needle)) return xml.replace(needle, replacement)
+  }
+
+  // 2. Split-run match: build a regex where each character may be separated by
+  //    </w:t>....<w:t...> (a run boundary crossing)
+  if (escaped.length > 200) return xml   // skip regex for very long texts
+  const chars = [...escaped].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const SEP = '(?:</w:t>[\\s\\S]*?<w:t(?:\\s[^>]*)?>)?'
+  let match: RegExpExecArray | null
+  try {
+    match = new RegExp(chars.join(SEP)).exec(xml)
+  } catch {
+    return xml
+  }
+  if (!match) return xml
+
+  const matchStart = match.index
+  const matchEnd   = matchStart + match[0].length
+
+  // Find the <w:r that opens before matchStart and the </w:r> that closes after matchEnd
+  const runStart = xml.lastIndexOf('<w:r', matchStart)
+  if (runStart === -1) return xml
+  const runEndIdx = xml.indexOf('</w:r>', matchEnd)
+  if (runEndIdx === -1) return xml
+  const runEnd = runEndIdx + '</w:r>'.length
+
+  // Preserve the rPr (run properties / formatting) from the first run
+  const firstRunXml = xml.substring(runStart, xml.indexOf('</w:r>', runStart) + '</w:r>'.length)
+  const rPrMatch    = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)
+  const rPr         = rPrMatch ? rPrMatch[0] : ''
+
+  const newRun = `<w:r>${rPr}<w:t xml:space="preserve">${replacement}</w:t></w:r>`
+  return xml.substring(0, runStart) + newRun + xml.substring(runEnd)
+}
+
+/**
+ * Write {{var_id}} markers into a docx buffer using confirmedVars.
+ * Uses split-run-aware replacement so Word's XML fragmentation doesn't block us.
+ */
+async function markDocxBuffer(
+  buffer: Buffer,
+  confirmedVars: VariableSuggestion[],
+): Promise<Buffer> {
+  const PizZip = await import('pizzip')
+  const zip = new ((PizZip as any).default ?? PizZip)(buffer)
+
+  const xmlFile = zip.files['word/document.xml']
+  if (!xmlFile) throw new Error('Invalid .docx: missing word/document.xml')
+
+  let xml: string = xmlFile.asText()
+  for (const v of confirmedVars) {
+    if (!v.sampleText || !v.variableId) continue
+    xml = xmlReplaceText(xml, v.sampleText, `{{${v.variableId}}}`)
+  }
+
+  zip.file('word/document.xml', xml)
+  return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer
+}
+
+/**
  * Apply confirmed variable substitutions to the original .docx XML.
  * Downloads original → does text replacement in word/document.xml → uploads as processedKey.
  */
@@ -173,38 +245,7 @@ async function applyVariablesToDocx(
   processedKey: string,
 ): Promise<void> {
   const buffer = await downloadBuffer(originalKey)
-
-  // Dynamic import of pizzip (CJS compat)
-  const PizZip = await import('pizzip')
-  const PizZipCtor = (PizZip as any).default ?? PizZip
-
-  const zip = new PizZipCtor(buffer)
-
-  // Patch word/document.xml — Word stores runs split across <w:t> elements
-  // For simple single-run text, direct string replacement works fine
-  const xmlFile = zip.files['word/document.xml']
-  if (!xmlFile) throw new Error('Invalid .docx: missing word/document.xml')
-
-  let xml: string = xmlFile.asText()
-
-  for (const v of confirmedVars) {
-    if (!v.sampleText || !v.variableId) continue
-    // Escape special XML characters in the search text
-    const escaped = v.sampleText
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-    // Replace the first occurrence (most templates have unique placeholder text)
-    xml = xml.replace(escaped, `{{${v.variableId}}}`)
-    // Also try the unescaped version (handles edge cases)
-    if (xml.includes(v.sampleText)) {
-      xml = xml.replace(v.sampleText, `{{${v.variableId}}}`)
-    }
-  }
-
-  zip.file('word/document.xml', xml)
-  const processed = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' })
+  const processed = await markDocxBuffer(buffer, confirmedVars)
   await uploadBuffer(processedKey, processed, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 }
 
@@ -426,13 +467,17 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
 
-    // Use processedKey if available (has {{var_id}} markers written by applyVariablesToDocx).
-    // Fall back to originalKey for templates where the designer put {{placeholders}} directly.
-    const storageKey = template.processedKey ?? template.originalKey
+    const confirmedVars = (template.confirmedVars as unknown as VariableSuggestion[]) ?? []
 
+    // Always re-apply markers from originalKey using the split-run-aware replacement.
+    // This is more reliable than trusting processedKey, which may have incomplete markers
+    // because Word splits text across XML runs and the old simple string replace missed them.
     let buffer: Buffer
     try {
-      buffer = await downloadBuffer(storageKey)
+      const origBuffer = await downloadBuffer(template.originalKey)
+      buffer = confirmedVars.length > 0
+        ? await markDocxBuffer(origBuffer, confirmedVars)
+        : origBuffer
     } catch (err) {
       console.error('[docTemplates/fill] storage download failed:', err)
       return reply.code(500).send({ error: 'Could not load template file from storage.' })
@@ -446,9 +491,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
 
       const zip = new PizZipCtor(buffer)
 
-      // ── Scan XML for {{placeholders}} so we can build the render map ─────────
-      // Word often splits a placeholder across <w:t> XML runs; flatten adjacent
-      // text nodes so we can find {{...}} spans reliably.
+      // Scan for {{placeholders}} in the marked buffer
       const xmlFile = zip.files['word/document.xml']
       const rawXml: string = xmlFile ? xmlFile.asText() : ''
       const flatText = rawXml.replace(/<\/w:t>[\s\S]*?<w:t[^>]*>/g, '')
@@ -456,7 +499,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
         [...flatText.matchAll(/\{\{([^{}]+?)\}\}/g)].map((m) => m[1].trim()),
       )]
 
-      console.log(`[docTemplates/fill] using ${template.processedKey ? 'processedKey' : 'originalKey'}, found ${foundNames.length} placeholders: ${foundNames.join(', ')}`)
+      console.log(`[docTemplates/fill] confirmedVars=${confirmedVars.length} found=${foundNames.length} placeholders: ${foundNames.join(', ')}`)
 
       const sourceVars = body.variables ?? {}
 
