@@ -498,73 +498,34 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       const xmlFile = zip.files['word/document.xml']
       let rawXml: string = xmlFile ? xmlFile.asText() : ''
 
-      // ── Step 1: build flat text by joining all w:t segments ─────────────────
-      // (tracks exact char positions so we can map back to XML later)
-      type Seg = { xmlStart: number; xmlEnd: number; tOpen: string; text: string; flatStart: number; flatEnd: number }
-      const buildSegs = (xml: string): Seg[] => {
-        const result: Seg[] = []
+      // ── Step 1: detect delimiter style by scanning visible text ─────────────
+      const extractFlatText = (xml: string) => {
+        const parts: string[] = []
         const rx = /(<w:t[^>]*>)([\s\S]*?)<\/w:t>/g
         let m: RegExpExecArray | null
-        let pos = 0
         while ((m = rx.exec(xml)) !== null) {
-          const text = m[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&apos;/g, "'").replace(/&quot;/g, '"')
-          result.push({ xmlStart: m.index, xmlEnd: m.index + m[0].length, tOpen: m[1], text, flatStart: pos, flatEnd: pos + text.length })
-          pos += text.length
+          parts.push(m[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&apos;/g, "'").replace(/&quot;/g, '"'))
         }
-        return result
+        return parts.join('')
       }
 
-      const xmlEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-      // ── Step 2: detect delimiter style from flat text ────────────────────────
-      const segs = buildSegs(rawXml)
-      const flatText = segs.map(s => s.text).join('')
+      const flatText = extractFlatText(rawXml)
       const hasBracket = /\[[a-zA-Z_][a-zA-Z0-9_]*\]/.test(flatText)
       const hasCurly   = /\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\}/.test(flatText)
+      console.log(`[fill] template=${id} hasBracket=${hasBracket} hasCurly=${hasCurly} flatLen=${flatText.length} sample="${flatText.slice(0, 120).replace(/\n/g, ' ')}"`)
 
-      // ── Step 3: if bracket style, pre-process XML to convert [x] → {{x}} ────
-      // docxtemplater's run-merging only works reliably for its native {{ delimiters.
-      // For [bracket] templates (Word designer convention), we manually find each
-      // [placeholder] spanning multiple w:t runs and rewrite the w:t content so the
-      // first run contains {{placeholder}} and the others are emptied. This keeps the
-      // w:r structure intact (no corruption) while giving docxtemplater single-run tags.
+      // ── Step 2: convert [bracket] → {{curly}} with a raw XML replace ─────────
+      // Previous approach used complex XML position tracking which introduced
+      // corruption on multi-segment placeholders. Simple raw replace is safe:
+      // [identifier] patterns never appear in Word XML attribute values.
       if (hasBracket) {
-        const edits: Array<{ xmlStart: number; xmlEnd: number; replacement: string }> = []
-        const bracketRx = /\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g
-        let bm: RegExpExecArray | null
-        while ((bm = bracketRx.exec(flatText)) !== null) {
-          const matchStart = bm.index
-          const matchEnd   = bm.index + bm[0].length
-          const varName    = bm[1]
-          const involved   = segs.filter(s => s.flatEnd > matchStart && s.flatStart < matchEnd)
-          if (involved.length === 0) continue
-          let replacement = ''
-          for (let i = 0; i < involved.length; i++) {
-            const seg = involved[i]
-            const textBefore = seg.text.slice(0, Math.max(0, matchStart - seg.flatStart))
-            const textAfter  = seg.text.slice(Math.min(seg.text.length, matchEnd - seg.flatStart))
-            if (i === 0) {
-              replacement += `${seg.tOpen}${xmlEsc(textBefore)}{{${varName}}}</w:t>`
-            } else if (i === involved.length - 1) {
-              replacement += `${seg.tOpen}${xmlEsc(textAfter)}</w:t>`
-            } else {
-              replacement += `${seg.tOpen}</w:t>`
-            }
-          }
-          edits.push({ xmlStart: involved[0].xmlStart, xmlEnd: involved[involved.length - 1].xmlEnd, replacement })
-        }
-        if (edits.length > 0) {
-          edits.sort((a, b) => b.xmlStart - a.xmlStart) // reverse order so positions stay valid
-          for (const edit of edits) {
-            rawXml = rawXml.slice(0, edit.xmlStart) + edit.replacement + rawXml.slice(edit.xmlEnd)
-          }
-          zip.file('word/document.xml', rawXml)
-          console.log(`[fill] converted ${edits.length} [bracket] placeholders to {{curly}} in XML`)
-        }
+        rawXml = rawXml.replace(/\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g, '{{$1}}')
+        zip.file('word/document.xml', rawXml)
+        console.log(`[fill] converted [bracket] markers to {{curly}} via raw replace`)
       }
 
-      // ── Step 4: extract found placeholder names (after any conversion) ───────
-      const flatText2 = buildSegs(rawXml).map(s => s.text).join('')
+      // ── Step 3: extract placeholder names from visible text ──────────────────
+      const flatText2 = extractFlatText(rawXml)
       const foundNames = [...new Set([...flatText2.matchAll(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g)].map(m => m[1]))]
       console.log(`[fill] found=${foundNames.length}: ${foundNames.join(', ')}`)
 
