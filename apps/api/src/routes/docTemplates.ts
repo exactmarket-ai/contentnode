@@ -379,30 +379,54 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
 
+    // Prefer processed (variable-injected) file; fall back to original
     const storageKey = template.processedKey ?? template.originalKey
-    const buffer = await downloadBuffer(storageKey)
 
-    const PizZip = await import('pizzip')
-    const PizZipCtor = (PizZip as any).default ?? PizZip
-    const Docxtemplater = await import('docxtemplater')
-    const DocxtemplaterCtor = (Docxtemplater as any).default ?? Docxtemplater
+    let buffer: Buffer
+    try {
+      buffer = await downloadBuffer(storageKey)
+    } catch (err) {
+      console.error('[docTemplates/fill] storage download failed:', err)
+      return reply.code(500).send({ error: 'Could not load template file from storage. It may have been deleted or not yet uploaded.' })
+    }
 
-    const zip = new PizZipCtor(buffer)
-    const doc = new DocxtemplaterCtor(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      nullGetter: () => '',
-    })
+    try {
+      const PizZip = await import('pizzip')
+      const PizZipCtor = (PizZip as any).default ?? PizZip
+      const Docxtemplater = await import('docxtemplater')
+      const DocxtemplaterCtor = (Docxtemplater as any).default ?? Docxtemplater
 
-    doc.render(body.variables ?? {})
+      const zip = new PizZipCtor(buffer)
+      const doc = new DocxtemplaterCtor(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        // Return empty string for any missing variable rather than throwing
+        nullGetter: () => '',
+        // Don't throw on unrecognised tags — just leave them blank
+        errorLogging: false,
+      })
 
-    const out: Buffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
-    const outFilename = body.filename ?? `${template.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`
+      doc.render(body.variables ?? {})
 
-    return reply
-      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-      .header('Content-Disposition', `attachment; filename="${outFilename}"`)
-      .send(out)
+      const out: Buffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
+      const outFilename = body.filename ?? `${template.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`
+
+      return reply
+        .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        .header('Content-Disposition', `attachment; filename="${outFilename}"`)
+        .send(out)
+    } catch (err: unknown) {
+      // Docxtemplater parse/render errors include a `properties.errors` array
+      const dtErr = err as { properties?: { errors?: Array<{ message: string }> } }
+      const detail = dtErr?.properties?.errors?.map((e) => e.message).join('; ')
+        ?? (err instanceof Error ? err.message : String(err))
+      console.error('[docTemplates/fill] render failed:', detail)
+      return reply.code(422).send({
+        error: 'Template rendering failed',
+        detail,
+        hint: 'Check that your .docx template uses {variable_name} placeholders and is not corrupted.',
+      })
+    }
   })
 
   // ── Assignments ──────────────────────────────────────────────────────────────

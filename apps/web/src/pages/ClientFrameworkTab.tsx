@@ -2200,7 +2200,12 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
             filename: `${clientName} GTM Framework - ${selectedVertical.name}.docx`,
           }),
         })
-        if (!res.ok) { alert('Download failed'); return }
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({})) as { error?: string; detail?: string; hint?: string }
+          const msg = [errBody.error, errBody.detail, errBody.hint].filter(Boolean).join('\n\n')
+          alert(msg || 'Download failed')
+          return
+        }
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
