@@ -16,6 +16,13 @@ import { apiFetch, assetUrl } from '@/lib/api'
 
 type ReviewStatus = 'none' | 'pending' | 'sent_to_client' | 'client_responded' | 'closed'
 
+interface TeamMember {
+  id: string
+  name: string | null
+  email: string
+  avatarStorageKey?: string | null
+}
+
 interface BoardRun {
   id: string
   workflowName: string
@@ -122,16 +129,128 @@ function timeAgo(iso: string): string {
   return `${Math.floor(diff / 86400000)}d ago`
 }
 
+// ── AssigneePicker ────────────────────────────────────────────────────────────
+
+function AssigneePicker({
+  current,
+  members,
+  onAssign,
+  align = 'left',
+}: {
+  current: BoardRun['assignee']
+  members: TeamMember[]
+  onAssign: (member: TeamMember | null) => void
+  align?: 'left' | 'right'
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const initials = (name: string | null) =>
+    name?.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() ?? '?'
+
+  return (
+    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title={current ? `Assigned to ${current.name ?? current.id} — click to change` : 'Assign someone'}
+        className={cn(
+          'flex items-center justify-center rounded-full border transition-all',
+          'hover:ring-2 hover:ring-blue-400 hover:ring-offset-1',
+          current ? 'h-5 w-5 border-primary/20' : 'h-5 w-5 border-dashed border-muted-foreground/40 text-muted-foreground/50 hover:border-blue-400 hover:text-blue-500',
+        )}
+      >
+        {current ? (
+          current.avatarStorageKey
+            ? <img src={assetUrl(current.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
+            : <span className="text-[9px] font-semibold text-primary">{initials(current.name)}</span>
+        ) : (
+          <Icons.Plus className="h-2.5 w-2.5" />
+        )}
+      </button>
+
+      {open && (
+        <div
+          className={cn(
+            'absolute z-50 top-7 w-52 rounded-xl border border-border bg-white shadow-xl py-1',
+            align === 'right' ? 'right-0' : 'left-0',
+          )}
+        >
+          {/* Header */}
+          <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Assign to
+          </p>
+
+          {/* Unassign */}
+          {current && (
+            <button
+              onClick={() => { onAssign(null); setOpen(false) }}
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <Icons.UserMinus className="h-3.5 w-3.5 shrink-0" />
+              Remove assignee
+            </button>
+          )}
+
+          {/* Team members */}
+          <div className="max-h-52 overflow-y-auto">
+            {members.map((m) => {
+              const isSelected = current?.id === m.id
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => { onAssign(m); setOpen(false) }}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors',
+                    isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-muted/60',
+                  )}
+                >
+                  <div className={cn(
+                    'h-6 w-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold border',
+                    isSelected ? 'bg-blue-500 text-white border-blue-500' : 'bg-primary/10 text-primary border-primary/20',
+                  )}>
+                    {m.avatarStorageKey
+                      ? <img src={assetUrl(m.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
+                      : initials(m.name)
+                    }
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn('text-[12px] font-medium truncate', isSelected && 'text-blue-700')}>{m.name ?? m.email}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{m.email}</p>
+                  </div>
+                  {isSelected && <Icons.Check className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Board card ────────────────────────────────────────────────────────────────
 
 function BoardCard({
   run,
+  members,
   onDragStart,
   onClick,
+  onAssign,
 }: {
   run: BoardRun
+  members: TeamMember[]
   onDragStart: (runId: string) => void
   onClick: (run: BoardRun) => void
+  onAssign: (runId: string, member: TeamMember | null) => void
 }) {
   const preview = getPreview(run)
   const due = dueDateLabel(run.dueDate)
@@ -183,7 +302,12 @@ function BoardCard({
             {run._commentCount}
           </span>
         )}
-        <Avatar user={run.assignee} size="sm" />
+        <AssigneePicker
+          current={run.assignee}
+          members={members}
+          onAssign={(m) => onAssign(run.id, m)}
+          align="right"
+        />
         <span className="text-[10px] text-muted-foreground">{timeAgo(run.createdAt)}</span>
       </div>
     </div>
@@ -195,19 +319,23 @@ function BoardCard({
 function BoardColumn({
   column,
   runs,
+  members,
   dragOverKey,
   onDragStart,
   onDragOver,
   onDrop,
   onCardClick,
+  onAssign,
 }: {
   column: typeof COLUMNS[number]
   runs: BoardRun[]
+  members: TeamMember[]
   dragOverKey: ColumnKey | null
   onDragStart: (runId: string) => void
   onDragOver: (key: ColumnKey) => void
   onDrop: (key: ColumnKey) => void
   onCardClick: (run: BoardRun) => void
+  onAssign: (runId: string, member: TeamMember | null) => void
 }) {
   const Icon = Icons[column.icon] as React.ComponentType<{ className?: string }>
   const isOver = dragOverKey === column.key
@@ -233,7 +361,7 @@ function BoardColumn({
           </div>
         )}
         {runs.map((run) => (
-          <BoardCard key={run.id} run={run} onDragStart={onDragStart} onClick={onCardClick} />
+          <BoardCard key={run.id} run={run} members={members} onDragStart={onDragStart} onClick={onCardClick} onAssign={onAssign} />
         ))}
       </div>
     </div>
@@ -244,12 +372,16 @@ function BoardColumn({
 
 function DetailPanel({
   run,
+  members,
   onClose,
   onStatusChange,
+  onAssign,
 }: {
   run: BoardRun
+  members: TeamMember[]
   onClose: () => void
   onStatusChange: (id: string, status: ReviewStatus) => void
+  onAssign: (runId: string, member: TeamMember | null) => void
 }) {
   const [comments, setComments]   = useState<Comment[]>([])
   const [loadingCmt, setLoadingCmt] = useState(true)
@@ -344,12 +476,16 @@ function DetailPanel({
           </span>
         )}
 
-        {run.assignee && (
-          <div className="flex items-center gap-1">
-            <Avatar user={run.assignee} size="sm" />
-            <span className="text-[10px] text-muted-foreground">{run.assignee.name}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-1.5">
+          <AssigneePicker
+            current={run.assignee}
+            members={members}
+            onAssign={(m) => onAssign(run.id, m)}
+          />
+          <span className="text-[11px] text-muted-foreground">
+            {run.assignee ? run.assignee.name ?? 'Assigned' : 'Unassigned'}
+          </span>
+        </div>
       </div>
 
       {/* Content preview */}
@@ -423,6 +559,7 @@ export function ContentBoardTab({ clientId }: { clientId: string }) {
   const [dragging, setDragging]   = useState<string | null>(null)
   const [dragOver, setDragOver]   = useState<ColumnKey | null>(null)
   const [search, setSearch]       = useState('')
+  const [members, setMembers]     = useState<TeamMember[]>([])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -432,6 +569,14 @@ export function ContentBoardTab({ clientId }: { clientId: string }) {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [clientId])
+
+  // Fetch team members once — used by both card picker and panel picker
+  useEffect(() => {
+    apiFetch('/api/v1/team')
+      .then((r) => r.json())
+      .then(({ data }) => setMembers(data ?? []))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => { load() }, [load])
 
@@ -456,6 +601,21 @@ export function ContentBoardTab({ clientId }: { clientId: string }) {
   const handleStatusChange = (id: string, status: ReviewStatus) => {
     setRuns((prev) => prev.map((r) => r.id === id ? { ...r, reviewStatus: status } : r))
     if (selected?.id === id) setSelected((prev) => prev ? { ...prev, reviewStatus: status } : prev)
+  }
+
+  const handleAssign = async (runId: string, member: TeamMember | null) => {
+    const assignee = member
+      ? { id: member.id, name: member.name, avatarStorageKey: member.avatarStorageKey ?? null }
+      : null
+    // Optimistic update
+    setRuns((prev) => prev.map((r) => r.id === runId ? { ...r, assigneeId: member?.id ?? null, assignee } : r))
+    if (selected?.id === runId) setSelected((prev) => prev ? { ...prev, assigneeId: member?.id ?? null, assignee } : prev)
+    // Persist
+    await apiFetch(`/api/v1/runs/${runId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assigneeId: member?.id ?? null }),
+    }).catch(() => load()) // reload on error to restore
   }
 
   const filtered = search
@@ -513,11 +673,13 @@ export function ContentBoardTab({ clientId }: { clientId: string }) {
                 key={col.key}
                 column={col}
                 runs={byColumn[col.key]}
+                members={members}
                 dragOverKey={dragOver}
                 onDragStart={(id) => setDragging(id)}
                 onDragOver={(key) => setDragOver(key)}
                 onDrop={handleDrop}
                 onCardClick={(run) => setSelected((prev) => prev?.id === run.id ? null : run)}
+                onAssign={handleAssign}
               />
             ))}
           </div>
@@ -528,8 +690,10 @@ export function ContentBoardTab({ clientId }: { clientId: string }) {
       {selected && (
         <DetailPanel
           run={selected}
+          members={members}
           onClose={() => setSelected(null)}
           onStatusChange={handleStatusChange}
+          onAssign={handleAssign}
         />
       )}
     </div>
