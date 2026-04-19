@@ -164,75 +164,63 @@ Respond with ONLY a JSON array, no markdown, no explanation.`
 }
 
 /**
- * Find the last actual <w:r> run element start before position `before`.
- * Skips <w:rPr>, <w:rFonts>, <w:rStyle> etc. which also start with <w:r but are NOT run containers.
- */
-function findLastRunStart(xml: string, before: number): number {
-  let pos = before
-  while (pos > 0) {
-    const idx = xml.lastIndexOf('<w:r', pos - 1)
-    if (idx === -1) return -1
-    const next = xml[idx + 4]
-    if (next === '>' || next === ' ') return idx   // <w:r> or <w:r ...> — actual run
-    pos = idx                                       // <w:rPr> etc. — skip and keep looking
-  }
-  return -1
-}
-
-/**
- * Replace searchText with replacement in OOXML, handling Word's split-run problem.
- * Word often fragments a single visible string across multiple <w:r><w:t> elements.
- * Tries direct string match first, then a run-boundary-bridging regex.
+ * Replace searchText with replacement in OOXML.
+ *
+ * Word splits visible text across multiple <w:r><w:t> elements. Instead of
+ * regex surgery (which keeps corrupting documents), this:
+ *  1. Extracts every run's text and position into a segment list
+ *  2. Joins them into a flat string and finds searchText by character position
+ *  3. Replaces exactly the run(s) that cover that span — no XML guesswork
  */
 function xmlReplaceText(xml: string, searchText: string, replacement: string): string {
   const xmlEsc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const xmlDecode = (s: string) =>
+    s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
 
-  const escaped = xmlEsc(searchText)
-
-  // 1. Simple replacement — text sits in a single <w:t> node (most common)
-  for (const needle of [escaped, searchText]) {
-    if (xml.includes(needle)) return xml.replace(needle, replacement)
+  // Build segment list: every <w:r>...<w:t>text</w:t>...</w:r> with its XML positions
+  type Seg = { runStart: number; runEnd: number; text: string; rPr: string }
+  const segs: Seg[] = []
+  const runRx = /<w:r[ >][\s\S]*?<\/w:r>/g
+  let rm: RegExpExecArray | null
+  while ((rm = runRx.exec(xml)) !== null) {
+    const runXml = rm[0]
+    const tM = /<w:t(?:[^>]*)>([\s\S]*?)<\/w:t>/.exec(runXml)
+    if (!tM) continue
+    const rPrM = /<w:rPr>[\s\S]*?<\/w:rPr>/.exec(runXml)
+    segs.push({
+      runStart: rm.index,
+      runEnd:   rm.index + rm[0].length,
+      text:     xmlDecode(tM[1]),   // decoded for matching
+      rPr:      rPrM ? rPrM[0] : '',
+    })
   }
 
-  // 2. Split-run match — only for short texts, never crossing paragraph/cell boundaries
-  if (escaped.length > 100) return xml
+  const flat = segs.map((s) => s.text).join('')
+  const pos  = flat.indexOf(searchText)
+  if (pos === -1) return xml   // not present even across runs — skip
 
-  const chars = [...escaped].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  // SEP: optional run-boundary gap that must not cross </w:p>, </w:tc>, or </w:tr>
-  const SEP = '(?:</w:t>(?:(?!<(?:\\/w:p|\\/w:tc|\\/w:tr))[\\s\\S])*?<w:t(?:[^>]*)>)?'
-
-  let match: RegExpExecArray | null
-  try {
-    match = new RegExp(chars.join(SEP)).exec(xml)
-  } catch {
-    return xml
+  // Map flat-text position → segments
+  let charPos = 0, firstI = -1, lastI = -1, charInFirst = 0, charInLast = 0
+  for (let i = 0; i < segs.length; i++) {
+    const end = charPos + segs[i].text.length
+    if (firstI === -1 && end > pos)                { firstI = i; charInFirst = pos - charPos }
+    if (end >= pos + searchText.length)            { lastI  = i; charInLast  = pos + searchText.length - charPos; break }
+    charPos = end
   }
-  // Reject if no match or the matched span is suspiciously large
-  if (!match || match[0].length > 1500) return xml
+  if (firstI === -1 || lastI === -1) return xml
 
-  const matchStart = match.index
-  const matchEnd   = matchStart + match[0].length
+  const first  = segs[firstI]
+  const last   = segs[lastI]
+  const before = first.text.slice(0, charInFirst)
+  const after  = last.text.slice(charInLast)
 
-  // Find the enclosing <w:r> (not <w:rPr> etc.) before matchStart
-  const runStart = findLastRunStart(xml, matchStart + 1)
-  if (runStart === -1) return xml
+  let newRuns = ''
+  if (before) newRuns += `<w:r>${first.rPr}<w:t xml:space="preserve">${xmlEsc(before)}</w:t></w:r>`
+  newRuns    +=           `<w:r>${first.rPr}<w:t xml:space="preserve">${replacement}</w:t></w:r>`
+  if (after)  newRuns += `<w:r>${last.rPr}<w:t xml:space="preserve">${xmlEsc(after)}</w:t></w:r>`
 
-  const runEndIdx = xml.indexOf('</w:r>', matchEnd)
-  if (runEndIdx === -1) return xml
-  const runEnd = runEndIdx + '</w:r>'.length
-
-  // Safety: the replaced span must be a reasonable size
-  if (runEnd - runStart > 2000) return xml
-
-  // Preserve rPr (formatting) from the first matched run
-  const firstRunClose = xml.indexOf('</w:r>', runStart)
-  const firstRunXml   = xml.substring(runStart, firstRunClose + '</w:r>'.length)
-  const rPrMatch      = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)
-  const rPr           = rPrMatch ? rPrMatch[0] : ''
-
-  const newRun = `<w:r>${rPr}<w:t xml:space="preserve">${replacement}</w:t></w:r>`
-  return xml.substring(0, runStart) + newRun + xml.substring(runEnd)
+  return xml.substring(0, first.runStart) + newRuns + xml.substring(last.runEnd)
 }
 
 /**
