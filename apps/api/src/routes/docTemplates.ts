@@ -370,8 +370,54 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     return reply.send({ data: updated })
   })
 
+  // GET /:id/inspect — diagnostic: show what placeholders exist in stored files
+  app.get('/:id/inspect', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params as { id: string }
+    const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
+    if (!template) return reply.code(404).send({ error: 'Template not found' })
+
+    const scanPlaceholders = async (key: string | null) => {
+      if (!key) return null
+      try {
+        const buf = await downloadBuffer(key)
+        const PizZip = await import('pizzip')
+        const zip = new ((PizZip as any).default ?? PizZip)(buf)
+        const xmlFile = zip.files['word/document.xml']
+        if (!xmlFile) return { error: 'No word/document.xml', placeholders: [] }
+        const rawXml: string = xmlFile.asText()
+        // Raw scan
+        const raw = [...new Set([...rawXml.matchAll(/\{\{([^{}]+?)\}\}/g)].map((m) => m[1].trim()))]
+        // Flat scan (joins adjacent text nodes to catch split runs)
+        const flat = rawXml.replace(/<\/w:t>[\s\S]*?<w:t[^>]*>/g, '')
+        const flatFound = [...new Set([...flat.matchAll(/\{\{([^{}]+?)\}\}/g)].map((m) => m[1].trim()))]
+        // Also show a snippet of the raw XML around any {{ found
+        const snippet = rawXml.indexOf('{{') !== -1
+          ? rawXml.substring(Math.max(0, rawXml.indexOf('{{') - 100), rawXml.indexOf('{{') + 200)
+          : rawXml.substring(0, 500)
+        return { rawPlaceholders: raw, flatPlaceholders: flatFound, xmlSnippet: snippet }
+      } catch (err) {
+        return { error: String(err), placeholders: [] }
+      }
+    }
+
+    const [origResult, procResult] = await Promise.all([
+      scanPlaceholders(template.originalKey),
+      scanPlaceholders(template.processedKey),
+    ])
+
+    return reply.send({
+      id: template.id,
+      name: template.name,
+      hasProcessedKey: !!template.processedKey,
+      suggestions: template.suggestions,
+      confirmedVars: template.confirmedVars,
+      originalKey: origResult,
+      processedKey: procResult,
+    })
+  })
+
   // POST /:id/fill — fill template with variable values, return binary .docx
-  // Designer templates use ANY {{placeholder}} names — we normalize and match automatically.
   app.post('/:id/fill', async (req, reply) => {
     const { agencyId } = req.auth
     const { id } = req.params as { id: string }
