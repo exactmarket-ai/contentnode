@@ -548,9 +548,13 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       const out: Buffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
       const outFilename = body.filename ?? `${template.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`
 
+      // Debug header — visible in Network tab → Response Headers
+      const debugSample = foundNames.slice(0, 5).map((k) => `${k}=${renderVars[k] ? renderVars[k].slice(0, 30).replace(/\n/g, '\\n') : '(empty)'}`).join(', ')
       return reply
         .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         .header('Content-Disposition', `attachment; filename="${outFilename}"`)
+        .header('X-Fill-Debug', `using=${template.processedKey ? 'processedKey' : 'originalKey'} found=${foundNames.length} matched=${matched} sample=[${debugSample}]`)
+        .header('Access-Control-Expose-Headers', 'X-Fill-Debug')
         .send(out)
     } catch (err: unknown) {
       const dtErr = err as { properties?: { errors?: Array<{ message: string }> } }
