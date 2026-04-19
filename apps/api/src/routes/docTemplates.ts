@@ -479,7 +479,6 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
 
-    // Always use the original uploaded file — it has whatever placeholder syntax the designer used
     let buffer: Buffer
     try {
       buffer = await downloadBuffer(template.originalKey)
@@ -496,29 +495,86 @@ export async function docTemplateRoutes(app: FastifyInstance) {
 
       const zip = new PizZipCtor(buffer)
       const xmlFile = zip.files['word/document.xml']
-      const rawXml: string = xmlFile ? xmlFile.asText() : ''
+      let rawXml: string = xmlFile ? xmlFile.asText() : ''
 
-      // Build flat text by joining all w:t content (handles split runs for scanning)
-      const flatText = (rawXml.match(/<w:t(?:[^>]*)>([^<]*)<\/w:t>/g) ?? [])
-        .map((t) => t.replace(/<[^>]+>/g, ''))
-        .join('')
+      // ── Step 1: build flat text by joining all w:t segments ─────────────────
+      // (tracks exact char positions so we can map back to XML later)
+      type Seg = { xmlStart: number; xmlEnd: number; tOpen: string; text: string; flatStart: number; flatEnd: number }
+      const buildSegs = (xml: string): Seg[] => {
+        const result: Seg[] = []
+        const rx = /(<w:t[^>]*>)([\s\S]*?)<\/w:t>/g
+        let m: RegExpExecArray | null
+        let pos = 0
+        while ((m = rx.exec(xml)) !== null) {
+          const text = m[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&apos;/g, "'").replace(/&quot;/g, '"')
+          result.push({ xmlStart: m.index, xmlEnd: m.index + m[0].length, tOpen: m[1], text, flatStart: pos, flatEnd: pos + text.length })
+          pos += text.length
+        }
+        return result
+      }
 
-      // Auto-detect delimiter style: [name] or {{name}}
+      const xmlEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+      // ── Step 2: detect delimiter style from flat text ────────────────────────
+      const segs = buildSegs(rawXml)
+      const flatText = segs.map(s => s.text).join('')
       const hasBracket = /\[[a-zA-Z_][a-zA-Z0-9_]*\]/.test(flatText)
       const hasCurly   = /\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\}/.test(flatText)
-      const delimiters = hasBracket && !hasCurly
-        ? { start: '[', end: ']' }
-        : { start: '{{', end: '}}' }
 
-      // Extract all placeholder names found in the template
-      const placeholderRx = delimiters.start === '['
-        ? /\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g
-        : /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g
-      const foundNames = [...new Set([...flatText.matchAll(placeholderRx)].map((m) => m[1]))]
+      // ── Step 3: if bracket style, pre-process XML to convert [x] → {{x}} ────
+      // docxtemplater's run-merging only works reliably for its native {{ delimiters.
+      // For [bracket] templates (Word designer convention), we manually find each
+      // [placeholder] spanning multiple w:t runs and rewrite the w:t content so the
+      // first run contains {{placeholder}} and the others are emptied. This keeps the
+      // w:r structure intact (no corruption) while giving docxtemplater single-run tags.
+      if (hasBracket && !hasCurly) {
+        const edits: Array<{ xmlStart: number; xmlEnd: number; replacement: string }> = []
+        const bracketRx = /\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g
+        let bm: RegExpExecArray | null
+        while ((bm = bracketRx.exec(flatText)) !== null) {
+          const matchStart = bm.index
+          const matchEnd   = bm.index + bm[0].length
+          const varName    = bm[1]
+          const involved   = segs.filter(s => s.flatEnd > matchStart && s.flatStart < matchEnd)
+          if (involved.length === 0) continue
+          let replacement = ''
+          for (let i = 0; i < involved.length; i++) {
+            const seg = involved[i]
+            const textBefore = seg.text.slice(0, Math.max(0, matchStart - seg.flatStart))
+            const textAfter  = seg.text.slice(Math.min(seg.text.length, matchEnd - seg.flatStart))
+            if (i === 0) {
+              replacement += `${seg.tOpen}${xmlEsc(textBefore)}{{${varName}}}</w:t>`
+            } else if (i === involved.length - 1) {
+              replacement += `${seg.tOpen}${xmlEsc(textAfter)}</w:t>`
+            } else {
+              replacement += `${seg.tOpen}</w:t>`
+            }
+          }
+          edits.push({ xmlStart: involved[0].xmlStart, xmlEnd: involved[involved.length - 1].xmlEnd, replacement })
+        }
+        if (edits.length > 0) {
+          edits.sort((a, b) => b.xmlStart - a.xmlStart) // reverse order so positions stay valid
+          for (const edit of edits) {
+            rawXml = rawXml.slice(0, edit.xmlStart) + edit.replacement + rawXml.slice(edit.xmlEnd)
+          }
+          zip.file('word/document.xml', rawXml)
+          console.log(`[fill] converted ${edits.length} [bracket] placeholders to {{curly}} in XML`)
+        }
+      }
 
-      console.log(`[fill] delimiters=${JSON.stringify(delimiters)} found=${foundNames.length}: ${foundNames.join(', ')}`)
+      // ── Step 4: extract found placeholder names (after any conversion) ───────
+      const flatText2 = buildSegs(rawXml).map(s => s.text).join('')
+      const foundNames = [...new Set([...flatText2.matchAll(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g)].map(m => m[1]))]
+      console.log(`[fill] found=${foundNames.length}: ${foundNames.join(', ')}`)
 
-      // Normalize: lowercase, camelCase→snake, non-alphanumeric→_
+      if (foundNames.length === 0) {
+        return reply.code(422).send({
+          error: 'No placeholders found in template',
+          detail: `Flat text sample: "${flatText.slice(0, 300)}"`,
+        })
+      }
+
+      // ── Step 5: build render vars ────────────────────────────────────────────
       const norm = (s: string) =>
         s.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase()
           .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
@@ -530,7 +586,6 @@ export async function docTemplateRoutes(app: FastifyInstance) {
         lookup[norm(k)] = v
       }
 
-      // Alias dictionary — maps template placeholder names to our variable IDs
       const ALIASES: Record<string, string> = {
         company: 'client_name', company_name: 'client_name', client: 'client_name',
         organization: 'client_name', organisation: 'client_name', brand: 'client_name',
@@ -558,20 +613,14 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       }
 
       const matched = Object.values(renderVars).filter(Boolean).length
-      const debugSample = foundNames.slice(0, 6).map((k) => `${k}=${(renderVars[k] || '(empty)').slice(0, 25)}`).join(', ')
+      const debugSample = foundNames.slice(0, 6).map(k => `${k}=${(renderVars[k] || '(empty)').slice(0, 25)}`).join(', ')
       console.log(`[fill] matched=${matched}/${foundNames.length} ${debugSample}`)
 
-      if (foundNames.length === 0) {
-        return reply.code(422).send({
-          error: 'No placeholders found in template',
-          detail: `Template uses neither [name] nor {{name}} syntax. Found flat text sample: "${flatText.slice(0, 200)}"`,
-        })
-      }
-
+      // ── Step 6: render ───────────────────────────────────────────────────────
       const doc = new DocxtemplaterCtor(zip, {
         paragraphLoop: true,
         linebreaks: true,
-        delimiters,
+        delimiters: { start: '{{', end: '}}' },
         nullGetter: () => '',
         errorLogging: false,
       })
@@ -584,7 +633,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       return reply
         .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         .header('Content-Disposition', `attachment; filename="${outFilename}"`)
-        .header('X-Fill-Debug', `delimiters=${delimiters.start}${delimiters.end} found=${foundNames.length} matched=${matched} sample=[${debugSample}]`)
+        .header('X-Fill-Debug', `found=${foundNames.length} matched=${matched} style=${hasBracket && !hasCurly ? 'bracket' : 'curly'} sample=[${debugSample}]`)
         .header('Access-Control-Expose-Headers', 'X-Fill-Debug')
         .send(out)
     } catch (err: unknown) {
