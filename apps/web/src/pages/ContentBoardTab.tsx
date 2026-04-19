@@ -169,10 +169,14 @@ function AssigneePicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Close on scroll so it doesn't float detached
+  // Close on scroll of an outside container so it doesn't float detached,
+  // but ignore scrolls that originate inside the dropdown itself
   useEffect(() => {
     if (!open) return
-    const handler = () => setOpen(false)
+    const handler = (e: Event) => {
+      if (dropRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
     window.addEventListener('scroll', handler, true)
     return () => window.removeEventListener('scroll', handler, true)
   }, [open])
