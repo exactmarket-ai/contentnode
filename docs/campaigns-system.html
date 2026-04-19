@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ContentNode Campaigns System</title>
+  <style>
+    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1a1a14; max-width: 800px; margin: 40px auto; padding: 0 40px; }
+    h1 { font-size: 22pt; color: #1a1a14; border-bottom: 2px solid #1a1a14; padding-bottom: 8px; margin-top: 0; }
+    h2 { font-size: 15pt; color: #1a1a14; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 36px; }
+    h3 { font-size: 12pt; color: #1a1a14; margin-top: 24px; margin-bottom: 6px; }
+    h4 { font-size: 11pt; color: #444; margin-top: 16px; margin-bottom: 4px; font-style: italic; }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0 8px 24px; padding: 0; }
+    li { margin: 4px 0; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 10.5pt; }
+    th { background: #1a1a14; color: #fff; padding: 8px 12px; text-align: left; font-weight: bold; }
+    td { padding: 7px 12px; border-bottom: 1px solid #e0deda; vertical-align: top; }
+    tr:nth-child(even) td { background: #f5f4ef; }
+    .callout { background: #f5f4ef; border-left: 4px solid #1a1a14; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0; }
+    .callout p { margin: 0; }
+    .label { display: inline-block; background: #1a1a14; color: #fff; font-size: 9pt; padding: 2px 8px; border-radius: 3px; margin-right: 6px; font-weight: bold; letter-spacing: 0.5px; }
+    .step { margin: 16px 0; padding-left: 16px; border-left: 3px solid #e0deda; }
+    .step-num { font-weight: bold; font-size: 11pt; }
+    code { font-family: Consolas, monospace; background: #f5f4ef; padding: 1px 5px; border-radius: 3px; font-size: 10pt; }
+    hr { border: none; border-top: 1px solid #e0deda; margin: 32px 0; }
+  </style>
+</head>
+<body>
+
+<h1>ContentNode — Campaigns System</h1>
+<p><em>Internal Reference Document &mdash; Covers campaign goals, templates, workflow templates, brief generation and editing, run execution, and output tracking.</em></p>
+
+<hr>
+
+<h2>1. What Is a Campaign?</h2>
+
+<p>A Campaign is a named, goal-driven container that groups one or more workflows together under a shared timeline. Rather than running individual workflows in isolation, a campaign lets you define what you are trying to achieve for a client, assemble the right content workflows to deliver it, generate a planning brief, run everything in one action, and review all the outputs together.</p>
+
+<p>Campaigns live inside a client record. A client can have multiple campaigns running simultaneously or sequentially.</p>
+
+<div class="callout">
+  <p><strong>The core idea:</strong> A campaign is the agency's deliverable. A workflow is how one piece of that deliverable gets made. The campaign layer connects strategy (brief, goal, timeline) to execution (workflow runs) to output (content bundle).</p>
+</div>
+
+<hr>
+
+<h2>2. Campaign Goals</h2>
+
+<p>Every campaign is assigned a goal. The goal determines which campaign template is most appropriate and how the brief is framed when generated.</p>
+
+<table>
+  <tr>
+    <th>Goal</th>
+    <th>What It Represents</th>
+  </tr>
+  <tr>
+    <td><strong>Lead Generation</strong></td>
+    <td>Drive new leads into the top of the funnel. Typically involves a gated asset, email sequence, landing pages, and outbound outreach.</td>
+  </tr>
+  <tr>
+    <td><strong>Lead Nurture</strong></td>
+    <td>Move existing leads toward a buying decision. Focuses on email sequences that build trust, handle objections, and create a path to conversion.</td>
+  </tr>
+  <tr>
+    <td><strong>Brand Awareness</strong></td>
+    <td>Build authority and visibility through organic content. Blog posts, social content, and repurposed distribution across channels.</td>
+  </tr>
+  <tr>
+    <td><strong>Customer Retention</strong></td>
+    <td>Keep existing customers engaged, successful, and expanding. Re-engagement sequences, customer success content, and upgrade messaging.</td>
+  </tr>
+  <tr>
+    <td><strong>Custom</strong></td>
+    <td>A freeform campaign with no predefined structure. Workflows are selected manually by the user.</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2>3. Campaign Templates</h2>
+
+<p>Campaign templates are the starting point when creating a new campaign. Instead of assembling workflows from scratch, you pick the template that matches the campaign's intent and the system pre-wires the right workflow slots for you.</p>
+
+<p>There are six campaign templates available:</p>
+
+<h3>Lead Gen System</h3>
+<p><span class="label">GOAL</span> Lead Generation</p>
+<p>The complete lead generation package. All four workflows are designed to work as a connected system: the landing page brings the lead in, the lead magnet gives them a reason to convert, the email sequence nurtures them toward a decision, and LinkedIn outreach drives the top-of-funnel volume.</p>
+<ul>
+  <li>Lead Magnet</li>
+  <li>Email Nurture Sequence</li>
+  <li>SEO Landing Page Copy</li>
+  <li>LinkedIn Outreach Messages</li>
+</ul>
+<p><em>Note: workflow order matters here more than any other template. Build in the sequence above — each asset informs the next.</em></p>
+
+<h3>Ad Campaign</h3>
+<p><span class="label">GOAL</span> Lead Generation</p>
+<p>Paid campaign assets. The ad copy and the landing page must be in sync — the landing page headline should mirror the ad's promise to maintain message continuity and conversion rate.</p>
+<ul>
+  <li>Ad Copy</li>
+  <li>Landing Page Copy</li>
+</ul>
+
+<h3>Nurture Sequence</h3>
+<p><span class="label">GOAL</span> Lead Nurture</p>
+<p>A focused re-engagement campaign for leads who have expressed interest but not yet converted. The email sequence is the primary deliverable; LinkedIn outreach can run in parallel as a second touchpoint.</p>
+<ul>
+  <li>Email Nurture Sequence</li>
+</ul>
+
+<h3>Market Intelligence</h3>
+<p><span class="label">GOAL</span> Custom (Research)</p>
+<p>A pre-campaign research package. Run this before building any other campaign for a new client. Its outputs enrich the client brain, which makes every subsequent campaign more accurate and more specific.</p>
+<ul>
+  <li>Competitive Intelligence</li>
+  <li>SEO Research</li>
+  <li>Audience Research</li>
+</ul>
+
+<h3>Brand Awareness</h3>
+<p><span class="label">GOAL</span> Brand Awareness</p>
+<p>Content-led authority building across blog and social. The Blog Post and Social Content Pack can run in parallel. The Blog &rarr; Social Repurpose workflow takes the finished blog post and distributes it across LinkedIn, Twitter/X, and Instagram in a single run.</p>
+<ul>
+  <li>Blog Post</li>
+  <li>Social Content Pack</li>
+  <li>Blog &rarr; Social Repurpose</li>
+</ul>
+
+<h3>Retention</h3>
+<p><span class="label">GOAL</span> Customer Retention</p>
+<p>Keeps customers engaged and growing. The three workflows target different stages of the customer lifecycle: lapsed customers, newly onboarded customers, and customers ready to expand.</p>
+<ul>
+  <li>Re-engagement Email Sequence</li>
+  <li>Customer Success Content</li>
+  <li>Upsell / Cross-sell Copy</li>
+</ul>
+
+<hr>
+
+<h2>4. Workflow Templates</h2>
+
+<p>Each slot in a campaign template maps to a specific workflow template. When creating a campaign, if the client does not already have a matching workflow, you can click <strong>+ Create</strong> on the slot and the system will create a fully wired workflow from the template automatically — including all nodes and connections.</p>
+
+<p>The following workflow templates exist in the Demand Gen library:</p>
+
+<table>
+  <tr>
+    <th>Template Name</th>
+    <th>What It Produces</th>
+    <th>Brain Sections Used</th>
+  </tr>
+  <tr>
+    <td><strong>Lead Magnet Builder</strong></td>
+    <td>A complete downloadable asset — guide, checklist, or template pack — structured from the client's ICP, value proposition, and offer.</td>
+    <td>GTM §02, §08, DG S2, S3</td>
+  </tr>
+  <tr>
+    <td><strong>Email Nurture Sequence</strong></td>
+    <td>Five emails, each with a specific job: deliver the lead magnet, demonstrate the product, handle objections, present social proof, and make a trial or demo ask.</td>
+    <td>GTM §08, §10, §12, DG B2, S2, S3</td>
+  </tr>
+  <tr>
+    <td><strong>SEO Landing Page Copy</strong></td>
+    <td>Conversion-focused landing page copy for a target search query — headline, subheads, body, and CTA built around a specific keyword intent.</td>
+    <td>GTM §08, DG S3, S7</td>
+  </tr>
+  <tr>
+    <td><strong>LinkedIn Outreach Messages</strong></td>
+    <td>Ten outreach message variants personalised by ICP role and trigger event. Under 75 words each, varied tone, one ask per message.</td>
+    <td>GTM §02, §07, §08, DG B2, S3</td>
+  </tr>
+  <tr>
+    <td><strong>Blog Post Generator</strong></td>
+    <td>An 800&ndash;900 word SEO blog post structured with a hook, three to four substantive sections, a takeaway, and a soft CTA. Target keyword set in Additional Instructions.</td>
+    <td>GTM §02, §08, DG B1, S3 + Brand</td>
+  </tr>
+  <tr>
+    <td><strong>Social Content Pack</strong></td>
+    <td>One long-form LinkedIn post (200&ndash;300 words), three short-form variants (under 280 characters each), and one Instagram caption. All built from a single topic input.</td>
+    <td>GTM §02, §08, DG S2 + Brand</td>
+  </tr>
+  <tr>
+    <td><strong>Blog &rarr; Social Repurpose</strong></td>
+    <td>Takes a finished blog post (pasted as input) and generates three LinkedIn angles, a Twitter/X thread, and an Instagram caption — all in the client's brand voice.</td>
+    <td>GTM §08 + Brand (user pastes blog text)</td>
+  </tr>
+  <tr>
+    <td><strong>Re-engagement Email Sequence</strong></td>
+    <td>Three emails for lapsed customers or cold leads: re-establish value without referencing the silence, address the silence directly with a graceful off-ramp, and a final generous value drop.</td>
+    <td>GTM §08, §10, §12, DG B2, S2 + Brand</td>
+  </tr>
+  <tr>
+    <td><strong>Customer Success Content</strong></td>
+    <td>Three assets: a 30-day onboarding check-in email, a feature spotlight email highlighting the most valuable underused capability, and a success story template pre-filled with the client's best use case.</td>
+    <td>GTM §02, §08, DG B1, S2, S3 + Brand</td>
+  </tr>
+  <tr>
+    <td><strong>Upsell / Cross-sell Copy</strong></td>
+    <td>Upgrade messaging for three segments: starter to growth, feature add-on cross-sell, and growth to enterprise. Each email speaks to the specific inflection point that signals readiness to expand.</td>
+    <td>GTM §02, §08, §12, DG B1, S2</td>
+  </tr>
+  <tr>
+    <td><strong>Competitive Intelligence Pack</strong></td>
+    <td>Mines Trustpilot reviews and deep-scrapes competitor websites, then generates a battlecard and messaging opportunities.</td>
+    <td>Research-driven (no brain required)</td>
+  </tr>
+  <tr>
+    <td><strong>SEO Content Strategy</strong></td>
+    <td>Combines Reddit audience signals with keyword intent analysis to produce a prioritised content calendar with keyword clusters and topic angles.</td>
+    <td>Research-driven + GTM §02, §08, DG S2, S3</td>
+  </tr>
+  <tr>
+    <td><strong>Market Signal Research Brief</strong></td>
+    <td>Crawls industry sites and mines Reddit to produce a demand gen intelligence brief covering audience pain points, external signals, and content opportunities.</td>
+    <td>Research-driven + GTM §02, §08, §12, DG B1, S2, S3</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2>5. Creating a Campaign — Step by Step</h2>
+
+<div class="step">
+  <p class="step-num">Step 1 &mdash; Open the Campaigns tab</p>
+  <p>Navigate to the client record and click the <strong>Campaigns</strong> tab. Any existing campaigns for this client are listed here. Click <strong>New Campaign</strong>.</p>
+</div>
+
+<div class="step">
+  <p class="step-num">Step 2 &mdash; Pick a campaign template</p>
+  <p>The modal opens on the template picker. Six cards are displayed. Each shows the template name, a short description, and the content it produces. Click the card that matches the campaign's intent. If none fit, choose <strong>Custom</strong>.</p>
+</div>
+
+<div class="step">
+  <p class="step-num">Step 3 &mdash; Name the campaign</p>
+  <p>The name field is pre-hinted with <code>ClientName — Template Name</code> as a placeholder. Type your campaign name. Start and end dates are optional but recommended if you have a delivery timeline.</p>
+</div>
+
+<div class="step">
+  <p class="step-num">Step 4 &mdash; Assign workflows to slots</p>
+  <p>Each slot represents a role in the campaign. The system attempts to auto-match existing client workflows by name. You have two options per slot:</p>
+  <ul>
+    <li><strong>If a workflow already exists:</strong> The dropdown pre-selects the best match. Review it — swap if needed. An external link icon lets you open it in a new tab.</li>
+    <li><strong>If no workflow exists:</strong> A green <strong>+ Create</strong> button appears. Click it and the system creates a fully wired workflow from the corresponding template — all nodes and connections included. It auto-assigns to the slot when done.</li>
+    <li><strong>Skip slot:</strong> Choose &ldquo;Skip slot&rdquo; from the dropdown to exclude a slot without blocking creation. Workflows can be added to the campaign later.</li>
+  </ul>
+</div>
+
+<div class="step">
+  <p class="step-num">Step 5 &mdash; Click Create Campaign</p>
+  <p>The campaign record is created and all assigned workflows are added with their roles. The modal closes and the campaign card appears in the list in <code>planning</code> status.</p>
+</div>
+
+<hr>
+
+<h2>6. The Campaign Brief</h2>
+
+<h3>What the Brief Is</h3>
+<p>The campaign brief is an AI-generated planning document that translates the campaign's goal, timeline, and client brain data into a structured brief suitable for sharing with a client or aligning a team. It is written by Claude and saved directly to the campaign record.</p>
+
+<p>The brief covers:</p>
+<ul>
+  <li><strong>Objective</strong> &mdash; What the campaign is designed to achieve in business terms</li>
+  <li><strong>Target Audience</strong> &mdash; Specific roles, segments, and pain points from the client data</li>
+  <li><strong>Key Messages</strong> &mdash; Three to five core messages using the client's own language</li>
+  <li><strong>Campaign Structure</strong> &mdash; How the workflows connect as a system and what each piece does</li>
+  <li><strong>Success Metrics</strong> &mdash; Specific KPIs tied to the campaign goal</li>
+  <li><strong>Timeline &amp; Milestones</strong> &mdash; Key dates and when each deliverable should be live</li>
+  <li><strong>Creative Direction</strong> &mdash; Tone, format guidance, and brand considerations</li>
+</ul>
+
+<h3>How the Brief Is Generated</h3>
+<p>Click <strong>Generate Brief</strong> on the campaign card. The system sends the following context to Claude:</p>
+<ul>
+  <li>Campaign name, goal, and date range</li>
+  <li>Ordered list of workflows and their roles</li>
+  <li>Client's Demand Gen base data (revenue, goals)</li>
+  <li>Client's Demand Gen vertical data (most recent)</li>
+  <li>Client's GTM messaging framework and ICP definition</li>
+</ul>
+<p>The brief is returned as formatted markdown and saved to the campaign. The <strong>Generate Brief</strong> button becomes <strong>View Brief</strong> once a brief exists. Clicking it again regenerates a fresh brief from the current data.</p>
+
+<div class="callout">
+  <p><strong>Best practice:</strong> Generate the brief before running the campaign. It serves as the alignment document — review it with the client or team first, then run.</p>
+</div>
+
+<h3>Editing the Brief</h3>
+<p>The brief panel opens in <strong>rendered view</strong> by default — headings, bold text, and bullet points are displayed as formatted text, not raw markdown. To edit:</p>
+<ol>
+  <li>Click <strong>Edit</strong> (pencil icon) in the brief panel header</li>
+  <li>The panel switches to a raw text editor (textarea)</li>
+  <li>Make your changes</li>
+  <li>A <strong>Save</strong> button appears as soon as your version differs from what is stored</li>
+  <li>Click Save to persist your changes</li>
+  <li>Click <strong>Preview</strong> to return to the rendered view</li>
+</ol>
+
+<h3>AI Draft vs Your Version</h3>
+<p>The system tracks the original AI-generated brief separately from your edited version. This serves two purposes:</p>
+<ol>
+  <li><strong>Comparison</strong> &mdash; If your version differs from the AI original, a <strong>Compare AI draft</strong> button appears in the brief header. Clicking it opens a side-by-side view: the AI draft on the left (read-only, labelled in violet) and your version on the right (still editable).</li>
+  <li><strong>Training signal</strong> &mdash; The gap between what Claude wrote and what you changed it to indicates what the client's brain data is missing or getting wrong. Over time this delta can be used to improve brain sections and brief quality.</li>
+</ol>
+
+<h3>Edit Attribution</h3>
+<p>Every time the brief is saved, the system records who made the edit and when. The brief header shows <em>Edited by [username] &middot; [date]</em>. Clicking the username also toggles the AI draft comparison view.</p>
+
+<hr>
+
+<h2>7. Running a Campaign</h2>
+
+<p>Click <strong>Run All</strong> on the campaign card. The system creates a workflow run for every assigned workflow and enqueues them all simultaneously on the job queue. They execute in parallel — no waiting for one to finish before the next starts.</p>
+
+<p>On the first run, the campaign status moves from <code>planning</code> to <code>active</code>.</p>
+
+<p>After clicking Run All, a confirmation panel appears inside the card listing each workflow and its run ID. Each workflow row in the campaign shows a status dot:</p>
+
+<table>
+  <tr>
+    <th>Dot Colour</th>
+    <th>Status</th>
+  </tr>
+  <tr>
+    <td>Grey (dim)</td>
+    <td>No run yet</td>
+  </tr>
+  <tr>
+    <td>Grey (medium)</td>
+    <td>Pending — queued, not started</td>
+  </tr>
+  <tr>
+    <td>Blue (pulsing)</td>
+    <td>Running</td>
+  </tr>
+  <tr>
+    <td>Green</td>
+    <td>Completed</td>
+  </tr>
+  <tr>
+    <td>Red</td>
+    <td>Failed</td>
+  </tr>
+</table>
+
+<p>A progress bar at the top of the campaign card shows the ratio of completed workflows to total workflows as a percentage.</p>
+
+<div class="callout">
+  <p><strong>Note:</strong> Workflows in a campaign run independently. They do not pass output to each other automatically. If one workflow's output needs to feed another (e.g. the lead magnet output feeding into the email nurture), wire that dependency inside the workflow canvas using a Workflow Output source node before running.</p>
+</div>
+
+<hr>
+
+<h2>8. Viewing Outputs</h2>
+
+<p>Once one or more workflows have completed runs, click <strong>Outputs</strong> on the campaign card.</p>
+
+<p>The output bundle loads the most recent completed run for each workflow in the campaign and presents them together in a single view. Each workflow's output section shows:</p>
+<ul>
+  <li>The workflow name and its role in the campaign</li>
+  <li>A <code>has output</code> or <code>no run</code> status badge</li>
+  <li>The generated content (up to 800 characters previewed inline, with overflow truncated)</li>
+</ul>
+
+<p>Workflows that have not yet been run or that failed show a <code>no run</code> badge with no content.</p>
+
+<div class="callout">
+  <p><strong>What the output shows:</strong> The bundle extracts the primary output text from each completed run &mdash; specifically the last passed output node in the workflow. If a workflow has multiple output nodes, only the final one is surfaced in the bundle view. To see the full output of a specific workflow, use the external link icon on the workflow row to open it directly.</p>
+</div>
+
+<hr>
+
+<h2>9. Campaign Status Reference</h2>
+
+<table>
+  <tr>
+    <th>Status</th>
+    <th>Meaning</th>
+  </tr>
+  <tr>
+    <td><code>planning</code></td>
+    <td>Campaign created, no runs triggered yet. Brief may or may not exist.</td>
+  </tr>
+  <tr>
+    <td><code>active</code></td>
+    <td>At least one run has been triggered. Campaign is in execution.</td>
+  </tr>
+  <tr>
+    <td><code>archived</code></td>
+    <td>Campaign is closed. Accessible for reference but no longer active.</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2>10. Recommended Workflow Per Campaign Type</h2>
+
+<table>
+  <tr>
+    <th>Campaign Type</th>
+    <th>Recommended Sequence</th>
+  </tr>
+  <tr>
+    <td><strong>Lead Gen System</strong></td>
+    <td>1. Run Market Intelligence first if client is new (enriches brain)<br>2. Build: Landing Page &rarr; Lead Magnet &rarr; Email Nurture &rarr; LinkedIn Outreach<br>3. Each asset informs the next — do not run in parallel on a new client</td>
+  </tr>
+  <tr>
+    <td><strong>Ad Campaign</strong></td>
+    <td>Build landing page first, then generate ad copy to match its headline and promise</td>
+  </tr>
+  <tr>
+    <td><strong>Brand Awareness</strong></td>
+    <td>Run Blog Post first, then Blog &rarr; Social Repurpose to distribute it. Run Social Content Pack independently for standalone social content</td>
+  </tr>
+  <tr>
+    <td><strong>Retention</strong></td>
+    <td>Re-engagement emails first (stops the bleed), then Customer Success (improve experience), then Upsell (expand revenue)</td>
+  </tr>
+  <tr>
+    <td><strong>Market Intelligence</strong></td>
+    <td>Run before any other campaign type for a new client. Output enriches the brain which improves all subsequent campaign briefs and workflow outputs</td>
+  </tr>
+</table>
+
+<hr>
+
+<p style="font-size: 9pt; color: #888; margin-top: 40px;">ContentNode.ai &mdash; Internal Documentation &mdash; Campaigns System</p>
+
+</body>
+</html>

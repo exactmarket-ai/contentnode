@@ -65,6 +65,7 @@ model Agency {
   verticalBrainAttachments       VerticalBrainAttachment[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   leadershipMembers              LeadershipMember[]
+  notifications                  Notification[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -431,6 +432,7 @@ model User {
   assignedRuns         WorkflowRun[] @relation("RunAssignee")
   defaultAssigneeOf    Workflow[]    @relation("WorkflowDefaultAssignee")
   comments             Comment[]
+  notifications        Notification[]
 
   @@index([agencyId])
   @@map("users")
@@ -1783,4 +1785,28 @@ model LeadershipMember {
   @@index([agencyId])
   @@index([clientId])
   @@map("leadership_members")
+}
+
+// ─────────────────────────────────────────────
+// Notification — in-app alerts for team members
+// ─────────────────────────────────────────────
+model Notification {
+  id           String   @id @default(cuid())
+  agencyId     String   @map("agency_id")
+  userId       String   @map("user_id")
+  type         String   // 'assignment' | 'comment' | 'review_ready'
+  title        String
+  body         String?  @db.Text
+  resourceId   String?  @map("resource_id")   // e.g. workflowRunId
+  resourceType String?  @map("resource_type") // e.g. 'run'
+  clientId     String?  @map("client_id")
+  read         Boolean  @default(false)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, userId, read])
+  @@index([agencyId, userId, createdAt(sort: Desc)])
+  @@map("notifications")
 }

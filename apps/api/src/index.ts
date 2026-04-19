@@ -45,6 +45,7 @@ import { campaignRoutes }       from './routes/campaigns.js'
 import { scheduledTaskRoutes }  from './routes/scheduledTasks.js'
 import { docTemplateRoutes }    from './routes/docTemplates.js'
 import { leadershipRoutes }     from './routes/leadership.js'
+import { notificationsRoutes }  from './routes/notifications.js'
 import { contentGeneratorRoutes } from './routes/contentGenerator.js'
 import { getRedis } from './lib/redis.js'
 
@@ -162,6 +163,7 @@ await app.register(campaignRoutes,         { prefix: '/api/v1/campaigns' })
 await app.register(scheduledTaskRoutes,    { prefix: '/api/v1/scheduled-tasks' })
 await app.register(docTemplateRoutes,      { prefix: '/api/v1/doc-templates' })
 await app.register(leadershipRoutes,         { prefix: '/api/v1/leadership' })
+await app.register(notificationsRoutes,      { prefix: '/api/v1/notifications' })
 await app.register(contentGeneratorRoutes,   { prefix: '/api/v1/content-generator' })
 
 // ── Start ─────────────────────────────────────────────────────────────────

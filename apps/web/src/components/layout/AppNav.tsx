@@ -1,9 +1,183 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, Link } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useWorkflowStore } from '@/store/workflowStore'
+import { apiFetch } from '@/lib/api'
+
+// ── NotificationBell ──────────────────────────────────────────────────────────
+
+interface AppNotification {
+  id: string
+  type: string
+  title: string
+  body: string | null
+  resourceId: string | null
+  resourceType: string | null
+  clientId: string | null
+  read: boolean
+  createdAt: string
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60000) return 'just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  return `${Math.floor(diff / 86400000)}d ago`
+}
+
+function NotificationBell({ collapsed }: { collapsed: boolean }) {
+  const navigate = useNavigate()
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [unreadCount, setUnreadCount]     = useState(0)
+  const [open, setOpen]                   = useState(false)
+  const [coords, setCoords]               = useState<{ top: number; left: number } | null>(null)
+  const btnRef  = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
+
+  const fetchNotifications = useCallback(() => {
+    apiFetch('/api/v1/notifications')
+      .then((r) => r.json())
+      .then(({ data, unreadCount: count }) => {
+        setNotifications(data ?? [])
+        setUnreadCount(count ?? 0)
+      })
+      .catch(() => {})
+  }, [])
+
+  // Poll every 30s + on window focus
+  useEffect(() => {
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 30000)
+    window.addEventListener('focus', fetchNotifications)
+    return () => { clearInterval(interval); window.removeEventListener('focus', fetchNotifications) }
+  }, [fetchNotifications])
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node) || dropRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const openBell = () => {
+    if (open) { setOpen(false); return }
+    const rect = btnRef.current!.getBoundingClientRect()
+    setCoords({ top: rect.top, left: rect.right + 8 })
+    setOpen(true)
+  }
+
+  const markRead = async (n: AppNotification) => {
+    if (!n.read) {
+      setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x))
+      setUnreadCount((c) => Math.max(0, c - 1))
+      await apiFetch(`/api/v1/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {})
+    }
+    setOpen(false)
+    if (n.clientId) navigate(`/clients/${n.clientId}?tab=board`)
+  }
+
+  const markAllRead = async () => {
+    setNotifications((prev) => prev.map((x) => ({ ...x, read: true })))
+    setUnreadCount(0)
+    await apiFetch('/api/v1/notifications/read-all', { method: 'POST' }).catch(() => {})
+  }
+
+  const dropdown = open && coords
+    ? createPortal(
+        <div
+          ref={dropRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 }}
+          className="w-80 rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <p className="text-[13px] font-semibold text-gray-800">Notifications</p>
+            {unreadCount > 0 && (
+              <button onClick={markAllRead} className="text-[11px] text-blue-600 hover:text-blue-700 font-medium">
+                Mark all read
+              </button>
+            )}
+          </div>
+
+          {/* List */}
+          <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
+            {notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-2">
+                <Icons.BellOff className="h-6 w-6 text-gray-300" />
+                <p className="text-[12px] text-gray-400">No notifications yet</p>
+              </div>
+            ) : (
+              notifications.map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => markRead(n)}
+                  className={cn(
+                    'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50',
+                    !n.read && 'bg-blue-50/60',
+                  )}
+                >
+                  <div className={cn(
+                    'mt-0.5 h-8 w-8 rounded-full flex items-center justify-center shrink-0',
+                    n.type === 'assignment' ? 'bg-violet-100' : 'bg-gray-100',
+                  )}>
+                    {n.type === 'assignment'
+                      ? <Icons.UserCheck className="h-4 w-4 text-violet-600" />
+                      : <Icons.Bell className="h-4 w-4 text-gray-500" />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn('text-[12px] leading-snug', n.read ? 'text-gray-600' : 'text-gray-900 font-medium')}>
+                      {n.title}
+                    </p>
+                    {n.body && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{n.body}</p>}
+                    <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.createdAt)}</p>
+                  </div>
+                  {!n.read && <div className="h-2 w-2 rounded-full bg-blue-500 shrink-0 mt-1.5" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>,
+        document.body,
+      )
+    : null
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={openBell}
+        title={collapsed ? `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}` : undefined}
+        className={cn(
+          'relative flex w-full items-center rounded-md px-2 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground',
+          collapsed ? 'justify-center' : 'gap-3',
+          open && 'bg-accent text-foreground',
+        )}
+      >
+        <div className="relative shrink-0">
+          <Icons.Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white leading-none">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </div>
+        {!collapsed && <span>Notifications</span>}
+      </button>
+      {dropdown}
+    </>
+  )
+}
+
+// ── UserAvatar ────────────────────────────────────────────────────────────────
 
 function UserAvatar({ avatarUrl, name, email, size = 'sm' }: { avatarUrl: string | null; name: string | null; email: string; size?: 'sm' | 'md' }) {
   const dims = size === 'md' ? 'h-9 w-9 text-sm' : 'h-7 w-7 text-xs'
@@ -193,6 +367,8 @@ export function AppNav({ onSignOut }: AppNavProps) {
             activeBorder="#e9c8ff"
           />
         )}
+        <NotificationBell collapsed={collapsed} />
+
         {onSignOut && <button
           onClick={handleSignOut}
           title={collapsed ? 'Sign out' : undefined}

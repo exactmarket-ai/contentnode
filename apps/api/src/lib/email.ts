@@ -67,6 +67,64 @@ export async function sendTeamInviteEmail(params: TeamInviteEmailParams): Promis
   }
 }
 
+export interface AssignmentEmailParams {
+  to: { name: string | null; email: string }
+  assignedByName: string | null
+  runName: string
+  clientName: string
+  boardUrl: string
+}
+
+export async function sendAssignmentEmail(params: AssignmentEmailParams): Promise<void> {
+  const { to, assignedByName, runName, clientName, boardUrl } = params
+
+  if (!SENDGRID_API_KEY) {
+    console.log(`[email] No SendGrid key — would notify ${to.email} of assignment: ${boardUrl}`)
+    return
+  }
+
+  const assignerLabel = assignedByName ?? 'Someone'
+  const recipientLabel = to.name ?? to.email
+
+  try {
+    await sgMail.send({
+      to: { name: to.name ?? to.email, email: to.email },
+      from: { name: FROM_NAME, email: FROM_EMAIL },
+      subject: `You've been assigned: ${runName}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
+          <div style="background: #a200ee; padding: 24px 32px; border-radius: 12px 12px 0 0;">
+            <p style="color: rgba(255,255,255,0.9); font-size: 13px; font-weight: 600; margin: 0; letter-spacing: 0.05em;">CONTENTNODE</p>
+          </div>
+          <div style="background: #ffffff; padding: 32px; border-radius: 0 0 12px 12px; border: 1px solid #e8e7e1;">
+            <h2 style="color: #1a1a14; font-size: 20px; margin: 0 0 12px;">You've been assigned a piece of content</h2>
+            <p style="color: #5c5b52; font-size: 14px; line-height: 1.6; margin: 0 0 8px;">Hi ${recipientLabel},</p>
+            <p style="color: #5c5b52; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+              <strong style="color: #1a1a14;">${assignerLabel}</strong> has assigned you to review
+              <strong style="color: #1a1a14;">${runName}</strong>
+              for <strong style="color: #1a1a14;">${clientName}</strong>.
+            </p>
+            <a href="${boardUrl}"
+               style="display: inline-block; background: #a200ee; color: #ffffff; text-decoration: none;
+                      padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 14px;">
+              Open Content Board
+            </a>
+            <p style="color: #b4b2a9; font-size: 12px; margin: 24px 0 0; line-height: 1.5;">
+              You're receiving this because you were assigned to a content item on ContentNode.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${recipientLabel},\n\n${assignerLabel} has assigned you to review "${runName}" for ${clientName}.\n\nOpen the board here: ${boardUrl}`,
+    })
+    console.log(`[email] Assignment notification sent to ${to.email}`)
+  } catch (err) {
+    const detail = (err as { response?: { body?: unknown } })?.response?.body
+    console.error(`[email] SendGrid error for ${to.email}:`, detail ?? err)
+    // Don't throw — assignment should succeed even if email fails
+  }
+}
+
 export interface ReviewEmailParams {
   to: { name: string; email: string }
   clientName: string

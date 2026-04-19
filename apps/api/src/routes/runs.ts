@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { prisma, type Prisma, permissionService } from '@contentnode/database'
 import { auditService } from '../services/audit.js'
 import { getWorkflowRunsQueue, getEditAnalysisQueue } from '../lib/queues.js'
-import { sendReviewEmail } from '../lib/email.js'
+import { sendReviewEmail, sendAssignmentEmail } from '../lib/email.js'
 import { getClerkUserNames } from '../lib/clerk.js'
 
 // Providers that are local/offline for permission classification
@@ -782,7 +782,13 @@ export async function runRoutes(app: FastifyInstance) {
 
     if (!body.success) return reply.code(400).send({ error: 'Invalid body', details: body.error.issues })
 
-    const run = await prisma.workflowRun.findFirst({ where: { id, agencyId } })
+    const run = await prisma.workflowRun.findFirst({
+      where: { id, agencyId },
+      include: {
+        workflow: { select: { name: true, clientId: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+      },
+    })
     if (!run) return reply.code(404).send({ error: 'Run not found' })
 
     const updated = await prisma.workflowRun.update({
@@ -803,6 +809,54 @@ export async function runRoutes(app: FastifyInstance) {
         job:      { select: { id: true, name: true, budgetCents: true } },
       },
     })
+
+    // ── Assignment notification ───────────────────────────────────────────────
+    const newAssigneeId = body.data.assigneeId
+    if (newAssigneeId && newAssigneeId !== run.assigneeId) {
+      const newAssignee = await prisma.user.findFirst({ where: { id: newAssigneeId, agencyId } })
+      if (newAssignee) {
+        const runName = run.itemName ?? run.workflow?.name ?? 'Content item'
+        const clientId = run.workflow?.clientId ?? null
+
+        // Fetch client name for context
+        const client = clientId
+          ? await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { name: true } })
+          : null
+
+        // Fetch assigner name
+        const assigner = req.auth.userId
+          ? await prisma.user.findFirst({ where: { id: req.auth.userId, agencyId }, select: { name: true } })
+          : null
+
+        // Create in-app notification
+        await prisma.notification.create({
+          data: {
+            agencyId,
+            userId:       newAssignee.id,
+            type:         'assignment',
+            title:        `Assigned to you: ${runName}`,
+            body:         client ? `${client.name} — ${runName}` : runName,
+            resourceId:   run.id,
+            resourceType: 'run',
+            clientId:     clientId ?? null,
+          },
+        }).catch(() => {}) // never block the response
+
+        // Send email (fire-and-forget)
+        const webUrl = process.env.WEB_URL ?? process.env.PORTAL_BASE_URL ?? 'http://localhost:5173'
+        const boardUrl = clientId
+          ? `${webUrl}/clients/${clientId}?tab=board`
+          : `${webUrl}/reviews`
+
+        sendAssignmentEmail({
+          to:            { name: newAssignee.name, email: newAssignee.email },
+          assignedByName: assigner?.name ?? null,
+          runName,
+          clientName:    client?.name ?? 'your client',
+          boardUrl,
+        }).catch(() => {})
+      }
+    }
 
     return reply.send({ data: updated })
   })
