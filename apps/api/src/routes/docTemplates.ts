@@ -479,19 +479,12 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
 
-    const confirmedVars = (template.confirmedVars as unknown as VariableSuggestion[]) ?? []
-
-    // Always re-apply markers from originalKey using the split-run-aware replacement.
-    // This is more reliable than trusting processedKey, which may have incomplete markers
-    // because Word splits text across XML runs and the old simple string replace missed them.
+    // Always use the original uploaded file — it has whatever placeholder syntax the designer used
     let buffer: Buffer
     try {
-      const origBuffer = await downloadBuffer(template.originalKey)
-      buffer = confirmedVars.length > 0
-        ? await markDocxBuffer(origBuffer, confirmedVars)
-        : origBuffer
+      buffer = await downloadBuffer(template.originalKey)
     } catch (err) {
-      console.error('[docTemplates/fill] storage download failed:', err)
+      console.error('[docTemplates/fill] download failed:', err)
       return reply.code(500).send({ error: 'Could not load template file from storage.' })
     }
 
@@ -502,98 +495,83 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       const DocxtemplaterCtor = (Docxtemplater as any).default ?? Docxtemplater
 
       const zip = new PizZipCtor(buffer)
-
-      // Scan for {{placeholders}} in the marked buffer
       const xmlFile = zip.files['word/document.xml']
       const rawXml: string = xmlFile ? xmlFile.asText() : ''
-      const flatText = rawXml.replace(/<\/w:t>[\s\S]*?<w:t[^>]*>/g, '')
-      const foundNames = [...new Set(
-        [...flatText.matchAll(/\{\{([^{}]+?)\}\}/g)].map((m) => m[1].trim()),
-      )]
 
-      console.log(`[docTemplates/fill] confirmedVars=${confirmedVars.length} found=${foundNames.length} placeholders: ${foundNames.join(', ')}`)
+      // Build flat text by joining all w:t content (handles split runs for scanning)
+      const flatText = (rawXml.match(/<w:t(?:[^>]*)>([^<]*)<\/w:t>/g) ?? [])
+        .map((t) => t.replace(/<[^>]+>/g, ''))
+        .join('')
 
-      const sourceVars = body.variables ?? {}
+      // Auto-detect delimiter style: [name] or {{name}}
+      const hasBracket = /\[[a-zA-Z_][a-zA-Z0-9_]*\]/.test(flatText)
+      const hasCurly   = /\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\}/.test(flatText)
+      const delimiters = hasBracket && !hasCurly
+        ? { start: '[', end: ']' }
+        : { start: '{{', end: '}}' }
 
-      // Normalize helper — camelCase→snake, lowercase, collapse non-alphanumeric → _
+      // Extract all placeholder names found in the template
+      const placeholderRx = delimiters.start === '['
+        ? /\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g
+        : /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g
+      const foundNames = [...new Set([...flatText.matchAll(placeholderRx)].map((m) => m[1]))]
+
+      console.log(`[fill] delimiters=${JSON.stringify(delimiters)} found=${foundNames.length}: ${foundNames.join(', ')}`)
+
+      // Normalize: lowercase, camelCase→snake, non-alphanumeric→_
       const norm = (s: string) =>
         s.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase()
           .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 
-      // Normalised lookup: covers keys sent as-is AND normalised versions
+      const sourceVars = body.variables ?? {}
       const lookup: Record<string, string> = {}
       for (const [k, v] of Object.entries(sourceVars)) {
-        lookup[k]       = v
+        lookup[k] = v
         lookup[norm(k)] = v
       }
 
-      // Alias dictionary for designer-friendly placeholder names
+      // Alias dictionary — maps template placeholder names to our variable IDs
       const ALIASES: Record<string, string> = {
         company: 'client_name', company_name: 'client_name', client: 'client_name',
         organization: 'client_name', organisation: 'client_name', brand: 'client_name',
+        product: 's01_platform_name', platform: 's01_platform_name', solution: 's01_platform_name',
+        outcome: 's05_business_outcomes', outcomes: 's05_business_outcomes',
+        target: 's02_industry', target_market: 's02_industry', target_industry: 's02_industry',
+        role: 's08_persona_names', persona: 's08_persona_names', buyer: 's08_persona_names',
         industry: 'vertical_name', vertical: 'vertical_name', sector: 'vertical_name',
-        date: 'document_date', doc_date: 'document_date', report_date: 'document_date',
-        positioning: 's01_positioning_statement', position: 's01_positioning_statement',
-        positioning_statement: 's01_positioning_statement',
-        tagline: 's01_tagline_options', taglines: 's01_tagline_options',
-        headline: 's01_tagline_options', headlines: 's01_tagline_options',
-        platform: 's01_platform_name', product: 's01_platform_name', solution: 's01_platform_name',
-        core_benefit: 's01_platform_benefit', value_prop: 's01_platform_benefit',
-        target_industry: 's02_industry', target_market: 's02_industry',
-        company_size: 's02_company_size', employee_count: 's02_company_size',
-        geography: 's02_geography', region: 's02_geography', location: 's02_geography',
-        founding_story: 's03_founding_story', history: 's03_founding_story', story: 's03_founding_story',
-        milestones: 's03_key_milestones', achievements: 's03_key_milestones',
-        unique_capability: 's03_unique_capability', differentiator: 's03_unique_capability',
-        triggers: 's04_trigger_events', trigger_events: 's04_trigger_events',
-        pain_points: 's04_pain_points', challenges: 's04_pain_points', pains: 's04_pain_points',
-        business_outcomes: 's05_business_outcomes', outcomes: 's05_business_outcomes',
-        capabilities: 's05_core_capabilities', features: 's05_core_capabilities',
+        date: 'document_date', doc_date: 'document_date',
+        positioning: 's01_positioning_statement', tagline: 's01_tagline_options',
+        pain_points: 's04_pain_points', challenges: 's04_pain_points',
         differentiators: 's06_differentiators', why_us: 's06_differentiators',
-        win_themes: 's06_win_themes',
-        icp: 's07_ideal_customer_profile', ideal_customer: 's07_ideal_customer_profile',
-        target_accounts: 's07_target_accounts', accounts: 's07_target_accounts',
-        personas: 's08_persona_names', buyer_personas: 's08_persona_names',
-        persona_goals: 's08_persona_goals', goals: 's08_persona_goals',
-        objections: 's09_objections', common_objections: 's09_objections',
-        objection_responses: 's09_objection_responses', responses: 's09_objection_responses',
-        proof_points: 's10_proof_points', proof: 's10_proof_points', stats: 's10_proof_points',
-        case_studies: 's10_case_study_results', results: 's10_case_study_results',
-        competitors: 's12_competitor_names', competition: 's12_competitor_names',
-        competitive_positioning: 's12_competitive_positioning', vs_competitors: 's12_competitive_positioning',
-        discovery_questions: 's13_discovery_questions', questions: 's13_discovery_questions',
-        email_templates: 's14_email_templates', emails: 's14_email_templates',
-        call_scripts: 's14_call_scripts', scripts: 's14_call_scripts',
-        marketing_channels: 's15_marketing_channels', channels: 's15_marketing_channels',
-        content_themes: 's15_content_themes', themes: 's15_content_themes',
-        kpis: 's17_kpis', metrics: 's17_kpis', success_metrics: 's17_kpis',
+        competitors: 's12_competitor_names', objections: 's09_objections',
+        proof_points: 's10_proof_points', kpis: 's17_kpis', metrics: 's17_kpis',
       }
 
-      // Build render map — one entry per placeholder name actually found in the template
       const renderVars: Record<string, string> = {}
       for (const found of foundNames) {
         const n = norm(found)
-        const resolved = sourceVars[found]
+        renderVars[found] =
+          sourceVars[found]
           ?? lookup[n]
           ?? (ALIASES[n] ? sourceVars[ALIASES[n]] ?? lookup[norm(ALIASES[n])] : undefined)
           ?? ''
-        renderVars[found] = resolved
       }
 
       const matched = Object.values(renderVars).filter(Boolean).length
-      console.log(`[docTemplates/fill] matched ${matched}/${foundNames.length} placeholders`)
+      const debugSample = foundNames.slice(0, 6).map((k) => `${k}=${(renderVars[k] || '(empty)').slice(0, 25)}`).join(', ')
+      console.log(`[fill] matched=${matched}/${foundNames.length} ${debugSample}`)
 
       if (foundNames.length === 0) {
         return reply.code(422).send({
           error: 'No placeholders found in template',
-          detail: 'The template does not contain any {{variable}} markers. Either run the "Process" step first so the system can map your template text to variables, or add {{variable_name}} placeholders directly in your Word template.',
+          detail: `Template uses neither [name] nor {{name}} syntax. Found flat text sample: "${flatText.slice(0, 200)}"`,
         })
       }
 
       const doc = new DocxtemplaterCtor(zip, {
         paragraphLoop: true,
         linebreaks: true,
-        delimiters: { start: '{{', end: '}}' },
+        delimiters,
         nullGetter: () => '',
         errorLogging: false,
       })
@@ -603,12 +581,10 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       const out: Buffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
       const outFilename = body.filename ?? `${template.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`
 
-      // Debug header — visible in Network tab → Response Headers
-      const debugSample = foundNames.slice(0, 5).map((k) => `${k}=${renderVars[k] ? renderVars[k].slice(0, 30).replace(/\n/g, '\\n') : '(empty)'}`).join(', ')
       return reply
         .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         .header('Content-Disposition', `attachment; filename="${outFilename}"`)
-        .header('X-Fill-Debug', `using=${template.processedKey ? 'processedKey' : 'originalKey'} found=${foundNames.length} matched=${matched} sample=[${debugSample}]`)
+        .header('X-Fill-Debug', `delimiters=${delimiters.start}${delimiters.end} found=${foundNames.length} matched=${matched} sample=[${debugSample}]`)
         .header('Access-Control-Expose-Headers', 'X-Fill-Debug')
         .send(out)
     } catch (err: unknown) {
