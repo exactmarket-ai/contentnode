@@ -494,11 +494,14 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       const Docxtemplater = await import('docxtemplater')
       const DocxtemplaterCtor = (Docxtemplater as any).default ?? Docxtemplater
 
-      const zip = new PizZipCtor(buffer)
+      // let because we re-assign zip after the bracket pass
+      let zip = new PizZipCtor(buffer)
       const xmlFile = zip.files['word/document.xml']
-      let rawXml: string = xmlFile ? xmlFile.asText() : ''
+      const rawXml: string = xmlFile ? xmlFile.asText() : ''
 
-      // ── Step 1: detect delimiter style by scanning visible text ─────────────
+      // ── Step 1: detect placeholder styles via concatenated visible text ───────
+      // flatText joins all <w:t> content so we see the logical text even when
+      // Word has split a single placeholder across multiple XML runs.
       const extractFlatText = (xml: string) => {
         const parts: string[] = []
         const rx = /(<w:t[^>]*>)([\s\S]*?)<\/w:t>/g
@@ -510,33 +513,23 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       }
 
       const flatText = extractFlatText(rawXml)
-      const hasBracket = /\[[a-zA-Z_][a-zA-Z0-9_]*\]/.test(flatText)
-      const hasCurly   = /\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\}/.test(flatText)
-      console.log(`[fill] template=${id} hasBracket=${hasBracket} hasCurly=${hasCurly} flatLen=${flatText.length} sample="${flatText.slice(0, 120).replace(/\n/g, ' ')}"`)
+      // Extract names from BOTH styles — flatText concatenation reveals names that
+      // are split across XML runs (e.g. [client_name] split at underscore).
+      const bracketNames = [...new Set([...flatText.matchAll(/\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g)].map(m => m[1]))]
+      const curlyNames   = [...new Set([...flatText.matchAll(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g)].map(m => m[1]))]
+      const hasBracket = bracketNames.length > 0
+      const hasCurly   = curlyNames.length > 0
+      const allNames   = [...new Set([...bracketNames, ...curlyNames])]
+      console.log(`[fill] template=${id} hasBracket=${hasBracket}(${bracketNames.join(',')}) hasCurly=${hasCurly}(${curlyNames.join(',')}) flatLen=${flatText.length} sample="${flatText.slice(0, 120).replace(/\n/g, ' ')}"`)
 
-      // ── Step 2: convert [bracket] → {{curly}} with a raw XML replace ─────────
-      // Previous approach used complex XML position tracking which introduced
-      // corruption on multi-segment placeholders. Simple raw replace is safe:
-      // [identifier] patterns never appear in Word XML attribute values.
-      if (hasBracket) {
-        rawXml = rawXml.replace(/\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g, '{{$1}}')
-        zip.file('word/document.xml', rawXml)
-        console.log(`[fill] converted [bracket] markers to {{curly}} via raw replace`)
-      }
-
-      // ── Step 3: extract placeholder names from visible text ──────────────────
-      const flatText2 = extractFlatText(rawXml)
-      const foundNames = [...new Set([...flatText2.matchAll(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g)].map(m => m[1]))]
-      console.log(`[fill] found=${foundNames.length}: ${foundNames.join(', ')}`)
-
-      if (foundNames.length === 0) {
+      if (allNames.length === 0) {
         return reply.code(422).send({
           error: 'No placeholders found in template',
           detail: `Flat text sample: "${flatText.slice(0, 300)}"`,
         })
       }
 
-      // ── Step 5: build render vars ────────────────────────────────────────────
+      // ── Step 2: build render vars ─────────────────────────────────────────────
       const norm = (s: string) =>
         s.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase()
           .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
@@ -565,7 +558,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       }
 
       const renderVars: Record<string, string> = {}
-      for (const found of foundNames) {
+      for (const found of allNames) {
         const n = norm(found)
         renderVars[found] =
           sourceVars[found]
@@ -575,27 +568,49 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       }
 
       const matched = Object.values(renderVars).filter(Boolean).length
-      const debugSample = foundNames.slice(0, 6).map(k => `${k}=${(renderVars[k] || '(empty)').slice(0, 25)}`).join(', ')
-      console.log(`[fill] matched=${matched}/${foundNames.length} ${debugSample}`)
+      const debugSample = allNames.slice(0, 6).map(k => `${k}=${(renderVars[k] || '(empty)').slice(0, 25)}`).join(', ')
+      console.log(`[fill] matched=${matched}/${allNames.length} ${debugSample}`)
 
-      // ── Step 6: render ───────────────────────────────────────────────────────
-      const doc = new DocxtemplaterCtor(zip, {
+      // ── Step 3: two-pass render ───────────────────────────────────────────────
+      // We do NOT try to regex-replace [brackets] in raw XML because Word
+      // frequently splits a placeholder like [client_name] across multiple
+      // <w:t> XML elements (especially at underscores). Instead we hand each
+      // delimiter style directly to docxtemplater, whose linear parser merges
+      // adjacent runs before matching delimiters — handling split runs natively.
+      //
+      // Pass 1: [bracket] delimiters
+      if (hasBracket) {
+        const doc1 = new DocxtemplaterCtor(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+          delimiters: { start: '[', end: ']' },
+          nullGetter: () => '',
+          errorLogging: false,
+        })
+        doc1.render(renderVars)
+        // Re-parse into a fresh zip so pass 2 reads the already-filled XML
+        const buf1: Buffer = doc1.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
+        zip = new PizZipCtor(buf1)
+      }
+
+      // Pass 2: {{curly}} delimiters — handles processedKey markers + any
+      // curlies that were already in the template
+      const doc2 = new DocxtemplaterCtor(zip, {
         paragraphLoop: true,
         linebreaks: true,
         delimiters: { start: '{{', end: '}}' },
         nullGetter: () => '',
         errorLogging: false,
       })
+      doc2.render(renderVars)
 
-      doc.render(renderVars)
-
-      const out: Buffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
+      const out: Buffer = doc2.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
       const outFilename = body.filename ?? `${template.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`
 
       return reply
         .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         .header('Content-Disposition', `attachment; filename="${outFilename}"`)
-        .header('X-Fill-Debug', `found=${foundNames.length} matched=${matched} style=${hasBracket && !hasCurly ? 'bracket' : 'curly'} sample=[${debugSample}]`)
+        .header('X-Fill-Debug', `found=${allNames.length} matched=${matched} style=${hasBracket ? 'bracket' : 'curly'} sample=[${debugSample}]`)
         .header('Access-Control-Expose-Headers', 'X-Fill-Debug')
         .send(out)
     } catch (err: unknown) {
