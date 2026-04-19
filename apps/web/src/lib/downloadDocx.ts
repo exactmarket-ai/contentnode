@@ -888,6 +888,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
         spacing: { after: 80 },
       }),
       new Paragraph({
+        children: [new TextRun({ text: `Confidential: For Internal ${clientName} Use Only`, size: 18, color: '94a3b8', italics: true, font: { name: bodyFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+      }),
+      new Paragraph({
         children: [new TextRun({ text: verticalName, size: 28, color: '94a3b8', font: { name: bodyFont } })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 120 },
@@ -1273,6 +1278,12 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
         headers: {
           default: new Header({
             children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: `Confidential: For Internal ${clientName} Use Only`, size: 16, color: '94a3b8', italics: true }),
+                ],
+                alignment: AlignmentType.CENTER,
+              }),
               new Paragraph({
                 children: [
                   new TextRun({ text: `${clientName} | ${verticalName}`, size: 18, color: '94a3b8' }),
