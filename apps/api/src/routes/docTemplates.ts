@@ -400,6 +400,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       const doc = new DocxtemplaterCtor(zip, {
         paragraphLoop: true,
         linebreaks: true,
+        delimiters: { start: '{{', end: '}}' },
         // Return empty string for any missing variable rather than throwing
         nullGetter: () => '',
         // Don't throw on unrecognised tags — just leave them blank
