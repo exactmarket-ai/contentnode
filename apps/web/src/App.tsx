@@ -28,12 +28,21 @@ import { WriterPortalPage } from '@/pages/writer/WriterPortalPage'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
+const IS_STAGING = typeof window !== 'undefined' && window.location.hostname !== 'app.contentnode.ai'
+
 // ── Shell layout (uses Outlet for data-router child rendering) ────────────────
 function AppShell({ onSignOut }: { onSignOut?: () => void }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AppNav onSignOut={onSignOut} />
       <div className="flex flex-1 flex-col overflow-hidden">
+        {IS_STAGING && (
+          <div className="shrink-0 flex items-center justify-center gap-2 px-4 py-1.5 text-[11px] font-semibold text-white" style={{ backgroundColor: '#d97706' }}>
+            <span>⚠ STAGING</span>
+            <span className="opacity-70">·</span>
+            <span className="font-normal opacity-80">This is not production — changes here won't affect live users</span>
+          </div>
+        )}
         <Outlet />
       </div>
     </div>
