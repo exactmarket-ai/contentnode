@@ -7,8 +7,9 @@ const WRIKE_TOKEN_URL = 'https://login.wrike.com/oauth2/token'
 
 function wrikeClientId()     { return process.env.WRIKE_CLIENT_ID     ?? '' }
 function wrikeClientSecret() { return process.env.WRIKE_CLIENT_SECRET  ?? '' }
-function redirectUri(req: { hostname: string; protocol: string }) {
-  const apiBase = process.env.API_BASE_URL ?? `${req.protocol}://${req.hostname}`
+function redirectUri() {
+  if (process.env.WRIKE_REDIRECT_URI) return process.env.WRIKE_REDIRECT_URI
+  const apiBase = (process.env.API_BASE_URL ?? '').replace(/\/$/, '')
   return `${apiBase}/api/v1/integrations/wrike/callback`
 }
 
@@ -61,7 +62,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     const url = new URL(WRIKE_AUTH_URL)
     url.searchParams.set('client_id',     wrikeClientId())
     url.searchParams.set('response_type', 'code')
-    url.searchParams.set('redirect_uri',  redirectUri(req as { hostname: string; protocol: string }))
+    url.searchParams.set('redirect_uri',  redirectUri())
     url.searchParams.set('scope',         'Default')
     url.searchParams.set('state',         state)
     return reply.send({ data: { url: url.toString() } })
@@ -93,7 +94,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
         grant_type:    'authorization_code',
         client_id:     wrikeClientId(),
         client_secret: wrikeClientSecret(),
-        redirect_uri:  redirectUri(req as { hostname: string; protocol: string }),
+        redirect_uri:  redirectUri(),
         code,
       }),
     })
