@@ -14,18 +14,18 @@ const OFFLINE_IMAGE_PROVIDERS = new Set(['comfyui', 'automatic1111'])
 interface ImageServiceInfo { costProvider: string; model: string; displayService: string }
 
 const IMAGE_SERVICE_MAP: Record<string, ImageServiceInfo> = {
-  dalle3:        { costProvider: 'openai',    model: 'dall-e-3',           displayService: 'DALL-E 3' },
-  stability:     { costProvider: 'stability', model: 'stable-diffusion-xl', displayService: 'Stability SDXL' },
-  fal:           { costProvider: 'fal',       model: 'flux-dev',            displayService: 'FAL FLUX Dev' },
-  comfyui:       { costProvider: '',          model: 'comfyui',             displayService: 'ComfyUI' },
-  automatic1111: { costProvider: '',          model: 'automatic1111',       displayService: 'AUTOMATIC1111' },
+  dalle3:        { costProvider: 'openai',   model: 'dall-e-3',    displayService: 'DALL-E 3' },
+  ideogram:      { costProvider: 'ideogram', model: 'ideogram-v2', displayService: 'Ideogram v2' },
+  fal:           { costProvider: 'fal',      model: 'flux-dev',    displayService: 'FAL FLUX Dev' },
+  comfyui:       { costProvider: '',         model: 'comfyui',     displayService: 'ComfyUI' },
+  automatic1111: { costProvider: '',         model: 'automatic1111', displayService: 'AUTOMATIC1111' },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Provider = 'dalle3' | 'stability' | 'fal' | 'comfyui' | 'automatic1111'
+type Provider = 'dalle3' | 'ideogram' | 'fal' | 'comfyui' | 'automatic1111'
 type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3'
 type Quality = 'draft' | 'standard' | 'high'
 
@@ -299,52 +299,57 @@ async function generateDalle3(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stability AI
+// Ideogram v2
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function generateStability(
+const IDEOGRAM_ASPECT_MAP: Record<string, string> = {
+  '1:1':  'ASPECT_1_1',
+  '16:9': 'ASPECT_16_9',
+  '9:16': 'ASPECT_9_16',
+  '4:3':  'ASPECT_4_3',
+  '3:4':  'ASPECT_3_4',
+}
+
+async function generateIdeogram(
   prompt: ImagePromptOutput,
   cfg: ImageGenerationConfig,
 ): Promise<string[]> {
-  const apiKey = process.env.STABILITY_API_KEY
-  if (!apiKey) throw new Error('STABILITY_API_KEY is not set')
+  const apiKey = process.env.IDEOGRAM_API_KEY
+  if (!apiKey) throw new Error('IDEOGRAM_API_KEY is not set')
 
-  const { width, height } = aspectToDimensions(cfg.aspect_ratio ?? prompt.aspectRatio ?? '1:1')
-  const n = Math.min(cfg.num_outputs ?? 1, 4)
+  const aspectRatio = IDEOGRAM_ASPECT_MAP[cfg.aspect_ratio ?? prompt.aspectRatio ?? '1:1'] ?? 'ASPECT_1_1'
+  const model = cfg.quality === 'draft' ? 'V_2_TURBO' : 'V_2'
+  const n = Math.min(cfg.num_outputs ?? 1, 8)
 
-  const body: Record<string, unknown> = {
-    text_prompts: [
-      { text: prompt.positivePrompt, weight: 1 },
-      ...(prompt.negativePrompt || cfg.negative_prompt
-        ? [{ text: `${prompt.negativePrompt} ${cfg.negative_prompt ?? ''}`.trim(), weight: -1 }]
-        : []),
-    ],
-    width,
-    height,
-    samples: n,
-    cfg_scale: cfg.cfg_scale ?? 7,
-    steps: cfg.quality === 'high' ? 50 : cfg.quality === 'draft' ? 20 : 30,
+  const negPrompt = [prompt.negativePrompt, cfg.negative_prompt].filter(Boolean).join(' ').trim()
+
+  const imageRequest: Record<string, unknown> = {
+    prompt: prompt.positivePrompt,
+    model,
+    aspect_ratio: aspectRatio,
+    style_type: (cfg as Record<string, unknown>).style_type ?? 'AUTO',
+    num_images: n,
+    magic_prompt_option: 'AUTO',
+    ...(negPrompt ? { negative_prompt: negPrompt } : {}),
     ...(cfg.seed != null ? { seed: cfg.seed } : {}),
   }
 
-  const res = await fetch('https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image', {
+  const res = await fetch('https://api.ideogram.ai/generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      'Api-Key': apiKey,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ image_request: imageRequest }),
   })
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Stability AI error: ${res.status} ${err}`)
+    throw new Error(`Ideogram v2 error: ${res.status} ${err}`)
   }
 
-  const data = await res.json() as { artifacts: { base64: string }[] }
-  // Stability returns base64 — convert to Buffers
-  return data.artifacts.map((a) => `data:image/png;base64,${a.base64}`)
+  const data = await res.json() as { data: { url: string }[] }
+  return data.data.map((d) => d.url)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -620,15 +625,14 @@ export class ImageGenerationExecutor extends NodeExecutor {
 
     // Normalize provider aliases — nodePILOT and node configs may use 'dall-e-3', 'openai', etc.
     const PROVIDER_ALIASES: Record<string, Provider> = {
-      'dall-e-3':            'dalle3',
-      'dall-e-2':            'dalle3',
-      'dalle-3':             'dalle3',
-      'openai':              'dalle3',
-      'stable-diffusion':    'stability',
-      'stable-diffusion-xl': 'stability',
-      'sdxl':                'stability',
-      'flux':                'fal',
-      'flux-dev':            'fal',
+      'dall-e-3':   'dalle3',
+      'dall-e-2':   'dalle3',
+      'dalle-3':    'dalle3',
+      'openai':     'dalle3',
+      'ideogram-v2':'ideogram',
+      'ideogram2':  'ideogram',
+      'flux':       'fal',
+      'flux-dev':   'fal',
     }
     const rawProvider = (cfg.provider ?? 'dalle3') as string
     const provider: Provider = (PROVIDER_ALIASES[rawProvider] ?? rawProvider) as Provider
@@ -658,8 +662,8 @@ export class ImageGenerationExecutor extends NodeExecutor {
         case 'dalle3':
           rawUrls = await generateDalle3(prompt, cfg)
           break
-        case 'stability':
-          rawUrls = await generateStability(prompt, cfg)
+        case 'ideogram':
+          rawUrls = await generateIdeogram(prompt, cfg)
           break
         case 'fal':
           rawUrls = await generateFal(prompt, cfg)

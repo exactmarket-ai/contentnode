@@ -60,12 +60,12 @@
       "per_image_256x256": 0.016
     }
   },
-  "stability": {
-    "stable-diffusion-xl": {
-      "per_image": 0.002
+  "ideogram": {
+    "ideogram-v2": {
+      "per_image": 0.080
     },
-    "stable-video-diffusion": {
-      "per_second_video": 0.010
+    "ideogram-v2-turbo": {
+      "per_image": 0.020
     }
   },
   "fal": {

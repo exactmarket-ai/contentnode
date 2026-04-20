@@ -13,7 +13,7 @@ import { MediaFilmstrip, type MediaAsset } from '../MediaFilmstrip'
 
 const PROVIDERS = [
   { value: 'dalle3',        label: 'DALL-E 3',       desc: 'OpenAI' },
-  { value: 'stability',     label: 'Stability AI',   desc: 'SDXL 1.0' },
+  { value: 'ideogram',      label: 'Ideogram v2',    desc: 'Ideogram' },
   { value: 'fal',           label: 'Fal.ai',         desc: 'FLUX Dev' },
   { value: 'comfyui',       label: 'ComfyUI',        desc: 'Local' },
   { value: 'automatic1111', label: 'AUTOMATIC1111',  desc: 'Local' },
@@ -38,11 +38,11 @@ const PROVIDER_SUPPORT: Record<string, {
     negativePrompt: false,
     referenceImage: false,
   },
-  stability: {
+  ideogram: {
     aspectRatio: true,
     quality: true,
     numOutputs: true,
-    cfgScale: true,
+    cfgScale: false,
     seed: true,
     negativePrompt: true,
     referenceImage: false,
@@ -213,6 +213,30 @@ export function ImageGenerationConfig({
       ) : (
         <FieldGroup label="Quality">
           <UnsupportedOverlay label="Not configurable for Fal.ai" reason="N/A for this provider" />
+        </FieldGroup>
+      )}
+
+      {/* Ideogram style type */}
+      {provider === 'ideogram' && (
+        <FieldGroup label="Style">
+          <Select
+            value={(config.style_type as string) ?? 'AUTO'}
+            onValueChange={(v) => onChange('style_type', v)}
+          >
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[
+                { value: 'AUTO',      label: 'Auto' },
+                { value: 'GENERAL',   label: 'General' },
+                { value: 'REALISTIC', label: 'Realistic' },
+                { value: 'DESIGN',    label: 'Design' },
+                { value: 'RENDER_3D', label: '3D Render' },
+                { value: 'ANIME',     label: 'Anime' },
+              ].map((s) => (
+                <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FieldGroup>
       )}
 

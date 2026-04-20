@@ -13,7 +13,7 @@ const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
 const IMAGE_PROVIDERS = [
   { value: 'dalle3',        label: 'DALL-E 3' },
-  { value: 'stability',     label: 'Stability AI' },
+  { value: 'ideogram',      label: 'Ideogram v2' },
   { value: 'fal',           label: 'Fal.ai' },
   { value: 'comfyui',       label: 'ComfyUI (local)' },
   { value: 'automatic1111', label: 'A1111 (local)' },
@@ -24,7 +24,6 @@ const VIDEO_PROVIDERS = [
   { value: 'kling',               label: 'Kling AI' },
   { value: 'luma',                label: 'Luma Dream Machine' },
   { value: 'pika',                label: 'Pika Labs' },
-  { value: 'stability',           label: 'Stability (SVD)' },
   { value: 'veo2',                label: 'Google Veo 2' },
   { value: 'comfyui-animatediff', label: 'AnimateDiff (local)' },
   { value: 'cogvideox',           label: 'CogVideoX (local)' },
@@ -39,7 +38,7 @@ function estimateCost(subtype: string, provider: string, config: Record<string, 
     const quality = (config.quality as string) ?? 'standard'
     const rateMap: Record<string, number> = {
       dalle3: quality === 'high' ? 0.08 : 0.04,
-      stability: 0.003,
+      ideogram: quality === 'draft' ? 0.02 : 0.08,
       fal: 0.005,
     }
     const rate = rateMap[provider]

@@ -1167,14 +1167,14 @@ export async function clientRoutes(app: FastifyInstance) {
       imagePerImage: {
         dalle3: 0.04, openai: 0.04,
         falai: 0.03, fal: 0.03,
-        stability: 0.025, stabilityai: 0.025,
+        ideogram: 0.08, ideogramai: 0.08,
         imagineart: 0.02,
         comfyui: 0, automatic1111: 0, local: 0,
       } as Record<string, number>,
       // Video gen: USD per second of generated video
       videoPerSec: {
         runway: 0.05, kling: 0.075, luma: 0.03, pika: 0.05, lumalabs: 0.03,
-        stability: 0, veo2: 0, local: 0,
+        veo2: 0, local: 0,
       } as Record<string, number>,
       // Humanizer: USD per 1000 words
       humPer1kWords: {

@@ -18,7 +18,6 @@ const VIDEO_SERVICE_MAP: Record<string, VideoServiceInfo> = {
   kling:                { costProvider: 'kling',     model: 'kling-v1-6',              displayService: 'Kling v1.6' },
   luma:                 { costProvider: 'luma',      model: 'dream-machine',            displayService: 'Luma Dream Machine' },
   pika:                 { costProvider: 'pika',      model: 'pika-1.5',                displayService: 'Pika 1.5' },
-  stability:            { costProvider: 'stability', model: 'stable-video-diffusion',   displayService: 'Stability SVD' },
   veo2:                 { costProvider: 'veo2',      model: 'veo-2',                   displayService: 'Google Veo 2' },
   'comfyui-animatediff':{ costProvider: '',          model: 'comfyui-animatediff',      displayService: 'ComfyUI AnimateDiff' },
   cogvideox:            { costProvider: '',          model: 'cogvideox',               displayService: 'CogVideoX' },
@@ -34,7 +33,6 @@ type Provider =
   | 'kling'
   | 'luma'
   | 'pika'
-  | 'stability'
   | 'veo2'
   | 'comfyui-animatediff'
   | 'cogvideox'
@@ -580,82 +578,6 @@ async function generatePika(prompt: VideoPromptOutput, cfg: VideoGenerationConfi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stability AI — Stable Video Diffusion (image-to-video only)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function generateStabilityVideo(prompt: VideoPromptOutput, cfg: VideoGenerationConfig): Promise<Buffer[]> {
-  const apiKey = process.env.STABILITY_API_KEY
-  if (!apiKey) throw new Error('STABILITY_API_KEY is not set')
-
-  const refUrl = prompt.referenceImageUrl ?? cfg.start_frame
-  if (!refUrl) throw new Error('Stability Video Diffusion requires a reference image (start frame)')
-
-  // Fetch and encode the image for multipart upload
-  let imageBuffer: Buffer
-  if (refUrl.startsWith('data:')) {
-    imageBuffer = Buffer.from(refUrl.split(',')[1], 'base64')
-  } else {
-    const imgRes = await fetch(refUrl.startsWith('/') ? `${process.env.API_BASE_URL ?? 'http://localhost:3001'}${refUrl}` : refUrl)
-    imageBuffer = Buffer.from(await imgRes.arrayBuffer())
-  }
-
-  // Build multipart form
-  const boundary = `----FormBoundary${randomUUID().replace(/-/g, '')}`
-  const crlf = '\r\n'
-  const parts: Buffer[] = []
-
-  const addField = (name: string, value: string) => {
-    parts.push(Buffer.from(
-      `--${boundary}${crlf}Content-Disposition: form-data; name="${name}"${crlf}${crlf}${value}${crlf}`,
-    ))
-  }
-
-  parts.push(Buffer.from(`--${boundary}${crlf}Content-Disposition: form-data; name="image"; filename="frame.jpg"${crlf}Content-Type: image/jpeg${crlf}${crlf}`))
-  parts.push(imageBuffer)
-  parts.push(Buffer.from(crlf))
-  if (cfg.seed != null) addField('seed', String(cfg.seed))
-  addField('cfg_scale', '2.5')
-  addField('motion_bucket_id', prompt.motionIntensity === 'high' ? '200' : prompt.motionIntensity === 'low' ? '50' : '127')
-  parts.push(Buffer.from(`--${boundary}--${crlf}`))
-  const formData = Buffer.concat(parts)
-
-  const submitRes = await fetch('https://api.stability.ai/v2beta/image-to-video', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-    },
-    body: formData,
-  })
-
-  if (!submitRes.ok) {
-    const err = await submitRes.text()
-    throw new Error(`Stability Video submit error: ${submitRes.status} ${err}`)
-  }
-
-  const { id } = await submitRes.json() as { id: string }
-
-  const videoBuffer = await asyncPoll({
-    poll: async () => {
-      const res = await fetch(`https://api.stability.ai/v2beta/image-to-video/result/${id}`, {
-        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'video/*' },
-      })
-      if (res.status === 202) return null // Still processing
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(`Stability Video result error: ${res.status} ${err}`)
-      }
-      return Buffer.from(await res.arrayBuffer())
-    },
-    intervalMs: 5000,
-    timeoutMs: 300_000,
-    label: 'Stability Video Diffusion generation',
-  })
-
-  return [videoBuffer as Buffer]
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Google Veo 2 (via Vertex AI)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -934,11 +856,6 @@ export class VideoGenerationExecutor extends NodeExecutor {
         case 'pika': {
           const urls = await generatePika(prompt, cfg)
           assets = await saveVideos(urls, provider)
-          break
-        }
-        case 'stability': {
-          const buffers = await generateStabilityVideo(prompt, cfg)
-          assets = await saveVideos(buffers, provider)
           break
         }
         case 'veo2': {

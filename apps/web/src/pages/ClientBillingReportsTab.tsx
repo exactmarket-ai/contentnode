@@ -82,7 +82,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   'gpt-4o': 'OpenAI GPT-4o', 'gpt-4o-mini': 'OpenAI GPT-4o mini',
   // Image gen
   dalle3: 'DALL·E 3', falai: 'FAL AI', fal: 'FAL AI',
-  stability: 'Stability AI', stabilityai: 'Stability AI',
+  ideogram: 'Ideogram v2', ideogramai: 'Ideogram v2',
   imagineart: 'Imagine Art', comfyui: 'ComfyUI (local)', automatic1111: 'Auto1111 (local)',
   // Video gen
   runway: 'Runway', kling: 'Kling AI', luma: 'Luma Labs', lumalabs: 'Luma Labs',
