@@ -2,6 +2,58 @@ import { prisma } from './client.js'
 import { Prisma } from '@prisma/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Role directory — canonical numbered reference (super_admin = #1)
+// Use the number when discussing role assignments before roles go live.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ROLE_DIRECTORY: { num: number; slug: string; label: string }[] = [
+  // ── Platform ownership ──────────────────────────────────────────────────────
+  { num: 1,  slug: 'super_admin',            label: 'Super Admin' },
+  { num: 2,  slug: 'owner',                  label: 'Owner (legacy)' },
+  // ── Org administration ──────────────────────────────────────────────────────
+  { num: 3,  slug: 'org_admin',              label: 'Org Admin' },
+  { num: 4,  slug: 'admin',                  label: 'Admin (legacy)' },
+  // ── Strategic / senior agency ───────────────────────────────────────────────
+  { num: 5,  slug: 'strategist',             label: 'Strategist' },
+  { num: 6,  slug: 'campaign_manager',       label: 'Campaign Manager' },
+  { num: 7,  slug: 'project_manager',        label: 'Project Manager' },
+  { num: 8,  slug: 'account_manager',        label: 'Account Manager' },
+  // ── Client manager / lead tier ──────────────────────────────────────────────
+  { num: 9,  slug: 'client_manager',         label: 'Client Manager' },
+  { num: 10, slug: 'manager',                label: 'Manager (legacy)' },
+  { num: 11, slug: 'lead',                   label: 'Lead (legacy)' },
+  // ── Creative / editor tier ──────────────────────────────────────────────────
+  { num: 12, slug: 'art_director',           label: 'Art Director' },
+  { num: 13, slug: 'brand_manager',          label: 'Brand Manager' },
+  { num: 14, slug: 'designer',               label: 'Designer' },
+  { num: 15, slug: 'social_media_manager',   label: 'Social Media Manager' },
+  { num: 16, slug: 'content_manager',        label: 'Content Manager' },
+  { num: 17, slug: 'editor',                 label: 'Editor' },
+  { num: 18, slug: 'member',                 label: 'Member (legacy)' },
+  // ── Specialist / writer tier ────────────────────────────────────────────────
+  { num: 19, slug: 'copywriter',             label: 'Copywriter' },
+  { num: 20, slug: 'seo_specialist',         label: 'SEO Specialist' },
+  { num: 21, slug: 'performance_marketer',   label: 'Performance Marketer' },
+  // ── Internal review / compliance ────────────────────────────────────────────
+  { num: 22, slug: 'compliance_reviewer',    label: 'Compliance Reviewer' },
+  { num: 23, slug: 'reviewer',               label: 'Reviewer' },
+  // ── Read-only / API access ──────────────────────────────────────────────────
+  { num: 24, slug: 'viewer',                 label: 'Viewer' },
+  { num: 25, slug: 'api_user',               label: 'API User' },
+  // ── Client-facing / portal ──────────────────────────────────────────────────
+  { num: 26, slug: 'client_executive_approver', label: 'Client: Executive Approver' },
+  { num: 27, slug: 'client_legal_reviewer',     label: 'Client: Legal Reviewer' },
+  { num: 28, slug: 'client_brand_reviewer',     label: 'Client: Brand Reviewer' },
+  { num: 29, slug: 'client_creative_reviewer',  label: 'Client: Creative Reviewer' },
+  { num: 30, slug: 'client_marcom_reviewer',    label: 'Client: MarCom Reviewer' },
+  { num: 31, slug: 'client_product_reviewer',   label: 'Client: Product Reviewer' },
+  { num: 32, slug: 'client_stakeholder',        label: 'Client: Stakeholder' },
+]
+
+export const ROLE_BY_NUM = Object.fromEntries(ROLE_DIRECTORY.map((r) => [r.num, r.slug]))
+export const ROLE_NUM    = Object.fromEntries(ROLE_DIRECTORY.map((r) => [r.slug, r.num]))
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
