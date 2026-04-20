@@ -291,7 +291,7 @@ export function ConfigPanel() {
       {/* Left-edge expand/collapse handle */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="absolute left-0 top-1/2 z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-r-sm border border-l-0 border-border bg-card hover:bg-muted transition-colors"
+        className="absolute left-0 top-[40%] z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-r-sm border border-l-0 border-border bg-card hover:bg-muted transition-colors"
         title={expanded ? 'Collapse panel' : 'Expand panel'}
       >
         {expanded
