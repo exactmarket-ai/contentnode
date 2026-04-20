@@ -770,19 +770,16 @@ export function TeamPage() {
       </div>
 
       {/* Role legend */}
-      <div className="mb-5 flex gap-3">
+      <div className="mb-5 flex flex-wrap gap-x-1.5 gap-y-1.5">
         {Object.entries(ROLE_STYLES).map(([role, s]) => (
           <span
             key={role}
-            className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
             style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
           >
             {s.label}
           </span>
         ))}
-        <span className="text-[11px] text-[#b4b2a9] self-center">
-          · Owner: full access · Admin: manage org · Lead: manage client access · Member: view &amp; run
-        </span>
       </div>
 
       {/* Table */}
