@@ -14,6 +14,7 @@ import { MediaFilmstrip, type MediaAsset } from '../MediaFilmstrip'
 const PROVIDERS = [
   { value: 'dalle3',        label: 'DALL-E 3',       desc: 'OpenAI' },
   { value: 'ideogram',      label: 'Ideogram v2',    desc: 'Ideogram' },
+  { value: 'leonardo',      label: 'Leonardo.ai',    desc: 'Phoenix' },
   { value: 'fal',           label: 'Fal.ai',         desc: 'FLUX Dev' },
   { value: 'comfyui',       label: 'ComfyUI',        desc: 'Local' },
   { value: 'automatic1111', label: 'AUTOMATIC1111',  desc: 'Local' },
@@ -43,6 +44,15 @@ const PROVIDER_SUPPORT: Record<string, {
     quality: true,
     numOutputs: true,
     cfgScale: false,
+    seed: true,
+    negativePrompt: true,
+    referenceImage: false,
+  },
+  leonardo: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: true,
     seed: true,
     negativePrompt: true,
     referenceImage: false,
@@ -213,6 +223,34 @@ export function ImageGenerationConfig({
       ) : (
         <FieldGroup label="Quality">
           <UnsupportedOverlay label="Not configurable for Fal.ai" reason="N/A for this provider" />
+        </FieldGroup>
+      )}
+
+      {/* Leonardo preset style */}
+      {provider === 'leonardo' && (
+        <FieldGroup label="Preset Style">
+          <Select
+            value={(config.preset_style as string) ?? 'DYNAMIC'}
+            onValueChange={(v) => onChange('preset_style', v)}
+          >
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[
+                { value: 'DYNAMIC',       label: 'Dynamic' },
+                { value: 'PHOTOGRAPHY',   label: 'Photography' },
+                { value: 'CINEMATIC',     label: 'Cinematic' },
+                { value: 'CREATIVE',      label: 'Creative' },
+                { value: 'ILLUSTRATION',  label: 'Illustration' },
+                { value: 'RENDER_3D',     label: '3D Render' },
+                { value: 'RAYTRACED',     label: 'Raytraced' },
+                { value: 'VIBRANT',       label: 'Vibrant' },
+                { value: 'GENERAL',       label: 'General' },
+                { value: 'NONE',          label: 'None' },
+              ].map((s) => (
+                <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FieldGroup>
       )}
 

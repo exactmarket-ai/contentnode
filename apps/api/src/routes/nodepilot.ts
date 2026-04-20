@@ -73,7 +73,7 @@ LOGIC — process and transform:
 
 MEDIA / OUTPUTS — generate and deliver:
   image-generation  Generate images (DALL-E 3, FAL.ai, ComfyUI/FLUX)
-                       Valid provider values: "dalle3" | "ideogram" | "fal" | "comfyui" | "automatic1111"
+                       Valid provider values: "dalle3" | "ideogram" | "leonardo" | "fal" | "comfyui" | "automatic1111"
                        ALWAYS use "dalle3" (not "dall-e-3") as the default provider in config
   video-generation  Generate video clips (Runway, Kling, Luma, Pika)
   video-composition Compose video: background image + text overlay + audio

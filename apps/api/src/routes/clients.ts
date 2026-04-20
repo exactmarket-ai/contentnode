@@ -1168,6 +1168,7 @@ export async function clientRoutes(app: FastifyInstance) {
         dalle3: 0.04, openai: 0.04,
         falai: 0.03, fal: 0.03,
         ideogram: 0.08, ideogramai: 0.08,
+        leonardo: 0.01, leonardoai: 0.01,
         imagineart: 0.02,
         comfyui: 0, automatic1111: 0, local: 0,
       } as Record<string, number>,

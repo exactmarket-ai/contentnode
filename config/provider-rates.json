@@ -68,6 +68,11 @@
       "per_image": 0.020
     }
   },
+  "leonardo": {
+    "leonardo-phoenix": {
+      "per_image": 0.010
+    }
+  },
   "fal": {
     "flux-pro": {
       "per_image": 0.055

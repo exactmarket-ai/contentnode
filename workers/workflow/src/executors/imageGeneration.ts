@@ -15,8 +15,9 @@ interface ImageServiceInfo { costProvider: string; model: string; displayService
 
 const IMAGE_SERVICE_MAP: Record<string, ImageServiceInfo> = {
   dalle3:        { costProvider: 'openai',   model: 'dall-e-3',    displayService: 'DALL-E 3' },
-  ideogram:      { costProvider: 'ideogram', model: 'ideogram-v2', displayService: 'Ideogram v2' },
-  fal:           { costProvider: 'fal',      model: 'flux-dev',    displayService: 'FAL FLUX Dev' },
+  ideogram:      { costProvider: 'ideogram',  model: 'ideogram-v2',    displayService: 'Ideogram v2' },
+  leonardo:      { costProvider: 'leonardo', model: 'leonardo-phoenix', displayService: 'Leonardo Phoenix' },
+  fal:           { costProvider: 'fal',      model: 'flux-dev',        displayService: 'FAL FLUX Dev' },
   comfyui:       { costProvider: '',         model: 'comfyui',     displayService: 'ComfyUI' },
   automatic1111: { costProvider: '',         model: 'automatic1111', displayService: 'AUTOMATIC1111' },
 }
@@ -25,7 +26,7 @@ const IMAGE_SERVICE_MAP: Record<string, ImageServiceInfo> = {
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Provider = 'dalle3' | 'ideogram' | 'fal' | 'comfyui' | 'automatic1111'
+type Provider = 'dalle3' | 'ideogram' | 'leonardo' | 'fal' | 'comfyui' | 'automatic1111'
 type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3'
 type Quality = 'draft' | 'standard' | 'high'
 
@@ -353,6 +354,79 @@ async function generateIdeogram(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Leonardo.ai
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Leonardo Phoenix — their latest flagship model
+const LEONARDO_MODEL_ID = 'de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3'
+
+const LEONARDO_ASPECT_DIMS: Record<string, { width: number; height: number }> = {
+  '1:1':  { width: 1024, height: 1024 },
+  '16:9': { width: 1360, height: 768  },
+  '9:16': { width: 768,  height: 1360 },
+  '4:3':  { width: 1232, height: 928  },
+  '3:4':  { width: 928,  height: 1232 },
+}
+
+async function generateLeonardo(
+  prompt: ImagePromptOutput,
+  cfg: ImageGenerationConfig,
+): Promise<string[]> {
+  const apiKey = process.env.LEONARDO_API_KEY
+  if (!apiKey) throw new Error('LEONARDO_API_KEY is not set')
+
+  const dims = LEONARDO_ASPECT_DIMS[cfg.aspect_ratio ?? prompt.aspectRatio ?? '1:1'] ?? LEONARDO_ASPECT_DIMS['1:1']
+  const n = Math.min(cfg.num_outputs ?? 1, 8)
+  const negPrompt = [prompt.negativePrompt, cfg.negative_prompt].filter(Boolean).join(' ').trim()
+
+  const body: Record<string, unknown> = {
+    prompt: prompt.positivePrompt,
+    modelId: LEONARDO_MODEL_ID,
+    width: dims.width,
+    height: dims.height,
+    num_images: n,
+    guidance_scale: cfg.cfg_scale ?? 7,
+    num_inference_steps: cfg.quality === 'high' ? 40 : cfg.quality === 'draft' ? 15 : 25,
+    presetStyle: (cfg as Record<string, unknown>).preset_style ?? 'DYNAMIC',
+    ...(negPrompt ? { negative_prompt: negPrompt } : {}),
+    ...(cfg.seed != null ? { seed: cfg.seed } : {}),
+  }
+
+  const submitRes = await fetch('https://cloud.leonardo.ai/api/rest/v1/generations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  })
+
+  if (!submitRes.ok) {
+    const err = await submitRes.text()
+    throw new Error(`Leonardo.ai submit error: ${submitRes.status} ${err}`)
+  }
+
+  const submitData = await submitRes.json() as { sdGenerationJob: { generationId: string } }
+  const generationId = submitData.sdGenerationJob?.generationId
+  if (!generationId) throw new Error('Leonardo.ai did not return a generationId')
+
+  const result = await asyncPoll({
+    poll: async () => {
+      const res = await fetch(`https://cloud.leonardo.ai/api/rest/v1/generations/${generationId}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      })
+      if (!res.ok) throw new Error(`Leonardo.ai poll error: ${res.status}`)
+      const data = await res.json() as { generations_by_pk: { status: string; generated_images: { url: string }[] } }
+      const job = data.generations_by_pk
+      if (job.status !== 'COMPLETE') return null
+      return job.generated_images.map((img) => img.url)
+    },
+    intervalMs: 3000,
+    timeoutMs: 120_000,
+    label: 'Leonardo.ai generation',
+  })
+
+  return result as string[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Fal.ai
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -629,8 +703,10 @@ export class ImageGenerationExecutor extends NodeExecutor {
       'dall-e-2':   'dalle3',
       'dalle-3':    'dalle3',
       'openai':     'dalle3',
-      'ideogram-v2':'ideogram',
-      'ideogram2':  'ideogram',
+      'ideogram-v2':    'ideogram',
+      'ideogram2':      'ideogram',
+      'leonardo-ai':    'leonardo',
+      'leonardo-phoenix':'leonardo',
       'flux':       'fal',
       'flux-dev':   'fal',
     }
@@ -664,6 +740,9 @@ export class ImageGenerationExecutor extends NodeExecutor {
           break
         case 'ideogram':
           rawUrls = await generateIdeogram(prompt, cfg)
+          break
+        case 'leonardo':
+          rawUrls = await generateLeonardo(prompt, cfg)
           break
         case 'fal':
           rawUrls = await generateFal(prompt, cfg)

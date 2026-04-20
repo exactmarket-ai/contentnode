@@ -83,6 +83,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   // Image gen
   dalle3: 'DALL·E 3', falai: 'FAL AI', fal: 'FAL AI',
   ideogram: 'Ideogram v2', ideogramai: 'Ideogram v2',
+  leonardo: 'Leonardo.ai', leonardoai: 'Leonardo.ai',
   imagineart: 'Imagine Art', comfyui: 'ComfyUI (local)', automatic1111: 'Auto1111 (local)',
   // Video gen
   runway: 'Runway', kling: 'Kling AI', luma: 'Luma Labs', lumalabs: 'Luma Labs',

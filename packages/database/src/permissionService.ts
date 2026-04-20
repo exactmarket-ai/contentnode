@@ -102,7 +102,7 @@ export interface PermissionSet {
 // For arrays: first non-empty array wins. Empty array = "no restriction at this level".
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ONLINE_PROVIDERS_IMAGE = new Set(['dalle3', 'ideogram', 'fal'])
+const ONLINE_PROVIDERS_IMAGE = new Set(['dalle3', 'ideogram', 'leonardo', 'fal'])
 const OFFLINE_PROVIDERS_IMAGE = new Set(['comfyui', 'automatic1111'])
 const ONLINE_PROVIDERS_VIDEO = new Set(['runway', 'kling', 'luma', 'pika', 'veo2'])
 const OFFLINE_PROVIDERS_VIDEO = new Set(['comfyui-animatediff', 'cogvideox', 'wan21'])

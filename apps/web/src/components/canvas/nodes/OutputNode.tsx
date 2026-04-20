@@ -14,6 +14,7 @@ const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 const IMAGE_PROVIDERS = [
   { value: 'dalle3',        label: 'DALL-E 3' },
   { value: 'ideogram',      label: 'Ideogram v2' },
+  { value: 'leonardo',      label: 'Leonardo.ai' },
   { value: 'fal',           label: 'Fal.ai' },
   { value: 'comfyui',       label: 'ComfyUI (local)' },
   { value: 'automatic1111', label: 'A1111 (local)' },
@@ -39,6 +40,7 @@ function estimateCost(subtype: string, provider: string, config: Record<string, 
     const rateMap: Record<string, number> = {
       dalle3: quality === 'high' ? 0.08 : 0.04,
       ideogram: quality === 'draft' ? 0.02 : 0.08,
+      leonardo: 0.01,
       fal: 0.005,
     }
     const rate = rateMap[provider]
