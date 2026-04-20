@@ -100,6 +100,128 @@ const ROLE_DEFAULTS: Record<string, PermissionSet> = {
     video:    { enabled: false, online: false, offline: false, providers: [] },
     content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
   },
+  // ── Internal agency functional roles ─────────────────────────────────────
+  strategist: {                                     // strategic lead; cloud LLM + graphics + video
+    llm:      { online: true,  offline: true,  models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: true,  online: true,  offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: [] },
+  },
+  campaign_manager: {                               // campaign lead; same as strategist
+    llm:      { online: true,  offline: true,  models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: true,  online: true,  offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: [] },
+  },
+  art_director: {                                   // cloud LLM + graphics, no video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
+  },
+  brand_manager: {                                  // cloud LLM + graphics, no video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
+  },
+  designer: {                                       // cloud LLM + graphics, no video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
+  },
+  social_media_manager: {                           // cloud LLM + graphics, no video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
+  },
+  content_manager: {                                // cloud LLM + graphics, no video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
+  },
+  copywriter: {                                     // cloud LLM + humanizer; no graphics/video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
+  },
+  seo_specialist: {                                 // cloud LLM only; no graphics/video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: false, export_formats: ['pdf', 'docx'] },
+  },
+  performance_marketer: {                           // cloud LLM only; no graphics/video
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: false, export_formats: ['pdf', 'docx'] },
+  },
+  project_manager: {                                // full LLM + cloud media; ops oversight
+    llm:      { online: true,  offline: true,  models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: true,  online: true,  offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: [] },
+  },
+  account_manager: {                                // cloud LLM + graphics + video; client liaison
+    llm:      { online: true,  offline: true,  models: [] },
+    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
+    video:    { enabled: true,  online: true,  offline: false, providers: [] },
+    content:  { humanizer: true, style_guides: true, export_formats: [] },
+  },
+  compliance_reviewer: {                            // read + review only; no generation or graphics
+    llm:      { online: true,  offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: ['pdf'] },
+  },
+  // ── Client-facing / portal roles ─────────────────────────────────────────
+  client_legal_reviewer: {                          // external; read + feedback only
+    llm:      { online: false, offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: [] },
+  },
+  client_brand_reviewer: {
+    llm:      { online: false, offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: [] },
+  },
+  client_creative_reviewer: {
+    llm:      { online: false, offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: [] },
+  },
+  client_marcom_reviewer: {
+    llm:      { online: false, offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: [] },
+  },
+  client_product_reviewer: {
+    llm:      { online: false, offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: [] },
+  },
+  client_executive_approver: {                      // external executive; read + pdf export
+    llm:      { online: false, offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: ['pdf'] },
+  },
+  client_stakeholder: {                             // external viewer; read-only
+    llm:      { online: false, offline: false, models: [] },
+    graphics: { enabled: false, online: false, offline: false, providers: [] },
+    video:    { enabled: false, online: false, offline: false, providers: [] },
+    content:  { humanizer: false, style_guides: false, export_formats: [] },
+  },
   // ── Legacy role names mapped to equivalents ────────────────────────────────
   owner:  FULL_ACCESS,                              // equivalent to super_admin
   admin:  FULL_ACCESS,                              // equivalent to org_admin

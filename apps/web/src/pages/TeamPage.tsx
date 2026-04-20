@@ -12,7 +12,7 @@ interface TeamMember {
   name: string | null
   title: string | null
   department: string | null
-  role: 'owner' | 'admin' | 'manager' | 'lead' | 'member'
+  role: string
   createdAt: string
   lastActiveAt: string | null
   pending: boolean
@@ -73,11 +73,41 @@ function relativeTime(iso: string | null | undefined): string {
 // ─── Role config ──────────────────────────────────────────────────────────────
 
 const ROLE_STYLES: Record<string, { bg: string; border: string; color: string; label: string }> = {
-  owner:   { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Owner' },
-  admin:   { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Admin' },
-  manager: { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Manager' },
-  lead:    { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Lead' },
-  member:  { bg: '#f4f4f2', border: '#dddcd6', color: '#5c5b52', label: 'Member' },
+  // System / legacy
+  owner:          { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Owner' },
+  super_admin:    { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Super Admin' },
+  admin:          { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Admin' },
+  org_admin:      { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Org Admin' },
+  manager:        { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Manager' },
+  client_manager: { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Client Manager' },
+  lead:           { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Lead' },
+  editor:         { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Editor' },
+  member:         { bg: '#f4f4f2', border: '#dddcd6', color: '#5c5b52', label: 'Member' },
+  reviewer:       { bg: '#fff7ed', border: '#fed7aa', color: '#9a3412', label: 'Reviewer' },
+  viewer:         { bg: '#f9f9f7', border: '#dddcd6', color: '#6b7280', label: 'Viewer' },
+  api_user:       { bg: '#f0f9ff', border: '#7dd3fc', color: '#0369a1', label: 'API User' },
+  // Internal agency functional roles
+  strategist:           { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8', label: 'Strategist' },
+  campaign_manager:     { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8', label: 'Campaign Manager' },
+  art_director:         { bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', label: 'Art Director' },
+  brand_manager:        { bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', label: 'Brand Manager' },
+  designer:             { bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', label: 'Designer' },
+  social_media_manager: { bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', label: 'Social Media Manager' },
+  content_manager:      { bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', label: 'Content Manager' },
+  copywriter:           { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Copywriter' },
+  seo_specialist:       { bg: '#f0f9ff', border: '#7dd3fc', color: '#0369a1', label: 'SEO Specialist' },
+  performance_marketer: { bg: '#f0f9ff', border: '#7dd3fc', color: '#0369a1', label: 'Performance Marketer' },
+  project_manager:      { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Project Manager' },
+  account_manager:      { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Account Manager' },
+  compliance_reviewer:  { bg: '#fff7ed', border: '#fed7aa', color: '#9a3412', label: 'Compliance Reviewer' },
+  // Client-facing roles
+  client_legal_reviewer:     { bg: '#fdf4ff', border: '#e9d5ff', color: '#7e22ce', label: 'Client: Legal' },
+  client_brand_reviewer:     { bg: '#fdf4ff', border: '#e9d5ff', color: '#7e22ce', label: 'Client: Brand' },
+  client_creative_reviewer:  { bg: '#fdf4ff', border: '#e9d5ff', color: '#7e22ce', label: 'Client: Creative' },
+  client_marcom_reviewer:    { bg: '#fdf4ff', border: '#e9d5ff', color: '#7e22ce', label: 'Client: MarCom' },
+  client_product_reviewer:   { bg: '#fdf4ff', border: '#e9d5ff', color: '#7e22ce', label: 'Client: Product' },
+  client_executive_approver: { bg: '#fdf4ff', border: '#e9d5ff', color: '#7e22ce', label: 'Client: Executive' },
+  client_stakeholder:        { bg: '#f9f9f7', border: '#dddcd6', color: '#6b7280', label: 'Client: Stakeholder' },
 }
 
 // ─── Invite modal ─────────────────────────────────────────────────────────────
@@ -90,7 +120,7 @@ interface InviteModalProps {
 function InviteModal({ onClose, onInvited }: InviteModalProps) {
   const [name, setName]     = useState('')
   const [email, setEmail]   = useState('')
-  const [role, setRole]     = useState<'admin' | 'manager' | 'lead' | 'member'>('member')
+  const [role, setRole]     = useState('member')
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
@@ -156,13 +186,43 @@ function InviteModal({ onClose, onInvited }: InviteModalProps) {
             <label className="block text-[12px] font-medium text-[#5c5b52] mb-1">Role</label>
             <select
               value={role}
-              onChange={e => setRole(e.target.value as 'admin' | 'manager' | 'lead' | 'member')}
+              onChange={e => setRole(e.target.value)}
               className="w-full rounded-md border border-[#dddcd6] px-3 py-2 text-[13px] text-[#1a1a14] bg-white outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
             >
-              <option value="member">Member — can view and run workflows</option>
-              <option value="lead">Lead — manages client-level external access</option>
-              <option value="manager">Manager — manages clients, workflows, and leads/members</option>
-              <option value="admin">Admin — can create and manage workflows + org access</option>
+              <optgroup label="Agency — Leadership">
+                <option value="admin">Admin — full org + workflow access</option>
+                <option value="strategist">Strategist — strategy, LLM, graphics, video</option>
+                <option value="campaign_manager">Campaign Manager — leads campaigns, LLM, graphics, video</option>
+                <option value="project_manager">Project Manager — ops oversight, full media access</option>
+                <option value="account_manager">Account Manager — client liaison, full media access</option>
+              </optgroup>
+              <optgroup label="Agency — Creative">
+                <option value="art_director">Art Director — LLM + graphics, no video</option>
+                <option value="brand_manager">Brand Manager — LLM + graphics, no video</option>
+                <option value="designer">Designer — LLM + graphics, no video</option>
+                <option value="social_media_manager">Social Media Manager — LLM + graphics</option>
+                <option value="content_manager">Content Manager — LLM + graphics</option>
+                <option value="copywriter">Copywriter — LLM + humanizer, no graphics</option>
+              </optgroup>
+              <optgroup label="Agency — Specialist">
+                <option value="seo_specialist">SEO Specialist — LLM only</option>
+                <option value="performance_marketer">Performance Marketer — LLM only</option>
+                <option value="compliance_reviewer">Compliance Reviewer — read + review only</option>
+              </optgroup>
+              <optgroup label="Agency — Access Level">
+                <option value="manager">Manager — manages clients, workflows, and leads/members</option>
+                <option value="lead">Lead — manages client-level external access</option>
+                <option value="member">Member — can view and run workflows</option>
+              </optgroup>
+              <optgroup label="Client-Facing">
+                <option value="client_executive_approver">Client: Executive Approver</option>
+                <option value="client_legal_reviewer">Client: Legal Reviewer</option>
+                <option value="client_brand_reviewer">Client: Brand Reviewer</option>
+                <option value="client_creative_reviewer">Client: Creative Reviewer</option>
+                <option value="client_marcom_reviewer">Client: MarCom Reviewer</option>
+                <option value="client_product_reviewer">Client: Product Reviewer</option>
+                <option value="client_stakeholder">Client: Stakeholder</option>
+              </optgroup>
             </select>
           </div>
 
@@ -793,9 +853,40 @@ export function TeamPage() {
                           style={{ backgroundColor: rs.bg, borderColor: rs.border, color: rs.color }}
                         >
                           {isOwner && <option value="owner">Owner</option>}
-                          <option value="admin">Admin</option>
-                          <option value="lead">Lead</option>
-                          <option value="member">Member</option>
+                          <optgroup label="Leadership">
+                            <option value="admin">Admin</option>
+                            <option value="strategist">Strategist</option>
+                            <option value="campaign_manager">Campaign Manager</option>
+                            <option value="project_manager">Project Manager</option>
+                            <option value="account_manager">Account Manager</option>
+                          </optgroup>
+                          <optgroup label="Creative">
+                            <option value="art_director">Art Director</option>
+                            <option value="brand_manager">Brand Manager</option>
+                            <option value="designer">Designer</option>
+                            <option value="social_media_manager">Social Media Manager</option>
+                            <option value="content_manager">Content Manager</option>
+                            <option value="copywriter">Copywriter</option>
+                          </optgroup>
+                          <optgroup label="Specialist">
+                            <option value="seo_specialist">SEO Specialist</option>
+                            <option value="performance_marketer">Performance Marketer</option>
+                            <option value="compliance_reviewer">Compliance Reviewer</option>
+                          </optgroup>
+                          <optgroup label="Access Level">
+                            <option value="manager">Manager</option>
+                            <option value="lead">Lead</option>
+                            <option value="member">Member</option>
+                          </optgroup>
+                          <optgroup label="Client-Facing">
+                            <option value="client_executive_approver">Client: Executive</option>
+                            <option value="client_legal_reviewer">Client: Legal</option>
+                            <option value="client_brand_reviewer">Client: Brand</option>
+                            <option value="client_creative_reviewer">Client: Creative</option>
+                            <option value="client_marcom_reviewer">Client: MarCom</option>
+                            <option value="client_product_reviewer">Client: Product</option>
+                            <option value="client_stakeholder">Client: Stakeholder</option>
+                          </optgroup>
                         </select>
                       ) : (
                         <span

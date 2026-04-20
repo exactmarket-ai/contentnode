@@ -16,14 +16,29 @@ function generateInviteToken() {
 // Schemas
 // ─────────────────────────────────────────────────────────────────────────────
 
+const INVITABLE_ROLES = [
+  // System roles
+  'admin', 'manager', 'lead', 'member',
+  'org_admin', 'client_manager', 'editor', 'reviewer', 'viewer', 'api_user',
+  // Internal agency functional roles
+  'strategist', 'campaign_manager',
+  'art_director', 'brand_manager', 'designer', 'social_media_manager', 'content_manager',
+  'copywriter', 'seo_specialist', 'performance_marketer',
+  'project_manager', 'account_manager', 'compliance_reviewer',
+  // Client-facing roles
+  'client_legal_reviewer', 'client_brand_reviewer', 'client_creative_reviewer',
+  'client_marcom_reviewer', 'client_product_reviewer',
+  'client_executive_approver', 'client_stakeholder',
+] as const
+
 const inviteBody = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
-  role: z.enum(['admin', 'manager', 'lead', 'member']).default('member'),
+  role: z.enum(INVITABLE_ROLES).default('member'),
 })
 
 const updateRoleBody = z.object({
-  role: z.enum(['owner', 'admin', 'manager', 'lead', 'member']),
+  role: z.enum(['owner', 'super_admin', ...INVITABLE_ROLES]),
 })
 
 const updateProfileBody = z.object({

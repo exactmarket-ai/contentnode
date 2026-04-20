@@ -15,9 +15,20 @@ export async function permissionRoutes(app: FastifyInstance) {
   // ── GET /roles — return default permission sets for all roles ────────────────
   app.get('/roles', async (_req, reply) => {
     const roles = [
+      // System roles
       'super_admin', 'org_admin', 'client_manager',
       'editor', 'reviewer', 'viewer', 'api_user',
+      // Legacy
       'owner', 'admin', 'manager', 'lead', 'member',
+      // Internal agency functional roles
+      'strategist', 'campaign_manager',
+      'art_director', 'brand_manager', 'designer', 'social_media_manager', 'content_manager',
+      'copywriter', 'seo_specialist', 'performance_marketer',
+      'project_manager', 'account_manager', 'compliance_reviewer',
+      // Client-facing roles
+      'client_legal_reviewer', 'client_brand_reviewer', 'client_creative_reviewer',
+      'client_marcom_reviewer', 'client_product_reviewer',
+      'client_executive_approver', 'client_stakeholder',
     ]
     const data = Object.fromEntries(
       roles.map((r) => [r, permissionService.getRoleDefaults(r)])
