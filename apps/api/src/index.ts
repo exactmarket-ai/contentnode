@@ -47,6 +47,7 @@ import { docTemplateRoutes }    from './routes/docTemplates.js'
 import { leadershipRoutes }     from './routes/leadership.js'
 import { notificationsRoutes }  from './routes/notifications.js'
 import { contentGeneratorRoutes } from './routes/contentGenerator.js'
+import { wrikeIntegrationRoutes } from './routes/integrations/wrike.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -165,6 +166,7 @@ await app.register(docTemplateRoutes,      { prefix: '/api/v1/doc-templates' })
 await app.register(leadershipRoutes,         { prefix: '/api/v1/leadership' })
 await app.register(notificationsRoutes,      { prefix: '/api/v1/notifications' })
 await app.register(contentGeneratorRoutes,   { prefix: '/api/v1/content-generator' })
+await app.register(wrikeIntegrationRoutes,   { prefix: '/api/v1/integrations/wrike' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

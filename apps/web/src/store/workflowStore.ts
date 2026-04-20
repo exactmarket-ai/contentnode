@@ -177,6 +177,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     defaultConfig: { subtype: 'audience-signal', searchTerms: '', subreddits: '', maxPosts: 25, minUpvotes: 5, synthesisGoal: 'all' },
   },
   {
+    type: 'wrike_source', subtype: 'wrike-source',
+    label: 'Wrike Tasks', description: 'Pull recently completed Wrike tasks and synthesize into campaign-ready content',
+    category: 'source', icon: 'CheckSquare',
+    defaultConfig: { subtype: 'wrike-source', days_back: 14, synthesis: 'summary' },
+  },
+  {
     type: 'audio_input', subtype: 'audio-input',
     label: 'Audio Input', description: 'Upload an existing audio file to use as a source in your workflow',
     category: 'media', icon: 'FileAudio',

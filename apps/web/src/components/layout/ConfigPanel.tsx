@@ -27,6 +27,7 @@ import { DeepWebScrapeConfig } from './config/source/DeepWebScrapeConfig'
 import { ReviewMinerConfig } from './config/source/ReviewMinerConfig'
 import { SeoIntentConfig } from './config/source/SeoIntentConfig'
 import { AudienceSignalConfig } from './config/source/AudienceSignalConfig'
+import { WrikeSourceConfig } from './config/source/WrikeSourceConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -94,6 +95,8 @@ function NodeConfigForm({
       return <BrandContextConfig config={config} onChange={onChange} />
     case 'client_brain':
       return <ClientBrainConfig config={config} onChange={onChange} />
+    case 'wrike_source':
+      return <WrikeSourceConfig config={config} onChange={onChange} />
     case 'deep_web_scrape':
       return <DeepWebScrapeConfig config={config} onChange={onChange} />
     case 'review_miner':

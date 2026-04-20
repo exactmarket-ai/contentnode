@@ -43,6 +43,7 @@ import { DeepWebScrapeExecutor } from './executors/deepWebScrape.js'
 import { ReviewMinerExecutor } from './executors/reviewMiner.js'
 import { SeoIntentExecutor } from './executors/seoIntent.js'
 import { AudienceSignalExecutor } from './executors/audienceSignal.js'
+import { WrikeSourceExecutor } from './executors/wrikeSource.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -137,6 +138,8 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'review_miner':                  ReviewMinerExecutor,
   'seo_intent':                    SeoIntentExecutor,
   'audience_signal':               AudienceSignalExecutor,
+  // Integrations
+  'wrike_source':                  WrikeSourceExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {

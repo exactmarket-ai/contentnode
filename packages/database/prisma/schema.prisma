@@ -66,6 +66,7 @@ model Agency {
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   leadershipMembers              LeadershipMember[]
   notifications                  Notification[]
+  integrations                   Integration[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -1809,4 +1810,24 @@ model Notification {
   @@index([agencyId, userId, read])
   @@index([agencyId, userId, createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+// ─────────────────────────────────────────────
+// Integration — third-party OAuth connections
+// ─────────────────────────────────────────────
+model Integration {
+  id           String    @id @default(cuid())
+  agencyId     String    @map("agency_id")
+  provider     String    // 'wrike'
+  accessToken  String    @map("access_token") @db.Text
+  refreshToken String?   @map("refresh_token") @db.Text
+  expiresAt    DateTime? @map("expires_at")
+  metadata     Json?     // provider-specific data (wrike host, etc.)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, provider])
+  @@map("integrations")
 }
