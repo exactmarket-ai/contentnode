@@ -118,7 +118,7 @@ export function getNodeSpec(type: string, subtype?: string): NodeSpec {
   } else if (
     type === 'source' || type === 'gtm_framework' || type === 'brand_context' ||
     type === 'client_brain' || type === 'deep_web_scrape' || type === 'review_miner' ||
-    type === 'seo_intent' || type === 'audience_signal'
+    type === 'seo_intent' || type === 'audience_signal' || type === 'wrike_source'
   ) {
     specType = 'input'
   } else if (type === 'logic') {

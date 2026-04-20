@@ -282,6 +282,7 @@ export function ConfigPanel() {
     review_miner:     'text-rose-400',
     seo_intent:       'text-violet-400',
     audience_signal:  'text-teal-400',
+    wrike_source:     'text-blue-500',
   }
   const colorClass = CATEGORY_COLOR[nodeType] ?? 'text-foreground'
 
