@@ -22,6 +22,7 @@ import { ClientBrainTab } from './ClientBrainTab'
 import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
 import { ProductMarketingTab } from './tabs/ProductMarketingTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useVerticalTerm, invalidateVerticalTerm } from '@/hooks/useVerticalTerm'
 import { TaskPilot } from '@/components/pilot/TaskPilot'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -4511,6 +4512,7 @@ interface DivisionData {
 interface VerticalItem { id: string; name: string }
 
 function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated: Partial<Client>) => void }) {
+  const verticalTerm = useVerticalTerm()
   const [divisions, setDivisions] = useState<DivisionData[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -4529,6 +4531,28 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
   const [addingVertical, setAddingVertical] = useState(false)
   const [renamingVerticalId, setRenamingVerticalId] = useState<string | null>(null)
   const [renamingVerticalName, setRenamingVerticalName] = useState('')
+
+  // Vertical term rename
+  const [editingVerticalTerm, setEditingVerticalTerm] = useState(false)
+  const [verticalTermDraft, setVerticalTermDraft] = useState('')
+  const [savingVerticalTerm, setSavingVerticalTerm] = useState(false)
+
+  const saveVerticalTerm = async () => {
+    const trimmed = verticalTermDraft.trim()
+    if (!trimmed) return
+    setSavingVerticalTerm(true)
+    try {
+      await apiFetch('/api/v1/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verticalTerm: trimmed }),
+      })
+      invalidateVerticalTerm()
+      setEditingVerticalTerm(false)
+    } catch { /* silent */ } finally {
+      setSavingVerticalTerm(false)
+    }
+  }
 
   // Per-division job add state
   const [addingJobDivisionId, setAddingJobDivisionId] = useState<string | null>(null)
@@ -5085,8 +5109,8 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold">GTM Verticals</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">Markets this client operates in. Each vertical gets its own GTM Framework.</p>
+            <h3 className="text-sm font-semibold">GTM {verticalTerm}s</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Markets this client operates in. Each {verticalTerm.toLowerCase()} gets its own GTM Framework.</p>
           </div>
           <Button
             size="sm"
@@ -5096,6 +5120,38 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
             <Icons.Plus className="mr-1 h-3 w-3" />
             Add
           </Button>
+        </div>
+
+        {/* Rename vertical term */}
+        <div className="mb-4 flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">Term name:</span>
+          {editingVerticalTerm ? (
+            <>
+              <input
+                autoFocus
+                value={verticalTermDraft}
+                onChange={(e) => setVerticalTermDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void saveVerticalTerm(); if (e.key === 'Escape') setEditingVerticalTerm(false) }}
+                className="h-6 rounded border border-border bg-background px-2 text-xs focus:border-blue-400 focus:outline-none"
+              />
+              <button
+                disabled={savingVerticalTerm || !verticalTermDraft.trim()}
+                onClick={() => void saveVerticalTerm()}
+                className="text-[11px] text-blue-500 hover:text-blue-700 disabled:opacity-50"
+              >
+                {savingVerticalTerm ? 'Saving…' : 'Save'}
+              </button>
+              <button onClick={() => setEditingVerticalTerm(false)} className="text-[11px] text-muted-foreground hover:text-foreground">Cancel</button>
+            </>
+          ) : (
+            <button
+              onClick={() => { setVerticalTermDraft(verticalTerm); setEditingVerticalTerm(true) }}
+              className="flex items-center gap-1 text-[11px] font-medium text-foreground hover:text-blue-500"
+            >
+              {verticalTerm}
+              <Icons.Pencil className="h-2.5 w-2.5 opacity-50" />
+            </button>
+          )}
         </div>
 
         {/* Add new vertical inline */}

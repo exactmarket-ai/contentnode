@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import * as Icons from 'lucide-react'
 import { ProductPilot } from '@/components/pilot/ProductPilot'
 import { apiFetch } from '@/lib/api'
+import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
 
@@ -698,6 +699,7 @@ export function ProductMarketingTab({
   clientId: string
   clientName: string
 }) {
+  const verticalTerm = useVerticalTerm()
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [pilotSkill, setPilotSkill] = useState<{ categoryKey: string; skillKey: string; skillName: string } | null>(null)
   const [savedSkills, setSavedSkills] = useState<Set<string>>(new Set())
@@ -775,7 +777,7 @@ export function ProductMarketingTab({
 
         {/* Vertical selector — top of sidebar */}
         <div className="px-3 pt-3 pb-2.5 border-b border-border">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Vertical</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">{verticalTerm}</p>
           <VerticalSelector
             verticals={verticals}
             selected={selectedVertical}

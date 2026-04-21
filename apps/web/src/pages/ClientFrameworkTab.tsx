@@ -6,6 +6,7 @@ import { FilenameWarning } from '@/components/ui/FilenameWarning'
 import { GTMPilot } from '@/components/pilot/GTMPilot'
 import { downloadGTMFrameworkDocx, DEFAULT_DOC_STYLE, type DocStyleConfig } from '@/lib/downloadDocx'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 
 // ── Reimport types ────────────────────────────────────────────────────────────
 interface ReimportField { id: string; label: string; oldValue: string; newValue: string }
@@ -2047,6 +2048,7 @@ interface AttachedTemplate {
 
 export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: { clientId: string; clientName: string; initialVerticalId?: string }) {
   const { canManageTemplates } = useCurrentUser()
+  const verticalTerm = useVerticalTerm()
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
   const [fw, setFwRaw] = useState<FrameworkData | null>(null)
@@ -2470,7 +2472,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
       {/* Vertical selector bar */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-5 py-3">
-        <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Vertical</span>
+        <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">{verticalTerm}</span>
         {verticalsLoading
           ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
           : <VerticalSelector

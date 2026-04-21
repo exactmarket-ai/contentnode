@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 
@@ -30,6 +31,7 @@ export function BrandContextConfig({
   const verticalId = (config.verticalId as string) || ''
   const dataSource = (config.dataSource as DataSource) || 'both'
 
+  const verticalTerm = useVerticalTerm()
   const [clients, setClients] = useState<Client[]>([])
   const [verticals, setVerticals] = useState<BrandVertical[]>([])
   const [preview, setPreview] = useState<BrandPreview | null>(null)
@@ -110,7 +112,7 @@ export function BrandContextConfig({
       {/* Vertical selector */}
       {clientId && (
         <div>
-          <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">Vertical</label>
+          <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">{verticalTerm}</label>
           <select
             value={verticalId}
             onChange={(e) => handleVerticalChange(e.target.value)}

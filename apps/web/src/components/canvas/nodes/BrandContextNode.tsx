@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
+import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 
 interface Client { id: string; name: string }
 interface BrandVertical { id: string; name: string }
@@ -10,6 +11,7 @@ interface BrandVertical { id: string; name: string }
 export const BrandContextNode = memo(function BrandContextNode({ id, data, selected }: NodeProps) {
   const { updateNodeData, nodeRunStatuses } = useWorkflowStore()
   const workflowClientId = useWorkflowStore((s) => s.workflow.clientId)
+  const verticalTerm = useVerticalTerm()
 
   const spec = getNodeSpec('source', 'brand-context')
   const config = (data.config as Record<string, unknown>) ?? {}
@@ -103,7 +105,7 @@ export const BrandContextNode = memo(function BrandContextNode({ id, data, selec
           className="flex items-center gap-1.5"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="w-14 shrink-0 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">Vertical</span>
+          <span className="w-14 shrink-0 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{verticalTerm}</span>
           <select
             value={verticalId}
             onChange={handleVerticalChange}

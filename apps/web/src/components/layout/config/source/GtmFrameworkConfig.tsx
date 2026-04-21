@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { apiFetch } from '@/lib/api'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -38,6 +39,7 @@ export function GtmFrameworkConfig({
 }) {
   const clientId = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
   const { isLead } = useCurrentUser()
+  const verticalTerm = useVerticalTerm()
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
@@ -118,7 +120,7 @@ export function GtmFrameworkConfig({
       {/* Vertical selector */}
       <div>
         <div className="mb-1.5 flex items-center justify-between">
-          <label className="text-xs font-semibold text-foreground">Vertical</label>
+          <label className="text-xs font-semibold text-foreground">{verticalTerm}</label>
           {isLead && clientId && !adding && (
             <button
               onClick={() => { setAdding(true); setAddError(null); setTimeout(() => inputRef.current?.focus(), 50) }}

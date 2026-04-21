@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { NODE_SPEC } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
+import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section registry (mirrors the 18 GTM sections)
@@ -36,6 +37,7 @@ const SECTIONS = [
 export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selected }: NodeProps) {
   const { updateNodeData, nodeRunStatuses } = useWorkflowStore()
   const workflowClientId = useWorkflowStore((s) => s.workflow.clientId)
+  const verticalTerm = useVerticalTerm()
 
   const spec = NODE_SPEC['input']
   const config = (data.config as Record<string, unknown>) ?? {}
@@ -213,7 +215,7 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
           </p>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">Vertical</span>
+            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">{verticalTerm}</span>
             <select
               value={verticalId}
               onChange={handleVerticalChange}
