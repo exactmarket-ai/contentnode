@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { apiFetch, assetUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -165,7 +165,7 @@ function Avatar({ user }: { user: { name: string | null; avatarStorageKey: strin
   if (!user) return null
   const initials = user.name?.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() ?? '?'
   if (user.avatarStorageKey) {
-    return <img src={assetUrl(user.avatarStorageKey)} alt={user.name ?? ''} className="h-5 w-5 rounded-full object-cover border border-border shrink-0" title={user.name ?? ''} />
+    return <img src={(user.avatarStorageKey)} alt={user.name ?? ''} className="h-5 w-5 rounded-full object-cover border border-border shrink-0" title={user.name ?? ''} />
   }
   return (
     <div className="h-5 w-5 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center justify-center text-[9px] font-semibold shrink-0" title={user.name ?? ''}>
@@ -229,7 +229,7 @@ function AssigneePicker({
               <button key={m.id} onClick={() => { onAssign(m); setOpen(false) }}
                 className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors', current?.id === m.id ? 'bg-blue-50' : 'hover:bg-gray-50')}>
                 <div className={cn('h-6 w-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold', current?.id === m.id ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600')}>
-                  {m.avatarStorageKey ? <img src={assetUrl(m.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" /> : initials(m.name)}
+                  {m.avatarStorageKey ? <img src={(m.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" /> : initials(m.name)}
                 </div>
                 <span className="text-[11px] font-medium truncate">{m.name ?? m.email}</span>
                 {current?.id === m.id && <Icons.Check className="h-3 w-3 text-blue-500 ml-auto" />}
@@ -248,7 +248,7 @@ function AssigneePicker({
           current ? 'h-5 w-5 bg-blue-500 border-blue-500 text-white' : 'h-5 w-5 border-dashed border-gray-300 text-gray-400 hover:border-blue-400')}>
         {current
           ? (current.avatarStorageKey
-            ? <img src={assetUrl(current.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
+            ? <img src={(current.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
             : <span className="text-[9px] font-bold">{initials(current.name)}</span>)
           : <Icons.Plus className="h-2.5 w-2.5" />}
       </button>
@@ -646,7 +646,7 @@ export function PipelinePage() {
                 )}
               >
                 {m.avatarStorageKey
-                  ? <img src={assetUrl(m.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
+                  ? <img src={(m.avatarStorageKey)} alt="" className="h-full w-full rounded-full object-cover" />
                   : <span className="bg-primary/10 text-primary h-full w-full rounded-full flex items-center justify-center text-[9px]">{initials}</span>}
               </button>
             )
