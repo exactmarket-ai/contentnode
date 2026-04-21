@@ -245,10 +245,23 @@ export function AiGenerateConfig({
         />
       </div>
 
-      {/* Additional instructions */}
+      {/* Max words */}
+      <FieldGroup label="Max Words" description="Caps output length — leave blank for no limit">
+        <input
+          type="number"
+          min={10}
+          max={10000}
+          placeholder="e.g. 150"
+          className="h-8 w-full rounded-md border border-input bg-transparent px-3 text-xs outline-none focus:ring-1 focus:ring-blue-300"
+          value={(config.max_words as number | undefined) ?? ''}
+          onChange={(e) => onChange('max_words', e.target.value ? Math.max(10, Math.min(10000, Number(e.target.value))) : undefined)}
+        />
+      </FieldGroup>
+
+      {/* Creative Brief */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <Label className="text-xs text-muted-foreground">Additional Instructions</Label>
+          <Label className="text-xs text-muted-foreground">Creative Brief</Label>
           <button
             onClick={() => setShowPromptPicker(true)}
             className="flex items-center gap-1 text-[10px] font-medium hover:opacity-80 transition-opacity"

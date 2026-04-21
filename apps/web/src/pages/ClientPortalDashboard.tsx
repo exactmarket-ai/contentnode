@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -30,6 +30,23 @@ interface Run {
   dueDate: string | null
   assignee: { id: string; name: string | null; avatarStorageKey?: string | null } | null
   triggeredByUser: { name: string | null; email: string } | null
+}
+
+interface WrikeTask {
+  id: string
+  title: string
+  status: string
+  briefDescription?: string
+  parentIds?: string[]
+  responsibleIds?: string[]
+  dates?: { due?: string; start?: string }
+}
+
+interface WrikeFolder {
+  id: string
+  title: string
+  childIds?: string[]
+  project?: { status?: string; startDate?: string; endDate?: string; ownerIds?: string[] }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -71,7 +88,7 @@ const REVIEW_STATUS: Record<string, { label: string; color: string; bg: string; 
   closed:           { label: 'Closed',           color: 'text-slate-500',  bg: 'bg-slate-50 border-slate-200',   dot: 'bg-slate-400' },
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
+// ── Shared sub-components ──────────────────────────────────────────────────────
 
 function LogoAvatar({ logoUrl, name, size = 'md' }: { logoUrl: string | null; name: string; size?: 'sm' | 'md' | 'lg' }) {
   const dims = { sm: 'h-8 w-8 text-xs', md: 'h-10 w-10 text-sm', lg: 'h-14 w-14 text-base' }[size]
@@ -109,10 +126,354 @@ function KpiCard({ icon: Icon, label, value, sub, color }: {
   )
 }
 
+function SubTabToggle({ tabs, active, onChange }: {
+  tabs: { value: string; label: string; icon: React.ComponentType<{ className?: string }> }[]
+  active: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="flex rounded-lg border border-border bg-muted/30 p-0.5 w-fit">
+      {tabs.map((t) => (
+        <button
+          key={t.value}
+          onClick={() => onChange(t.value)}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+            active === t.value
+              ? 'bg-white shadow-sm text-foreground border border-border'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <t.icon className="h-3.5 w-3.5" />
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Wrike components ───────────────────────────────────────────────────────────
+
+const WRIKE_STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+  Active:      { bg: 'bg-blue-50 border-blue-200',    text: 'text-blue-700',    dot: 'bg-blue-500' },
+  Completed:   { bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  Deferred:    { bg: 'bg-amber-50 border-amber-200',  text: 'text-amber-700',   dot: 'bg-amber-400' },
+  Cancelled:   { bg: 'bg-red-50 border-red-200',      text: 'text-red-600',     dot: 'bg-red-400' },
+}
+
+function wrikeStatusStyle(status: string) {
+  return WRIKE_STATUS_COLORS[status] ?? { bg: 'bg-slate-50 border-slate-200', text: 'text-slate-600', dot: 'bg-slate-400' }
+}
+
+function WrikeExecutiveTab({ tasks, folders, loading, notConnected }: {
+  tasks: WrikeTask[]
+  folders: WrikeFolder[]
+  loading: boolean
+  notConnected: boolean
+}) {
+  if (notConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+        <Icons.Plug className="h-8 w-8 text-muted-foreground/40 mb-3" />
+        <p className="text-sm font-medium text-foreground">Wrike not connected</p>
+        <p className="mt-1 text-xs text-muted-foreground">Go to Settings → Integrations to connect Wrike</p>
+      </div>
+    )
+  }
+  if (loading) {
+    return (
+      <div className="flex h-48 items-center justify-center gap-2 text-muted-foreground">
+        <Icons.Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Loading Wrike data…</span>
+      </div>
+    )
+  }
+
+  // Compute status breakdown
+  const statusMap: Record<string, number> = {}
+  for (const t of tasks) {
+    statusMap[t.status] = (statusMap[t.status] ?? 0) + 1
+  }
+
+  // Map tasks to folders (by parentId)
+  const folderMap = Object.fromEntries(folders.map((f) => [f.id, f]))
+  const folderTaskCounts: Record<string, number> = {}
+  for (const t of tasks) {
+    for (const pid of t.parentIds ?? []) {
+      folderTaskCounts[pid] = (folderTaskCounts[pid] ?? 0) + 1
+    }
+  }
+  const topFolders = Object.entries(folderTaskCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([id, count]) => ({ folder: folderMap[id], count, id }))
+    .filter((f) => f.folder)
+
+  const completedCount  = statusMap['Completed']  ?? 0
+  const activeCount     = statusMap['Active']      ?? 0
+  const deferredCount   = statusMap['Deferred']    ?? 0
+  const cancelledCount  = statusMap['Cancelled']   ?? 0
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiCard icon={Icons.CheckSquare} label="Total Tasks"     value={tasks.length}    sub="in Wrike"               color="#185fa5" />
+        <KpiCard icon={Icons.Play}        label="Active"          value={activeCount}     sub="in progress"            color="#7c3aed" />
+        <KpiCard icon={Icons.CheckCircle2}label="Completed"       value={completedCount}  sub="finished"               color="#059669" />
+        <KpiCard icon={Icons.FolderOpen}  label="Projects"        value={folders.length}  sub="total projects"         color="#d97706" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Status breakdown */}
+        <div>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Task Status Breakdown</h3>
+          <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+            {Object.entries(statusMap).length === 0 ? (
+              <p className="px-4 py-8 text-center text-xs text-muted-foreground">No task data</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {Object.entries(statusMap).sort((a, b) => b[1] - a[1]).map(([status, count]) => {
+                  const s = wrikeStatusStyle(status)
+                  const pct = Math.round((count / tasks.length) * 100)
+                  return (
+                    <div key={status} className="flex items-center gap-3 px-4 py-3">
+                      <span className={cn('h-2 w-2 rounded-full shrink-0', s.dot)} />
+                      <span className="flex-1 text-xs font-medium text-foreground">{status}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: s.dot.replace('bg-', '').includes('500') ? undefined : undefined, background: s.dot === 'bg-blue-500' ? '#3b82f6' : s.dot === 'bg-emerald-500' ? '#10b981' : s.dot === 'bg-amber-400' ? '#fbbf24' : s.dot === 'bg-red-400' ? '#f87171' : '#94a3b8' }} />
+                        </div>
+                        <span className="w-8 text-right text-xs font-semibold text-foreground">{count}</span>
+                        <span className="w-8 text-right text-[10px] text-muted-foreground">{pct}%</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Top projects by task count */}
+        <div>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Projects by Task Volume</h3>
+          <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+            {topFolders.length === 0 ? (
+              <p className="px-4 py-8 text-center text-xs text-muted-foreground">No project data</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {topFolders.map(({ folder, count }) => {
+                  const ps = folder.project?.status
+                  const psStyle = ps === 'Green' ? 'bg-emerald-400' : ps === 'Yellow' ? 'bg-amber-400' : ps === 'Red' ? 'bg-red-400' : 'bg-slate-300'
+                  return (
+                    <div key={folder.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className={cn('h-2.5 w-2.5 rounded-sm shrink-0', psStyle)} title={ps ?? 'No status'} />
+                      <span className="flex-1 truncate text-xs font-medium text-foreground">{folder.title}</span>
+                      <span className="text-xs font-semibold text-foreground">{count}</span>
+                      <span className="text-[10px] text-muted-foreground">tasks</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Recent tasks table */}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Recent Tasks</h3>
+        <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Task</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Project</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {tasks.slice(0, 15).map((task) => {
+                const s = wrikeStatusStyle(task.status)
+                const parentFolder = task.parentIds?.map((pid) => folderMap[pid]).find(Boolean)
+                const dueDate = task.dates?.due
+                const overdue = dueDate && new Date(dueDate) < new Date()
+                return (
+                  <tr key={task.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-foreground line-clamp-1">{task.title}</p>
+                      {task.briefDescription && <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{task.briefDescription}</p>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', s.bg, s.text)}>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', s.dot)} />
+                        {task.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground truncate max-w-[160px]">{parentFolder?.title ?? '—'}</td>
+                    <td className={cn('px-4 py-2.5', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
+                      {dueDate ? new Date(dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WrikeStakeholderTab({ tasks, folders, loading, notConnected }: {
+  tasks: WrikeTask[]
+  folders: WrikeFolder[]
+  loading: boolean
+  notConnected: boolean
+}) {
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  if (notConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+        <Icons.Plug className="h-8 w-8 text-muted-foreground/40 mb-3" />
+        <p className="text-sm font-medium text-foreground">Wrike not connected</p>
+        <p className="mt-1 text-xs text-muted-foreground">Go to Settings → Integrations to connect Wrike</p>
+      </div>
+    )
+  }
+  if (loading) {
+    return (
+      <div className="flex h-48 items-center justify-center gap-2 text-muted-foreground">
+        <Icons.Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Loading Wrike data…</span>
+      </div>
+    )
+  }
+
+  const folderMap = Object.fromEntries(folders.map((f) => [f.id, f]))
+  const uniqueStatuses = [...new Set(tasks.map((t) => t.status))]
+
+  const filtered = tasks.filter((t) => {
+    if (statusFilter !== 'all' && t.status !== statusFilter) return false
+    if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative">
+          <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search tasks…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 rounded-lg border border-border bg-white pl-8 pr-3 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 w-48"
+          />
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={cn('rounded-full border px-3 py-1 text-xs font-medium transition-all', statusFilter === 'all' ? 'border-blue-400 bg-blue-600 text-white' : 'border-border bg-white text-muted-foreground hover:border-blue-300')}
+          >
+            All <span className="ml-1 text-[10px] opacity-70">{tasks.length}</span>
+          </button>
+          {uniqueStatuses.map((s) => {
+            const style = wrikeStatusStyle(s)
+            const count = tasks.filter((t) => t.status === s).length
+            return (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={cn('flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-all', statusFilter === s ? 'border-blue-400 bg-blue-600 text-white' : cn('border-border bg-white', style.text, 'hover:border-blue-300'))}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', statusFilter === s ? 'bg-white' : style.dot)} />
+                {s} <span className="ml-0.5 opacity-70">{count}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Task list */}
+      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Icons.CheckSquare className="h-8 w-8 text-muted-foreground/40 mb-2" />
+            <p className="text-sm text-muted-foreground">No tasks match this filter</p>
+          </div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Task</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Project</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Due Date</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignees</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map((task) => {
+                const s = wrikeStatusStyle(task.status)
+                const parentFolder = task.parentIds?.map((pid) => folderMap[pid]).find(Boolean)
+                const dueDate = task.dates?.due
+                const overdue = dueDate && new Date(dueDate) < new Date()
+                return (
+                  <tr key={task.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3 max-w-[260px]">
+                      <p className="font-medium text-foreground truncate">{task.title}</p>
+                      {task.briefDescription && <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{task.briefDescription}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', s.bg, s.text)}>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', s.dot)} />
+                        {task.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[160px]">{parentFolder?.title ?? '—'}</td>
+                    <td className={cn('px-4 py-3', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
+                      {dueDate ? new Date(dueDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      {overdue && <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">overdue</span>}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {task.responsibleIds?.length ? `${task.responsibleIds.length} assigned` : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Executive View ─────────────────────────────────────────────────────────────
 
-function ExecutiveView({ clients, runs }: { clients: Client[]; runs: Run[] }) {
+const EXEC_SUBTABS = [
+  { value: 'portfolio', label: 'Portfolio',   icon: Icons.LayoutDashboard },
+  { value: 'wrike',     label: 'Wrike',       icon: Icons.CheckSquare },
+]
+
+function ExecutiveView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected }: {
+  clients: Client[]
+  runs: Run[]
+  wrikeTasks: WrikeTask[]
+  wrikeFolders: WrikeFolder[]
+  wrikeLoading: boolean
+  wrikeConnected: boolean
+}) {
   const navigate = useNavigate()
+  const [subTab, setSubTab] = useState('portfolio')
+
   const activeClients = clients.filter((c) => c.status === 'active')
   const totalWorkflows = activeClients.reduce((s, c) => s + c.workflowCount, 0)
   const needsReview = runs.filter((r) => r.reviewStatus === 'none' || r.reviewStatus === 'pending')
@@ -120,125 +481,128 @@ function ExecutiveView({ clients, runs }: { clients: Client[]; runs: Run[] }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* KPI row */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard icon={Icons.Users}        label="Active Clients"       value={activeClients.length}      sub="currently active"         color="#185fa5" />
-        <KpiCard icon={Icons.Workflow}     label="Total Workflows"      value={totalWorkflows}             sub="across all clients"       color="#7c3aed" />
-        <KpiCard icon={Icons.ClipboardEdit}label="Pending Review"       value={needsReview.length}         sub="awaiting action"          color="#d97706" />
-        <KpiCard icon={Icons.CheckCircle2} label="Completed This Week"  value={completedThisWeek.length}   sub="in the last 7 days"       color="#059669" />
-      </div>
+      <SubTabToggle tabs={EXEC_SUBTABS} active={subTab} onChange={setSubTab} />
 
-      {/* Client portfolio grid */}
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Client Portfolio</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {activeClients.length === 0 && (
-            <div className="col-span-3 flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-              <Icons.Building2 className="h-8 w-8 text-muted-foreground/40 mb-2" />
-              <p className="text-sm text-muted-foreground">No active clients yet</p>
+      {subTab === 'portfolio' && (
+        <>
+          {/* KPI row */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <KpiCard icon={Icons.Users}        label="Active Clients"      value={activeClients.length}    sub="currently active"   color="#185fa5" />
+            <KpiCard icon={Icons.Workflow}     label="Total Workflows"     value={totalWorkflows}           sub="across all clients" color="#7c3aed" />
+            <KpiCard icon={Icons.ClipboardEdit}label="Pending Review"      value={needsReview.length}       sub="awaiting action"    color="#d97706" />
+            <KpiCard icon={Icons.CheckCircle2} label="Completed This Week" value={completedThisWeek.length} sub="in the last 7 days" color="#059669" />
+          </div>
+
+          {/* Client portfolio grid */}
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">Client Portfolio</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {activeClients.length === 0 && (
+                <div className="col-span-3 flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+                  <Icons.Building2 className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                  <p className="text-sm text-muted-foreground">No active clients yet</p>
+                </div>
+              )}
+              {activeClients.map((client) => {
+                const health = clientHealth(client)
+                const h = HEALTH[health]
+                const clientRuns = runs.filter((r) => r.clientId === client.id)
+                const pending = clientRuns.filter((r) => r.reviewStatus === 'none' || r.reviewStatus === 'pending').length
+                return (
+                  <div
+                    key={client.id}
+                    className="group relative overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
+                    onClick={() => navigate(`/clients/${client.id}`)}
+                  >
+                    <div className="h-1 w-full" style={{ backgroundColor: h.bar }} />
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <LogoAvatar logoUrl={client.logoUrl} name={client.name} size="md" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">{client.name}</p>
+                          {client.industry && <p className="truncate text-[11px] text-muted-foreground">{client.industry}</p>}
+                        </div>
+                        <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium', h.badge)}>
+                          <span className={cn('mr-1 inline-block h-1.5 w-1.5 rounded-full', h.dot)} />
+                          {h.label}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 divide-x divide-border rounded-lg border border-border bg-muted/30">
+                        <div className="flex flex-col items-center py-2">
+                          <p className="text-base font-bold text-foreground">{client.workflowCount}</p>
+                          <p className="text-[10px] text-muted-foreground">Workflows</p>
+                        </div>
+                        <div className="flex flex-col items-center py-2">
+                          <p className="text-base font-bold text-foreground">{client.feedbackCount}</p>
+                          <p className="text-[10px] text-muted-foreground">Feedback</p>
+                        </div>
+                        <div className="flex flex-col items-center py-2">
+                          <p className={cn('text-base font-bold', pending > 0 ? 'text-orange-600' : 'text-foreground')}>{pending}</p>
+                          <p className="text-[10px] text-muted-foreground">Pending</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <p className="text-[11px] text-muted-foreground">
+                          {client.lastActivity ? `Last activity ${timeAgo(client.lastActivity)}` : 'No activity'}
+                        </p>
+                        <div className="flex items-center gap-1 text-[11px] font-medium opacity-0 transition-opacity group-hover:opacity-100" style={{ color: '#185fa5' }}>
+                          View client <Icons.ArrowRight className="h-3 w-3" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Needs attention table */}
+          {needsReview.length > 0 && (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-foreground">Needs Attention</h2>
+              <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Client</th>
+                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Workflow</th>
+                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due</th>
+                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Assignee</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {needsReview.slice(0, 8).map((run) => {
+                      const rs = REVIEW_STATUS[run.reviewStatus ?? 'none'] ?? REVIEW_STATUS.none
+                      const overdue = run.dueDate && new Date(run.dueDate) < new Date()
+                      return (
+                        <tr key={run.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-2.5 font-medium text-foreground">{run.clientName ?? '—'}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground max-w-[200px] truncate">{run.workflowName}</td>
+                          <td className="px-4 py-2.5">
+                            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', rs.bg, rs.color)}>
+                              <span className={cn('h-1.5 w-1.5 rounded-full', rs.dot)} />
+                              {rs.label}
+                            </span>
+                          </td>
+                          <td className={cn('px-4 py-2.5', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
+                            {run.dueDate ? new Date(run.dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
+                            {overdue && <span className="ml-1 text-[10px]">overdue</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-muted-foreground">{run.assignee?.name ?? '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-          {activeClients.map((client) => {
-            const health = clientHealth(client)
-            const h = HEALTH[health]
-            const clientRuns = runs.filter((r) => r.clientId === client.id)
-            const pending = clientRuns.filter((r) => r.reviewStatus === 'none' || r.reviewStatus === 'pending').length
-            return (
-              <div
-                key={client.id}
-                className="group relative overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
-                onClick={() => navigate(`/clients/${client.id}`)}
-              >
-                {/* Health bar accent */}
-                <div className="h-1 w-full" style={{ backgroundColor: h.bar }} />
+        </>
+      )}
 
-                <div className="p-4">
-                  {/* Header row */}
-                  <div className="flex items-start gap-3">
-                    <LogoAvatar logoUrl={client.logoUrl} name={client.name} size="md" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{client.name}</p>
-                      {client.industry && <p className="truncate text-[11px] text-muted-foreground">{client.industry}</p>}
-                    </div>
-                    <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium', h.badge)}>
-                      <span className={cn('mr-1 inline-block h-1.5 w-1.5 rounded-full', h.dot)} />
-                      {h.label}
-                    </span>
-                  </div>
-
-                  {/* Metrics row */}
-                  <div className="mt-4 grid grid-cols-3 divide-x divide-border rounded-lg border border-border bg-muted/30">
-                    <div className="flex flex-col items-center py-2">
-                      <p className="text-base font-bold text-foreground">{client.workflowCount}</p>
-                      <p className="text-[10px] text-muted-foreground">Workflows</p>
-                    </div>
-                    <div className="flex flex-col items-center py-2">
-                      <p className="text-base font-bold text-foreground">{client.feedbackCount}</p>
-                      <p className="text-[10px] text-muted-foreground">Feedback</p>
-                    </div>
-                    <div className="flex flex-col items-center py-2">
-                      <p className={cn('text-base font-bold', pending > 0 ? 'text-orange-600' : 'text-foreground')}>{pending}</p>
-                      <p className="text-[10px] text-muted-foreground">Pending</p>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-[11px] text-muted-foreground">
-                      {client.lastActivity ? `Last activity ${timeAgo(client.lastActivity)}` : 'No activity'}
-                    </p>
-                    <div className="flex items-center gap-1 text-[11px] font-medium opacity-0 transition-opacity group-hover:opacity-100" style={{ color: '#185fa5' }}>
-                      View client <Icons.ArrowRight className="h-3 w-3" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Activity summary — runs needing action */}
-      {needsReview.length > 0 && (
-        <div>
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Needs Attention</h2>
-          <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Client</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Workflow</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Assignee</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {needsReview.slice(0, 8).map((run) => {
-                  const rs = REVIEW_STATUS[run.reviewStatus ?? 'none'] ?? REVIEW_STATUS.none
-                  const overdue = run.dueDate && new Date(run.dueDate) < new Date()
-                  return (
-                    <tr key={run.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 font-medium text-foreground">{run.clientName ?? '—'}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground max-w-[200px] truncate">{run.workflowName}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', rs.bg, rs.color)}>
-                          <span className={cn('h-1.5 w-1.5 rounded-full', rs.dot)} />
-                          {rs.label}
-                        </span>
-                      </td>
-                      <td className={cn('px-4 py-2.5', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
-                        {run.dueDate ? new Date(run.dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
-                        {overdue && <span className="ml-1 text-[10px]">overdue</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{run.assignee?.name ?? '—'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {subTab === 'wrike' && (
+        <WrikeExecutiveTab tasks={wrikeTasks} folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected} />
       )}
     </div>
   )
@@ -255,18 +619,30 @@ const STAKEHOLDER_FILTERS = [
   { value: 'closed',          label: 'Closed' },
 ]
 
-function StakeholderView({ clients, runs }: { clients: Client[]; runs: Run[] }) {
+const STAKEHOLDER_SUBTABS = [
+  { value: 'pipeline', label: 'Pipeline', icon: Icons.ClipboardList },
+  { value: 'wrike',    label: 'Wrike',    icon: Icons.CheckSquare },
+]
+
+function StakeholderView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected }: {
+  clients: Client[]
+  runs: Run[]
+  wrikeTasks: WrikeTask[]
+  wrikeFolders: WrikeFolder[]
+  wrikeLoading: boolean
+  wrikeConnected: boolean
+}) {
   const navigate = useNavigate()
+  const [subTab, setSubTab] = useState('pipeline')
   const [filter, setFilter] = useState('all')
   const [clientFilter, setClientFilter] = useState('all')
 
+  const activeClients = clients.filter((c) => c.status === 'active')
   const filtered = runs.filter((r) => {
     if (filter !== 'all' && r.reviewStatus !== filter) return false
     if (clientFilter !== 'all' && r.clientId !== clientFilter) return false
     return true
   })
-
-  const activeClients = clients.filter((c) => c.status === 'active')
 
   const statusCounts = STAKEHOLDER_FILTERS.slice(1).reduce<Record<string, number>>((acc, f) => {
     acc[f.value] = runs.filter((r) => r.reviewStatus === f.value).length
@@ -275,131 +651,131 @@ function StakeholderView({ clients, runs }: { clients: Client[]; runs: Run[] }) 
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Per-client summary row */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {activeClients.slice(0, 10).map((client) => {
-          const clientRuns = runs.filter((r) => r.clientId === client.id)
-          const pending = clientRuns.filter((r) => r.reviewStatus === 'none' || r.reviewStatus === 'pending').length
-          const health = clientHealth(client)
-          const h = HEALTH[health]
-          return (
-            <button
-              key={client.id}
-              onClick={() => setClientFilter(clientFilter === client.id ? 'all' : client.id)}
-              className={cn(
-                'flex items-center gap-2 rounded-lg border p-3 text-left transition-all hover:border-blue-300 hover:bg-blue-50/30',
-                clientFilter === client.id ? 'border-blue-400 bg-blue-50/50' : 'border-border bg-white',
-              )}
-            >
-              <div className={cn('h-2 w-2 rounded-full shrink-0', h.dot)} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-foreground">{client.name}</p>
-                {pending > 0 && <p className="text-[10px] text-orange-600 font-medium">{pending} pending</p>}
-                {pending === 0 && <p className="text-[10px] text-muted-foreground">Up to date</p>}
-              </div>
-            </button>
-          )
-        })}
-      </div>
+      <SubTabToggle tabs={STAKEHOLDER_SUBTABS} active={subTab} onChange={setSubTab} />
 
-      {/* Filter pills */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {STAKEHOLDER_FILTERS.map((f) => {
-          const count = f.value === 'all' ? runs.length : statusCounts[f.value] ?? 0
-          return (
-            <button
-              key={f.value}
-              onClick={() => setFilter(f.value)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
-                filter === f.value
-                  ? 'border-blue-400 bg-blue-600 text-white'
-                  : 'border-border bg-white text-muted-foreground hover:border-blue-300 hover:text-foreground',
-              )}
-            >
-              {f.label}
-              {count > 0 && (
-                <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold', filter === f.value ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground')}>
-                  {count}
-                </span>
-              )}
-            </button>
-          )
-        })}
-        {clientFilter !== 'all' && (
-          <button onClick={() => setClientFilter('all')} className="flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-            <Icons.X className="h-3 w-3" />
-            {clients.find((c) => c.id === clientFilter)?.name}
-          </button>
-        )}
-      </div>
-
-      {/* Deliverables table */}
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Icons.InboxIcon className="h-8 w-8 text-muted-foreground/40 mb-2" />
-            <p className="text-sm text-muted-foreground">No deliverables match this filter</p>
+      {subTab === 'pipeline' && (
+        <>
+          {/* Per-client summary row */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {activeClients.slice(0, 10).map((client) => {
+              const clientRuns = runs.filter((r) => r.clientId === client.id)
+              const pending = clientRuns.filter((r) => r.reviewStatus === 'none' || r.reviewStatus === 'pending').length
+              const health = clientHealth(client)
+              const h = HEALTH[health]
+              return (
+                <button
+                  key={client.id}
+                  onClick={() => setClientFilter(clientFilter === client.id ? 'all' : client.id)}
+                  className={cn(
+                    'flex items-center gap-2 rounded-lg border p-3 text-left transition-all hover:border-blue-300 hover:bg-blue-50/30',
+                    clientFilter === client.id ? 'border-blue-400 bg-blue-50/50' : 'border-border bg-white',
+                  )}
+                >
+                  <div className={cn('h-2 w-2 rounded-full shrink-0', h.dot)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-foreground">{client.name}</p>
+                    {pending > 0 ? <p className="text-[10px] text-orange-600 font-medium">{pending} pending</p> : <p className="text-[10px] text-muted-foreground">Up to date</p>}
+                  </div>
+                </button>
+              )
+            })}
           </div>
-        ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Client</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Workflow</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Review Status</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Run Status</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Due Date</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Triggered</th>
-                <th className="w-10 px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filtered.map((run) => {
-                const rs = REVIEW_STATUS[run.reviewStatus ?? 'none'] ?? REVIEW_STATUS.none
-                const overdue = run.dueDate && new Date(run.dueDate) < new Date()
-                const statusColor: Record<string, string> = {
-                  completed: 'text-emerald-600',
-                  running: 'text-blue-600',
-                  failed: 'text-red-600',
-                  pending: 'text-amber-600',
-                }
-                return (
-                  <tr key={run.id} className="hover:bg-muted/20 transition-colors group">
-                    <td className="px-4 py-3 font-medium text-foreground">{run.clientName ?? '—'}</td>
-                    <td className="max-w-[180px] truncate px-4 py-3 text-muted-foreground">{run.workflowName}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', rs.bg, rs.color)}>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', rs.dot)} />
-                        {rs.label}
-                      </span>
-                    </td>
-                    <td className={cn('px-4 py-3 capitalize font-medium', statusColor[run.status] ?? 'text-muted-foreground')}>
-                      {run.status}
-                    </td>
-                    <td className={cn('px-4 py-3', overdue ? 'text-red-600 font-semibold' : 'text-muted-foreground')}>
-                      {run.dueDate ? new Date(run.dueDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                      {overdue && <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">overdue</span>}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{run.assignee?.name ?? '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{run.triggeredByUser?.name ?? run.triggeredByUser?.email ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => navigate(`/review/${run.id}`)}
-                        className="rounded p-1 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                        title="Open"
-                      >
-                        <Icons.ExternalLink className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
+
+          {/* Filter pills */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {STAKEHOLDER_FILTERS.map((f) => {
+              const count = f.value === 'all' ? runs.length : statusCounts[f.value] ?? 0
+              return (
+                <button
+                  key={f.value}
+                  onClick={() => setFilter(f.value)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                    filter === f.value ? 'border-blue-400 bg-blue-600 text-white' : 'border-border bg-white text-muted-foreground hover:border-blue-300 hover:text-foreground',
+                  )}
+                >
+                  {f.label}
+                  {count > 0 && (
+                    <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold', filter === f.value ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground')}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+            {clientFilter !== 'all' && (
+              <button onClick={() => setClientFilter('all')} className="flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                <Icons.X className="h-3 w-3" />
+                {clients.find((c) => c.id === clientFilter)?.name}
+              </button>
+            )}
+          </div>
+
+          {/* Deliverables table */}
+          <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Icons.InboxIcon className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No deliverables match this filter</p>
+              </div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Client</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Workflow</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Review Status</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Run Status</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Due Date</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Triggered</th>
+                    <th className="w-10 px-4 py-3" />
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filtered.map((run) => {
+                    const rs = REVIEW_STATUS[run.reviewStatus ?? 'none'] ?? REVIEW_STATUS.none
+                    const overdue = run.dueDate && new Date(run.dueDate) < new Date()
+                    const statusColor: Record<string, string> = { completed: 'text-emerald-600', running: 'text-blue-600', failed: 'text-red-600', pending: 'text-amber-600' }
+                    return (
+                      <tr key={run.id} className="hover:bg-muted/20 transition-colors group">
+                        <td className="px-4 py-3 font-medium text-foreground">{run.clientName ?? '—'}</td>
+                        <td className="max-w-[180px] truncate px-4 py-3 text-muted-foreground">{run.workflowName}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', rs.bg, rs.color)}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', rs.dot)} />
+                            {rs.label}
+                          </span>
+                        </td>
+                        <td className={cn('px-4 py-3 capitalize font-medium', statusColor[run.status] ?? 'text-muted-foreground')}>{run.status}</td>
+                        <td className={cn('px-4 py-3', overdue ? 'text-red-600 font-semibold' : 'text-muted-foreground')}>
+                          {run.dueDate ? new Date(run.dueDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                          {overdue && <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">overdue</span>}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{run.assignee?.name ?? '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{run.triggeredByUser?.name ?? run.triggeredByUser?.email ?? '—'}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => navigate(`/review/${run.id}`)}
+                            className="rounded p-1 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                            title="Open"
+                          >
+                            <Icons.ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+
+      {subTab === 'wrike' && (
+        <WrikeStakeholderTab tasks={wrikeTasks} folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected} />
+      )}
     </div>
   )
 }
@@ -407,22 +783,44 @@ function StakeholderView({ clients, runs }: { clients: Client[]; runs: Run[] }) 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export function ClientPortalDashboard() {
-  const [view, setView]       = useState<'executive' | 'stakeholder'>('executive')
-  const [clients, setClients] = useState<Client[]>([])
-  const [runs, setRuns]       = useState<Run[]>([])
-  const [loading, setLoading] = useState(true)
+  const [view, setView]               = useState<'executive' | 'stakeholder'>('executive')
+  const [clients, setClients]         = useState<Client[]>([])
+  const [runs, setRuns]               = useState<Run[]>([])
+  const [wrikeTasks, setWrikeTasks]   = useState<WrikeTask[]>([])
+  const [wrikeFolders, setWrikeFolders] = useState<WrikeFolder[]>([])
+  const [wrikeLoading, setWrikeLoading] = useState(false)
+  const [wrikeConnected, setWrikeConnected] = useState(false)
+  const [loading, setLoading]         = useState(true)
 
   useEffect(() => {
     Promise.all([
       apiFetch('/api/v1/clients').then((r) => r.json()),
       apiFetch('/api/v1/runs?limit=100').then((r) => r.json()),
+      apiFetch('/api/v1/integrations/wrike/status').then((r) => r.json()),
     ])
-      .then(([clientRes, runRes]) => {
-        setClients((clientRes.data ?? []).filter((c: Client) => c.status === 'active' || c.status === undefined))
+      .then(([clientRes, runRes, wrikeStatus]) => {
+        setClients(clientRes.data ?? [])
         setRuns(runRes.data ?? [])
+        const connected = !!wrikeStatus.data?.connected
+        setWrikeConnected(connected)
+        if (connected) loadWrikeData()
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+  }, [])
+
+  const loadWrikeData = useCallback(() => {
+    setWrikeLoading(true)
+    Promise.all([
+      apiFetch('/api/v1/integrations/wrike/tasks').then((r) => r.json()),
+      apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
+    ])
+      .then(([tasksRes, foldersRes]) => {
+        setWrikeTasks(tasksRes.data ?? [])
+        setWrikeFolders(foldersRes.data ?? [])
+      })
+      .catch(() => {})
+      .finally(() => setWrikeLoading(false))
   }, [])
 
   return (
@@ -434,16 +832,13 @@ export function ClientPortalDashboard() {
             <h1 className="text-lg font-semibold text-foreground">Client Dashboard</h1>
             <p className="text-xs text-muted-foreground">Portfolio overview and delivery pipeline</p>
           </div>
-
           {/* View toggle */}
           <div className="flex rounded-lg border border-border bg-muted/30 p-0.5">
             <button
               onClick={() => setView('executive')}
               className={cn(
                 'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
-                view === 'executive'
-                  ? 'bg-white shadow-sm text-foreground border border-border'
-                  : 'text-muted-foreground hover:text-foreground',
+                view === 'executive' ? 'bg-white shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <Icons.LayoutDashboard className="h-3.5 w-3.5" />
@@ -453,9 +848,7 @@ export function ClientPortalDashboard() {
               onClick={() => setView('stakeholder')}
               className={cn(
                 'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
-                view === 'stakeholder'
-                  ? 'bg-white shadow-sm text-foreground border border-border'
-                  : 'text-muted-foreground hover:text-foreground',
+                view === 'stakeholder' ? 'bg-white shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <Icons.Users className="h-3.5 w-3.5" />
@@ -473,9 +866,17 @@ export function ClientPortalDashboard() {
             <span className="text-sm">Loading dashboard…</span>
           </div>
         ) : view === 'executive' ? (
-          <ExecutiveView clients={clients} runs={runs} />
+          <ExecutiveView
+            clients={clients} runs={runs}
+            wrikeTasks={wrikeTasks} wrikeFolders={wrikeFolders}
+            wrikeLoading={wrikeLoading} wrikeConnected={wrikeConnected}
+          />
         ) : (
-          <StakeholderView clients={clients} runs={runs} />
+          <StakeholderView
+            clients={clients} runs={runs}
+            wrikeTasks={wrikeTasks} wrikeFolders={wrikeFolders}
+            wrikeLoading={wrikeLoading} wrikeConnected={wrikeConnected}
+          />
         )}
       </div>
     </div>

@@ -150,35 +150,35 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: { ok: true } })
   })
 
-  // ── GET /tasks — fetch completed tasks for last N days ───────────────────
+  // ── GET /tasks — fetch recent tasks (no status filter — accounts use custom workflows) ──
   app.get('/tasks', async (req, reply) => {
     const { agencyId } = req.auth
-    const { days = '14' } = req.query as Record<string, string>
+    const { pageSize = '100' } = req.query as Record<string, string>
 
     const { accessToken, host } = await refreshWrikeToken(agencyId)
 
-    const end   = new Date()
-    const start = new Date(end.getTime() - Number(days) * 24 * 60 * 60 * 1000)
-
-    const completedDate = JSON.stringify({
-      start: start.toISOString().split('.')[0] + 'Z',
-      end:   end.toISOString().split('.')[0] + 'Z',
-    })
-
     const url = new URL(`https://${host}/api/v4/tasks`)
-    url.searchParams.set('status',        'Completed')
-    url.searchParams.set('completedDate', completedDate)
-    url.searchParams.set('fields',        JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds', 'customFields']))
-    url.searchParams.set('pageSize',      '100')
+    url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds', 'status', 'dates']))
+    url.searchParams.set('pageSize', pageSize)
 
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status} ${await res.text()}` })
 
-    if (!res.ok) {
-      const err = await res.text()
-      return reply.code(502).send({ error: `Wrike API error: ${res.status} ${err}` })
-    }
+    const data = await res.json() as { data: unknown[] }
+    return reply.send({ data: data.data })
+  })
+
+  // ── GET /folders — fetch all projects/folders ─────────────────────────────
+  app.get('/folders', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { accessToken, host } = await refreshWrikeToken(agencyId)
+
+    const url = new URL(`https://${host}/api/v4/folders`)
+    url.searchParams.set('fields',   JSON.stringify(['description', 'childIds', 'project', 'space']))
+    url.searchParams.set('project',  'true')
+
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status} ${await res.text()}` })
 
     const data = await res.json() as { data: unknown[] }
     return reply.send({ data: data.data })

@@ -20,6 +20,7 @@ interface LogicNodeConfig {
   additional_instructions?: string
   /** Task type label from the frontend (expand/summarize/etc.) */
   task_type?: string
+  max_words?: number
 }
 
 function buildPrompt(template: string | undefined, input: unknown): string {
@@ -88,6 +89,11 @@ export class LogicNodeExecutor extends NodeExecutor {
       fullTemplate = `${additionalInstructions}\n\n{{input}}`
     } else {
       fullTemplate = baseTemplate
+    }
+
+    if (cfg.max_words) {
+      const limiter = `\n\nIMPORTANT: Your entire response must be ${cfg.max_words} words or fewer. Be concise.`
+      fullTemplate = fullTemplate ? fullTemplate + limiter : `{{input}}${limiter}`
     }
 
     const prompt = buildPrompt(fullTemplate, input)
