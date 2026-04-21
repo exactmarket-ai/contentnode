@@ -813,10 +813,10 @@ export function ClientPortalDashboard() {
   const [loading, setLoading]         = useState(true)
 
   // Wrike filters
-  const [wrikeStart,     setWrikeStart]     = useState(() => toDateInput(new Date(Date.now() - 30 * 86400000)))
+  const [wrikeStart,     setWrikeStart]     = useState(() => toDateInput(new Date(Date.now() - 90 * 86400000)))
   const [wrikeEnd,       setWrikeEnd]       = useState(() => toDateInput(new Date()))
   const [wrikeProjectId, setWrikeProjectId] = useState('all')
-  const [useDates,       setUseDates]       = useState(false)
+  const [useDates,       setUseDates]       = useState(true)
 
   useEffect(() => {
     Promise.all([
@@ -829,7 +829,7 @@ export function ClientPortalDashboard() {
         setRuns(runRes.data ?? [])
         const connected = !!wrikeStatus.data?.connected
         setWrikeConnected(connected)
-        if (connected) loadWrikeData(false, '', '')
+        if (connected) loadWrikeData(true, toDateInput(new Date(Date.now() - 90 * 86400000)), toDateInput(new Date()))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
