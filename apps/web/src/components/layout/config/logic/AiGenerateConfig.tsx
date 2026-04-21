@@ -12,6 +12,7 @@ import { useWorkflowStore } from '@/store/workflowStore'
 import { stripMarkdown } from '@/lib/utils'
 
 const LOGIC_TASK_TYPES = [
+  { value: 'generate',            label: 'Generate' },
   { value: 'expand',              label: 'Expand' },
   { value: 'summarize',           label: 'Summarize' },
   { value: 'rewrite',             label: 'Rewrite' },
