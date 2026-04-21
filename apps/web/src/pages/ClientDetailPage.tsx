@@ -6755,6 +6755,9 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
                             <span className="rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">{task.vertical.name}</span>
                           )}
                           {statusBadge(task.lastStatus)}
+                          {task.autoGenerate && (
+                            <span className="rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600">auto-blog ×{task.autoGenerateBlogCount}</span>
+                          )}
                           {task.changeDetected && (
                             <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">update detected</span>
                           )}

@@ -502,8 +502,6 @@ ${articleDigest}`
           clientId,
           name:             'Content Hub',
           connectivityMode: 'online',
-          nodesJson:        JSON.stringify([]),
-          edgesJson:        JSON.stringify([]),
         },
         select: { id: true },
       })

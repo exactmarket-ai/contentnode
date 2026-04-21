@@ -147,8 +147,6 @@ ${att.extractedText.slice(0, 13000)}`
         clientId:         task.clientId,
         name:             'Content Hub',
         connectivityMode: 'online',
-        nodesJson:        JSON.stringify([]),
-        edgesJson:        JSON.stringify([]),
       },
       select: { id: true },
     })
@@ -432,8 +430,6 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
               clientId:         task.clientId,
               name:             'Research Reports',
               connectivityMode: 'online',
-              nodesJson:        JSON.stringify([]),
-              edgesJson:        JSON.stringify([]),
             },
             select: { id: true, defaultAssigneeId: true },
           })
