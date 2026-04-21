@@ -4797,7 +4797,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
           <div className="flex items-start gap-2.5">
             <Icons.Building2 className={`mt-0.5 h-4 w-4 shrink-0 ${client.isOrgClient ? 'text-violet-600' : 'text-muted-foreground'}`} />
             <div>
-              <p className="text-sm font-medium">Our Organisation</p>
+              <p className="text-sm font-medium">Our Organization</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {client.isOrgClient
                   ? 'This is your agency\'s own company. Prospect and internal workflows are filed here when no client is selected.'

@@ -299,6 +299,13 @@ function EditClientModal({ client, onClose, onUpdate }: {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+function loadOrder(): string[] {
+  try { return JSON.parse(localStorage.getItem('clientOrder') ?? '[]') } catch { return [] }
+}
+function saveOrder(o: string[]) {
+  localStorage.setItem('clientOrder', JSON.stringify(o))
+}
+
 export function ClientListPage() {
   const navigate = useNavigate()
   const [clients, setClients] = useState<Client[]>([])
@@ -309,6 +316,7 @@ export function ClientListPage() {
   const [archiving, setArchiving] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [archivedOpen, setArchivedOpen] = useState(false)
+  const [order, setOrder] = useState<string[]>(loadOrder)
 
   useEffect(() => {
     apiFetch('/api/v1/clients')
@@ -328,8 +336,27 @@ export function ClientListPage() {
         (c.industry ?? '').toLowerCase().includes(searchVal.toLowerCase()),
     )
 
-  const filteredActive = filterClients(activeClients)
+  // Build a stable full order that includes any new clients not yet in localStorage
+  const fullOrder = [
+    ...order.filter((id) => activeClients.some((c) => c.id === id)),
+    ...activeClients.filter((c) => !order.includes(c.id)).map((c) => c.id),
+  ]
+
+  const filteredActive = filterClients(
+    [...activeClients].sort((a, b) => fullOrder.indexOf(a.id) - fullOrder.indexOf(b.id)),
+  )
   const filteredArchived = filterClients(archivedClients)
+
+  const moveClient = (clientId: string, toPos: number) => {
+    const from = fullOrder.indexOf(clientId)
+    const to = toPos - 1
+    if (from === to) return
+    const next = [...fullOrder]
+    next.splice(from, 1)
+    next.splice(to, 0, clientId)
+    setOrder(next)
+    saveOrder(next)
+  }
 
   const handleDelete = async (client: Client, e: React.MouseEvent) => {
     e.preventDefault()
@@ -417,10 +444,13 @@ export function ClientListPage() {
               <p className="py-10 text-center text-sm text-muted-foreground">No active clients match your search</p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredActive.map((client) => (
+                {filteredActive.map((client, idx) => (
                   <ClientCard
                     key={client.id}
                     client={client}
+                    position={idx + 1}
+                    totalClients={filteredActive.length}
+                    onMove={(pos) => moveClient(client.id, pos)}
                     onEdit={(e) => { e.preventDefault(); e.stopPropagation(); setEditing(client) }}
                     onArchive={(e) => handleArchiveToggle(client, e)}
                     onDelete={(e) => handleDelete(client, e)}
@@ -495,12 +525,18 @@ export function ClientListPage() {
 
 function ClientCard({
   client,
+  position,
+  totalClients,
+  onMove,
   onEdit,
   onArchive,
   onDelete,
   archiving,
 }: {
   client: Client
+  position?: number
+  totalClients?: number
+  onMove?: (pos: number) => void
   onEdit: (e: React.MouseEvent) => void
   onArchive: (e: React.MouseEvent) => void
   onDelete: (e: React.MouseEvent) => void
@@ -578,10 +614,25 @@ function ClientCard({
 
       {/* Last activity + research quick links */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          <Icons.Clock className="mr-1 inline h-3 w-3" />
-          {timeAgo(client.lastActivity)}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-muted-foreground">
+            <Icons.Clock className="mr-1 inline h-3 w-3" />
+            {timeAgo(client.lastActivity)}
+          </p>
+          {position !== undefined && totalClients !== undefined && onMove && totalClients > 1 && !client.archivedAt && (
+            <select
+              value={position}
+              onChange={(e) => { e.preventDefault(); e.stopPropagation(); onMove(Number(e.target.value)) }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+              className="h-5 rounded border border-border bg-muted/60 px-1 text-[10px] text-muted-foreground cursor-pointer hover:border-border/80 focus:outline-none"
+              title="Card position"
+            >
+              {Array.from({ length: totalClients }, (_, i) => (
+                <option key={i + 1} value={i + 1}>{i + 1}</option>
+              ))}
+            </select>
+          )}
+        </div>
         <div
           className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto"
           onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
