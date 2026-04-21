@@ -190,7 +190,7 @@ export function WorkflowCanvas() {
       id: newId,
       type: def.type,
       position,
-      ...(isGroup ? { style: { width: 400, height: 280 }, zIndex: -1 } : {}),
+      ...(isGroup ? { style: { width: 700, height: 500 }, zIndex: -1 } : {}),
       data: {
         label: def.label,
         description: def.description,
