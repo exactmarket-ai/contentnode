@@ -9,6 +9,18 @@ import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmen
 import { markStaleIfBrainChanged } from './templateLibrary.js'
 import { seedDefaultTasksForClient } from '../lib/defaultScheduledTasks.js'
 import { getClerkUserNames } from '../lib/clerk.js'
+import { GTM_VARIABLES } from './docTemplates.js'
+
+// Lazy mammoth for reimport
+type MammothMod = { convertToHtml: (input: { buffer: Buffer }) => Promise<{ value: string }> }
+let _mammothClient: MammothMod | null = null
+async function getMammothForReimport(): Promise<MammothMod> {
+  if (!_mammothClient) {
+    const mod = await import('mammoth') as any
+    _mammothClient = mod.default ?? mod
+  }
+  return _mammothClient!
+}
 
 const LOGO_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -3292,6 +3304,109 @@ Output as clean HTML using <h3> for slide titles, <ul> for bullet points. Do not
       update: { data: body as any },
     })
     return reply.send({ data: fw.data })
+  })
+
+  // ── POST /:id/framework/:verticalId/reimport — analyse edited DOCX, return field diff preview
+  app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/reimport', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const chunks: Buffer[] = []
+    for await (const chunk of data.file) chunks.push(chunk as Buffer)
+    const buffer = Buffer.concat(chunks)
+
+    let docText: string
+    try {
+      const mammoth = await getMammothForReimport()
+      const result = await mammoth.convertToHtml({ buffer })
+      docText = result.value
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim()
+    } catch {
+      return reply.code(422).send({ error: 'Failed to read .docx file — ensure it is a valid Word document' })
+    }
+
+    if (docText.length < 50) {
+      return reply.code(422).send({ error: 'Document appears to be empty' })
+    }
+
+    const fw = await prisma.clientFramework.findUnique({
+      where: { clientId_verticalId: { clientId, verticalId } },
+    })
+    const currentData = (fw?.data as Record<string, unknown>) ?? {}
+
+    const variableList = GTM_VARIABLES.map((v) => `- ${v.id}: ${v.label} — ${v.description}`).join('\n')
+
+    const prompt = `You are analyzing an edited GTM Framework document to extract updated field values and detect writing style preferences.
+
+Return ONLY a JSON object in this exact format:
+{
+  "fields": {
+    "variable_id": "extracted content text"
+  },
+  "styleSignals": [
+    { "type": "spelling|punctuation|formality|structure", "rule": "concise rule", "example": "exact word or phrase from document", "confidence": "high|medium|low" }
+  ]
+}
+
+Rules:
+- Only include field IDs that have clear corresponding content in the document
+- Field values are the actual content, not descriptions of it — copy the relevant text
+- Detect up to 6 style signals: spelling variants (-ize vs -ise, -or vs -our), Oxford comma usage, sentence length preference, formality level, list formatting, capitalization style
+- Style signals must cite an actual example from the document
+- No markdown, no extra text outside the JSON
+
+GTM Variable IDs:
+${variableList}
+
+Document text:
+${docText.slice(0, 12000)}`
+
+    let fields: Record<string, string> = {}
+    let styleSignals: Array<{ type: string; rule: string; example: string; confidence: string }> = []
+
+    try {
+      const result = await callModel(
+        { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.1, api_key_ref: 'ANTHROPIC_API_KEY' },
+        prompt,
+      )
+      const cleaned = result.text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
+      const parsed = JSON.parse(cleaned) as { fields?: Record<string, string>; styleSignals?: unknown[] }
+      if (parsed.fields && typeof parsed.fields === 'object') fields = parsed.fields as Record<string, string>
+      if (Array.isArray(parsed.styleSignals)) styleSignals = parsed.styleSignals as typeof styleSignals
+    } catch (err) {
+      req.log.error({ err }, '[framework/reimport] Claude analysis failed')
+      return reply.code(500).send({ error: 'AI analysis failed' })
+    }
+
+    const updatedFields: Array<{ id: string; label: string; oldValue: string; newValue: string }> = []
+    for (const [id, newValue] of Object.entries(fields)) {
+      const trimmed = (typeof newValue === 'string' ? newValue : '').trim()
+      if (!trimmed) continue
+      const oldValue = typeof currentData[id] === 'string' ? (currentData[id] as string) : ''
+      if (trimmed !== oldValue) {
+        const meta = GTM_VARIABLES.find((v) => v.id === id)
+        updatedFields.push({ id, label: meta?.label ?? id, oldValue, newValue: trimmed })
+      }
+    }
+
+    return reply.send({ data: { updatedFields, styleSignals, totalUpdated: updatedFields.length } })
   })
 
   // ── GET /:id/framework/:verticalId/attachments — list framework attachments

@@ -7,6 +7,11 @@ import { GTMPilot } from '@/components/pilot/GTMPilot'
 import { downloadGTMFrameworkDocx, DEFAULT_DOC_STYLE, type DocStyleConfig } from '@/lib/downloadDocx'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 
+// ── Reimport types ────────────────────────────────────────────────────────────
+interface ReimportField { id: string; label: string; oldValue: string; newValue: string }
+interface ReimportStyleSignal { type: string; rule: string; example: string; confidence: string }
+interface ReimportResult { updatedFields: ReimportField[]; styleSignals: ReimportStyleSignal[]; totalUpdated: number }
+
 // ── Draft context — provides per-field AI drafting to all section components ──
 
 interface DraftContextValue {
@@ -2014,10 +2019,13 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
   const [docStyle, setDocStyle] = useState<DocStyleConfig>(DEFAULT_DOC_STYLE)
   const [attachedTemplate, setAttachedTemplate] = useState<AttachedTemplate | null>(null)
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
+  const [reimporting, setReimporting] = useState(false)
+  const [reimportResult, setReimportResult] = useState<ReimportResult | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestFwRef = useRef<FrameworkData | null>(null)
   const contentScrollRef = useRef<HTMLDivElement>(null)
   const templateInputRef = useRef<HTMLInputElement>(null)
+  const reimportInputRef = useRef<HTMLInputElement>(null)
 
   // Research + draft state
   const [websiteStatus, setWebsiteStatus] = useState<'none' | 'pending' | 'running' | 'ready' | 'failed'>('none')
@@ -2226,6 +2234,57 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
     }
   }, [fw, selectedVertical, attachedTemplate, clientName, docStyle])
 
+  const handleReimport = useCallback(async (file: File) => {
+    if (!selectedVertical || !fw) return
+    if (!file.name.toLowerCase().endsWith('.docx')) { alert('Only .docx files are supported'); return }
+    setReimporting(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/reimport`, { method: 'POST', body: fd })
+      const body = await res.json()
+      if (!res.ok) { alert((body as { error?: string }).error ?? 'Re-import failed'); return }
+      const result = (body as { data: ReimportResult }).data
+      if (result.totalUpdated === 0 && result.styleSignals.length === 0) {
+        alert('No changes detected — the document matches the current framework data.')
+        return
+      }
+      setReimportResult(result)
+    } catch (err) {
+      alert('Network error: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setReimporting(false)
+      if (reimportInputRef.current) reimportInputRef.current.value = ''
+    }
+  }, [clientId, selectedVertical, fw, reimportInputRef])
+
+  const applyReimport = useCallback(async () => {
+    if (!reimportResult || !selectedVertical || !fw) return
+    const mergedData: Record<string, unknown> = { ...(fw as Record<string, unknown>) }
+    for (const f of reimportResult.updatedFields) {
+      mergedData[f.id] = f.newValue
+    }
+    if (reimportResult.styleSignals.length > 0) {
+      mergedData['_style_signals'] = reimportResult.styleSignals
+    }
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mergedData),
+      })
+      if (res.ok) {
+        const { data } = await res.json()
+        setFwRaw(data)
+        setReimportResult(null)
+      } else {
+        alert('Failed to apply changes')
+      }
+    } catch {
+      alert('Network error applying changes')
+    }
+  }, [reimportResult, selectedVertical, fw, clientId])
+
   const requestDraft = useCallback(async (fieldId: string, sectionNum: string, sectionTitle: string, fieldLabel: string, current: string) => {
     if (!selectedVertical || draftingField) return
     setDraftingField(fieldId)
@@ -2387,6 +2446,15 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleTemplateUpload(f) }}
             />
 
+            {/* Hidden file input for reimport */}
+            <input
+              ref={reimportInputRef}
+              type="file"
+              accept=".docx"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleReimport(f) }}
+            />
+
             {/* Attached template pill */}
             {attachedTemplate && (
               <div
@@ -2458,6 +2526,31 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
                   </svg>
                 )}
                 <span>{downloadingDocx ? 'Generating…' : 'Download .docx'}</span>
+              </button>
+            )}
+
+            {/* Re-import button */}
+            {fw && (
+              <button
+                onClick={() => !reimporting && reimportInputRef.current?.click()}
+                disabled={reimporting}
+                className={cn(
+                  'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
+                  reimporting ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
+                )}
+                title="Re-import an edited .docx to sync changes back into the framework"
+              >
+                {reimporting ? (
+                  <svg className="h-3 w-3 animate-spin text-muted-foreground" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
+                  </svg>
+                )}
+                <span>{reimporting ? 'Analysing…' : 'Re-import edited .docx'}</span>
               </button>
             )}
           </>
@@ -2566,6 +2659,88 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
         emptySections={emptySections}
         onNavigateToSection={(num) => setActiveSection(num)}
       />
+
+      {/* Re-import preview modal */}
+      {reimportResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="flex flex-col w-full max-w-2xl rounded-2xl border border-border bg-white shadow-2xl overflow-hidden" style={{ maxHeight: '80vh' }}>
+            <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+              <svg className="h-5 w-5 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-foreground">Re-import preview</h3>
+                <p className="text-xs text-muted-foreground">
+                  {reimportResult.totalUpdated} field{reimportResult.totalUpdated !== 1 ? 's' : ''} changed
+                  {reimportResult.styleSignals.length > 0 ? ` · ${reimportResult.styleSignals.length} style signal${reimportResult.styleSignals.length !== 1 ? 's' : ''} detected` : ''}
+                </p>
+              </div>
+              <button onClick={() => setReimportResult(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+              {reimportResult.updatedFields.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Changed Fields</p>
+                  <div className="space-y-2">
+                    {reimportResult.updatedFields.map((f) => (
+                      <div key={f.id} className="rounded-xl border border-border bg-zinc-50 p-3 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-foreground">{f.label}</p>
+                        {f.oldValue && (
+                          <p className="text-[11px] text-red-600 line-through leading-relaxed">{f.oldValue.slice(0, 200)}{f.oldValue.length > 200 ? '…' : ''}</p>
+                        )}
+                        <p className="text-[11px] text-green-700 leading-relaxed">{f.newValue.slice(0, 200)}{f.newValue.length > 200 ? '…' : ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {reimportResult.styleSignals.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Style Signals Detected</p>
+                  <p className="text-[11px] text-muted-foreground mb-2">These will be saved to the framework and used to guide future AI generation for this client.</p>
+                  <div className="space-y-1.5">
+                    {reimportResult.styleSignals.map((s, i) => (
+                      <div key={i} className="flex items-start gap-2.5 rounded-lg border border-border bg-white px-3 py-2">
+                        <span className={cn(
+                          'shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                          s.confidence === 'high' ? 'bg-blue-100 text-blue-700' :
+                          s.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                          'bg-zinc-100 text-zinc-500'
+                        )}>{s.confidence}</span>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-foreground">{s.rule}</p>
+                          <p className="text-[10px] text-muted-foreground">Example: &ldquo;{s.example}&rdquo;</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+              <button
+                onClick={() => setReimportResult(null)}
+                className="rounded-lg px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void applyReimport()}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+              >
+                Apply changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </DraftContext.Provider>
   )
