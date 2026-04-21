@@ -142,6 +142,33 @@ async function authPluginFn(app: FastifyInstance) {
       } catch (err) {
         req.log.error({ err }, '[auth] failed to look up user from database')
       }
+
+      // Last resort: single-agency auto-resolve or fresh-install bootstrap.
+      // If there is exactly one agency in the DB (common for fresh staging / dev installs
+      // where the Clerk JWT template hasn't been configured), use it.
+      // If there are no agencies yet, create one so the first login bootstraps the tenant.
+      try {
+        const agencies = await prisma.agency.findMany({ take: 2, select: { id: true } })
+        if (agencies.length === 1) {
+          const singleId = agencies[0].id
+          req.log.warn({ sub: payload.sub, agencyId: singleId }, '[auth] single-tenant: auto-resolved agency_id')
+          req.auth = { agencyId: singleId, userId: payload.sub, role: 'owner' }
+          agencyStorage.enterWith({ agencyId: singleId })
+          return
+        }
+        if (agencies.length === 0) {
+          const bootstrapped = await prisma.agency.create({
+            data: { name: 'ContentNode', slug: `agency-${Date.now()}` },
+          })
+          req.log.warn({ sub: payload.sub, agencyId: bootstrapped.id }, '[auth] bootstrapped first agency on fresh install')
+          req.auth = { agencyId: bootstrapped.id, userId: payload.sub, role: 'owner' }
+          agencyStorage.enterWith({ agencyId: bootstrapped.id })
+          return
+        }
+      } catch (bootstrapErr) {
+        req.log.error({ err: bootstrapErr }, '[auth] agency bootstrap failed')
+      }
+
       req.log.warn({ sub: payload.sub, claimsKeys: Object.keys(claims) }, '[auth] 403 — token missing agency_id claim and user not found in database')
       return reply.code(403).send({ error: 'Token is missing agency_id claim' })
     }
