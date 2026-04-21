@@ -438,6 +438,7 @@ model User {
   defaultAssigneeOf    Workflow[]    @relation("WorkflowDefaultAssignee")
   comments             Comment[]
   notifications        Notification[]
+  assignedScheduledTasks ScheduledTask[] @relation("ScheduledTaskAssignee")
 
   @@index([agencyId])
   @@map("users")
@@ -1652,12 +1653,14 @@ model ScheduledTask {
   autoGenerate           Boolean  @default(false) @map("auto_generate")
   autoGenerateBlogCount  Int      @default(2)     @map("auto_generate_blog_count")
   scheduledDay           Int?                     @map("scheduled_day")
+  assigneeId             String?                  @map("assignee_id")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   vertical     Vertical?     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  assignee     User?         @relation("ScheduledTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   usageRecords UsageRecord[]
 
   @@index([agencyId])

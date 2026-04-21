@@ -19,6 +19,7 @@ const createBody = z.object({
   autoGenerate:         z.boolean().optional(),
   autoGenerateBlogCount: z.number().int().min(1).max(5).optional(),
   scheduledDay:         z.number().int().min(0).max(27).nullish(),
+  assigneeId:           z.string().nullish(),
 })
 
 const updateBody = createBody
@@ -79,7 +80,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const parsed = createBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
-    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount, scheduledDay } = parsed.data
+    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount, scheduledDay, assigneeId } = parsed.data
 
     if (scope === 'client' && !clientId) {
       return reply.code(400).send({ error: 'clientId required for client-scoped tasks' })
@@ -102,6 +103,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         ...(autoGenerate !== undefined ? { autoGenerate } : {}),
         ...(autoGenerateBlogCount !== undefined ? { autoGenerateBlogCount } : {}),
         ...(scheduledDay !== undefined ? { scheduledDay: scheduledDay ?? null } : {}),
+        ...(assigneeId !== undefined ? { assigneeId: assigneeId ?? null } : {}),
       },
     })
     return reply.code(201).send({ data: task })
@@ -117,7 +119,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const existing = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Task not found' })
 
-    const { label, frequency, config, enabled, clientId, verticalId, autoGenerate, autoGenerateBlogCount, scheduledDay } = parsed.data
+    const { label, frequency, config, enabled, clientId, verticalId, autoGenerate, autoGenerateBlogCount, scheduledDay, assigneeId } = parsed.data
     const updateData: Record<string, unknown> = {}
     if (label !== undefined) updateData.label = label
     if (scheduledDay !== undefined) updateData.scheduledDay = scheduledDay ?? null
@@ -139,6 +141,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     }
     if (autoGenerate !== undefined) updateData.autoGenerate = autoGenerate
     if (autoGenerateBlogCount !== undefined) updateData.autoGenerateBlogCount = autoGenerateBlogCount
+    if (assigneeId !== undefined) updateData.assigneeId = assigneeId ?? null
 
     const task = await prisma.scheduledTask.update({
       where: { id },

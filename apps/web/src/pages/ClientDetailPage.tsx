@@ -5248,6 +5248,7 @@ interface ScheduledTask {
   vertical?: { id: string; name: string } | null
   autoGenerate: boolean; autoGenerateBlogCount: number
   scheduledDay: number | null
+  assigneeId: string | null
 }
 
 const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
@@ -5436,6 +5437,8 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
   const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
   const [autoGenerate, setAutoGenerate] = useState(editTask?.autoGenerate ?? false)
   const [autoGenerateBlogCount, setAutoGenerateBlogCount] = useState(editTask?.autoGenerateBlogCount ?? 2)
+  const [assigneeId, setAssigneeId] = useState<string>(editTask?.assigneeId ?? '')
+  const [members, setMembers] = useState<{ id: string; name: string | null; email: string; avatarStorageKey?: string | null }[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -5443,6 +5446,10 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
     apiFetch(`/api/v1/clients/${clientId}/verticals`)
       .then((r) => r.json())
       .then(({ data }) => setVerticals(data ?? []))
+      .catch(() => {})
+    apiFetch('/api/v1/team')
+      .then((r) => r.json())
+      .then(({ data }) => setMembers(data ?? []))
       .catch(() => {})
   }, [clientId])
 
@@ -5463,6 +5470,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             verticalId: isVertical ? verticalId : null,
             autoGenerate,
             autoGenerateBlogCount,
+            assigneeId: assigneeId || null,
           }),
         })
         const { data, error: err } = await res.json()
@@ -5483,6 +5491,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             config,
             autoGenerate,
             autoGenerateBlogCount,
+            assigneeId: assigneeId || null,
           }),
         })
         const { data, error: err } = await res.json()
@@ -5513,6 +5522,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
           config,
           autoGenerate,
           autoGenerateBlogCount,
+          assigneeId: assigneeId || null,
         }),
       })
       const { data, error: err } = await res.json()
@@ -5649,6 +5659,22 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
                 </select>
               </div>
             )}
+          </div>
+
+          {/* Assignee */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Assign output to</p>
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+            >
+              <option value="">Unassigned</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>{m.name ?? m.email}</option>
+              ))}
+            </select>
+            <p className="text-[11px]" style={{ color: '#9ca3af' }}>Research reports and generated blogs will be assigned to this person in the Pipeline.</p>
           </div>
 
           {error && <p className="text-xs" style={{ color: '#dc2626' }}>{error}</p>}
