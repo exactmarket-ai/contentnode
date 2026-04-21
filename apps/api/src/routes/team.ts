@@ -625,8 +625,12 @@ export async function teamRoutes(app: FastifyInstance) {
           // Placeholder so DB constraint is satisfied even without Clerk API
           if (!email) email = `${userId}@auto-provisioned.local`
 
-          await prisma.user.create({
-            data: { agencyId, clerkUserId: userId, email, name: fullName, role: 'owner' },
+          // upsert on clerkUserId (globally unique) so re-runs on a re-seeded DB
+          // never fail with a duplicate-key error — just re-homes the user to this agency.
+          await prisma.user.upsert({
+            where:  { clerkUserId: userId },
+            create: { agencyId, clerkUserId: userId, email, name: fullName, role: 'owner' },
+            update: { agencyId, email, name: fullName ?? undefined },
           })
           me = await prisma.user.findFirst({
             where:  { agencyId, clerkUserId: userId },
