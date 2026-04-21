@@ -7,7 +7,7 @@ export async function runScheduleChecker(): Promise<void> {
 
   const dueSchedules = await prisma.workflowSchedule.findMany({
     where: { status: 'active', nextRunAt: { lte: now } },
-    include: { workflow: { select: { id: true, agencyId: true, status: true } } },
+    include: { workflow: { select: { id: true, agencyId: true, status: true, defaultAssigneeId: true } } },
   })
 
   if (dueSchedules.length === 0) return
@@ -33,6 +33,7 @@ export async function runScheduleChecker(): Promise<void> {
           status: 'pending',
           input: {},
           output: { nodeStatuses: {} },
+          ...(sched.workflow.defaultAssigneeId ? { assigneeId: sched.workflow.defaultAssigneeId } : {}),
         },
       })
 
