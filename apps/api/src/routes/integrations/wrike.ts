@@ -150,38 +150,62 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: { ok: true } })
   })
 
-  // ── GET /tasks — fetch recent tasks (no status filter — accounts use custom workflows) ──
+  // ── GET /tasks — fetch ALL tasks with pagination ─────────────────────────
   app.get('/tasks', async (req, reply) => {
     const { agencyId } = req.auth
-    const { pageSize = '100' } = req.query as Record<string, string>
+    const { start, end } = req.query as Record<string, string>
 
     const { accessToken, host } = await refreshWrikeToken(agencyId)
 
-    const url = new URL(`https://${host}/api/v4/tasks`)
-    url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds']))
-    url.searchParams.set('pageSize', pageSize)
+    const updatedDate = start && end ? JSON.stringify({
+      start: new Date(start).toISOString().split('.')[0] + 'Z',
+      end:   new Date(end).toISOString().split('.')[0] + 'Z',
+    }) : null
 
-    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
-    if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status} ${await res.text()}` })
+    const allTasks: unknown[] = []
+    let nextPageToken: string | undefined
 
-    const data = await res.json() as { data: unknown[] }
-    return reply.send({ data: data.data })
+    do {
+      const url = new URL(`https://${host}/api/v4/tasks`)
+      url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds']))
+      url.searchParams.set('pageSize', '1000')
+      if (updatedDate) url.searchParams.set('updatedDate', updatedDate)
+      if (nextPageToken) url.searchParams.set('nextPageToken', nextPageToken)
+
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+      if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status} ${await res.text()}` })
+
+      const page = await res.json() as { data: unknown[]; nextPageToken?: string }
+      allTasks.push(...(page.data ?? []))
+      nextPageToken = page.nextPageToken
+    } while (nextPageToken)
+
+    return reply.send({ data: allTasks })
   })
 
-  // ── GET /folders — fetch all projects/folders ─────────────────────────────
+  // ── GET /folders — fetch ALL projects/folders with pagination ─────────────
   app.get('/folders', async (req, reply) => {
     const { agencyId } = req.auth
     const { accessToken, host } = await refreshWrikeToken(agencyId)
 
-    const url = new URL(`https://${host}/api/v4/folders`)
-    url.searchParams.set('fields',   JSON.stringify(['description', 'childIds', 'project']))
-    url.searchParams.set('project',  'true')
+    const allFolders: unknown[] = []
+    let nextPageToken: string | undefined
 
-    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
-    if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status} ${await res.text()}` })
+    do {
+      const url = new URL(`https://${host}/api/v4/folders`)
+      url.searchParams.set('fields',   JSON.stringify(['description', 'childIds', 'project']))
+      url.searchParams.set('project',  'true')
+      if (nextPageToken) url.searchParams.set('nextPageToken', nextPageToken)
 
-    const data = await res.json() as { data: unknown[] }
-    return reply.send({ data: data.data })
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+      if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status} ${await res.text()}` })
+
+      const page = await res.json() as { data: unknown[]; nextPageToken?: string }
+      allFolders.push(...(page.data ?? []))
+      nextPageToken = page.nextPageToken
+    } while (nextPageToken)
+
+    return reply.send({ data: allFolders })
   })
 }
 

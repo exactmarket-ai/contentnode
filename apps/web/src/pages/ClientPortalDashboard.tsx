@@ -463,13 +463,15 @@ const EXEC_SUBTABS = [
   { value: 'wrike',     label: 'Wrike',       icon: Icons.CheckSquare },
 ]
 
-function ExecutiveView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected }: {
+function ExecutiveView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeProjectId, wrikeFilterBar }: {
   clients: Client[]
   runs: Run[]
   wrikeTasks: WrikeTask[]
   wrikeFolders: WrikeFolder[]
   wrikeLoading: boolean
   wrikeConnected: boolean
+  wrikeProjectId: string
+  wrikeFilterBar: React.ReactNode
 }) {
   const navigate = useNavigate()
   const [subTab, setSubTab] = useState('portfolio')
@@ -602,7 +604,13 @@ function ExecutiveView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, 
       )}
 
       {subTab === 'wrike' && (
-        <WrikeExecutiveTab tasks={wrikeTasks} folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected} />
+        <>
+          {wrikeFilterBar}
+          <WrikeExecutiveTab
+            tasks={wrikeProjectId === 'all' ? wrikeTasks : wrikeTasks.filter((t) => t.parentIds?.includes(wrikeProjectId))}
+            folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected}
+          />
+        </>
       )}
     </div>
   )
@@ -624,13 +632,15 @@ const STAKEHOLDER_SUBTABS = [
   { value: 'wrike',    label: 'Wrike',    icon: Icons.CheckSquare },
 ]
 
-function StakeholderView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected }: {
+function StakeholderView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeProjectId, wrikeFilterBar }: {
   clients: Client[]
   runs: Run[]
   wrikeTasks: WrikeTask[]
   wrikeFolders: WrikeFolder[]
   wrikeLoading: boolean
   wrikeConnected: boolean
+  wrikeProjectId: string
+  wrikeFilterBar: React.ReactNode
 }) {
   const navigate = useNavigate()
   const [subTab, setSubTab] = useState('pipeline')
@@ -774,13 +784,23 @@ function StakeholderView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading
       )}
 
       {subTab === 'wrike' && (
-        <WrikeStakeholderTab tasks={wrikeTasks} folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected} />
+        <>
+          {wrikeFilterBar}
+          <WrikeStakeholderTab
+            tasks={wrikeProjectId === 'all' ? wrikeTasks : wrikeTasks.filter((t) => t.parentIds?.includes(wrikeProjectId))}
+            folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected}
+          />
+        </>
       )}
     </div>
   )
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
+
+function toDateInput(d: Date) {
+  return d.toISOString().split('T')[0]
+}
 
 export function ClientPortalDashboard() {
   const [view, setView]               = useState<'executive' | 'stakeholder'>('executive')
@@ -791,6 +811,12 @@ export function ClientPortalDashboard() {
   const [wrikeLoading, setWrikeLoading] = useState(false)
   const [wrikeConnected, setWrikeConnected] = useState(false)
   const [loading, setLoading]         = useState(true)
+
+  // Wrike filters
+  const [wrikeStart,     setWrikeStart]     = useState(() => toDateInput(new Date(Date.now() - 30 * 86400000)))
+  const [wrikeEnd,       setWrikeEnd]       = useState(() => toDateInput(new Date()))
+  const [wrikeProjectId, setWrikeProjectId] = useState('all')
+  const [useDates,       setUseDates]       = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -803,16 +829,19 @@ export function ClientPortalDashboard() {
         setRuns(runRes.data ?? [])
         const connected = !!wrikeStatus.data?.connected
         setWrikeConnected(connected)
-        if (connected) loadWrikeData()
+        if (connected) loadWrikeData(false, '', '')
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
-  const loadWrikeData = useCallback(() => {
+  const loadWrikeData = useCallback((withDates: boolean, start: string, end: string) => {
     setWrikeLoading(true)
+    const tasksUrl = withDates && start && end
+      ? `/api/v1/integrations/wrike/tasks?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+      : '/api/v1/integrations/wrike/tasks'
     Promise.all([
-      apiFetch('/api/v1/integrations/wrike/tasks').then((r) => r.json()),
+      apiFetch(tasksUrl).then((r) => r.json()),
       apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
     ])
       .then(([tasksRes, foldersRes]) => {
@@ -822,6 +851,67 @@ export function ClientPortalDashboard() {
       .catch(() => {})
       .finally(() => setWrikeLoading(false))
   }, [])
+
+  const runWrikeFilter = useCallback(() => {
+    loadWrikeData(useDates, wrikeStart, wrikeEnd)
+  }, [loadWrikeData, useDates, wrikeStart, wrikeEnd])
+
+  const wrikeFilterBar = (
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-white p-3 shadow-sm">
+      {/* Project picker */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Project / Client</label>
+        <select
+          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[180px]"
+          value={wrikeProjectId}
+          onChange={(e) => setWrikeProjectId(e.target.value)}
+        >
+          <option value="all">All projects</option>
+          {wrikeFolders.map((f) => (
+            <option key={f.id} value={f.id}>{f.title}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Date range toggle + pickers */}
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide cursor-pointer">
+          <input type="checkbox" checked={useDates} onChange={(e) => setUseDates(e.target.checked)} className="accent-blue-500" />
+          Date Range (updated)
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={wrikeStart}
+            onChange={(e) => setWrikeStart(e.target.value)}
+            disabled={!useDates}
+            className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+          <span className="text-[10px] text-muted-foreground">to</span>
+          <input
+            type="date"
+            value={wrikeEnd}
+            onChange={(e) => setWrikeEnd(e.target.value)}
+            disabled={!useDates}
+            className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+        </div>
+      </div>
+
+      {/* Run button */}
+      <button
+        onClick={runWrikeFilter}
+        disabled={wrikeLoading}
+        className="flex h-8 items-center gap-1.5 rounded-lg px-4 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        style={{ backgroundColor: '#185fa5' }}
+      >
+        {wrikeLoading
+          ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</>
+          : <><Icons.RefreshCw className="h-3.5 w-3.5" /> Run</>
+        }
+      </button>
+    </div>
+  )
 
   return (
     <div className="flex h-full flex-col overflow-auto bg-background">
@@ -870,12 +960,14 @@ export function ClientPortalDashboard() {
             clients={clients} runs={runs}
             wrikeTasks={wrikeTasks} wrikeFolders={wrikeFolders}
             wrikeLoading={wrikeLoading} wrikeConnected={wrikeConnected}
+            wrikeProjectId={wrikeProjectId} wrikeFilterBar={wrikeFilterBar}
           />
         ) : (
           <StakeholderView
             clients={clients} runs={runs}
             wrikeTasks={wrikeTasks} wrikeFolders={wrikeFolders}
             wrikeLoading={wrikeLoading} wrikeConnected={wrikeConnected}
+            wrikeProjectId={wrikeProjectId} wrikeFilterBar={wrikeFilterBar}
           />
         )}
       </div>
