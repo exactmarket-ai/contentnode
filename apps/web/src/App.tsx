@@ -9,6 +9,7 @@ import { WorkflowListPage } from '@/pages/WorkflowListPage'
 import { QualityAndReportsPage } from '@/pages/QualityAndReportsPage'
 import { ClientListPage } from '@/pages/ClientListPage'
 import { ClientDetailPage } from '@/pages/ClientDetailPage'
+import { ClientPortalDashboard } from '@/pages/ClientPortalDashboard'
 import { UsagePage } from '@/pages/UsagePage'
 import { HumanizerDashboard } from '@/pages/HumanizerDashboard'
 import { ResearchNodePage } from '@/pages/ResearchNodePage'
@@ -115,6 +116,7 @@ const protectedChildren = [
   { path: 'workflows/:workflowId', element: <WorkflowEditor /> },
   { path: 'clients', element: <ClientListPage /> },
   { path: 'clients/:id', element: <ClientDetailPage /> },
+  { path: 'client-dashboard', element: <ClientPortalDashboard /> },
   { path: 'calendar', element: <CalendarPage /> },
   { path: 'quality', element: <QualityAndReportsPage /> },
   { path: 'reports', element: <Navigate to="/quality" replace /> },
