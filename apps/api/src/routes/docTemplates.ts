@@ -22,72 +22,71 @@ async function getMammoth(): Promise<MammothModule> {
 
 export const GTM_VARIABLES = [
   // Meta
-  { id: 'client_name',      label: 'Client Name',         description: 'The client or company name',                  section: 'meta' },
-  { id: 'agency_name',      label: 'Agency Name',         description: 'The agency producing this document',          section: 'meta' },
-  { id: 'vertical_name',    label: 'Vertical Name',       description: 'The industry vertical (e.g. Healthcare)',     section: 'meta' },
-  { id: 'document_date',    label: 'Document Date',       description: 'Date the document was generated',             section: 'meta' },
+  { id: 'client_name',      label: 'Client Name',     description: 'The client or company name',                            section: 'meta' },
+  { id: 'agency_name',      label: 'Agency Name',     description: 'The agency producing this document',                    section: 'meta' },
+  { id: 'vertical_name',    label: 'Vertical Name',   description: 'The industry vertical (e.g. Healthcare)',               section: 'meta' },
+  { id: 'document_date',    label: 'Document Date',   description: 'Date the document was generated',                       section: 'meta' },
   // §01 Vertical Overview
-  { id: 's01_positioning_statement', label: 'Positioning Statement', description: 'One-line positioning statement',   section: '01' },
-  { id: 's01_tagline_options',       label: 'Tagline Options',       description: 'Primary tagline options (3)',       section: '01' },
-  { id: 's01_how_to_use',            label: 'How to Use',            description: 'How to use this document',         section: '01' },
-  { id: 's01_what_is_not',           label: 'What It Is Not',        description: 'Scope exclusions',                 section: '01' },
-  { id: 's01_platform_name',         label: 'Platform Name',         description: 'Product / platform name',          section: '01' },
-  { id: 's01_platform_benefit',      label: 'Platform Benefit',      description: 'Core platform benefit',            section: '01' },
-  // §02 Customer Definition
-  { id: 's02_industry',              label: 'Industry',              description: 'Target industry',                   section: '02' },
-  { id: 's02_company_size',          label: 'Company Size',          description: 'Target company size/ARR range',     section: '02' },
-  { id: 's02_geography',             label: 'Geography',             description: 'Target geography',                  section: '02' },
-  { id: 's02_it_posture',            label: 'IT Posture',            description: 'IT complexity posture',             section: '02' },
-  { id: 's02_compliance_status',     label: 'Compliance Status',     description: 'Regulatory / compliance context',   section: '02' },
-  { id: 's02_contract_profile',      label: 'Contract Profile',      description: 'Typical contract / deal structure', section: '02' },
-  // §03 Company Origin
-  { id: 's03_founding_story',        label: 'Founding Story',        description: 'Origin and founding story',         section: '03' },
-  { id: 's03_key_milestones',        label: 'Key Milestones',        description: 'Key company milestones',            section: '03' },
-  { id: 's03_unique_capability',     label: 'Unique Capability',     description: 'Core unique capability / IP',       section: '03' },
-  // §04 Triggers & Pain
-  { id: 's04_trigger_events',        label: 'Trigger Events',        description: 'Buying trigger events',             section: '04' },
-  { id: 's04_pain_points',           label: 'Pain Points',           description: 'Stakeholder pain points',           section: '04' },
-  // §05 Business Outcomes
-  { id: 's05_business_outcomes',     label: 'Business Outcomes',     description: 'Key business outcomes delivered',   section: '05' },
-  { id: 's05_core_capabilities',     label: 'Core Capabilities',     description: 'Core platform capabilities',        section: '05' },
-  // §06 Competitive Positioning
-  { id: 's06_differentiators',       label: 'Differentiators',       description: 'Key competitive differentiators',   section: '06' },
-  { id: 's06_win_themes',            label: 'Win Themes',            description: 'Top win themes vs. competition',    section: '06' },
-  // §07 Target Accounts
-  { id: 's07_ideal_customer_profile', label: 'Ideal Customer Profile', description: 'ICP definition',                section: '07' },
-  { id: 's07_target_accounts',        label: 'Target Accounts',       description: 'Named target account list',       section: '07' },
-  // §08 Personas
-  { id: 's08_persona_names',         label: 'Persona Names',         description: 'Buyer persona names / titles',      section: '08' },
-  { id: 's08_persona_goals',         label: 'Persona Goals',         description: 'Persona goals and motivations',     section: '08' },
-  { id: 's08_persona_pain_points',   label: 'Persona Pain Points',   description: 'Persona-level pain points',         section: '08' },
-  // §09 Objections
-  { id: 's09_objections',            label: 'Objections',            description: 'Common objections',                 section: '09' },
-  { id: 's09_objection_responses',   label: 'Objection Responses',   description: 'Recommended objection responses',   section: '09' },
-  // §10 Proof Points
-  { id: 's10_proof_points',          label: 'Proof Points',          description: 'Customer proof points / stats',     section: '10' },
-  { id: 's10_case_study_results',    label: 'Case Study Results',    description: 'Key case study outcomes',           section: '10' },
-  // §11 Pricing
-  { id: 's11_pricing_model',         label: 'Pricing Model',         description: 'Pricing model description',         section: '11' },
-  { id: 's11_pricing_tiers',         label: 'Pricing Tiers',         description: 'Pricing tiers / packages',          section: '11' },
-  // §12 Competitive Intelligence
-  { id: 's12_competitor_names',      label: 'Competitor Names',      description: 'Key named competitors',             section: '12' },
-  { id: 's12_competitive_positioning', label: 'Competitive Positioning', description: 'vs. competitor positioning',   section: '12' },
-  // §13 Sales Process
-  { id: 's13_discovery_questions',   label: 'Discovery Questions',   description: 'Key discovery questions',           section: '13' },
-  { id: 's13_sales_stages',          label: 'Sales Stages',          description: 'Sales stage definitions',           section: '13' },
-  // §14 Sales Plays
-  { id: 's14_email_templates',       label: 'Email Templates',       description: 'Outbound email templates',          section: '14' },
-  { id: 's14_call_scripts',          label: 'Call Scripts',          description: 'Discovery call scripts',            section: '14' },
-  // §15 Marketing Themes
-  { id: 's15_marketing_channels',    label: 'Marketing Channels',    description: 'Primary marketing channels',        section: '15' },
-  { id: 's15_content_themes',        label: 'Content Themes',        description: 'Core content themes / pillars',     section: '15' },
-  // §16 Partner Strategy
-  { id: 's16_partner_program',       label: 'Partner Program',       description: 'Partner / channel program details', section: '16' },
-  // §17 Success Metrics
-  { id: 's17_kpis',                  label: 'KPIs',                  description: 'Key success metrics and KPIs',      section: '17' },
-  // §18 CTAs & Campaigns
-  { id: 's18_ctas',                  label: 'CTAs',                  description: 'Primary calls to action',           section: '18' },
-  { id: 's18_campaign_themes',       label: 'Campaign Themes',       description: 'Campaign theme descriptions',       section: '18' },
+  { id: 's01_positioning_statement', label: 'Positioning Statement',    description: 'One-line positioning statement for this vertical',                 section: '01' },
+  { id: 's01_tagline_options',       label: 'Tagline Options',          description: 'Primary tagline options (2-3)',                                    section: '01' },
+  { id: 's01_how_to_use',            label: 'How to Use This Document', description: 'Guidance for sales, marketing, and partners on using this document', section: '01' },
+  { id: 's01_what_is_not',           label: 'What the Company Is Not',  description: 'Scope exclusions and boundary statements',                         section: '01' },
+  // §02 Customer Definition + Profile
+  { id: 's02_industry',            label: 'Industry / Vertical',    description: 'Target industry and sub-segments',                               section: '02' },
+  { id: 's02_company_size',        label: 'Company Size',           description: 'Target company size / employee count / ARR range',               section: '02' },
+  { id: 's02_geography',           label: 'Geography',              description: 'Target geography and coverage',                                  section: '02' },
+  { id: 's02_it_posture',          label: 'IT Posture',             description: 'Typical IT maturity and internal capability of target accounts',  section: '02' },
+  { id: 's02_compliance_status',   label: 'Compliance Status',      description: 'Regulatory and compliance context of target accounts',            section: '02' },
+  { id: 's02_contract_profile',    label: 'Contract Profile',       description: 'Typical contract and deal structure',                            section: '02' },
+  { id: 's02_primary_buyer_table', label: 'Primary Buyer Table',    description: 'Segment-level table of buyers, pain, and entry points',          section: '02' },
+  // §03 Market Pressures + Statistics
+  { id: 's03_market_pressure_narrative', label: 'Market Pressure Narrative', description: 'Narrative description of market pressures and urgency drivers', section: '03' },
+  { id: 's03_key_statistics',            label: 'Key Statistics',            description: 'Statistics table with context, source, and year',              section: '03' },
+  // §04 Core Challenges
+  { id: 's04_challenges', label: 'Core Challenges', description: 'IT challenges creating the sales opportunity — why it exists, consequence, solution, pillars per challenge', section: '04' },
+  // §05 Solutions + Service Stack
+  { id: 's05_pillar_cloud',         label: 'Cloud Pillar',         description: 'Cloud value proposition, key services, and relevant segments',         section: '05' },
+  { id: 's05_pillar_data_ai',       label: 'Data + AI Pillar',     description: 'Data and AI value proposition, key services, and relevant segments',   section: '05' },
+  { id: 's05_pillar_it_operations', label: 'IT Operations Pillar', description: 'IT Operations value proposition, key services, and relevant segments', section: '05' },
+  { id: 's05_pillar_cybersecurity', label: 'Cybersecurity Pillar', description: 'Cybersecurity value proposition, key services, and relevant segments', section: '05' },
+  { id: 's05_full_service_stack',   label: 'Full Service Stack',   description: 'Table of services with regulatory domain, delivery description, and priority', section: '05' },
+  // §06 Why [Company]
+  { id: 's06_differentiators', label: 'Differentiators', description: 'Numbered vertical-specific differentiators and proof of fit', section: '06' },
+  // §07 Segments + Buyer Profiles
+  { id: 's07_segments', label: 'Segments + Buyer Profiles', description: 'Sub-segment framing with buyer titles, key pressures, lead hooks, and compliance notes', section: '07' },
+  // §08 Messaging Framework
+  { id: 's08_problems',        label: 'Problems',                     description: 'Core problem narrative for this vertical (2-3 sentences)',    section: '08' },
+  { id: 's08_solution',        label: 'Solution',                     description: 'How the company solves the problem (2-3 sentences)',          section: '08' },
+  { id: 's08_outcomes',        label: 'Outcomes',                     description: 'Key outcomes delivered — the after state (2-3 sentences)',    section: '08' },
+  { id: 's08_value_by_pillar', label: 'Value Proposition by Pillar',  description: 'Table of value props by service pillar with proof points',   section: '08' },
+  // §09 Proof Points + Case Studies
+  { id: 's09_proof_points', label: 'Company Proof Points', description: 'Table of company-wide proof points with scope',                                    section: '09' },
+  { id: 's09_case_studies',  label: 'Case Studies',        description: 'Case studies with situation, engagement, outcomes, 30-second version, headline stat', section: '09' },
+  // §10 Objection Handling
+  { id: 's10_objections', label: 'Objection Handling', description: 'Common objections with sales responses and follow-up questions', section: '10' },
+  // §11 Brand Voice Examples
+  { id: 's11_tone_target',          label: 'Tone Target',           description: 'Target voice and tone description for this vertical',    section: '11' },
+  { id: 's11_vocabulary_level',     label: 'Vocabulary Level',      description: 'Guidance on technical depth and accessibility',          section: '11' },
+  { id: 's11_sentence_style',       label: 'Sentence Style',        description: 'Guidance on sentence construction and structure',        section: '11' },
+  { id: 's11_what_to_avoid',        label: 'What to Avoid',         description: 'Banned phrases, buzzwords, and patterns to avoid',      section: '11' },
+  { id: 's11_sounds_like',          label: 'Sounds Like',           description: 'Good examples of the correct voice and tone',           section: '11' },
+  { id: 's11_does_not_sound_like',  label: 'Does Not Sound Like',   description: 'Bad examples with corrected versions',                  section: '11' },
+  // §12 Competitive Differentiation
+  { id: 's12_competitive_differentiation', label: 'Competitive Differentiation', description: 'Competitor types with their positioning, NexusTek counter, and when it comes up', section: '12' },
+  // §13 Customer Quotes + Testimonials
+  { id: 's13_customer_quotes', label: 'Customer Quotes + Testimonials', description: 'Quotes with attribution, context, best-used-in guidance, and approval status', section: '13' },
+  // §14 Campaign Themes + Asset Mapping
+  { id: 's14_campaign_themes', label: 'Campaign Themes + Asset Mapping', description: 'Campaign themes with target audience, primary assets, and key message', section: '14' },
+  // §15 Frequently Asked Questions
+  { id: 's15_faqs', label: 'Frequently Asked Questions', description: 'Real prospect questions from discovery calls with answers and best-addressed-in guidance', section: '15' },
+  // §16 Content Funnel Mapping
+  { id: 's16_funnel_mapping',    label: 'Content Funnel Mapping', description: 'Assets mapped to funnel stages with CTAs and buyer state', section: '16' },
+  { id: 's16_cta_sequencing',    label: 'CTA Sequencing Notes',   description: 'Notes on how CTAs connect across funnel stages',          section: '16' },
+  // §17 Regulatory + Compliance Context
+  { id: 's17_regulatory_context',    label: 'Regulatory + Compliance Context', description: 'Regulatory frameworks table with capabilities, service pillars, and sales notes', section: '17' },
+  { id: 's17_regulatory_sales_note', label: 'Regulatory Sales Note',           description: 'Disclaimer and scope note for regulatory conversations',                          section: '17' },
+  // §18 CTAs + Next Steps
+  { id: 's18_ctas', label: 'CTAs + Next Steps', description: 'Table of CTAs with description, target audience trigger, and asset appearances', section: '18' },
 ]
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -77,80 +77,118 @@ function buildGtmVariableValues(
     s01_tagline_options:       str(fw.s01?.taglineOptions),
     s01_how_to_use:            str(fw.s01?.howToUse),
     s01_what_is_not:           str(fw.s01?.whatIsNot),
-    s01_platform_name:         str(fw.s01?.platformName),
-    s01_platform_benefit:      str(fw.s01?.platformBenefit),
 
-    // §02 Customer Definition
-    s02_industry:          str(fw.s02?.industry),
-    s02_company_size:      str(fw.s02?.companySize),
-    s02_geography:         str(fw.s02?.geography),
-    s02_it_posture:        str(fw.s02?.itPosture),
-    s02_compliance_status: str(fw.s02?.complianceStatus),
-    s02_contract_profile:  str(fw.s02?.contractProfile),
+    // §02 Customer Definition + Profile
+    s02_industry:            str(fw.s02?.industry),
+    s02_company_size:        str(fw.s02?.companySize),
+    s02_geography:           str(fw.s02?.geography),
+    s02_it_posture:          str(fw.s02?.itPosture),
+    s02_compliance_status:   str(fw.s02?.complianceStatus),
+    s02_contract_profile:    str(fw.s02?.contractProfile),
+    s02_primary_buyer_table: list(fw.s02?.buyerTable, (r) => r.segment ? `${r.segment} | ${r.primaryBuyer} | ${r.corePain} | ${r.entryPoint}` : ''),
 
-    // §03 Market Pressures (mapped to s03 founding-style vars)
-    s03_founding_story:    str(fw.s03?.marketPressureNarrative),
-    s03_key_milestones:    list(fw.s03?.statsTable, (s) => s.stat ? `${s.stat} — ${s.context} (${s.source}, ${s.year})` : ''),
-    s03_unique_capability: str(fw.s03?.additionalContext),
+    // §03 Market Pressures + Statistics
+    s03_market_pressure_narrative: str(fw.s03?.marketPressureNarrative),
+    s03_key_statistics: list(fw.s03?.statsTable, (s) => s.stat ? `${s.stat} — ${s.context} (${s.source}, ${s.year})` : ''),
 
     // §04 Core Challenges
-    s04_trigger_events: list(fw.s04?.challenges, (c) => c.name ? `${c.name}: ${c.whyExists}` : ''),
-    s04_pain_points:    list(fw.s04?.challenges, (c) => str(c.consequence)),
+    s04_challenges: list(fw.s04?.challenges, (c) => c.name ? [
+      `Challenge: ${c.name}`,
+      c.whyExists    ? `Why It Exists: ${c.whyExists}`           : '',
+      c.consequence  ? `Business Consequence: ${c.consequence}`  : '',
+      c.solution     ? `Solution: ${c.solution}`                 : '',
+      c.pillarsText  ? `Relevant Pillars: ${c.pillarsText}`      : '',
+    ].filter(Boolean).join('\n') : ''),
 
-    // §05 Solutions + Service Stack
-    s05_business_outcomes: list(fw.s05?.pillars, (p) => p.pillar ? `${p.pillar}: ${p.valueProp}` : ''),
-    s05_core_capabilities: list(fw.s05?.serviceStack, (s) => s.service ? `${s.service}: ${s.whatItDelivers}` : ''),
+    // §05 Solutions + Service Stack — pillars by position (Cloud, Data+AI, IT Ops, Cybersecurity)
+    s05_pillar_cloud:         fw.s05?.pillars?.[0] ? [fw.s05.pillars[0].valueProp, fw.s05.pillars[0].keyServices ? `Key Services: ${fw.s05.pillars[0].keyServices}` : '', fw.s05.pillars[0].relevantTo ? `Relevant To: ${fw.s05.pillars[0].relevantTo}` : ''].filter(Boolean).join('\n\n') : '',
+    s05_pillar_data_ai:       fw.s05?.pillars?.[1] ? [fw.s05.pillars[1].valueProp, fw.s05.pillars[1].keyServices ? `Key Services: ${fw.s05.pillars[1].keyServices}` : '', fw.s05.pillars[1].relevantTo ? `Relevant To: ${fw.s05.pillars[1].relevantTo}` : ''].filter(Boolean).join('\n\n') : '',
+    s05_pillar_it_operations: fw.s05?.pillars?.[2] ? [fw.s05.pillars[2].valueProp, fw.s05.pillars[2].keyServices ? `Key Services: ${fw.s05.pillars[2].keyServices}` : '', fw.s05.pillars[2].relevantTo ? `Relevant To: ${fw.s05.pillars[2].relevantTo}` : ''].filter(Boolean).join('\n\n') : '',
+    s05_pillar_cybersecurity: fw.s05?.pillars?.[3] ? [fw.s05.pillars[3].valueProp, fw.s05.pillars[3].keyServices ? `Key Services: ${fw.s05.pillars[3].keyServices}` : '', fw.s05.pillars[3].relevantTo ? `Relevant To: ${fw.s05.pillars[3].relevantTo}` : ''].filter(Boolean).join('\n\n') : '',
+    s05_full_service_stack:   list(fw.s05?.serviceStack, (s) => s.service ? `${s.service} | ${s.regulatoryDomain ?? ''} | ${s.whatItDelivers} | ${s.priority}` : ''),
 
     // §06 Why [Client]
-    s06_differentiators: list(fw.s06?.differentiators, (d) => d.label ? `${d.label}: ${d.position}` : ''),
-    s06_win_themes:      list(fw.s06?.differentiators, (d) => str(d.label)),
+    s06_differentiators: list(fw.s06?.differentiators, (d) => d.label ? `${d.label}:\n${d.position}` : ''),
 
     // §07 Segments + Buyer Profiles
-    s07_ideal_customer_profile: list(fw.s07?.segments, (s) => s.name ? `${s.name}: ${s.primaryBuyerTitles}` : ''),
-    s07_target_accounts:        str(fw.s02?.secondaryTargets),
+    s07_segments: list(fw.s07?.segments, (s) => s.name ? [
+      `Segment: ${s.name}`,
+      s.primaryBuyerTitles ? `Primary Buyer: ${s.primaryBuyerTitles}` : '',
+      s.whatIsDifferent    ? `What Is Different: ${s.whatIsDifferent}` : '',
+      s.keyPressures       ? `Key Pressures: ${s.keyPressures}`        : '',
+      s.leadHook           ? `Lead Hook: ${s.leadHook}`                : '',
+      s.complianceNotes    ? `Compliance Notes: ${s.complianceNotes}`  : '',
+    ].filter(Boolean).join('\n') : ''),
 
     // §08 Messaging Framework
-    s08_persona_names:       list(fw.s07?.segments, (s) => str(s.name)),
-    s08_persona_goals:       str(fw.s08?.solution),
-    s08_persona_pain_points: str(fw.s08?.problems),
+    s08_problems:        str(fw.s08?.problems),
+    s08_solution:        str(fw.s08?.solution),
+    s08_outcomes:        str(fw.s08?.outcomes),
+    s08_value_by_pillar: list(fw.s08?.valuePropTable, (r) => r.pillar ? `${r.pillar} | ${r.meaning} | ${r.proofPoint} | ${r.citation}` : ''),
 
-    // §09 / §10 Objection Handling
-    s09_objections:          list(fw.s10?.objections, (o) => str(o.objection)),
-    s09_objection_responses: list(fw.s10?.objections, (o) => o.objection ? `${o.objection} → ${o.response}` : ''),
+    // §09 Proof Points + Case Studies
+    s09_proof_points: list(fw.s09?.proofPoints, (p) => p.text ? `${p.text} (${p.source})` : ''),
+    s09_case_studies:  list(fw.s09?.caseStudies, (c) => c.clientProfile ? [
+      `Client: ${c.clientProfile}`,
+      c.url         ? `URL: ${c.url}`                 : '',
+      c.situation   ? `Situation: ${c.situation}`     : '',
+      c.engagement  ? `Engagement: ${c.engagement}`   : '',
+      c.outcomes    ? `Outcomes: ${c.outcomes}`        : '',
+      c.thirtySecond ? `30-Second: ${c.thirtySecond}` : '',
+      c.headlineStat ? `Headline: ${c.headlineStat}`  : '',
+    ].filter(Boolean).join('\n') : ''),
 
-    // §10 Proof Points + Case Studies
-    s10_proof_points:      list(fw.s09?.proofPoints, (p) => p.text ? `${p.text} (${p.source})` : ''),
-    s10_case_study_results: list(fw.s09?.caseStudies, (c) => str(c.headlineStat) || str(c.outcomes)),
+    // §10 Objection Handling
+    s10_objections: list(fw.s10?.objections, (o) => o.objection ? [
+      `Objection: ${o.objection}`,
+      o.response ? `Response: ${o.response}` : '',
+      o.followUp ? `Follow-Up: ${o.followUp}` : '',
+    ].filter(Boolean).join('\n') : ''),
 
-    // §11 Brand Voice
-    s11_pricing_model: str(fw.s11?.toneTarget),
-    s11_pricing_tiers: str(fw.s11?.vocabularyLevel),
+    // §11 Brand Voice Examples
+    s11_tone_target:         str(fw.s11?.toneTarget),
+    s11_vocabulary_level:    str(fw.s11?.vocabularyLevel),
+    s11_sentence_style:      str(fw.s11?.sentenceStyle),
+    s11_what_to_avoid:       str(fw.s11?.whatToAvoid),
+    s11_sounds_like:         list(fw.s11?.goodExamples, (e) => str(e.text)),
+    s11_does_not_sound_like: list(fw.s11?.badExamples, (e) => e.bad ? `BAD: ${e.bad}\nBETTER: ${e.whyWrong}` : ''),
 
     // §12 Competitive Differentiation
-    s12_competitor_names:        list(fw.s12?.competitors, (c) => str(c.type)),
-    s12_competitive_positioning: list(fw.s12?.competitors, (c) => c.type ? `${c.type}: ${c.counter}` : ''),
+    s12_competitive_differentiation: list(fw.s12?.competitors, (c) => c.type ? `${c.type}: ${c.positioning} → Counter: ${c.counter} (${c.whenComesUp})` : ''),
 
     // §13 Customer Quotes + Testimonials
-    s13_discovery_questions: list(fw.s15?.faqs, (f) => str(f.question)),
-    s13_sales_stages:        list(fw.s13?.quotes, (q) => q.quoteText ? `"${q.quoteText}" — ${q.attribution}` : ''),
+    s13_customer_quotes: list(fw.s13?.quotes, (q) => q.quoteText ? [
+      `"${q.quoteText}" — ${q.attribution}`,
+      q.context    ? `Context: ${q.context}`          : '',
+      q.bestUsedIn ? `Best Used In: ${q.bestUsedIn}`  : '',
+      q.approved   ? `Approved: ${q.approved}`        : '',
+    ].filter(Boolean).join('\n') : ''),
 
-    // §14 Campaign Themes
-    s14_email_templates: list(fw.s14?.campaigns, (c) => c.theme ? `${c.theme}: ${c.keyMessage}` : ''),
-    s14_call_scripts:    list(fw.s14?.campaigns, (c) => str(c.targetAudience)),
+    // §14 Campaign Themes + Asset Mapping
+    s14_campaign_themes: list(fw.s14?.campaigns, (c) => c.theme ? [
+      `Theme: ${c.theme}`,
+      c.targetAudience ? `Audience: ${c.targetAudience}` : '',
+      c.primaryAssets  ? `Assets: ${c.primaryAssets}`    : '',
+      c.keyMessage     ? `Message: ${c.keyMessage}`      : '',
+    ].filter(Boolean).join('\n') : ''),
 
-    // §15 FAQs
-    s15_marketing_channels: list(fw.s16?.funnelStages, (f) => str(f.assets)),
-    s15_content_themes:     list(fw.s14?.campaigns, (c) => str(c.theme)),
+    // §15 Frequently Asked Questions
+    s15_faqs: list(fw.s15?.faqs, (f) => f.question ? [
+      `Q: ${f.question}`,
+      f.answer           ? `A: ${f.answer}`                       : '',
+      f.bestAddressedIn  ? `Best addressed in: ${f.bestAddressedIn}` : '',
+    ].filter(Boolean).join('\n') : ''),
 
-    // §16 Content Funnel
-    s16_partner_program: str(fw.s16?.ctaSequencing),
+    // §16 Content Funnel Mapping
+    s16_funnel_mapping: list(fw.s16?.funnelStages, (f) => f.assets ? `${f.stage}: ${f.assets} → CTA: ${f.primaryCTA} (${f.buyerState})` : ''),
+    s16_cta_sequencing: str(fw.s16?.ctaSequencing),
 
-    // §17 Regulatory
-    s17_kpis: list(fw.s17?.regulations, (r) => r.requirement ? `${r.requirement}: ${r.capability}` : ''),
+    // §17 Regulatory + Compliance Context
+    s17_regulatory_context:    list(fw.s17?.regulations, (r) => r.requirement ? `${r.requirement}: ${r.capability} (${r.servicePillar}) — ${r.salesNote}` : ''),
+    s17_regulatory_sales_note: str(fw.s17?.regulatorySalesNote),
 
     // §18 CTAs + Next Steps
-    s18_ctas:            list(fw.s18?.ctas, (c) => c.ctaName ? `${c.ctaName}: ${c.description}` : ''),
-    s18_campaign_themes: list(fw.s18?.campaignThemes, (c) => c.campaignName ? `${c.campaignName}: ${c.description}` : ''),
+    s18_ctas: list(fw.s18?.ctas, (c) => c.ctaName ? `${c.ctaName}: ${c.description} | Audience: ${c.targetAudienceTrigger} | Assets: ${c.assets}` : ''),
   }
 }
 
@@ -2223,8 +2261,20 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
+        // Fire-and-forget: snapshot this export as a revision for the review lifecycle
+        apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/revisions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ revisionType: 'internal' }),
+        }).catch(() => {/* non-fatal */})
       } else {
         await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, docStyle)
+        // Fire-and-forget: snapshot this export as a revision for the review lifecycle
+        apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/revisions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ revisionType: 'internal' }),
+        }).catch(() => {/* non-fatal */})
       }
     } catch (err) {
       console.error('[GTM Download] failed:', err)
@@ -2232,7 +2282,7 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
     } finally {
       setDownloadingDocx(false)
     }
-  }, [fw, selectedVertical, attachedTemplate, clientName, docStyle])
+  }, [fw, selectedVertical, attachedTemplate, clientName, docStyle, clientId])
 
   const handleReimport = useCallback(async (file: File) => {
     if (!selectedVertical || !fw) return

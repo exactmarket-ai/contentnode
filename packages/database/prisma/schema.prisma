@@ -68,6 +68,7 @@ model Agency {
   notifications                  Notification[]
   integrations                   Integration[]
   skillSessionTemplates          SkillSessionTemplate[]
+  frameworkRevisions             FrameworkRevision[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -185,6 +186,7 @@ model Client {
   brainContext       String?  @db.Text @map("brain_context")
   docStyle           ClientDocStyle?
   leadershipMembers  LeadershipMember[]
+  frameworkRevisions FrameworkRevision[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -212,6 +214,7 @@ model Vertical {
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   workflows            Workflow[]
   brainContext         String? @db.Text @map("brain_context")
+  frameworkRevisions   FrameworkRevision[]
 
   @@index([agencyId])
   @@map("verticals")
@@ -1851,4 +1854,34 @@ model SkillSessionTemplate {
 
   @@index([agencyId, skillKey])
   @@map("skill_session_templates")
+}
+
+// ─────────────────────────────────────────────
+// FrameworkRevision — tracks export/review lifecycle for GTM Framework docs
+// ─────────────────────────────────────────────
+model FrameworkRevision {
+  id             String    @id @default(cuid())
+  agencyId       String    @map("agency_id")
+  clientId       String    @map("client_id")
+  verticalId     String    @map("vertical_id")
+  // draft | agency_review | sent_to_client | client_responded | closed
+  reviewStatus   String    @default("draft")    @map("review_status")
+  // internal | client | internal_post | final
+  revisionType   String    @default("internal") @map("revision_type")
+  assigneeId     String?   @map("assignee_id")
+  dataSnapshot   Json?     @map("data_snapshot")
+  clientSnapshot Json?     @map("client_snapshot")
+  styleSignals   Json?     @map("style_signals")
+  notes          String?   @db.Text
+  exportedAt     DateTime? @map("exported_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  agency   Agency   @relation(fields: [agencyId],   references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId],   references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, verticalId])
+  @@index([agencyId])
+  @@map("framework_revisions")
 }

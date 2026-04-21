@@ -1495,9 +1495,22 @@ interface ReviewRun {
   assignee: { id: string; name: string | null } | null
 }
 
+interface FrameworkRevisionRow {
+  id: string
+  verticalId: string
+  reviewStatus: string
+  revisionType: string
+  exportedAt: string | null
+  createdAt: string
+  notes: string | null
+  vertical: { id: string; name: string }
+}
+
 const REVIEW_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   none:             { label: 'Not reviewed',    color: 'text-slate-400',    dot: 'bg-slate-600' },
+  draft:            { label: 'Draft',           color: 'text-slate-400',    dot: 'bg-slate-600' },
   pending:          { label: 'Agency reviewed', color: 'text-blue-600',     dot: 'bg-blue-500' },
+  agency_review:    { label: 'Agency review',   color: 'text-blue-600',     dot: 'bg-blue-500' },
   sent_to_client:   { label: 'Sent to client',  color: 'text-purple-600',   dot: 'bg-purple-500' },
   client_responded: { label: 'Client responded',color: 'text-emerald-600',  dot: 'bg-emerald-500' },
   closed:           { label: 'Closed',          color: 'text-slate-500',    dot: 'bg-slate-700' },
@@ -1506,17 +1519,39 @@ const REVIEW_STATUS_CONFIG: Record<string, { label: string; color: string; dot: 
 function ReviewsTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const navigate = useNavigate()
   const [runs, setRuns] = useState<ReviewRun[]>([])
+  const [frameworkRevisions, setFrameworkRevisions] = useState<FrameworkRevisionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
 
   useEffect(() => {
-    apiFetch(`/api/v1/runs?clientId=${clientId}&status=completed&limit=100`)
-      .then((r) => r.json())
-      .then(({ data }) => { setRuns(data ?? []); setLoading(false) })
-      .catch(() => setLoading(false))
+    Promise.all([
+      apiFetch(`/api/v1/runs?clientId=${clientId}&status=completed&limit=100`).then((r) => r.json()),
+      apiFetch(`/api/v1/clients/${clientId}/framework-revisions`).then((r) => r.json()),
+    ])
+      .then(([runsBody, revisionsBody]) => {
+        setRuns(runsBody.data ?? [])
+        setFrameworkRevisions(revisionsBody.data ?? [])
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [clientId])
 
-  const filtered = filter === 'all' ? runs : runs.filter((r) => r.reviewStatus === filter)
+  type ReviewItem =
+    | { _type: 'run'; data: ReviewRun }
+    | { _type: 'revision'; data: FrameworkRevisionRow }
+
+  const allItems: ReviewItem[] = [
+    ...runs.map((r) => ({ _type: 'run' as const, data: r })),
+    ...frameworkRevisions.map((r) => ({ _type: 'revision' as const, data: r })),
+  ].sort((a, b) => {
+    const aDate = a._type === 'run' ? (a.data.completedAt ?? a.data.createdAt) : (a.data.exportedAt ?? a.data.createdAt)
+    const bDate = b._type === 'run' ? (b.data.completedAt ?? b.data.createdAt) : (b.data.exportedAt ?? b.data.createdAt)
+    return new Date(bDate).getTime() - new Date(aDate).getTime()
+  })
+
+  const filtered = filter === 'all'
+    ? allItems
+    : allItems.filter((item) => item.data.reviewStatus === filter)
 
   const reviewName = (r: ReviewRun) =>
     [clientName, r.projectName, r.workflowName, r.itemName].filter(Boolean).join(' — ')
@@ -1533,7 +1568,7 @@ function ReviewsTab({ clientId, clientName }: { clientId: string; clientName: st
     <div className="space-y-4">
       {/* Filter bar */}
       <div className="flex items-center gap-2">
-        {(['all', 'none', 'pending', 'sent_to_client', 'client_responded', 'closed'] as const).map((f) => (
+        {(['all', 'none', 'draft', 'pending', 'agency_review', 'sent_to_client', 'client_responded', 'closed'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -1569,38 +1604,74 @@ function ReviewsTab({ clientId, clientName }: { clientId: string; clientName: st
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => {
-                const rsCfg = REVIEW_STATUS_CONFIG[r.reviewStatus] ?? REVIEW_STATUS_CONFIG.none
+              {filtered.map((item) => {
+                if (item._type === 'run') {
+                  const r = item.data
+                  const rsCfg = REVIEW_STATUS_CONFIG[r.reviewStatus] ?? REVIEW_STATUS_CONFIG.none
+                  return (
+                    <tr key={r.id} className="border-b border-border/50 last:border-0 hover:bg-muted/10 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-foreground/90 truncate max-w-xs">{reviewName(r)}</p>
+                        <p className="text-muted-foreground/60 text-[11px] font-mono">{r.id.slice(0, 8)}…</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={cn('inline-flex items-center gap-1.5', rsCfg.color)}>
+                          <span className={cn('h-1.5 w-1.5 rounded-full', rsCfg.dot)} />
+                          {rsCfg.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{r.assignee?.name ?? <span className="text-muted-foreground/40">—</span>}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {r.completedAt ? new Date(r.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button size="sm" variant={r.reviewStatus === 'none' ? 'default' : 'outline'} className="h-7 text-xs gap-1.5" onClick={() => navigate(`/review/${r.id}`)}>
+                          <Icons.ClipboardEdit className="h-3 w-3" />
+                          {r.reviewStatus === 'none' ? 'Review' : 'View'}
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                }
+                // Framework revision row
+                const rev = item.data
+                const rsCfg = REVIEW_STATUS_CONFIG[rev.reviewStatus] ?? REVIEW_STATUS_CONFIG.draft
                 return (
-                  <tr key={r.id} className="border-b border-border/50 last:border-0 hover:bg-muted/10 transition-colors">
+                  <tr key={rev.id} className="border-b border-border/50 last:border-0 hover:bg-muted/10 transition-colors">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-foreground/90 truncate max-w-xs">{reviewName(r)}</p>
-                      <p className="text-muted-foreground/60 text-[11px] font-mono">{r.id.slice(0, 8)}…</p>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 uppercase tracking-wide shrink-0">GTM</span>
+                        <div>
+                          <p className="font-medium text-foreground/90 truncate max-w-xs">{clientName} — GTM Framework — {rev.vertical.name}</p>
+                          <p className="text-muted-foreground/60 text-[11px]">{rev.revisionType === 'internal' ? 'Internal export' : rev.revisionType === 'client' ? 'Client version' : rev.revisionType}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn('inline-flex items-center gap-1.5', rsCfg.color)}>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', rsCfg.dot)} />
-                        {rsCfg.label}
-                      </span>
+                      <select
+                        value={rev.reviewStatus}
+                        onChange={async (e) => {
+                          const newStatus = e.target.value
+                          setFrameworkRevisions((prev) => prev.map((r) => r.id === rev.id ? { ...r, reviewStatus: newStatus } : r))
+                          await apiFetch(`/api/v1/clients/${clientId}/framework/${rev.verticalId}/revisions/${rev.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ reviewStatus: newStatus }),
+                          }).catch(() => {})
+                        }}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        {Object.entries(REVIEW_STATUS_CONFIG).map(([key, cfg]) => (
+                          <option key={key} value={key}>{cfg.label}</option>
+                        ))}
+                      </select>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {r.assignee?.name ?? <span className="text-muted-foreground/40">—</span>}
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">—</td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {r.completedAt
-                        ? new Date(r.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-                        : '—'}
+                      {rev.exportedAt ? new Date(rev.exportedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant={r.reviewStatus === 'none' ? 'default' : 'outline'}
-                        className="h-7 text-xs gap-1.5"
-                        onClick={() => navigate(`/review/${r.id}`)}
-                      >
-                        <Icons.ClipboardEdit className="h-3 w-3" />
-                        {r.reviewStatus === 'none' ? 'Review' : 'View'}
-                      </Button>
+                      <span className={cn('text-xs', rsCfg.color)}>{rsCfg.label}</span>
                     </td>
                   </tr>
                 )

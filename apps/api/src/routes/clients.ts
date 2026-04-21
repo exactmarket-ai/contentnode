@@ -3409,6 +3409,89 @@ ${docText.slice(0, 12000)}`
     return reply.send({ data: { updatedFields, styleSignals, totalUpdated: updatedFields.length } })
   })
 
+  // ── GET /:id/framework-revisions — list all framework revisions for reviews tab
+  app.get<{ Params: { id: string } }>('/:id/framework-revisions', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const revisions = await prisma.frameworkRevision.findMany({
+      where: { clientId: req.params.id, agencyId },
+      include: { vertical: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+    return reply.send({ data: revisions })
+  })
+
+  // ── POST /:id/framework/:verticalId/revisions — create revision snapshot (called on download)
+  app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/revisions', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    const fw = await prisma.clientFramework.findUnique({
+      where: { clientId_verticalId: { clientId, verticalId } },
+    })
+
+    const body = (req.body ?? {}) as { revisionType?: string; notes?: string; assigneeId?: string }
+
+    const revision = await prisma.frameworkRevision.create({
+      data: {
+        agencyId,
+        clientId,
+        verticalId,
+        reviewStatus: 'draft',
+        revisionType: body.revisionType ?? 'internal',
+        assigneeId:   body.assigneeId ?? null,
+        dataSnapshot: fw?.data ?? {},
+        notes:        body.notes ?? null,
+        exportedAt:   new Date(),
+      },
+    })
+    return reply.code(201).send({ data: revision })
+  })
+
+  // ── PATCH /:id/framework/:verticalId/revisions/:revisionId — update review status / type / notes
+  app.patch<{ Params: { id: string; verticalId: string; revisionId: string } }>(
+    '/:id/framework/:verticalId/revisions/:revisionId',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { id: clientId, verticalId, revisionId } = req.params
+
+      const revision = await prisma.frameworkRevision.findFirst({
+        where: { id: revisionId, clientId, verticalId, agencyId },
+      })
+      if (!revision) return reply.code(404).send({ error: 'Revision not found' })
+
+      const body = (req.body ?? {}) as {
+        reviewStatus?: string
+        revisionType?: string
+        assigneeId?: string
+        notes?: string
+        clientSnapshot?: unknown
+      }
+
+      const updated = await prisma.frameworkRevision.update({
+        where: { id: revisionId },
+        data: {
+          ...(body.reviewStatus   !== undefined && { reviewStatus:   body.reviewStatus }),
+          ...(body.revisionType   !== undefined && { revisionType:   body.revisionType }),
+          ...(body.assigneeId     !== undefined && { assigneeId:     body.assigneeId }),
+          ...(body.notes          !== undefined && { notes:          body.notes }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ...(body.clientSnapshot !== undefined && { clientSnapshot: body.clientSnapshot as any }),
+        },
+      })
+      return reply.send({ data: updated })
+    },
+  )
+
   // ── GET /:id/framework/:verticalId/attachments — list framework attachments
   app.get<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/attachments', async (req, reply) => {
     const { agencyId } = req.auth
