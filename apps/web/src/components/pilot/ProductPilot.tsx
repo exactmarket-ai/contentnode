@@ -78,6 +78,16 @@ function SynthesisBlock({
   const [saved, setSaved]   = useState(false)
   const [copied, setCopied] = useState(false)
 
+  const download = (ext: 'md' | 'txt') => {
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `${skillKey}-synthesis.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -112,6 +122,18 @@ function SynthesisBlock({
             className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
             {copied ? <><Icons.Check className="h-3 w-3" /> Copied</> : <><Icons.Copy className="h-3 w-3" /> Copy</>}
+          </button>
+          <button
+            onClick={() => download('md')}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+          >
+            <Icons.Download className="h-3 w-3" /> .md
+          </button>
+          <button
+            onClick={() => download('txt')}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+          >
+            <Icons.Download className="h-3 w-3" /> .txt
           </button>
           {saved ? (
             <span className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-emerald-700 bg-emerald-100">
