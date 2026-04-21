@@ -605,25 +605,34 @@ export async function teamRoutes(app: FastifyInstance) {
     // Auto-provision: if no User row exists for this Clerk user in this agency,
     // create one with 'owner' role so the first login on a fresh env (e.g. staging)
     // gets full access without a manual seed step.
-    if (!me && clerkClient) {
+    // Works with or without clerkClient — tries Clerk API for name/email, falls back
+    // to a placeholder so the record is always created.
+    if (!me) {
       try {
-        const clerkUser  = await clerkClient.users.getUser(userId)
-        const email      = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
-        const firstName  = clerkUser.firstName ?? ''
-        const lastName   = clerkUser.lastName  ?? ''
-        const fullName   = [firstName, lastName].filter(Boolean).join(' ') || null
-        if (email) {
-          const agency = await prisma.agency.findUnique({ where: { id: agencyId }, select: { id: true } })
-          if (agency) {
-            await prisma.user.create({
-              data: { agencyId, clerkUserId: userId, email, name: fullName, role: 'owner' },
-            })
-            me = await prisma.user.findFirst({
-              where:  { agencyId, clerkUserId: userId },
-              select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, localMediaServices: true, createdAt: true },
-            })
-            req.log.info({ agencyId, userId, email }, '[team/me] auto-provisioned user on first login')
+        const agency = await prisma.agency.findUnique({ where: { id: agencyId }, select: { id: true } })
+        if (agency) {
+          let email:    string | null = null
+          let fullName: string | null = null
+
+          if (clerkClient) {
+            try {
+              const clerkUser = await clerkClient.users.getUser(userId)
+              email    = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ?? null
+              fullName = [clerkUser.firstName ?? '', clerkUser.lastName ?? ''].filter(Boolean).join(' ') || null
+            } catch { /* Clerk API unavailable — use placeholder */ }
           }
+
+          // Placeholder so DB constraint is satisfied even without Clerk API
+          if (!email) email = `${userId}@auto-provisioned.local`
+
+          await prisma.user.create({
+            data: { agencyId, clerkUserId: userId, email, name: fullName, role: 'owner' },
+          })
+          me = await prisma.user.findFirst({
+            where:  { agencyId, clerkUserId: userId },
+            select: { id: true, email: true, name: true, title: true, department: true, role: true, avatarStorageKey: true, ollamaModels: true, localMediaServices: true, createdAt: true },
+          })
+          req.log.info({ agencyId, userId, email }, '[team/me] auto-provisioned user on first login')
         }
       } catch (err) {
         req.log.warn({ err }, '[team/me] auto-provision failed')
