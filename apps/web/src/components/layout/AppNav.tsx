@@ -204,7 +204,6 @@ const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d
 const NAV_ITEMS = [
   { to: '/workflows',         icon: Icons.Workflow,        label: 'Workflows',         ...ACTIVE },
   { to: '/clients',           icon: Icons.Users,           label: 'Clients',           ...ACTIVE },
-  { to: '/client-dashboard',  icon: Icons.LayoutDashboard, label: 'Client Dashboard',  ...ACTIVE },
   { to: '/calendar',          icon: Icons.CalendarDays,    label: 'Calendar',          ...ACTIVE },
   { to: '/reviews',   icon: Icons.ClipboardEdit, label: 'Reviews & Runs',    ...ACTIVE },
   { to: '/quality',   icon: Icons.TrendingUp,    label: 'Quality & Reports', ...ACTIVE },
@@ -334,6 +333,17 @@ export function AppNav({ onSignOut }: AppNavProps) {
       {NAV_ITEMS.map((item) => (
         <NavItem key={item.to} {...item} collapsed={collapsed} />
       ))}
+
+      {/* Client Dashboard — admin and above only */}
+      {(isAdmin || isOwner) && (
+        <NavItem
+          to="/client-dashboard"
+          collapsed={collapsed}
+          icon={Icons.LayoutDashboard}
+          label="Client Dashboard"
+          {...ACTIVE}
+        />
+      )}
 
       {/* researchNODE — owner / super admin only */}
       {isOwner && (
