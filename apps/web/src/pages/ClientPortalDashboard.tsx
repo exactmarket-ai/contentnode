@@ -39,6 +39,8 @@ interface WrikeTask {
   briefDescription?: string
   parentIds?: string[]
   responsibleIds?: string[]
+  updatedDate?: string
+  createdDate?: string
   dates?: { due?: string; start?: string }
 }
 
@@ -806,8 +808,8 @@ export function ClientPortalDashboard() {
   const [view, setView]               = useState<'executive' | 'stakeholder'>('executive')
   const [clients, setClients]         = useState<Client[]>([])
   const [runs, setRuns]               = useState<Run[]>([])
-  const [wrikeTasks, setWrikeTasks]   = useState<WrikeTask[]>([])
   const [wrikeFolders, setWrikeFolders] = useState<WrikeFolder[]>([])
+  const [allWrikeTasks, setAllWrikeTasks] = useState<WrikeTask[]>([])
   const [wrikeLoading, setWrikeLoading] = useState(false)
   const [wrikeConnected, setWrikeConnected] = useState(false)
   const [loading, setLoading]         = useState(true)
@@ -817,6 +819,20 @@ export function ClientPortalDashboard() {
   const [wrikeEnd,       setWrikeEnd]       = useState(() => toDateInput(new Date()))
   const [wrikeProjectId, setWrikeProjectId] = useState('all')
   const [useDates,       setUseDates]       = useState(true)
+
+  const loadWrikeData = useCallback(() => {
+    setWrikeLoading(true)
+    Promise.all([
+      apiFetch('/api/v1/integrations/wrike/tasks').then((r) => r.json()),
+      apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
+    ])
+      .then(([tasksRes, foldersRes]) => {
+        setAllWrikeTasks(tasksRes.data ?? [])
+        setWrikeFolders(foldersRes.data ?? [])
+      })
+      .catch(() => {})
+      .finally(() => setWrikeLoading(false))
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -829,32 +845,26 @@ export function ClientPortalDashboard() {
         setRuns(runRes.data ?? [])
         const connected = !!wrikeStatus.data?.connected
         setWrikeConnected(connected)
-        if (connected) loadWrikeData(true, toDateInput(new Date(Date.now() - 90 * 86400000)), toDateInput(new Date()))
+        if (connected) loadWrikeData()
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
-
-  const loadWrikeData = useCallback((withDates: boolean, start: string, end: string) => {
-    setWrikeLoading(true)
-    const tasksUrl = withDates && start && end
-      ? `/api/v1/integrations/wrike/tasks?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
-      : '/api/v1/integrations/wrike/tasks'
-    Promise.all([
-      apiFetch(tasksUrl).then((r) => r.json()),
-      apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
-    ])
-      .then(([tasksRes, foldersRes]) => {
-        setWrikeTasks(tasksRes.data ?? [])
-        setWrikeFolders(foldersRes.data ?? [])
-      })
-      .catch(() => {})
-      .finally(() => setWrikeLoading(false))
-  }, [])
+  }, [loadWrikeData])
 
   const runWrikeFilter = useCallback(() => {
-    loadWrikeData(useDates, wrikeStart, wrikeEnd)
-  }, [loadWrikeData, useDates, wrikeStart, wrikeEnd])
+    loadWrikeData()
+  }, [loadWrikeData])
+
+  // Client-side date + project filtering
+  const wrikeTasks = allWrikeTasks.filter((t) => {
+    if (useDates && wrikeStart && wrikeEnd) {
+      const d = t.updatedDate ?? t.createdDate
+      if (!d) return true
+      const ts = d.slice(0, 10)
+      if (ts < wrikeStart || ts > wrikeEnd) return false
+    }
+    return true
+  })
 
   const wrikeFilterBar = (
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-white p-3 shadow-sm">
@@ -877,7 +887,7 @@ export function ClientPortalDashboard() {
       <div className="flex flex-col gap-1">
         <label className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide cursor-pointer">
           <input type="checkbox" checked={useDates} onChange={(e) => setUseDates(e.target.checked)} className="accent-blue-500" />
-          Date Range (updated)
+          Filter by Date Updated
         </label>
         <div className="flex items-center gap-2">
           <input

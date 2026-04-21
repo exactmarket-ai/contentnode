@@ -150,17 +150,22 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: { ok: true } })
   })
 
-  // ── GET /tasks — fetch ALL tasks with pagination ─────────────────────────
+  // ── GET /tasks — fetch ALL tasks across all spaces with pagination ──────────
   app.get('/tasks', async (req, reply) => {
     const { agencyId } = req.auth
-    const { start, end } = req.query as Record<string, string>
-
     const { accessToken, host } = await refreshWrikeToken(agencyId)
 
-    const updatedDate = start && end ? JSON.stringify({
-      start: new Date(start).toISOString().split('.')[0] + 'Z',
-      end:   new Date(end).toISOString().split('.')[0] + 'Z',
-    }) : null
+    // Fetch all space IDs so we cover the entire workspace, not just account-root tasks
+    let spaceIds: string[] = []
+    try {
+      const spacesRes = await fetch(`https://${host}/api/v4/spaces`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (spacesRes.ok) {
+        const sd = await spacesRes.json() as { data: { id: string }[] }
+        spaceIds = (sd.data ?? []).map((s) => s.id)
+      }
+    } catch { /* fall through — unscoped fetch still returns something */ }
 
     const allTasks: unknown[] = []
     let nextPageToken: string | undefined
@@ -169,7 +174,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
       const url = new URL(`https://${host}/api/v4/tasks`)
       url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds']))
       url.searchParams.set('pageSize', '1000')
-      if (updatedDate) url.searchParams.set('updatedDate', updatedDate)
+      if (spaceIds.length) url.searchParams.set('spaceId', JSON.stringify(spaceIds))
       if (nextPageToken) url.searchParams.set('nextPageToken', nextPageToken)
 
       const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
