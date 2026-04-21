@@ -142,7 +142,13 @@ function extractOutputs(run: RunData): OutputTab[] {
     })
     .filter(Boolean) as OutputTab[]
 
-  const allTabs = [...tabs, ...assetTabs]
+  const tabPriority = (t: OutputTab) => {
+    if (t.mediaPath || t.subtype === 'video-generation' || t.subtype === 'character-animation' || t.subtype === 'video-composition' || t.subtype === 'audio-mix' || t.subtype === 'voice-output' || t.subtype === 'music-generation') return 3
+    if (t.subtype === 'image-generation' || t.assets?.length) return 2
+    return 1 // text/copy — always first
+  }
+
+  const allTabs = [...tabs, ...assetTabs].sort((a, b) => tabPriority(a) - tabPriority(b))
   if (allTabs.length > 0) return allTabs
 
   const fallback = toText(run.finalOutput)
