@@ -75,21 +75,21 @@ export class WrikeSourceExecutor extends NodeExecutor {
 
     console.log(`[wrike] fetching token for agency ${agencyId}`)
     const { accessToken, host } = await getWrikeToken(agencyId)
-    console.log(`[wrike] token ok, host=${host}, fetching tasks (${daysBack} days)`)
+    console.log(`[wrike] token ok, host=${host}, fetching completed tasks updated in last ${daysBack} days`)
 
     const end   = new Date()
     const start = new Date(end.getTime() - daysBack * 24 * 60 * 60 * 1000)
 
-    const completedDate = JSON.stringify({
+    const updatedDate = JSON.stringify({
       start: start.toISOString().split('.')[0] + 'Z',
       end:   end.toISOString().split('.')[0] + 'Z',
     })
 
     const url = new URL(`https://${host}/api/v4/tasks`)
-    url.searchParams.set('status',        'Completed')
-    url.searchParams.set('completedDate', completedDate)
-    url.searchParams.set('fields',        JSON.stringify(['description', 'briefDescription', 'parentIds']))
-    url.searchParams.set('pageSize',      '100')
+    url.searchParams.set('status',      'Completed')
+    url.searchParams.set('updatedDate', updatedDate)
+    url.searchParams.set('fields',      JSON.stringify(['description', 'briefDescription', 'parentIds']))
+    url.searchParams.set('pageSize',    '100')
 
     const res = await fetchWithTimeout(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
     if (!res.ok) throw new Error(`Wrike API error: ${res.status} ${await res.text()}`)
