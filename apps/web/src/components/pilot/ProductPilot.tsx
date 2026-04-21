@@ -23,6 +23,7 @@ export interface SkillSuggestion {
 interface PilotMessage {
   role: 'user' | 'assistant'
   content: string
+  paths?: string[]
   suggestions?: SkillSuggestion[]
   synthesis?: string
 }
@@ -211,19 +212,24 @@ function MessageBubble({
   clientId,
   categoryKey,
   skillKey,
+  isLast,
   onSkillSuggestionClick,
   onSynthesisSaved,
   onSaveTemplate,
+  onPathClick,
 }: {
   msg: PilotMessage
   clientId: string
   categoryKey: string
   skillKey: string
+  isLast?: boolean
   onSkillSuggestionClick: (categoryKey: string, skillKey: string) => void
   onSynthesisSaved?: () => void
   onSaveTemplate?: () => void
+  onPathClick?: (path: string) => void
 }) {
   const isUser = msg.role === 'user'
+  const showPaths = !isUser && isLast && Array.isArray(msg.paths) && msg.paths.length > 0
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {!isUser && (
@@ -263,6 +269,19 @@ function MessageBubble({
                 suggestion={s}
                 onSelect={onSkillSuggestionClick}
               />
+            ))}
+          </div>
+        )}
+        {showPaths && (
+          <div className="flex flex-wrap gap-1.5 mt-0.5">
+            {msg.paths!.map((path, i) => (
+              <button
+                key={i}
+                onClick={() => onPathClick?.(path)}
+                className="rounded-full border border-border bg-white px-3 py-1 text-[11px] font-medium text-foreground hover:border-purple-400 hover:bg-purple-50 hover:text-purple-900 transition-colors"
+              >
+                {path}
+              </button>
             ))}
           </div>
         )}
@@ -390,12 +409,13 @@ export function ProductPilot({
       }
 
       const { data } = await res.json() as {
-        data: { reply: string; suggestions: SkillSuggestion[]; synthesis: string | null }
+        data: { reply: string; paths: string[]; suggestions: SkillSuggestion[]; synthesis: string | null }
       }
 
       const assistantMsg: PilotMessage = {
         role:        'assistant',
         content:     data.reply ?? '',
+        paths:       Array.isArray(data.paths) ? data.paths : [],
         suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
         synthesis:   data.synthesis ?? undefined,
       }
@@ -524,9 +544,11 @@ export function ProductPilot({
                 clientId={clientId}
                 categoryKey={categoryKey}
                 skillKey={skillKey}
+                isLast={i === messages.length - 1 && !loading}
                 onSkillSuggestionClick={onSkillSuggestionClick}
                 onSynthesisSaved={() => onSynthesisSaved?.(skillKey)}
                 onSaveTemplate={msg.synthesis ? () => { setTemplateName(''); setTemplateSaved(false); setShowSaveTemplate(true) } : undefined}
+                onPathClick={(path) => void sendMessage(path)}
               />
             </div>
           ))}

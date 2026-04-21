@@ -226,8 +226,21 @@ ${contextBlock}
 
 **Response format:**
 - Keep responses SHORT: 3-5 lines of conversation + one sharp question
+- After the question, ALWAYS include a <PRODUCTPILOT_PATHS> block (see below)
 - Then optionally a <PRODUCTPILOT_SUGGESTIONS> block with related skills
-- When synthesis is ready: produce a <SKILL_SYNTHESIS> block (this ends the active session)
+- When synthesis is ready: produce a <SKILL_SYNTHESIS> block (this ends the active session — omit PATHS when doing this)
+
+**Paths block (ALWAYS include after your question, unless producing synthesis):**
+<PRODUCTPILOT_PATHS>
+["Path A — 5-8 words specific to what was just discussed", "Path B — a challenge or pushback angle", "Path C — a different dimension worth exploring"]
+</PRODUCTPILOT_PATHS>
+
+Rules for paths:
+- Each path is 5-8 words — short, direct, feels like something the user would naturally say
+- Path A: the most obvious next direction from this answer
+- Path B: a challenge, contradiction, or "what if we're wrong" angle
+- Path C: an adjacent dimension they probably haven't considered yet
+- Make them SPECIFIC to what was just said — never generic ("tell me more", "go deeper")
 
 **Suggestions block (2-3 related skills — only include when genuinely relevant):**
 <PRODUCTPILOT_SUGGESTIONS>
@@ -327,6 +340,14 @@ export async function productPilotRoutes(app: FastifyInstance) {
       replyText = fullText.replace(synthMatch[0], '').trim()
     }
 
+    // Extract paths block
+    const pathsMatch = replyText.match(/<PRODUCTPILOT_PATHS>([\s\S]+?)<\/PRODUCTPILOT_PATHS>/i)
+    let paths: string[] = []
+    if (pathsMatch) {
+      replyText = replyText.replace(pathsMatch[0], '').trim()
+      try { paths = JSON.parse(pathsMatch[1].trim()) } catch { /* malformed */ }
+    }
+
     // Extract suggestions block
     const suggestMatch = replyText.match(/<PRODUCTPILOT_SUGGESTIONS>([\s\S]+?)<\/PRODUCTPILOT_SUGGESTIONS>/i)
     let suggestions: unknown[] = []
@@ -336,7 +357,7 @@ export async function productPilotRoutes(app: FastifyInstance) {
       try { suggestions = JSON.parse(suggestMatch[1].trim()) } catch { /* malformed */ }
     }
 
-    return reply.send({ data: { reply: replyText.trim(), suggestions, synthesis } })
+    return reply.send({ data: { reply: replyText.trim(), paths, suggestions, synthesis } })
   })
 
   // ── POST /save-synthesis — store completed skill in Brain ────────────────────
