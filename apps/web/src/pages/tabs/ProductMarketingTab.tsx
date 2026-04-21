@@ -698,7 +698,7 @@ export function ProductMarketingTab({
   clientId: string
   clientName: string
 }) {
-  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [pilotSkill, setPilotSkill] = useState<{ categoryKey: string; skillKey: string; skillName: string } | null>(null)
   const [savedSkills, setSavedSkills] = useState<Set<string>>(new Set())
 
@@ -756,7 +756,7 @@ export function ProductMarketingTab({
     startWebsitePolling()
   }, [clientId, selectedVertical, startWebsitePolling])
 
-  const activeCat = CATEGORIES.find((c) => c.key === activeCategory) ?? CATEGORIES[0]
+  const activeCat = activeCategory ? (CATEGORIES.find((c) => c.key === activeCategory) ?? null) : null
 
   const launchSkill = (categoryKey: string, skillKey: string, skillName: string) => {
     setPilotSkill({ categoryKey, skillKey, skillName })
@@ -771,15 +771,36 @@ export function ProductMarketingTab({
   return (
     <div className="flex h-full min-h-0">
       {/* Sidebar */}
-      <div className="flex w-52 shrink-0 flex-col gap-1 border-r border-border p-3 overflow-y-auto">
-          <div className="px-2 pb-2">
-            <div className="flex items-center gap-1.5">
-              <Icons.Zap className="h-3.5 w-3.5 shrink-0" style={{ color: '#a200ee' }} />
-              <span className="text-[11px] font-bold tracking-wide" style={{ color: '#a200ee' }}>productPILOT</span>
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-0.5">AI-guided skill sessions</p>
-          </div>
+      <div className="flex w-52 shrink-0 flex-col border-r border-border overflow-y-auto">
 
+        {/* Vertical selector — top of sidebar */}
+        <div className="px-3 pt-3 pb-2.5 border-b border-border">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Vertical</p>
+          <VerticalSelector
+            verticals={verticals}
+            selected={selectedVertical}
+            onSelect={(v) => setSelectedVertical(v)}
+            onSelectCompany={() => setSelectedVertical(null)}
+          />
+        </div>
+
+        {/* productPILOT header — click to return to brain view */}
+        <button
+          onClick={() => setActiveCategory(null)}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-2.5 text-left transition-colors border-b border-border',
+            activeCategory === null ? 'bg-muted/20' : 'hover:bg-muted/20',
+          )}
+        >
+          <Icons.Zap className="h-3.5 w-3.5 shrink-0" style={{ color: '#a200ee' }} />
+          <div>
+            <p className="text-[11px] font-bold tracking-wide" style={{ color: '#a200ee' }}>productPILOT</p>
+            <p className="text-[10px] text-muted-foreground">Brain & Overview</p>
+          </div>
+        </button>
+
+        {/* Category nav */}
+        <div className="flex flex-col gap-0.5 p-2 flex-1">
           {CATEGORIES.map((cat) => {
             const CatIcon = cat.icon
             const isActive = cat.key === activeCategory
@@ -820,24 +841,27 @@ export function ProductMarketingTab({
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Right content — brain section + skill grid */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Vertical selector + Brain */}
-          <div className="border-b border-border px-6 pt-5 pb-0">
-            <div className="flex items-center gap-3 mb-5">
-              <span className="text-[11px] font-semibold text-muted-foreground">Vertical</span>
-              <VerticalSelector
-                verticals={verticals}
-                selected={selectedVertical}
-                onSelect={(v) => setSelectedVertical(v)}
-                onSelectCompany={() => setSelectedVertical(null)}
-              />
-              {selectedVertical && (
-                <span className="text-[11px] text-muted-foreground">
-                  Sessions draw on <span className="font-medium text-foreground">{selectedVertical.name}</span> brain context
-                </span>
-              )}
+      {/* Right content area */}
+      <div className="flex-1 overflow-y-auto">
+        {activeCategory === null ? (
+          /* Brain + overview — default landing view */
+          <div className="p-6 max-w-3xl">
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-1">
+                <Icons.Zap className="h-4 w-4" style={{ color: '#a200ee' }} />
+                <h2 className="text-base font-semibold text-foreground">productPILOT</h2>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                AI-guided skill sessions for product managers and marketers. Each session is a structured conversation
+                that draws on this client's brain context to produce a synthesis — value props, personas, roadmap priorities,
+                and more. Upload research files below to enrich every session with client-specific intelligence.
+              </p>
+              <p className="mt-2 text-[12px] text-muted-foreground">
+                Select a category from the left navigation to browse skills and launch a session.
+                {selectedVertical && <> Sessions will draw on the <span className="font-medium text-foreground">{selectedVertical.name}</span> vertical brain.</>}
+              </p>
             </div>
             <BrainSection
               clientId={clientId}
@@ -847,8 +871,8 @@ export function ProductMarketingTab({
               onReadyChange={() => {}}
             />
           </div>
-
-          {/* Skill grid */}
+        ) : activeCat ? (
+          /* Skill grid — shown when category selected */
           <div className="p-6">
             <div className="mb-5">
               <div className="flex items-center gap-2 mb-1">
@@ -873,7 +897,8 @@ export function ProductMarketingTab({
               ))}
             </div>
           </div>
-        </div>
+        ) : null}
+      </div>
 
       {/* ProductPilot modal */}
       {pilotSkill && (

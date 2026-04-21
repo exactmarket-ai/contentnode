@@ -6720,7 +6720,7 @@ export function ClientDetailPage() {
   }, [setSearchParams])
   const [showEditClient, setShowEditClient] = useState(false)
   const [archivingClient, setArchivingClient] = useState(false)
-  const { isAdmin } = useCurrentUser()
+  const { isAdmin, canUsePilot } = useCurrentUser()
 
   const loadClient = useCallback(() => {
     if (!id) return
@@ -6807,11 +6807,11 @@ export function ClientDetailPage() {
   // Tabs that live under the "Research" group
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment', 'scheduled-tasks']
   // Tabs that live under the "Settings" group
-  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
+  const SETTINGS_TABS: Tab[] = ['brain', 'library', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
   // Tabs rendered before the Demand Gen group button
-  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'thought-leadership', 'framework', 'product-marketing', 'branding', 'reviews']
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : [])]
   // Tabs rendered after the Demand Gen group button
-  const POST_DEMAND_GEN_TABS: Tab[] = ['workflows', 'board', 'deliverables', 'insights']
+  const POST_DEMAND_GEN_TABS: Tab[] = ['branding', 'thought-leadership', 'workflows', 'reviews', 'deliverables', 'insights']
   const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS]
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)

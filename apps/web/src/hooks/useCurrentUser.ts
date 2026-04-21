@@ -20,6 +20,12 @@ const TEMPLATE_MANAGER_ROLES = new Set([
   'strategist', 'campaign_manager', 'project_manager', 'account_manager',
   'content_manager', 'brand_manager',
 ])
+const PILOT_ROLES = new Set([
+  'owner', 'super_admin', 'admin', 'org_admin',
+  'manager', 'client_manager', 'editor', 'lead',
+  'strategist', 'campaign_manager', 'project_manager', 'account_manager',
+  'content_manager', 'brand_manager', 'seo_specialist', 'performance_marketer',
+])
 
 let cached: CurrentUser | null = null
 
@@ -54,6 +60,7 @@ export function useCurrentUser() {
   const isLead             = role === 'lead' || isManager
   const isMember           = !!user
   const canManageTemplates = TEMPLATE_MANAGER_ROLES.has(role)
+  const canUsePilot        = PILOT_ROLES.has(role)
 
-  return { user, loading, isOwner, isAdmin, isEditor, isManager, isLead, isMember, canManageTemplates, setUser }
+  return { user, loading, isOwner, isAdmin, isEditor, isManager, isLead, isMember, canManageTemplates, canUsePilot, setUser }
 }

@@ -677,6 +677,8 @@ export function TeamPage() {
   useEffect(() => { loadMembers() }, [loadMembers])
 
   async function handleRoleChange(memberId: string, newRole: TeamMember['role']) {
+    const prevMembers = members
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: newRole } : m))
     setActionLoading(memberId)
     try {
       const res = await apiFetch(`/api/v1/team/${memberId}`, {
@@ -684,10 +686,16 @@ export function TeamPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
       })
-      const json = await res.json()
-      if (!res.ok) { showToast(json.error ?? 'Failed to update role', false); return }
-      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: newRole } : m))
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMembers(prevMembers)
+        showToast((json as { error?: string }).error ?? 'Failed to update role', false)
+        return
+      }
       showToast('Role updated')
+    } catch {
+      setMembers(prevMembers)
+      showToast('Network error — failed to update role', false)
     } finally {
       setActionLoading(null)
     }
