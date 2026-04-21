@@ -14,6 +14,12 @@ interface WrikeTask {
   customFields?: { id: string; value: string }[]
 }
 
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 30_000): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer))
+}
+
 async function getWrikeToken(agencyId: string): Promise<{ accessToken: string; host: string }> {
   const integration = await prisma.integration.findUnique({
     where: { agencyId_provider: { agencyId, provider: 'wrike' } },
@@ -29,7 +35,7 @@ async function getWrikeToken(agencyId: string): Promise<{ accessToken: string; h
 
   if (!integration.refreshToken) throw new Error('Wrike refresh token missing — please reconnect in Settings.')
 
-  const res = await fetch(WRIKE_TOKEN_URL, {
+  const res = await fetchWithTimeout(WRIKE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -67,7 +73,9 @@ export class WrikeSourceExecutor extends NodeExecutor {
     const synthesis = (config.synthesis ?? 'summary') as string
     const modelConfig = ctx.defaultModelConfig
 
+    console.log(`[wrike] fetching token for agency ${agencyId}`)
     const { accessToken, host } = await getWrikeToken(agencyId)
+    console.log(`[wrike] token ok, host=${host}, fetching tasks (${daysBack} days)`)
 
     const end   = new Date()
     const start = new Date(end.getTime() - daysBack * 24 * 60 * 60 * 1000)
@@ -83,11 +91,12 @@ export class WrikeSourceExecutor extends NodeExecutor {
     url.searchParams.set('fields',        JSON.stringify(['description', 'briefDescription', 'parentIds']))
     url.searchParams.set('pageSize',      '100')
 
-    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+    const res = await fetchWithTimeout(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
     if (!res.ok) throw new Error(`Wrike API error: ${res.status} ${await res.text()}`)
 
     const data = await res.json() as { data: WrikeTask[] }
     const tasks = data.data ?? []
+    console.log(`[wrike] got ${tasks.length} tasks, synthesis=${synthesis}`)
 
     if (tasks.length === 0) {
       return { output: `No completed Wrike tasks found in the last ${daysBack} days.` }
@@ -97,7 +106,6 @@ export class WrikeSourceExecutor extends NodeExecutor {
       return { output: JSON.stringify(tasks, null, 2) }
     }
 
-    // Format tasks for AI synthesis
     const taskList = tasks
       .map((t) => `- ${t.title}${t.briefDescription ? `: ${t.briefDescription}` : ''}`)
       .join('\n')
@@ -106,10 +114,12 @@ export class WrikeSourceExecutor extends NodeExecutor {
       ? 'You are a project analyst. Convert this list of completed Wrike tasks into a structured report with categories, key achievements, and metrics where possible.'
       : 'You are a communications specialist. Summarize these completed Wrike tasks into a concise narrative suitable for an internal campaign or announcement. Highlight wins and team impact.'
 
+    console.log(`[wrike] calling Claude to synthesize ${tasks.length} tasks`)
     const result = await callModel(modelConfig, {
       system: systemPrompt,
       prompt: `Completed tasks from the last ${daysBack} days:\n\n${taskList}`,
     })
+    console.log(`[wrike] synthesis complete`)
 
     return {
       output: result.content,
