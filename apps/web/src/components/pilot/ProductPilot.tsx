@@ -27,12 +27,21 @@ interface PilotMessage {
   synthesis?: string
 }
 
+interface SessionTemplate {
+  id: string
+  name: string
+  skillKey: string
+  categoryKey: string
+  useCount: number
+}
+
 export interface ProductPilotProps {
   clientId: string
   clientName: string
   categoryKey: string
   skillKey: string
   skillName: string
+  verticalId?: string | null
   onClose: () => void
   onSkillSuggestionClick: (categoryKey: string, skillKey: string) => void
   onSynthesisSaved?: (skillKey: string) => void
@@ -67,12 +76,14 @@ function SynthesisBlock({
   categoryKey,
   skillKey,
   onSaved,
+  onSaveTemplate,
 }: {
   content: string
   clientId: string
   categoryKey: string
   skillKey: string
   onSaved?: () => void
+  onSaveTemplate?: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
@@ -149,6 +160,14 @@ function SynthesisBlock({
               {saving ? 'Saving…' : 'Save to Brain'}
             </button>
           )}
+          {onSaveTemplate && (
+            <button
+              onClick={onSaveTemplate}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-200"
+            >
+              <Icons.BookmarkPlus className="h-3 w-3" /> Save path as template
+            </button>
+          )}
         </div>
       </div>
       <div className="rounded-lg border border-emerald-200 bg-white p-3 max-h-48 overflow-y-auto">
@@ -194,6 +213,7 @@ function MessageBubble({
   skillKey,
   onSkillSuggestionClick,
   onSynthesisSaved,
+  onSaveTemplate,
 }: {
   msg: PilotMessage
   clientId: string
@@ -201,6 +221,7 @@ function MessageBubble({
   skillKey: string
   onSkillSuggestionClick: (categoryKey: string, skillKey: string) => void
   onSynthesisSaved?: () => void
+  onSaveTemplate?: () => void
 }) {
   const isUser = msg.role === 'user'
   return (
@@ -231,6 +252,7 @@ function MessageBubble({
             categoryKey={categoryKey}
             skillKey={skillKey}
             onSaved={onSynthesisSaved}
+            onSaveTemplate={onSaveTemplate}
           />
         )}
         {msg.suggestions && msg.suggestions.length > 0 && (
@@ -273,6 +295,7 @@ export function ProductPilot({
   categoryKey,
   skillKey,
   skillName,
+  verticalId,
   onClose,
   onSkillSuggestionClick,
   onSynthesisSaved,
@@ -281,6 +304,15 @@ export function ProductPilot({
   const [loading, setLoading]   = useState(false)
   const [input, setInput]       = useState('')
   const [synthesisDone, setSynthesisDone] = useState(false)
+
+  // Templates
+  const [templates, setTemplates]           = useState<SessionTemplate[]>([])
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
+  // Save-template modal
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [templateName, setTemplateName]         = useState('')
+  const [savingTemplate, setSavingTemplate]     = useState(false)
+  const [templateSaved, setTemplateSaved]       = useState(false)
 
   const lastMsgRef = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
@@ -294,6 +326,38 @@ export function ProductPilot({
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 80)
   }, [])
+
+  useEffect(() => {
+    apiFetch(`/api/v1/productpilot/session-templates?skillKey=${encodeURIComponent(skillKey)}`)
+      .then((r) => r.json())
+      .then((body: { data: SessionTemplate[] }) => setTemplates(body.data ?? []))
+      .catch(() => {/* non-fatal */})
+  }, [skillKey])
+
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim() || savingTemplate) return
+    setSavingTemplate(true)
+    try {
+      const res = await apiFetch('/api/v1/productpilot/save-session-template', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          skillKey,
+          categoryKey,
+          name: templateName.trim(),
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      })
+      if (res.ok) {
+        const { data } = await res.json() as { data: SessionTemplate }
+        setTemplates((prev) => [data, ...prev])
+        setTemplateSaved(true)
+        setTimeout(() => setShowSaveTemplate(false), 1200)
+      }
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
 
   const sendMessage = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim()
@@ -314,6 +378,8 @@ export function ProductPilot({
           clientId,
           categoryKey,
           skillKey,
+          ...(activeTemplateId ? { templateId: activeTemplateId } : {}),
+          ...(verticalId ? { verticalId } : {}),
         }),
       })
 
@@ -340,7 +406,7 @@ export function ProductPilot({
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, clientId, categoryKey, skillKey])
+  }, [input, loading, messages, clientId, categoryKey, skillKey, activeTemplateId, verticalId])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() }
@@ -397,6 +463,46 @@ export function ProductPilot({
                   I'll ask multi-directional questions to help you think through every dimension — and surface things you might have missed.
                 </p>
               </div>
+
+              {/* Saved templates */}
+              {templates.length > 0 && (
+                <div className="w-full max-w-xs">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 text-left">
+                    Saved paths
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {templates.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setActiveTemplateId((prev) => prev === t.id ? null : t.id)}
+                        className={cn(
+                          'flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-[11px] transition-colors',
+                          activeTemplateId === t.id
+                            ? 'border-purple-400 bg-purple-50 text-purple-900'
+                            : 'border-border bg-zinc-50 text-foreground hover:border-purple-300 hover:bg-purple-50',
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Icons.Bookmark className={cn('h-3 w-3 shrink-0', activeTemplateId === t.id ? 'text-purple-600' : 'text-muted-foreground')} />
+                          <span className="font-medium truncate">{t.name}</span>
+                        </div>
+                        {activeTemplateId === t.id && (
+                          <span className="text-[10px] font-semibold text-purple-600 shrink-0">Active</span>
+                        )}
+                        {t.useCount > 0 && activeTemplateId !== t.id && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">×{t.useCount}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {activeTemplateId && (
+                    <p className="text-[10px] text-purple-600 mt-1.5">
+                      Claude will follow this path — adapting to your answers.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-col gap-2 w-full max-w-xs">
                 {starters.map((s) => (
                   <button
@@ -420,6 +526,7 @@ export function ProductPilot({
                 skillKey={skillKey}
                 onSkillSuggestionClick={onSkillSuggestionClick}
                 onSynthesisSaved={() => onSynthesisSaved?.(skillKey)}
+                onSaveTemplate={msg.synthesis ? () => { setTemplateName(''); setTemplateSaved(false); setShowSaveTemplate(true) } : undefined}
               />
             </div>
           ))}
@@ -466,7 +573,7 @@ export function ProductPilot({
           <div className="border-t border-border px-4 py-2.5 shrink-0 flex items-center justify-between bg-emerald-50">
             <span className="text-[11px] text-emerald-700 font-medium">Session complete</span>
             <button
-              onClick={() => { setMessages([]); setSynthesisDone(false) }}
+              onClick={() => { setMessages([]); setSynthesisDone(false); setActiveTemplateId(null) }}
               className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
             >
               <Icons.RefreshCw className="h-3 w-3" /> Start fresh
@@ -474,6 +581,56 @@ export function ProductPilot({
           </div>
         )}
       </div>
+
+      {/* Save-template modal */}
+      {showSaveTemplate && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-white shadow-2xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Icons.BookmarkPlus className="h-4 w-4 shrink-0" style={{ color: '#a200ee' }} />
+              <h3 className="text-sm font-semibold text-foreground">Save this path as a template</h3>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              The question sequence from this session will be saved so you or your team can use it as a guided scaffold for future {skillName} sessions.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-foreground">Template name</label>
+              <input
+                autoFocus
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveTemplate() }}
+                placeholder={`e.g. Deep ${skillName} — B2B SaaS`}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1"
+                style={{ '--tw-ring-color': '#a200ee' } as React.CSSProperties}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowSaveTemplate(false)}
+                className="rounded-lg px-3 py-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              {templateSaved ? (
+                <span className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-100">
+                  <Icons.Check className="h-3.5 w-3.5" /> Saved!
+                </span>
+              ) : (
+                <button
+                  onClick={() => void handleSaveTemplate()}
+                  disabled={!templateName.trim() || savingTemplate}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40 transition-colors"
+                  style={{ backgroundColor: '#a200ee' }}
+                >
+                  <Icons.BookmarkPlus className="h-3.5 w-3.5" />
+                  {savingTemplate ? 'Saving…' : 'Save template'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

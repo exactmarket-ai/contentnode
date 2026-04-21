@@ -67,6 +67,7 @@ model Agency {
   leadershipMembers              LeadershipMember[]
   notifications                  Notification[]
   integrations                   Integration[]
+  skillSessionTemplates          SkillSessionTemplate[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -1830,4 +1831,24 @@ model Integration {
 
   @@unique([agencyId, provider])
   @@map("integrations")
+}
+
+// ─────────────────────────────────────────────
+// SkillSessionTemplate — saved question paths from productPILOT sessions
+// ─────────────────────────────────────────────
+model SkillSessionTemplate {
+  id              String   @id @default(cuid())
+  agencyId        String   @map("agency_id")
+  skillKey        String   @map("skill_key")
+  categoryKey     String   @map("category_key")
+  name            String
+  questionFlow    Json     @map("question_flow")   // string[] — ordered assistant questions
+  createdByUserId String?  @map("created_by_user_id")
+  useCount        Int      @default(0) @map("use_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, skillKey])
+  @@map("skill_session_templates")
 }

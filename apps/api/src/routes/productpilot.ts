@@ -28,6 +28,8 @@ const chatBody = z.object({
   clientId:    z.string(),
   categoryKey: z.string(),
   skillKey:    z.string(),
+  templateId:  z.string().optional(),
+  verticalId:  z.string().optional(),
 })
 
 const saveSynthesisBody = z.object({
@@ -37,9 +39,16 @@ const saveSynthesisBody = z.object({
   synthesis:   z.string().min(1).max(50000),
 })
 
+const saveTemplateBody = z.object({
+  skillKey:    z.string(),
+  categoryKey: z.string(),
+  name:        z.string().min(1).max(120),
+  messages:    z.array(messageSchema).min(1).max(60),
+})
+
 // ─── Context assembler ────────────────────────────────────────────────────────
 
-async function buildClientContext(agencyId: string, clientId: string): Promise<string[]> {
+async function buildClientContext(agencyId: string, clientId: string, verticalId?: string): Promise<string[]> {
   const parts: string[] = []
 
   const [client, clientAttachments] = await Promise.all([
@@ -88,7 +97,30 @@ async function buildClientContext(agencyId: string, clientId: string): Promise<s
     }
   }
 
-  // Vertical + Agency brain
+  // Vertical brain (when a vertical is selected)
+  if (verticalId) {
+    const [vertical, verticalAttachments] = await Promise.all([
+      prisma.vertical.findFirst({
+        where: { id: verticalId, agencyId },
+        select: { name: true, brainContext: true },
+      }),
+      prisma.verticalBrainAttachment.findMany({
+        where: { verticalId, agencyId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+      }),
+    ])
+    if (vertical) {
+      parts.push(`\nVERTICAL: ${vertical.name}`)
+      if (vertical.brainContext?.trim()) parts.push(`VERTICAL BRAIN:\n${vertical.brainContext.trim()}`)
+      for (const doc of verticalAttachments) {
+        if (doc.summary?.trim()) parts.push(`[vertical doc] ${doc.filename}:\n${doc.summary.trim()}`)
+      }
+    }
+  }
+
+  // Agency brain
   const [agency, agencyAttachments] = await Promise.all([
     prisma.agency.findFirst({ where: { id: agencyId }, select: { name: true, brainContext: true } }),
     prisma.agencyBrainAttachment.findMany({
@@ -109,6 +141,28 @@ async function buildClientContext(agencyId: string, clientId: string): Promise<s
   return parts
 }
 
+// ─── Question extractor ───────────────────────────────────────────────────────
+
+function extractQuestions(messages: Array<{ role: string; content: string }>): string[] {
+  const questions: string[] = []
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue
+    // Strip XML blocks (synthesis/suggestions)
+    const cleaned = msg.content
+      .replace(/<SKILL_SYNTHESIS>[\s\S]*?<\/SKILL_SYNTHESIS>/gi, '')
+      .replace(/<PRODUCTPILOT_SUGGESTIONS>[\s\S]*?<\/PRODUCTPILOT_SUGGESTIONS>/gi, '')
+      .trim()
+    // Extract lines ending with ?
+    const lines = cleaned.split('\n').map((l) => l.trim()).filter(Boolean)
+    const questionLines = lines.filter((l) => l.endsWith('?'))
+    if (questionLines.length > 0) {
+      // Take the last question in the turn (the one they left the user with)
+      questions.push(questionLines[questionLines.length - 1])
+    }
+  }
+  return questions
+}
+
 // ─── System prompt builder ────────────────────────────────────────────────────
 
 function buildSystemPrompt(
@@ -116,6 +170,7 @@ function buildSystemPrompt(
   categoryKey: string,
   skillKey: string,
   clientName: string,
+  questionFlow?: string[],
 ): string {
   const skill = findSkill(categoryKey, skillKey)
   if (!skill) throw new Error(`Skill not found: ${categoryKey}/${skillKey}`)
@@ -196,7 +251,16 @@ ${JSON.stringify(relatedSkills, null, 2)}
 [Structured synthesis of everything learned in this session, organized by the framework dimensions. Dense with specifics. Useful as a standalone document.]
 </SKILL_SYNTHESIS>
 
-Always end each response with either a question (still gathering) or the synthesis block (complete).`
+Always end each response with either a question (still gathering) or the synthesis block (complete).${
+    questionFlow && questionFlow.length > 0
+      ? `
+
+## LOADED SESSION TEMPLATE — PROVEN QUESTION PATH:
+A previous session for this skill produced the following question sequence that worked exceptionally well. Use it as your scaffolding — follow the spirit and sequence, but adapt each question to what you're actually learning from this client's answers. Don't quote them verbatim; make them fit the conversation:
+
+${questionFlow.map((q, i) => `${i + 1}. ${q}`).join('\n')}`
+      : ''
+  }`
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -212,19 +276,23 @@ export async function productPilotRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Invalid request', details: parsed.error.issues })
     }
 
-    const { messages, clientId, categoryKey, skillKey } = parsed.data
+    const { messages, clientId, categoryKey, skillKey, templateId, verticalId } = parsed.data
 
     const skill = findSkill(categoryKey, skillKey)
     if (!skill) return reply.code(404).send({ error: 'Skill not found' })
 
-    const client = await prisma.client.findFirst({
-      where: { id: clientId, agencyId },
-      select: { id: true, name: true },
-    })
+    const [client, template] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true, name: true } }),
+      templateId
+        ? prisma.skillSessionTemplate.findFirst({ where: { id: templateId, agencyId }, select: { questionFlow: true } })
+        : Promise.resolve(null),
+    ])
     if (!client) return reply.code(404).send({ error: 'Client not found' })
 
-    const contextParts = await buildClientContext(agencyId, clientId)
-    const systemPrompt = buildSystemPrompt(contextParts, categoryKey, skillKey, client.name)
+    const questionFlow = template ? (template.questionFlow as string[]) : undefined
+
+    const contextParts = await buildClientContext(agencyId, clientId, verticalId)
+    const systemPrompt = buildSystemPrompt(contextParts, categoryKey, skillKey, client.name, questionFlow)
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
@@ -303,7 +371,6 @@ export async function productPilotRoutes(app: FastifyInstance) {
         data: {
           summary:       synthesis,
           summaryStatus: 'ready',
-          updatedAt:     new Date(),
         },
       })
     } else {
@@ -322,5 +389,57 @@ export async function productPilotRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ data: { ok: true, skillName: skill.name } })
+  })
+
+  // ── GET /session-templates — list saved paths for a skill ────────────────────
+  app.get('/session-templates', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { skillKey } = req.query as { skillKey?: string }
+
+    const where = skillKey
+      ? { agencyId, skillKey }
+      : { agencyId }
+
+    const templates = await prisma.skillSessionTemplate.findMany({
+      where,
+      select: { id: true, skillKey: true, categoryKey: true, name: true, useCount: true, createdAt: true },
+      orderBy: [{ useCount: 'desc' }, { createdAt: 'desc' }],
+    })
+
+    return reply.send({ data: templates })
+  })
+
+  // ── POST /save-session-template — extract questions and save path ─────────────
+  app.post('/save-session-template', async (req, reply) => {
+    const { agencyId, userId } = req.auth as { agencyId: string; userId?: string }
+
+    const parsed = saveTemplateBody.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Invalid request', details: parsed.error.issues })
+    }
+
+    const { skillKey, categoryKey, name, messages } = parsed.data
+
+    const skill = findSkill(categoryKey, skillKey)
+    if (!skill) return reply.code(404).send({ error: 'Skill not found' })
+
+    const questionFlow = extractQuestions(messages)
+    if (questionFlow.length === 0) {
+      return reply.code(422).send({ error: 'No questions found in session history' })
+    }
+
+    const template = await prisma.skillSessionTemplate.create({
+      data: {
+        agencyId,
+        skillKey,
+        categoryKey,
+        name: name.trim(),
+        questionFlow,
+        createdByUserId: userId ?? null,
+      },
+      select: { id: true, name: true, skillKey: true, categoryKey: true },
+    })
+
+    return reply.send({ data: template })
   })
 }
