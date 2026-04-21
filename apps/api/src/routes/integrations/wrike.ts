@@ -158,7 +158,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     const { accessToken, host } = await refreshWrikeToken(agencyId)
 
     const url = new URL(`https://${host}/api/v4/tasks`)
-    url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds', 'status', 'dates']))
+    url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds']))
     url.searchParams.set('pageSize', pageSize)
 
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
@@ -174,7 +174,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     const { accessToken, host } = await refreshWrikeToken(agencyId)
 
     const url = new URL(`https://${host}/api/v4/folders`)
-    url.searchParams.set('fields',   JSON.stringify(['description', 'childIds', 'project', 'space']))
+    url.searchParams.set('fields',   JSON.stringify(['description', 'childIds', 'project']))
     url.searchParams.set('project',  'true')
 
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
