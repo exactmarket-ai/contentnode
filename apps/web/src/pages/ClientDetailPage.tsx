@@ -1648,30 +1648,25 @@ function ReviewsTab({ clientId, clientName }: { clientId: string; clientName: st
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={rev.reviewStatus}
-                        onChange={async (e) => {
-                          const newStatus = e.target.value
-                          setFrameworkRevisions((prev) => prev.map((r) => r.id === rev.id ? { ...r, reviewStatus: newStatus } : r))
-                          await apiFetch(`/api/v1/clients/${clientId}/framework/${rev.verticalId}/revisions/${rev.id}`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ reviewStatus: newStatus }),
-                          }).catch(() => {})
-                        }}
-                        className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        {Object.entries(REVIEW_STATUS_CONFIG).map(([key, cfg]) => (
-                          <option key={key} value={key}>{cfg.label}</option>
-                        ))}
-                      </select>
+                      <span className={cn('inline-flex items-center gap-1.5', rsCfg.color)}>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', rsCfg.dot)} />
+                        {rsCfg.label}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">—</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {rev.exportedAt ? new Date(rev.exportedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className={cn('text-xs', rsCfg.color)}>{rsCfg.label}</span>
+                      <Button
+                        size="sm"
+                        variant={rev.reviewStatus === 'draft' ? 'default' : 'outline'}
+                        className="h-7 text-xs gap-1.5"
+                        onClick={() => navigate(`/clients/${clientId}?tab=framework&verticalId=${rev.verticalId}`)}
+                      >
+                        <Icons.FileText className="h-3 w-3" />
+                        {rev.reviewStatus === 'draft' ? 'Review' : 'View'}
+                      </Button>
                     </td>
                   </tr>
                 )
@@ -7080,7 +7075,7 @@ export function ClientDetailPage() {
 
       {/* Tab content */}
       {activeTab === 'framework'
-        ? <div className="flex-1 overflow-hidden"><ClientFrameworkTab clientId={client.id} clientName={client.name} /></div>
+        ? <div className="flex-1 overflow-hidden"><ClientFrameworkTab clientId={client.id} clientName={client.name} initialVerticalId={searchParams.get('verticalId') ?? undefined} /></div>
         : activeTab === 'demandgen'
         ? <div className="flex-1 overflow-hidden"><ClientDemandGenTab clientId={client.id} /></div>
         : activeTab === 'branding'

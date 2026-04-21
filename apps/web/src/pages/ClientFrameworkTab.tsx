@@ -2045,7 +2045,7 @@ interface AttachedTemplate {
   assignmentId: string
 }
 
-export function ClientFrameworkTab({ clientId, clientName }: { clientId: string; clientName: string }) {
+export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: { clientId: string; clientName: string; initialVerticalId?: string }) {
   const { canManageTemplates } = useCurrentUser()
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
@@ -2079,10 +2079,14 @@ export function ClientFrameworkTab({ clientId, clientName }: { clientId: string;
       .then(({ data }) => {
         const list: Vertical[] = [...(data ?? [])].sort((a: Vertical, b: Vertical) => a.name.localeCompare(b.name))
         setVerticals(list)
+        if (initialVerticalId) {
+          const match = list.find((v) => v.id === initialVerticalId)
+          if (match) setSelectedVertical(match)
+        }
       })
       .catch(() => {})
       .finally(() => setVerticalsLoading(false))
-  }, [clientId])
+  }, [clientId, initialVerticalId])
 
   // Pre-fetch doc style so download is instant
   useEffect(() => {
