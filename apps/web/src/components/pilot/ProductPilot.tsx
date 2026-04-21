@@ -106,7 +106,7 @@ function SynthesisBlock({
   }
 
   return (
-    <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-2.5">
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <Icons.CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -168,7 +168,7 @@ function SkillSuggestionCard({
   onSelect: (categoryKey: string, skillKey: string) => void
 }) {
   return (
-    <div className="rounded-xl border border-border bg-background p-3 space-y-1.5 hover:border-purple-300 transition-colors">
+    <div className="rounded-xl border border-border bg-white p-3 space-y-1.5 hover:border-purple-300 transition-colors">
       <div className="flex items-start justify-between gap-1">
         <span className="text-[11px] font-semibold text-foreground leading-snug">{suggestion.name}</span>
         <Icons.ArrowRight className="h-3 w-3 text-purple-400 shrink-0 mt-0.5" />
@@ -217,7 +217,7 @@ function MessageBubble({
               'rounded-xl px-3 py-2 text-[12px] leading-relaxed',
               isUser
                 ? 'text-white rounded-tr-sm'
-                : 'bg-muted text-foreground rounded-tl-sm',
+                : 'bg-zinc-100 text-foreground rounded-tl-sm',
             )}
             style={isUser ? { backgroundColor: '#a200ee' } : {}}
           >
@@ -349,8 +349,8 @@ export function ProductPilot({
   const starters = getStarters(skillKey)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="flex flex-col w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden" style={{ height: '80vh' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="flex flex-col w-full max-w-2xl rounded-2xl border border-border bg-white shadow-2xl overflow-hidden" style={{ height: '80vh' }}>
 
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-3 shrink-0">
@@ -402,7 +402,7 @@ export function ProductPilot({
                   <button
                     key={s}
                     onClick={() => void sendMessage(s)}
-                    className="rounded-xl border border-border bg-muted/40 px-4 py-2.5 text-[11px] font-medium text-foreground hover:border-purple-300 hover:bg-purple-50 transition-colors text-left"
+                    className="rounded-xl border border-border bg-zinc-50 px-4 py-2.5 text-[11px] font-medium text-foreground hover:border-purple-300 hover:bg-purple-50 transition-colors text-left"
                   >
                     {s}
                   </button>
@@ -429,7 +429,7 @@ export function ProductPilot({
               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: '#a200ee' }}>
                 <Icons.Zap className="h-3.5 w-3.5 text-white" />
               </div>
-              <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
+              <div className="flex items-center gap-1 rounded-xl bg-zinc-100 px-3 py-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce [animation-delay:0ms]" />
                 <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce [animation-delay:150ms]" />
                 <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce [animation-delay:300ms]" />
@@ -448,7 +448,7 @@ export function ProductPilot({
               onKeyDown={handleKeyDown}
               placeholder={`Reply to productPILOT… (Shift+Enter for new line)`}
               rows={1}
-              className="flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 min-h-[34px] max-h-[80px] overflow-y-auto"
+              className="flex-1 resize-none rounded-xl border border-border bg-white px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 min-h-[34px] max-h-[80px] overflow-y-auto"
               style={{ lineHeight: '1.4', '--tw-ring-color': '#a200ee' } as React.CSSProperties}
             />
             <button
@@ -463,7 +463,7 @@ export function ProductPilot({
         )}
 
         {synthesisDone && (
-          <div className="border-t border-border px-4 py-2.5 shrink-0 flex items-center justify-between bg-emerald-50/50">
+          <div className="border-t border-border px-4 py-2.5 shrink-0 flex items-center justify-between bg-emerald-50">
             <span className="text-[11px] text-emerald-700 font-medium">Session complete</span>
             <button
               onClick={() => { setMessages([]); setSynthesisDone(false) }}
