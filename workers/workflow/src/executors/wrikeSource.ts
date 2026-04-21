@@ -1,6 +1,14 @@
 import { prisma } from '@contentnode/database'
-import { callModel } from '@contentnode/ai'
+import { callModel, type ModelConfig } from '@contentnode/ai'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+
+const MODEL: ModelConfig = {
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-5',
+  api_key_ref: 'ANTHROPIC_API_KEY',
+  temperature: 0.3,
+  max_tokens: 4096,
+}
 
 const WRIKE_TOKEN_URL = 'https://login.wrike.com/oauth2/token'
 
@@ -71,44 +79,24 @@ export class WrikeSourceExecutor extends NodeExecutor {
     const { agencyId } = ctx
     const daysBack  = Number(config.days_back ?? 14)
     const synthesis = (config.synthesis ?? 'summary') as string
-    const modelConfig = ctx.defaultModelConfig
 
     console.log(`[wrike] fetching token for agency ${agencyId}`)
     const { accessToken, host } = await getWrikeToken(agencyId)
-    console.log(`[wrike] token ok, host=${host}, fetching completed tasks updated in last ${daysBack} days`)
-
-    const end   = new Date()
-    const start = new Date(end.getTime() - daysBack * 24 * 60 * 60 * 1000)
-
-    const updatedDate = JSON.stringify({
-      start: start.toISOString().split('.')[0] + 'Z',
-      end:   end.toISOString().split('.')[0] + 'Z',
-    })
-
-    // First probe: fetch up to 5 tasks with no date filter to verify API access
-    const probeUrl = new URL(`https://${host}/api/v4/tasks`)
-    probeUrl.searchParams.set('pageSize', '5')
-    probeUrl.searchParams.set('fields', JSON.stringify(['description', 'briefDescription', 'parentIds']))
-    const probeRes = await fetchWithTimeout(probeUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
-    if (!probeRes.ok) throw new Error(`Wrike API probe error: ${probeRes.status} ${await probeRes.text()}`)
-    const probeData = await probeRes.json() as { data: WrikeTask[] }
-    console.log(`[wrike] probe (no filter): ${probeData.data?.length ?? 0} tasks returned`)
+    console.log(`[wrike] token ok, host=${host}, fetching tasks`)
 
     const url = new URL(`https://${host}/api/v4/tasks`)
-    url.searchParams.set('updatedDate', updatedDate)
-    url.searchParams.set('fields',      JSON.stringify(['description', 'briefDescription', 'parentIds']))
-    url.searchParams.set('pageSize',    '100')
-    console.log(`[wrike] querying with updatedDate=${updatedDate}`)
+    url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds']))
+    url.searchParams.set('pageSize', '100')
 
     const res = await fetchWithTimeout(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
     if (!res.ok) throw new Error(`Wrike API error: ${res.status} ${await res.text()}`)
 
     const data = await res.json() as { data: WrikeTask[] }
     const tasks = data.data ?? []
-    console.log(`[wrike] got ${tasks.length} tasks with date filter, synthesis=${synthesis}`)
+    console.log(`[wrike] got ${tasks.length} tasks, synthesis=${synthesis}`)
 
     if (tasks.length === 0) {
-      return { output: `No Wrike tasks found for the last ${daysBack} days (probe returned ${probeData.data?.length ?? 0} tasks without date filter — try increasing Days Back or check if tasks are in a different date range).` }
+      return { output: `No Wrike tasks found.` }
     }
 
     if (synthesis === 'raw') {
@@ -124,14 +112,11 @@ export class WrikeSourceExecutor extends NodeExecutor {
       : 'You are a communications specialist. Review these recently updated Wrike tasks and identify completed work and wins. Summarize into a concise narrative suitable for an internal campaign or announcement. Highlight wins and team impact.'
 
     console.log(`[wrike] calling Claude to synthesize ${tasks.length} tasks`)
-    const result = await callModel(modelConfig, {
-      system: systemPrompt,
-      prompt: `Completed tasks from the last ${daysBack} days:\n\n${taskList}`,
-    })
+    const result = await callModel({ ...MODEL, system_prompt: systemPrompt }, `Recent Wrike tasks (${daysBack}-day window):\n\n${taskList}`)
     console.log(`[wrike] synthesis complete`)
 
     return {
-      output: result.content,
+      output: result.text,
       metadata: { taskCount: tasks.length, daysBack, synthesis },
     }
   }
