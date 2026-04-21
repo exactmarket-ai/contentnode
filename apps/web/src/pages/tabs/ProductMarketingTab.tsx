@@ -858,8 +858,15 @@ export function ProductMarketingTab({
           onClose={() => setPilotSkill(null)}
           onSkillSuggestionClick={(catKey, skKey) => {
             const cat = CATEGORIES.find((c) => c.key === catKey)
-            const sk  = cat?.skills.find((s) => s.key === skKey) ?? QUICK_TOOLS.find((t) => t.key === skKey)
-            if (sk) setPilotSkill({ categoryKey: catKey, skillKey: skKey, skillName: sk.name })
+            let sk = cat?.skills.find((s) => s.key === skKey) ?? QUICK_TOOLS.find((t) => t.key === skKey)
+            let resolvedCatKey = catKey
+            if (!sk) {
+              for (const c of CATEGORIES) {
+                const found = c.skills.find((s) => s.key === skKey)
+                if (found) { sk = found; resolvedCatKey = c.key; break }
+              }
+            }
+            if (sk) setPilotSkill({ categoryKey: resolvedCatKey, skillKey: skKey, skillName: sk.name })
           }}
           onSynthesisSaved={handleSynthesisSaved}
         />

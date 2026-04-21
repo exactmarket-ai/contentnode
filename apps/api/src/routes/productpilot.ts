@@ -182,11 +182,11 @@ function buildSystemPrompt(
     ? contextParts.join('\n')
     : 'No brain context available yet — draw on what you learn from the conversation.'
 
-  // Related skills in same category for suggestions
+  // Related skills in same category for suggestions — include categoryKey so Claude generates correct suggestion objects
   const relatedSkills = (category?.skills ?? [])
     .filter((s) => s.key !== skillKey)
     .slice(0, 5)
-    .map((s) => ({ key: s.key, name: s.name, description: s.description }))
+    .map((s) => ({ key: s.key, categoryKey: category!.key, name: s.name, description: s.description }))
 
   return `You are productPILOT, the AI Product Marketing strategist built into ContentNode. You guide agency teams and their clients through PM skill frameworks using Socratic, multi-directional questioning that builds deep strategic clarity.
 
