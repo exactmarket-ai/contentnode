@@ -349,8 +349,13 @@ async function generateIdeogram(
     throw new Error(`Ideogram v2 error: ${res.status} ${err}`)
   }
 
-  const data = await res.json() as { data: { url: string }[] }
-  return data.data.map((d) => d.url)
+  const raw = await res.json() as Record<string, unknown>
+  console.log('[ideogram] response top-level keys:', Object.keys(raw))
+  const items = Array.isArray(raw.data) ? raw.data as { url?: string }[] : []
+  console.log('[ideogram] items count:', items.length, '| first url:', items[0]?.url?.slice(0, 60))
+  const urls = items.map((d) => d.url).filter((u): u is string => typeof u === 'string')
+  if (urls.length === 0) throw new Error(`Ideogram returned no image URLs. Raw: ${JSON.stringify(raw).slice(0, 300)}`)
+  return urls
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -673,6 +678,7 @@ async function saveImages(
 
     const filename = `${randomUUID()}.${ext}`
     const storageKey = await saveGeneratedFile(buffer, filename, contentType)
+    console.log(`[saveImages] saved ${provider} image → storageKey=${storageKey} size=${buffer.byteLength}`)
     assets.push({
       type: 'image',
       storageKey,

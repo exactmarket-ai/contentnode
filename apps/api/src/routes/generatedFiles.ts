@@ -47,10 +47,11 @@ export async function generatedFileRoutes(app: FastifyInstance) {
         const filePath = resolve(join(UPLOAD_DIR, storageKey))
         // Ensure resolved path stays within UPLOAD_DIR (path traversal guard)
         if (!filePath.startsWith(resolve(UPLOAD_DIR))) {
-          return reply.code(400).send({ error: 'Invalid path' })
+          return reply.code(400).type('application/json').send({ error: 'Invalid path' })
         }
         if (!existsSync(filePath)) {
-          return reply.code(404).send({ error: 'File not found' })
+          req.log.warn({ storageKey, filePath }, '[files/generated] file not found on disk')
+          return reply.code(404).type('application/json').send({ error: 'File not found' })
         }
         return reply.send(createReadStream(filePath))
       }
@@ -59,8 +60,9 @@ export async function generatedFileRoutes(app: FastifyInstance) {
       try {
         const buffer = await downloadBuffer(storageKey)
         return reply.send(buffer)
-      } catch {
-        return reply.code(404).send({ error: 'File not found' })
+      } catch (err) {
+        req.log.warn({ storageKey, err: String(err) }, '[files/generated] S3 download failed')
+        return reply.code(404).type('application/json').send({ error: 'File not found' })
       }
     },
   )
