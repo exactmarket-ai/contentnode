@@ -85,20 +85,30 @@ export class WrikeSourceExecutor extends NodeExecutor {
       end:   end.toISOString().split('.')[0] + 'Z',
     })
 
+    // First probe: fetch up to 5 tasks with no date filter to verify API access
+    const probeUrl = new URL(`https://${host}/api/v4/tasks`)
+    probeUrl.searchParams.set('pageSize', '5')
+    probeUrl.searchParams.set('fields', JSON.stringify(['description', 'briefDescription', 'parentIds']))
+    const probeRes = await fetchWithTimeout(probeUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (!probeRes.ok) throw new Error(`Wrike API probe error: ${probeRes.status} ${await probeRes.text()}`)
+    const probeData = await probeRes.json() as { data: WrikeTask[] }
+    console.log(`[wrike] probe (no filter): ${probeData.data?.length ?? 0} tasks returned`)
+
     const url = new URL(`https://${host}/api/v4/tasks`)
     url.searchParams.set('updatedDate', updatedDate)
-    url.searchParams.set('fields',      JSON.stringify(['description', 'briefDescription', 'parentIds', 'status']))
+    url.searchParams.set('fields',      JSON.stringify(['description', 'briefDescription', 'parentIds']))
     url.searchParams.set('pageSize',    '100')
+    console.log(`[wrike] querying with updatedDate=${updatedDate}`)
 
     const res = await fetchWithTimeout(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
     if (!res.ok) throw new Error(`Wrike API error: ${res.status} ${await res.text()}`)
 
     const data = await res.json() as { data: WrikeTask[] }
     const tasks = data.data ?? []
-    console.log(`[wrike] got ${tasks.length} tasks, synthesis=${synthesis}`)
+    console.log(`[wrike] got ${tasks.length} tasks with date filter, synthesis=${synthesis}`)
 
     if (tasks.length === 0) {
-      return { output: `No completed Wrike tasks found in the last ${daysBack} days.` }
+      return { output: `No Wrike tasks found for the last ${daysBack} days (probe returned ${probeData.data?.length ?? 0} tasks without date filter — try increasing Days Back or check if tasks are in a different date range).` }
     }
 
     if (synthesis === 'raw') {
