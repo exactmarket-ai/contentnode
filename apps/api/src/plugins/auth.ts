@@ -47,7 +47,8 @@ async function authPluginFn(app: FastifyInstance) {
     if (req.url.startsWith('/writer')) return
     // Generated files are public static assets — no auth required
     if (req.url.startsWith('/files/generated/')) return
-    // Wrike OAuth debug endpoint — public for troubleshooting redirect URI
+    // Wrike OAuth endpoints — callback and debug are public (called by Wrike's servers)
+    if (req.url.startsWith('/api/v1/integrations/wrike/callback')) return
     if (req.url.startsWith('/api/v1/integrations/wrike/debug')) return
     // Invite token validation is public — no Clerk auth needed to peek at invite details
     if (req.method === 'GET' && req.url.startsWith('/api/v1/team/accept-invite/')) return
