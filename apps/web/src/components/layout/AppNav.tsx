@@ -202,13 +202,14 @@ function UserAvatar({ avatarUrl, name, email, size = 'sm' }: { avatarUrl: string
 const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d8f5' }
 
 const NAV_ITEMS = [
-  { to: '/workflows',         icon: Icons.Workflow,        label: 'Workflows',         ...ACTIVE },
-  { to: '/clients',           icon: Icons.Users,           label: 'Clients',           ...ACTIVE },
-  { to: '/calendar',          icon: Icons.CalendarDays,    label: 'Calendar',          ...ACTIVE },
-  { to: '/reviews',   icon: Icons.ClipboardEdit, label: 'Reviews & Runs',    ...ACTIVE },
-  { to: '/quality',   icon: Icons.TrendingUp,    label: 'Quality & Reports', ...ACTIVE },
-  { to: '/usage',     icon: Icons.BarChart2,     label: 'Usage',             ...ACTIVE },
-  { to: '/humanizer', icon: Icons.BrainCircuit,  label: 'cnHumanizer',       ...ACTIVE },
+  { to: '/pipeline',  icon: Icons.Kanban,        label: 'Pipeline',          ...ACTIVE },
+  { to: '/workflows', icon: Icons.Workflow,       label: 'Workflows',         ...ACTIVE },
+  { to: '/clients',   icon: Icons.Users,          label: 'Clients',           ...ACTIVE },
+  { to: '/calendar',  icon: Icons.CalendarDays,   label: 'Calendar',          ...ACTIVE },
+  { to: '/reviews',   icon: Icons.ClipboardEdit,  label: 'Reviews & Runs',    ...ACTIVE },
+  { to: '/quality',   icon: Icons.TrendingUp,     label: 'Quality & Reports', ...ACTIVE },
+  { to: '/usage',     icon: Icons.BarChart2,      label: 'Usage',             ...ACTIVE },
+  { to: '/humanizer', icon: Icons.BrainCircuit,   label: 'cnHumanizer',       ...ACTIVE },
 ]
 
 const BOTTOM_NAV_ITEMS = [
