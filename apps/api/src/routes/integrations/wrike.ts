@@ -168,7 +168,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     const url = new URL(`https://${host}/api/v4/tasks`)
     url.searchParams.set('status',        'Completed')
     url.searchParams.set('completedDate', completedDate)
-    url.searchParams.set('fields',        JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds', 'completedDate', 'customFields']))
+    url.searchParams.set('fields',        JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds', 'customFields']))
     url.searchParams.set('pageSize',      '100')
 
     const res = await fetch(url.toString(), {
