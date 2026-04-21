@@ -86,9 +86,8 @@ export class WrikeSourceExecutor extends NodeExecutor {
     })
 
     const url = new URL(`https://${host}/api/v4/tasks`)
-    url.searchParams.set('status',      'Completed')
     url.searchParams.set('updatedDate', updatedDate)
-    url.searchParams.set('fields',      JSON.stringify(['description', 'briefDescription', 'parentIds']))
+    url.searchParams.set('fields',      JSON.stringify(['description', 'briefDescription', 'parentIds', 'status']))
     url.searchParams.set('pageSize',    '100')
 
     const res = await fetchWithTimeout(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
@@ -111,8 +110,8 @@ export class WrikeSourceExecutor extends NodeExecutor {
       .join('\n')
 
     const systemPrompt = synthesis === 'structured'
-      ? 'You are a project analyst. Convert this list of completed Wrike tasks into a structured report with categories, key achievements, and metrics where possible.'
-      : 'You are a communications specialist. Summarize these completed Wrike tasks into a concise narrative suitable for an internal campaign or announcement. Highlight wins and team impact.'
+      ? 'You are a project analyst. Review this list of recently updated Wrike tasks and identify completed or finished work. Convert into a structured report with categories, key achievements, and metrics where possible.'
+      : 'You are a communications specialist. Review these recently updated Wrike tasks and identify completed work and wins. Summarize into a concise narrative suitable for an internal campaign or announcement. Highlight wins and team impact.'
 
     console.log(`[wrike] calling Claude to synthesize ${tasks.length} tasks`)
     const result = await callModel(modelConfig, {
