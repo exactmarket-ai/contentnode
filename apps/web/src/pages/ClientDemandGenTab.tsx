@@ -3,6 +3,8 @@ import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { DemandPilot } from '@/components/pilot/DemandPilot'
+import { DimensionBar, type DimensionItem } from '@/components/layout/DimensionBar'
+import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1110,75 +1112,19 @@ const ALL_SECTIONS_NAV = [
   { num: '07', short: 'External Intelligence' },
 ]
 
-// ── Vertical selector (same pattern as GTM Framework) ────────────────────────
+// ── Vertical interface ────────────────────────────────────────────────────────
 
-interface Vertical { id: string; name: string }
-
-function VerticalSelector({ verticals, selected, onSelect, onSelectCompany }: {
-  verticals: Vertical[]
-  selected: Vertical | null
-  onSelect: (v: Vertical) => void
-  onSelectCompany: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-xs hover:bg-muted/40 transition-colors min-w-[140px]"
-      >
-        <span className="font-medium truncate">{selected ? selected.name : 'Company'}</span>
-        <svg className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-popover shadow-xl" style={{ backgroundColor: 'hsl(var(--popover))' }}>
-          <div className="max-h-48 overflow-y-auto p-1">
-            {/* Company (always first) */}
-            <button
-              className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
-              onClick={() => { onSelectCompany(); setOpen(false) }}
-            >
-              {!selected && <span className="text-orange-500">✓</span>}
-              <span className="truncate">Company</span>
-            </button>
-            {verticals.map((v) => (
-              <button
-                key={v.id}
-                className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/40"
-                onClick={() => { onSelect(v); setOpen(false) }}
-              >
-                {selected?.id === v.id && <span className="text-orange-500">✓</span>}
-                <span className="truncate">{v.name}</span>
-              </button>
-            ))}
-            {verticals.length === 0 && (
-              <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
-                No verticals assigned — go to Structure tab to add
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+interface Vertical extends DimensionItem { id: string; name: string; dimensionType: string }
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function ClientDemandGenTab({ clientId }: { clientId: string }) {
+  const verticalTerm = useVerticalTerm()
   const [verticals, setVerticals] = useState<Vertical[]>([])
-  const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
   const [verticalsLoading, setVerticalsLoading] = useState(true)
+  const [selectedDimensions, setSelectedDimensions] = useState<Record<string, string>>({})
+  const selectedVertical = verticals.find((v) => Object.values(selectedDimensions).includes(v.id)) ?? null
+  const setSelectedVertical = (v: Vertical | null) => setSelectedDimensions(v ? { [v.dimensionType]: v.id } : {})
 
   // Unified state — all sections (B1, B2, B3, S1–S7) at the selected level
   const [data, setDataRaw] = useState<DemandGenBaseData | null>(null)
@@ -1288,7 +1234,17 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full flex-col min-h-0">
+      {/* Dimension selector bar */}
+      <DimensionBar
+        items={verticals}
+        selected={selectedDimensions}
+        onChange={(type, id) => { setSelectedDimensions(id ? { [type]: id } : {}); }}
+        loading={verticalsLoading}
+        verticalTerm={verticalTerm}
+      />
+
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Left nav */}
       <div className="w-56 shrink-0 border-r border-border bg-muted/20 flex flex-col">
         <div className="px-4 py-4 border-b border-border">
@@ -1298,16 +1254,6 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
-          {/* Vertical selector — top of nav */}
-          <div className="px-3 pb-3 pt-2">
-            <VerticalSelector
-              verticals={verticals}
-              selected={selectedVertical}
-              onSelect={setSelectedVertical}
-              onSelectCompany={() => setSelectedVertical(null)}
-            />
-          </div>
-
           {/* All sections — flat list */}
           {ALL_SECTIONS_NAV.map((s) => (
             <button
@@ -1406,6 +1352,7 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
           onScrollToSection={(num) => scrollTo(num)}
         />
       </div>
+      </div>{/* end main content area */}
     </div>
   )
 }

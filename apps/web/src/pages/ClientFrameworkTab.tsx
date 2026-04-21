@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { DimensionBar, type DimensionItem } from '@/components/layout/DimensionBar'
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
 import { GTMPilot } from '@/components/pilot/GTMPilot'
@@ -1976,7 +1977,7 @@ function ScheduledResearchSection({ clientId, verticalId }: { clientId: string; 
 
 // ── Vertical selector ─────────────────────────────────────────────────────────
 
-interface Vertical { id: string; name: string }
+interface Vertical extends DimensionItem { id: string; name: string; dimensionType: string }
 
 function VerticalSelector({ verticals, selected, onSelect, onSelectCompany }: {
   verticals: Vertical[]
@@ -2050,7 +2051,9 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const { canManageTemplates } = useCurrentUser()
   const verticalTerm = useVerticalTerm()
   const [verticals, setVerticals] = useState<Vertical[]>([])
-  const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
+  const [selectedDimensions, setSelectedDimensions] = useState<Record<string, string>>({})
+  const selectedVertical = verticals.find((v) => Object.values(selectedDimensions).includes(v.id)) ?? null
+  const setSelectedVertical = (v: Vertical | null) => setSelectedDimensions(v ? { [v.dimensionType]: v.id } : {})
   const [fw, setFwRaw] = useState<FrameworkData | null>(null)
   const [activeSection, setActiveSection] = useState<string>('brain')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -2470,29 +2473,23 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     <DraftContext.Provider value={draftContextValue}>
     <div className="flex h-full flex-col" style={{ minHeight: 0 }}>
 
-      {/* Vertical selector bar */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-5 py-3">
-        <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">{verticalTerm}</span>
-        {verticalsLoading
-          ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-          : <VerticalSelector
-              verticals={verticals}
-              selected={selectedVertical}
-              onSelect={(v) => { setSelectedVertical(v); setActiveSection('brain') }}
-              onSelectCompany={() => { setSelectedVertical(null); setActiveSection('brain') }}
-            />
-        }
-        {selectedVertical && (
-          <span className="ml-auto text-[10px] text-muted-foreground">
-            {saveStatus === 'saving' && 'Saving…'}
-            {saveStatus === 'saved'  && <span className="text-green-600">Saved</span>}
-            {saveStatus === 'error'  && <span className="text-red-500">Save failed</span>}
-          </span>
-        )}
-
-        {/* ── Template controls ─────────────────────────────────────────── */}
+      {/* Dimension selector bar */}
+      <DimensionBar
+        items={verticals}
+        selected={selectedDimensions}
+        onChange={(type, id) => { setSelectedDimensions(id ? { [type]: id } : {}); setActiveSection('brain') }}
+        loading={verticalsLoading}
+        verticalTerm={verticalTerm}
+      >
         {selectedVertical && (
           <>
+            {saveStatus !== 'idle' && (
+              <span className="text-[10px] text-muted-foreground">
+                {saveStatus === 'saving' && 'Saving…'}
+                {saveStatus === 'saved'  && <span className="text-green-600">Saved</span>}
+                {saveStatus === 'error'  && <span className="text-red-500">Save failed</span>}
+              </span>
+            )}
             {/* Hidden file input */}
             <input
               ref={templateInputRef}
@@ -2611,7 +2608,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
             )}
           </>
         )}
-      </div>
+      </DimensionBar>
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden min-h-0">

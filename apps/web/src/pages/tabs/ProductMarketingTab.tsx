@@ -10,12 +10,13 @@ import * as Icons from 'lucide-react'
 import { ProductPilot } from '@/components/pilot/ProductPilot'
 import { apiFetch } from '@/lib/api'
 import { useVerticalTerm } from '@/hooks/useVerticalTerm'
+import { DimensionBar, type DimensionItem } from '@/components/layout/DimensionBar'
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Vertical { id: string; name: string }
+interface Vertical extends DimensionItem { id: string; name: string; dimensionType: string }
 
 interface Skill {
   key: string
@@ -240,67 +241,6 @@ function AttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryUpd
               </div>
             </div>
           )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── VerticalSelector ─────────────────────────────────────────────────────────
-
-function VerticalSelector({ verticals, selected, onSelect, onSelectCompany }: {
-  verticals: Vertical[]
-  selected: Vertical | null
-  onSelect: (v: Vertical) => void
-  onSelectCompany: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted/30 transition-colors min-w-[140px]"
-      >
-        <span className="font-medium truncate">{selected ? selected.name : 'Company'}</span>
-        <svg className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-white shadow-xl">
-          <div className="max-h-48 overflow-y-auto p-1">
-            <button
-              className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/30"
-              onClick={() => { onSelectCompany(); setOpen(false) }}
-            >
-              {!selected && <span className="text-blue-500">✓</span>}
-              <span className="truncate">Company</span>
-            </button>
-            {[...verticals].sort((a, b) => a.name.localeCompare(b.name)).map((v) => (
-              <button
-                key={v.id}
-                className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-muted/30"
-                onClick={() => { onSelect(v); setOpen(false) }}
-              >
-                {selected?.id === v.id && <span className="text-blue-500">✓</span>}
-                <span className="truncate">{v.name}</span>
-              </button>
-            ))}
-            {verticals.length === 0 && (
-              <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
-                No verticals assigned — go to Structure tab to add
-              </p>
-            )}
-          </div>
         </div>
       )}
     </div>
@@ -704,9 +644,12 @@ export function ProductMarketingTab({
   const [pilotSkill, setPilotSkill] = useState<{ categoryKey: string; skillKey: string; skillName: string } | null>(null)
   const [savedSkills, setSavedSkills] = useState<Set<string>>(new Set())
 
-  // Verticals
+  // Verticals + dimension selection
   const [verticals, setVerticals] = useState<Vertical[]>([])
-  const [selectedVertical, setSelectedVertical] = useState<Vertical | null>(null)
+  const [verticalsLoading, setVerticalsLoading] = useState(true)
+  const [selectedDimensions, setSelectedDimensions] = useState<Record<string, string>>({})
+  const selectedVertical = verticals.find((v) => Object.values(selectedDimensions).includes(v.id)) ?? null
+  const setSelectedVertical = (v: Vertical | null) => setSelectedDimensions(v ? { [v.dimensionType]: v.id } : {})
 
   // Website scrape state
   const [websiteStatus, setWebsiteStatus] = useState<'none' | 'pending' | 'running' | 'ready' | 'failed'>('none')
@@ -720,6 +663,7 @@ export function ProductMarketingTab({
         setVerticals(list)
       })
       .catch(() => {})
+      .finally(() => setVerticalsLoading(false))
   }, [clientId])
 
   // Load website scrape status when vertical changes
@@ -771,20 +715,20 @@ export function ProductMarketingTab({
   }
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full flex-col min-h-0">
+      {/* Dimension selector bar — matches GTM Framework */}
+      <DimensionBar
+        items={verticals}
+        selected={selectedDimensions}
+        onChange={(type, id) => setSelectedDimensions(id ? { [type]: id } : {})}
+        loading={verticalsLoading}
+        verticalTerm={verticalTerm}
+      />
+
+      {/* Main content area */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Sidebar */}
       <div className="flex w-52 shrink-0 flex-col border-r border-border overflow-y-auto">
-
-        {/* Vertical selector — top of sidebar */}
-        <div className="px-3 pt-3 pb-2.5 border-b border-border">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">{verticalTerm}</p>
-          <VerticalSelector
-            verticals={verticals}
-            selected={selectedVertical}
-            onSelect={(v) => setSelectedVertical(v)}
-            onSelectCompany={() => setSelectedVertical(null)}
-          />
-        </div>
 
         {/* productPILOT header — click to return to brain view */}
         <button
@@ -920,6 +864,7 @@ export function ProductMarketingTab({
           onSynthesisSaved={handleSynthesisSaved}
         />
       )}
+      </div>{/* end main content area */}
     </div>
   )
 }

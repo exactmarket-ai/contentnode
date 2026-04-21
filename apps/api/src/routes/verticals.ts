@@ -5,8 +5,8 @@ import { prisma } from '@contentnode/database'
 import { uploadStream, deleteObject } from '@contentnode/storage'
 import { getVerticalBrainProcessQueue } from '../lib/queues.js'
 
-const createBody = z.object({ name: z.string().min(1).max(100) })
-const updateBody = z.object({ name: z.string().min(1).max(100) })
+const createBody = z.object({ name: z.string().min(1).max(100), dimensionType: z.string().min(1).max(50).optional() })
+const updateBody = z.object({ name: z.string().min(1).max(100).optional(), dimensionType: z.string().min(1).max(50).optional() })
 
 export async function verticalRoutes(app: FastifyInstance) {
 
@@ -16,7 +16,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     const verticals = await prisma.vertical.findMany({
       where: { agencyId },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, createdAt: true },
+      select: { id: true, name: true, dimensionType: true, createdAt: true },
     })
     return reply.send({ data: verticals })
   })
@@ -34,7 +34,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     if (exists) return reply.code(409).send({ error: 'A vertical with that name already exists' })
 
     const vertical = await prisma.vertical.create({
-      data: { agencyId, name: parsed.data.name },
+      data: { agencyId, name: parsed.data.name, dimensionType: parsed.data.dimensionType ?? 'vertical' },
     })
     return reply.code(201).send({ data: vertical })
   })
@@ -43,14 +43,17 @@ export async function verticalRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string } }>('/:id', async (req, reply) => {
     const { agencyId } = req.auth
     const parsed = updateBody.safeParse(req.body)
-    if (!parsed.success) return reply.code(400).send({ error: 'name is required' })
+    if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' })
 
     const vertical = await prisma.vertical.findFirst({ where: { id: req.params.id, agencyId } })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
 
     const updated = await prisma.vertical.update({
       where: { id: req.params.id },
-      data: { name: parsed.data.name },
+      data: {
+        ...(parsed.data.name ? { name: parsed.data.name } : {}),
+        ...(parsed.data.dimensionType ? { dimensionType: parsed.data.dimensionType } : {}),
+      },
     })
     return reply.send({ data: updated })
   })

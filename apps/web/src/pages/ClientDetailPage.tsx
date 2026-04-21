@@ -4509,7 +4509,7 @@ interface DivisionData {
   createdAt: string
 }
 
-interface VerticalItem { id: string; name: string }
+interface VerticalItem { id: string; name: string; dimensionType: string }
 
 function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated: Partial<Client>) => void }) {
   const verticalTerm = useVerticalTerm()
@@ -4528,6 +4528,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
   const [allVerticals, setAllVerticals] = useState<VerticalItem[]>([])
   const [clientVerticals, setClientVerticals] = useState<VerticalItem[]>([])
   const [newVerticalName, setNewVerticalName] = useState('')
+  const [newVerticalDimType, setNewVerticalDimType] = useState('vertical')
   const [addingVertical, setAddingVertical] = useState(false)
   const [renamingVerticalId, setRenamingVerticalId] = useState<string | null>(null)
   const [renamingVerticalName, setRenamingVerticalName] = useState('')
@@ -4629,7 +4630,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
     const res = await apiFetch('/api/v1/verticals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, dimensionType: newVerticalDimType }),
     })
     if (!res.ok) return
     const { data } = await res.json()
@@ -4642,6 +4643,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
     })
     setClientVerticals((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     setNewVerticalName('')
+    setNewVerticalDimType('vertical')
     setAddingVertical(false)
   }
 
@@ -5156,17 +5158,29 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
         {/* Add new vertical inline */}
         {addingVertical && (
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2">
-            <Input
-              autoFocus
-              value={newVerticalName}
-              onChange={(e) => setNewVerticalName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void handleCreateVertical(); if (e.key === 'Escape') { setAddingVertical(false); setNewVerticalName('') } }}
-              placeholder="Vertical name (e.g. Healthcare, Financial Services)"
-              className="h-7 flex-1 text-xs"
-            />
-            <Button size="sm" className="h-7 text-xs px-3" onClick={() => void handleCreateVertical()}>Add</Button>
-            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => { setAddingVertical(false); setNewVerticalName('') }}>Cancel</Button>
+          <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={newVerticalDimType}
+                onChange={(e) => setNewVerticalDimType(e.target.value)}
+                className="h-7 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:border-blue-400"
+              >
+                <option value="vertical">{verticalTerm}</option>
+                <option value="solution">Solution</option>
+                <option value="partner">Partner</option>
+                <option value="country">Country</option>
+              </select>
+              <Input
+                autoFocus
+                value={newVerticalName}
+                onChange={(e) => setNewVerticalName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleCreateVertical(); if (e.key === 'Escape') { setAddingVertical(false); setNewVerticalName(''); setNewVerticalDimType('vertical') } }}
+                placeholder={`${newVerticalDimType === 'vertical' ? verticalTerm : newVerticalDimType.charAt(0).toUpperCase() + newVerticalDimType.slice(1)} name`}
+                className="h-7 flex-1 text-xs"
+              />
+              <Button size="sm" className="h-7 text-xs px-3" onClick={() => void handleCreateVertical()}>Add</Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => { setAddingVertical(false); setNewVerticalName(''); setNewVerticalDimType('vertical') }}>Cancel</Button>
+            </div>
           </div>
         )}
 
@@ -5196,6 +5210,9 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
               )}
               {renamingVerticalId !== v.id && (
                 <div className="flex items-center gap-0.5">
+                  <span className="mr-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {v.dimensionType === 'vertical' ? verticalTerm : v.dimensionType.charAt(0).toUpperCase() + v.dimensionType.slice(1)}
+                  </span>
                   <Button
                     variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                     onClick={() => { setRenamingVerticalId(v.id); setRenamingVerticalName(v.name) }}
