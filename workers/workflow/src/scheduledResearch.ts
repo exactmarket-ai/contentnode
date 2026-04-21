@@ -152,6 +152,11 @@ ${att.extractedText.slice(0, 13000)}`
     })
   }
 
+  const firstTitle = (blogs[0] as Record<string, unknown>)?.title as string | undefined
+  const itemName = firstTitle
+    ? `${firstTitle}${blogs.length > 1 ? ` (+${blogs.length - 1} more)` : ''}`
+    : `Auto-generated blog${blogs.length > 1 ? `s (${blogs.length})` : ''} — ${task.label}`
+
   await prisma.workflowRun.create({
     data: {
       agencyId,
@@ -159,6 +164,7 @@ ${att.extractedText.slice(0, 13000)}`
       status:       'completed',
       reviewStatus: 'pending',
       triggeredBy:  'scheduled-auto-generate',
+      itemName,
       output: {
         generatedContent: true,
         sourceLabel:      task.label,
@@ -440,6 +446,7 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
               status:       'completed',
               reviewStatus: 'pending',
               triggeredBy:  'scheduled-research',
+              itemName:     `Research: ${task.label}`,
               output: {
                 researchReport: true,
                 sourceLabel:    task.label,
