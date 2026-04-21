@@ -20,6 +20,7 @@ import { ContentBoardTab } from './ContentBoardTab'
 import { ThoughtLeadershipTab } from './ThoughtLeadershipTab'
 import { ClientBrainTab } from './ClientBrainTab'
 import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
+import { ProductMarketingTab } from './tabs/ProductMarketingTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { TaskPilot } from '@/components/pilot/TaskPilot'
 
@@ -6700,7 +6701,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
 // ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'board', 'deliverables', 'library', 'thought-leadership', 'framework', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'campaigns', 'board', 'deliverables', 'library', 'thought-leadership', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -6782,6 +6783,7 @@ export function ClientDetailPage() {
     library:             'Library',
     'thought-leadership': 'Thought Leadership',
     framework:     'GTM Framework',
+    'product-marketing': 'productPILOT',
     demandgen:     'Demand Gen',
     branding:      'Branding',
     board:         'Board',
@@ -6807,7 +6809,7 @@ export function ClientDetailPage() {
   // Tabs that live under the "Settings" group
   const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
   // Tabs rendered before the Demand Gen group button
-  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'thought-leadership', 'framework', 'branding', 'reviews']
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'library', 'thought-leadership', 'framework', 'product-marketing', 'branding', 'reviews']
   // Tabs rendered after the Demand Gen group button
   const POST_DEMAND_GEN_TABS: Tab[] = ['workflows', 'board', 'deliverables', 'insights']
   const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS]
@@ -7035,6 +7037,7 @@ export function ClientDetailPage() {
           </div>
         )}
         {activeTab === 'thought-leadership' && <ThoughtLeadershipTab clientId={client.id} />}
+        {activeTab === 'product-marketing' && <ProductMarketingTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'gtm-assessment' && <ClientGTMAssessmentTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}
