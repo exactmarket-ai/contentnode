@@ -52,7 +52,8 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
   // Warn if source node has no content configured
   const hasContent = (() => {
     // Integration-based sources fetch from external APIs — no local content needed
-    if (subtype === 'wrike_source' || subtype === 'deep_web_scrape' || subtype === 'review_miner' ||
+    if (subtype === 'wrike-source' || subtype === 'wrike_source' ||
+        subtype === 'deep_web_scrape' || subtype === 'review_miner' ||
         subtype === 'seo_intent' || subtype === 'audience_signal') return true
     const cfg = (data.config as Record<string, unknown>) ?? {}
     if (cfg.text || cfg.inlineText || cfg.pasted_text) return true
