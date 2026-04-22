@@ -451,6 +451,36 @@ export async function programRoutes(app: FastifyInstance) {
         } else {
           programRecord = await prisma.program.create({ data: programData }) as Record<string, unknown>
         }
+
+        // Save brief to client brain so all other PILOTs can see it
+        if (config.brief && programRecord) {
+          const progId = (programRecord as { id: string }).id
+          const briefFilename = `${(config.name ?? 'Program').trim()} — Program Brief`
+          const storageKey = `programspilot/${clientId}/${progId}.md`
+          const briefText = config.brief
+          const existing = await prisma.clientBrainAttachment.findFirst({
+            where: { agencyId, clientId, storageKey },
+            select: { id: true },
+          })
+          if (existing) {
+            await prisma.clientBrainAttachment.update({
+              where: { id: existing.id },
+              data: { summary: briefText, summaryStatus: 'ready', sizeBytes: Buffer.byteLength(briefText, 'utf8') },
+            })
+          } else {
+            await prisma.clientBrainAttachment.create({
+              data: {
+                agencyId, clientId,
+                filename:      briefFilename,
+                storageKey,
+                source:        'programspilot',
+                summary:       briefText,
+                summaryStatus: 'ready',
+                sizeBytes:     Buffer.byteLength(briefText, 'utf8'),
+              },
+            })
+          }
+        }
       } catch { /* malformed — skip */ }
     }
 
@@ -458,10 +488,23 @@ export async function programRoutes(app: FastifyInstance) {
     const completeMatch = responseText.match(/<PROGRAM_COMPLETE>([\s\S]+?)<\/PROGRAM_COMPLETE>/i)
     if (completeMatch && currentProgramId) {
       try {
+        const prog = await prisma.program.findFirst({
+          where: { id: currentProgramId, agencyId },
+          select: { brief: true, name: true },
+        })
         await prisma.program.update({
           where: { id: currentProgramId },
           data: { pilotPhase: 'complete', setupComplete: true, pilotMessages: messages as never },
         })
+        // Update brain attachment to reflect templates are complete
+        if (prog?.brief) {
+          const storageKey = `programspilot/${clientId}/${currentProgramId}.md`
+          const updatedBrief = `${prog.brief}\n\n---\n\n**Status:** All templates built and ready.`
+          await prisma.clientBrainAttachment.updateMany({
+            where: { agencyId, clientId, storageKey },
+            data: { summary: updatedBrief, sizeBytes: Buffer.byteLength(updatedBrief, 'utf8') },
+          })
+        }
       } catch { /* ignore */ }
     }
 
@@ -627,13 +670,13 @@ export async function programRoutes(app: FastifyInstance) {
     }
 
     // Enqueue BullMQ job for manual cycle (same queue as scheduled research)
-    const { getQueue } = await import('../queues.js')
-    const queue = getQueue('scheduled-research')
+    const { getScheduledResearchQueue } = await import('../lib/queues.js')
+    const queue = getScheduledResearchQueue()
     const job = await queue.add('manual-program-cycle', {
       agencyId,
       programId: program.id,
       clientId:  program.clientId,
-      taskId:    program.scheduledTaskId,
+      taskId:    program.scheduledTaskId ?? '',
       manual:    true,
     })
 

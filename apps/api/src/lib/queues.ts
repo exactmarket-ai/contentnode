@@ -97,6 +97,9 @@ export interface PromptSuggestJobData {
 export interface ScheduledResearchJobData {
   taskId: string
   agencyId: string
+  programId?: string
+  clientId?: string
+  manual?: boolean
 }
 
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
