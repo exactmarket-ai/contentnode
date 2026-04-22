@@ -7056,7 +7056,7 @@ export function ClientDetailPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-6 print:hidden">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-6 print:hidden">
         <button
           onClick={() => navigate('/clients')}
           className="text-muted-foreground hover:text-foreground transition-colors"
@@ -7079,7 +7079,7 @@ export function ClientDetailPage() {
       </header>
 
       {/* Tabs — primary row */}
-      <div className="flex gap-0 border-b border-border bg-card px-6 print:hidden">
+      <div className="flex gap-0 border-b border-border bg-background px-6 print:hidden">
         {PRE_DEMAND_GEN_TABS.map((tab) => (
           <button
             key={tab}
