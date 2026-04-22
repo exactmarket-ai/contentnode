@@ -460,7 +460,9 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
             },
           })
         } catch (reportErr) {
-          console.error(`[scheduled-research] task ${taskId} Pipeline card creation failed (non-fatal):`, reportErr)
+          const msg = reportErr instanceof Error ? reportErr.message : String(reportErr)
+          console.error(`[scheduled-research] task ${taskId} Pipeline card creation failed:`, reportErr)
+          await prisma.scheduledTask.update({ where: { id: taskId }, data: { lastChangeSummary: `[pipeline-error] ${msg}` } }).catch(() => {})
         }
       }
 
@@ -476,7 +478,9 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
             assigneeId: task.assigneeId,
           })
         } catch (genErr) {
-          console.error(`[auto-generate] task ${taskId} blog generation failed (non-fatal):`, genErr)
+          const msg = genErr instanceof Error ? genErr.message : String(genErr)
+          console.error(`[auto-generate] task ${taskId} blog generation failed:`, genErr)
+          await prisma.scheduledTask.update({ where: { id: taskId }, data: { lastChangeSummary: `[blog-error] ${msg}` } }).catch(() => {})
         }
       }
     } catch (err) {
