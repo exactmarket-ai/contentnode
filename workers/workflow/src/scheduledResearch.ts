@@ -162,7 +162,7 @@ ${att.extractedText.slice(0, 13000)}`
       agencyId,
       workflowId:   workflow.id,
       status:       'completed',
-      reviewStatus: 'pending',
+      reviewStatus: 'none',
       itemName,
       output: {
         generatedContent: true,
@@ -443,7 +443,7 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
               agencyId,
               workflowId:   researchWorkflow.id,
               status:       'completed',
-              reviewStatus: 'pending',
+              reviewStatus: 'none',
               itemName:     `Research: ${task.label}`,
               output: {
                 researchReport: true,
