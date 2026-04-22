@@ -52,7 +52,7 @@ const messageSchema = z.object({
 })
 
 const pilotBody = z.object({
-  messages:         z.array(messageSchema).min(1).max(60),
+  messages:         z.array(messageSchema).min(0).max(60),
   clientId:         z.string().min(1),
   currentProgramId: z.string().optional(),
 })
@@ -454,6 +454,6 @@ export async function programRoutes(app: FastifyInstance) {
     // Strip the raw XML block from the response text returned to the client
     const cleanResponse = responseText.replace(/<PROGRAM_CONFIG>[\s\S]*?<\/PROGRAM_CONFIG>/gi, '').trim()
 
-    return reply.send({ data: { response: cleanResponse, program } })
+    return reply.send({ message: cleanResponse, program })
   })
 }
