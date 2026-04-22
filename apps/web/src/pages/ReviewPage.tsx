@@ -156,6 +156,7 @@ function extractOutputs(run: RunData): OutputTab[] {
   if (fallback) return [{ nodeId: 'final', label: 'Output', content: fallback, originalContent: fallback }]
 
   // System-created runs (scheduled research / auto-blog) store content directly in output blob
+  console.log('[extractOutputs] rawOutput:', run.rawOutput, 'finalOutput:', run.finalOutput, 'nodeStatuses keys:', Object.keys(run.nodeStatuses))
   if (run.rawOutput && typeof run.rawOutput === 'object') {
     const raw = run.rawOutput as Record<string, unknown>
     // Research report run
