@@ -27,6 +27,10 @@ interface Program {
   pilotPhase: string
   brief?: string | null
   cadence?: string | null
+  cadenceCronExpr?: string | null
+  autoPublish?: boolean
+  nextRunAt?: string | null
+  lastRunAt?: string | null
   scheduledTask?: { id: string; label: string; lastStatus: string; lastRunAt?: string | null } | null
   vertical?: { id: string; name: string } | null
   _count?: { contentPacks: number; workflowRuns: number }
@@ -463,6 +467,146 @@ function ProgramCard({
   )
 }
 
+// ─── DeliverableRow ───────────────────────────────────────────────────────────
+
+function DeliverableRow({
+  programId,
+  packId,
+  item,
+  label,
+  onUpdate,
+}: {
+  programId: string
+  packId: string | null
+  item: (ProgramContentItem & { packId: string }) | undefined
+  label: string
+  onUpdate: (itemId: string, editedContent: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing]   = useState(false)
+  const [editValue, setEditValue] = useState(item?.editedContent ?? item?.content ?? '')
+  const [saving, setSaving]     = useState(false)
+  const [copied, setCopied]     = useState(false)
+
+  const content = item?.editedContent ?? item?.content ?? ''
+
+  const handleSave = async () => {
+    if (!item || !packId) return
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/v1/programs/${programId}/packs/${packId}/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ editedContent: editValue }),
+      })
+      if (res.ok) {
+        onUpdate(item.id, editValue)
+        setEditing(false)
+      }
+    } finally { setSaving(false) }
+  }
+
+  if (!item) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-border/50 border-dashed px-4 py-3 opacity-50">
+        <Icons.Circle className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+        <span className="text-[12px] text-muted-foreground">{label}</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">Not built yet</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn('rounded-xl border overflow-hidden transition-colors', expanded ? 'border-purple-300' : 'border-border')}>
+      <div
+        className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-muted/10 transition-colors"
+        onClick={() => { setExpanded((v) => !v); if (!expanded) setEditing(false) }}
+      >
+        <Icons.CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+        <span className="text-[12px] font-medium text-foreground flex-1">{label}</span>
+        {item.editedContent && (
+          <span className="text-[10px] text-blue-500 font-medium shrink-0">edited</span>
+        )}
+        <span className="text-[10px] text-muted-foreground shrink-0">{expanded ? '▲' : '▼'}</span>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-border">
+          {editing ? (
+            <div className="p-4 space-y-3">
+              <textarea
+                className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-purple-400 leading-relaxed"
+                rows={12}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: '#a200ee' }}
+                >
+                  {saving ? <><span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> Saving…</> : <><Icons.Check className="h-3 w-3" /> Save</>}
+                </button>
+                <button
+                  onClick={() => { setEditing(false); setEditValue(item.editedContent ?? item.content) }}
+                  className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <button
+                  onClick={() => { setEditValue(content); setEditing(true) }}
+                  className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                >
+                  <Icons.Pencil className="h-3 w-3" /> Edit
+                </button>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+                  className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                >
+                  {copied ? <><Icons.Check className="h-3 w-3 text-emerald-500" /> Copied</> : <><Icons.Copy className="h-3 w-3" /> Copy</>}
+                </button>
+              </div>
+              <div className="rounded-lg bg-muted/10 px-4 py-3 max-h-[400px] overflow-y-auto">
+                {renderMarkdown(content)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Cadence helpers ──────────────────────────────────────────────────────────
+
+const CADENCE_OPTIONS = ['Daily', 'Weekly', 'Bi-weekly', 'Monthly', 'Quarterly'] as const
+type CadenceOption = typeof CADENCE_OPTIONS[number]
+
+function computeNextDates(startDate: Date, cadence: CadenceOption, count = 6): Date[] {
+  const dates: Date[] = []
+  const cur = new Date(startDate)
+  for (let i = 0; i < count; i++) {
+    dates.push(new Date(cur))
+    if (cadence === 'Daily')     cur.setDate(cur.getDate() + 1)
+    else if (cadence === 'Weekly')    cur.setDate(cur.getDate() + 7)
+    else if (cadence === 'Bi-weekly') cur.setDate(cur.getDate() + 14)
+    else if (cadence === 'Monthly')   cur.setMonth(cur.getMonth() + 1)
+    else if (cadence === 'Quarterly') cur.setMonth(cur.getMonth() + 3)
+  }
+  return dates
+}
+
+function formatDateShort(d: Date): string {
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 // ─── ProgramDetailPanel ───────────────────────────────────────────────────────
 
 function ProgramDetailPanel({
@@ -476,18 +620,32 @@ function ProgramDetailPanel({
 }) {
   const [program, setProgram] = useState<Program | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'brief' | 'templates' | 'packs'>('brief')
+  const [activeTab, setActiveTab] = useState<'brief' | 'deliverables' | 'schedule' | 'packs'>('brief')
   const [packs, setPacks] = useState<ProgramContentPack[]>([])
   const [packsLoading, setPacksLoading] = useState(false)
   const [selectedPack, setSelectedPack] = useState<ProgramContentPack | null>(null)
   const [packLoading, setPackLoading] = useState(false)
+
+  // Schedule state
+  const [scheduleStartDate, setScheduleStartDate] = useState('')
+  const [scheduleCadence, setScheduleCadence] = useState<CadenceOption>('Weekly')
+  const [scheduleAutoPublish, setScheduleAutoPublish] = useState(false)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     apiFetch(`/api/v1/programs/${programId}`)
       .then((r) => r.json())
-      .then((body) => { if (!cancelled) setProgram(body.data) })
+      .then((body) => {
+        if (!cancelled) {
+          const p: Program = body.data
+          setProgram(p)
+          if (p.cadence) setScheduleCadence(p.cadence as CadenceOption)
+          if (p.nextRunAt) setScheduleStartDate(p.nextRunAt.slice(0, 10))
+          setScheduleAutoPublish(p.autoPublish ?? false)
+        }
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -496,13 +654,16 @@ function ProgramDetailPanel({
   const fetchPacks = useCallback(async () => {
     setPacksLoading(true)
     try {
-      const r = await apiFetch(`/api/v1/programs/${programId}/packs`)
+      const r = await apiFetch(`/api/v1/programs/${programId}/packs?includeItems=true`)
       if (r.ok) { const b = await r.json(); setPacks(b.data ?? []) }
     } finally { setPacksLoading(false) }
   }, [programId])
 
+  // Load packs with items on mount so deliverables tab works immediately
+  useEffect(() => { void fetchPacks() }, [fetchPacks])
+
   useEffect(() => {
-    if (activeTab === 'packs' || activeTab === 'templates') fetchPacks()
+    if (activeTab === 'packs') void fetchPacks()
   }, [activeTab, fetchPacks])
 
   const openPack = async (pack: ProgramContentPack) => {
@@ -513,14 +674,49 @@ function ProgramDetailPanel({
     } finally { setPackLoading(false) }
   }
 
+  const saveSchedule = async () => {
+    setScheduleSaving(true)
+    try {
+      const body: Record<string, unknown> = {
+        cadence: scheduleCadence,
+        autoPublish: scheduleAutoPublish,
+        nextRunAt: scheduleStartDate ? new Date(scheduleStartDate).toISOString() : null,
+      }
+      const r = await apiFetch(`/api/v1/programs/${programId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (r.ok) {
+        const b = await r.json()
+        setProgram(b.data)
+      }
+    } finally { setScheduleSaving(false) }
+  }
+
+  const handleDeliverableUpdate = (itemId: string, editedContent: string) => {
+    setPacks((prev) => prev.map((pack) => ({
+      ...pack,
+      items: pack.items?.map((item) => item.id === itemId ? { ...item, editedContent } : item),
+    })))
+  }
+
   const isComplete = program?.pilotPhase === 'complete'
+  const isRecurring = program?.executionModel === 'recurring'
   const meta = program ? PROGRAM_TYPE_META[program.type] : null
 
+  const allItems = packs.flatMap((p) => (p.items ?? []).map((i) => ({ ...i, packId: p.id })))
+
   const tabs = [
-    { id: 'brief',     label: 'Brief' },
-    { id: 'templates', label: 'Templates' },
-    ...(program?.executionModel === 'recurring' ? [{ id: 'packs', label: 'Content Packs' }] : []),
-  ] as { id: 'brief' | 'templates' | 'packs'; label: string }[]
+    { id: 'brief',        label: 'Brief' },
+    { id: 'deliverables', label: 'Deliverables' },
+    ...(isRecurring ? [{ id: 'schedule', label: 'Schedule' }] : []),
+    ...(isRecurring ? [{ id: 'packs',    label: 'Content Packs' }] : []),
+  ] as { id: 'brief' | 'deliverables' | 'schedule' | 'packs'; label: string }[]
+
+  const upcomingDates = scheduleStartDate
+    ? computeNextDates(new Date(scheduleStartDate), scheduleCadence, 6)
+    : []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -587,6 +783,7 @@ function ProgramDetailPanel({
             </div>
           ) : (
             <>
+              {/* Brief */}
               {activeTab === 'brief' && (
                 <div className="px-5 py-5">
                   {program?.brief ? (
@@ -615,48 +812,133 @@ function ProgramDetailPanel({
                 </div>
               )}
 
-              {activeTab === 'templates' && (
+              {/* Deliverables */}
+              {activeTab === 'deliverables' && (
                 <div className="px-5 py-5">
                   {packsLoading ? (
                     <div className="flex justify-center py-8"><div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" /></div>
+                  ) : meta ? (
+                    <div className="space-y-2">
+                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                        {meta.templateItems.filter((label) => allItems.some((i) => i.label === label && i.isTemplate)).length} / {meta.templateItems.length} built
+                      </p>
+                      {meta.templateItems.map((label, i) => {
+                        const item = allItems.find((ci) => ci.label === label && ci.isTemplate)
+                        return (
+                          <DeliverableRow
+                            key={i}
+                            programId={programId}
+                            packId={item?.packId ?? null}
+                            item={item}
+                            label={label}
+                            onUpdate={handleDeliverableUpdate}
+                          />
+                        )
+                      })}
+                      {!isComplete && (
+                        <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+                          <p className="text-[12px] text-amber-700 font-medium">Templates are built during Phase 2 of programsPILOT.</p>
+                          {program && (
+                            <button
+                              onClick={() => { onClose(); onContinueSetup(program) }}
+                              className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-amber-700 hover:text-amber-900 transition-colors"
+                            >
+                              <Icons.Zap className="h-3 w-3" />
+                              {program.pilotPhase === 'build' ? 'Continue Building Templates' : 'Start Phase 2'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    meta && (
-                      <div className="space-y-2">
-                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Template Deliverables</p>
-                        {meta.templateItems.map((item, i) => {
-                          const allItems = packs.flatMap((p) => p.items ?? [])
-                          const exists = allItems.some((ci) => ci.label === item && ci.isTemplate)
-                          return (
-                            <div key={i} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
-                              {exists
-                                ? <Icons.CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                                : <Icons.Circle className="h-4 w-4 shrink-0 text-muted-foreground/40" />}
-                              <span className={cn('text-[12px]', exists ? 'text-foreground font-medium' : 'text-muted-foreground')}>
-                                {item}
-                              </span>
-                            </div>
-                          )
-                        })}
-                        {!isComplete && (
-                          <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
-                            <p className="text-[12px] text-amber-700 font-medium">Templates are built during Phase 2 of programsPILOT.</p>
-                            {program && (
-                              <button
-                                onClick={() => { onClose(); onContinueSetup(program) }}
-                                className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-amber-700 hover:text-amber-900 transition-colors"
-                              >
-                                <Icons.Zap className="h-3 w-3" />
-                                {program.pilotPhase === 'build' ? 'Continue Building Templates' : 'Start Phase 2'}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )
+                    <p className="text-[12px] text-muted-foreground py-8 text-center">No deliverable templates configured for this program type.</p>
                   )}
                 </div>
               )}
 
+              {/* Schedule (recurring only) */}
+              {activeTab === 'schedule' && (
+                <div className="px-5 py-6 space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Start Date</label>
+                      <input
+                        type="date"
+                        value={scheduleStartDate}
+                        onChange={(e) => setScheduleStartDate(e.target.value)}
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Cadence</label>
+                      <div className="flex flex-wrap gap-2">
+                        {CADENCE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt}
+                            onClick={() => setScheduleCadence(opt)}
+                            className={cn(
+                              'rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                              scheduleCadence === opt
+                                ? 'border-purple-400 bg-purple-50 text-purple-700'
+                                : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground',
+                            )}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
+                      <div>
+                        <p className="text-[13px] font-medium text-foreground">Auto-publish</p>
+                        <p className="text-[11px] text-muted-foreground">Publish content packs automatically when ready</p>
+                      </div>
+                      <button
+                        onClick={() => setScheduleAutoPublish((v) => !v)}
+                        className={cn(
+                          'relative h-5 w-9 rounded-full transition-colors',
+                          scheduleAutoPublish ? 'bg-purple-500' : 'bg-zinc-200',
+                        )}
+                      >
+                        <span className={cn(
+                          'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                          scheduleAutoPublish ? 'translate-x-4' : 'translate-x-0.5',
+                        )} />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={saveSchedule}
+                      disabled={scheduleSaving}
+                      className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
+                      style={{ backgroundColor: '#a200ee' }}
+                    >
+                      {scheduleSaving
+                        ? <><span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> Saving…</>
+                        : <><Icons.Check className="h-3.5 w-3.5" /> Save Schedule</>}
+                    </button>
+                  </div>
+
+                  {upcomingDates.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Upcoming Runs</p>
+                      <div className="space-y-1">
+                        {upcomingDates.map((d, i) => (
+                          <div key={i} className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />
+                            <span className="text-[12px] text-foreground">{formatDateShort(d)}</span>
+                            {i === 0 && <span className="ml-auto text-[10px] text-purple-500 font-medium">Next run</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Content Packs (recurring only) */}
               {activeTab === 'packs' && (
                 <div className="px-5 py-5">
                   {selectedPack ? (

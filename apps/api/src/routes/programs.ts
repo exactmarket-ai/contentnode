@@ -109,6 +109,8 @@ const updateProgramBody = z.object({
   setupComplete:   z.boolean().optional(),
   brief:           z.string().nullable().optional(),
   cadence:         z.string().nullable().optional(),
+  cadenceCronExpr: z.string().nullable().optional(),
+  nextRunAt:       z.string().datetime().nullable().optional(),
   pilotPhase:      z.string().optional(),
   pilotMessages:   z.unknown().optional(),
 })
@@ -619,7 +621,7 @@ export async function programRoutes(app: FastifyInstance) {
     const existing = await prisma.program.findFirst({ where: { id: req.params.id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Program not found' })
 
-    const { name, status, verticalId, scheduledTaskId, contentConfig, autoPublish, setupComplete, brief, cadence, pilotPhase, pilotMessages } = parsed.data
+    const { name, status, verticalId, scheduledTaskId, contentConfig, autoPublish, setupComplete, brief, cadence, cadenceCronExpr, nextRunAt, pilotPhase, pilotMessages } = parsed.data
 
     if (scheduledTaskId) {
       const task = await prisma.scheduledTask.findFirst({ where: { id: scheduledTaskId, agencyId } })
@@ -638,6 +640,8 @@ export async function programRoutes(app: FastifyInstance) {
         ...(setupComplete   !== undefined ? { setupComplete }  : {}),
         ...(brief           !== undefined ? { brief, briefEditedAt: new Date() } : {}),
         ...(cadence         !== undefined ? { cadence }        : {}),
+        ...(cadenceCronExpr !== undefined ? { cadenceCronExpr } : {}),
+        ...(nextRunAt       !== undefined ? { nextRunAt: nextRunAt ? new Date(nextRunAt) : null } : {}),
         ...(pilotPhase      !== undefined ? { pilotPhase }     : {}),
         ...(pilotMessages   !== undefined ? { pilotMessages: pilotMessages as never } : {}),
       },
