@@ -1998,7 +1998,7 @@ function VerticalSelector({ verticals, selected, onSelect, onSelectCompany }: {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-xs hover:bg-muted/40 transition-colors min-w-[140px]"
+        className="flex items-center gap-1.5 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted/40 transition-colors min-w-[140px]"
       >
         <span className="font-medium truncate">{selected ? selected.name : 'Company'}</span>
         <svg className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -2509,7 +2509,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
             {/* Attached template pill */}
             {attachedTemplate && (
               <div
-                className="flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-[11px]"
+                className="flex items-center gap-1.5 rounded border border-border bg-background px-2 py-1 text-[11px]"
                 style={{ maxWidth: 180 }}
                 title={attachedTemplate.name}
               >
@@ -2537,7 +2537,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                 onClick={() => !uploadingTemplate && templateInputRef.current?.click()}
                 disabled={uploadingTemplate}
                 className={cn(
-                  'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
+                  'flex items-center gap-1.5 rounded border border-border bg-background px-2.5 py-1 text-xs transition-colors',
                   uploadingTemplate ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
                 )}
               >
@@ -2561,7 +2561,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                 onClick={handleDownload}
                 disabled={downloadingDocx}
                 className={cn(
-                  'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
+                  'flex items-center gap-1.5 rounded border border-border bg-background px-2.5 py-1 text-xs transition-colors',
                   downloadingDocx ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
                 )}
                 title={attachedTemplate ? 'Download using attached template' : 'Download as plain docx'}
@@ -2586,7 +2586,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                 onClick={() => !reimporting && reimportInputRef.current?.click()}
                 disabled={reimporting}
                 className={cn(
-                  'flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-xs transition-colors',
+                  'flex items-center gap-1.5 rounded border border-border bg-background px-2.5 py-1 text-xs transition-colors',
                   reimporting ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted/40',
                 )}
                 title="Re-import an edited .docx to sync changes back into the framework"
@@ -2612,7 +2612,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       <div className="flex flex-1 overflow-hidden min-h-0">
 
       {/* Left nav */}
-      <div className="w-64 shrink-0 overflow-y-auto border-r border-border bg-card">
+      <div className="w-64 shrink-0 overflow-y-auto border-r border-border bg-background">
         <div className="px-3 py-3">
           {/* Brain nav item */}
           <button

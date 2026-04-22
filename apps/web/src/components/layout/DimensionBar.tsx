@@ -46,7 +46,7 @@ function TypeDropdown({ label, items, selectedId, onChange }: {
       <div ref={ref} className="relative">
         <button
           onClick={() => setOpen((o) => !o)}
-          className="flex min-w-[120px] items-center gap-1.5 rounded border border-border bg-card px-2 py-1 text-xs transition-colors hover:bg-muted/40"
+          className="flex min-w-[120px] items-center gap-1.5 rounded border border-border bg-background px-2 py-1 text-xs transition-colors hover:bg-muted/40"
         >
           <span className="flex-1 truncate font-medium">{selected ? selected.name : 'Company'}</span>
           <svg className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,13 +102,13 @@ export function DimensionBar({ items, selected, onChange, loading, verticalTerm,
   })
 
   return (
-    <div className="flex shrink-0 items-center gap-4 border-b border-border bg-card px-5 py-3">
+    <div className="flex shrink-0 items-center gap-4 border-b border-border bg-background px-5 py-3">
       {loading ? (
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
       ) : types.length === 0 ? (
         <>
           <span className="whitespace-nowrap text-xs font-semibold text-muted-foreground">{verticalTerm ?? 'Vertical'}</span>
-          <span className="rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground">Company</span>
+          <span className="rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">Company</span>
         </>
       ) : (
         types.map((type) => (
