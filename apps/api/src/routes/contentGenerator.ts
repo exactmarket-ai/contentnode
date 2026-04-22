@@ -513,7 +513,6 @@ ${articleDigest}`
         workflowId:   workflow.id,
         status:       'completed',
         reviewStatus: 'pending',
-        triggeredBy:  'content-generator',
         output: {
           generatedContent: true,
           sourceLabel:      taskLabel,

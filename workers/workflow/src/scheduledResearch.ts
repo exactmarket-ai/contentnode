@@ -163,7 +163,6 @@ ${att.extractedText.slice(0, 13000)}`
       workflowId:   workflow.id,
       status:       'completed',
       reviewStatus: 'pending',
-      triggeredBy:  'scheduled-auto-generate',
       itemName,
       output: {
         generatedContent: true,
@@ -445,7 +444,6 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
               workflowId:   researchWorkflow.id,
               status:       'completed',
               reviewStatus: 'pending',
-              triggeredBy:  'scheduled-research',
               itemName:     `Research: ${task.label}`,
               output: {
                 researchReport: true,
