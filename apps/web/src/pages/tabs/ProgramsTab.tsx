@@ -48,10 +48,12 @@ interface Program {
 interface PilotMessage {
   role: 'user' | 'assistant'
   content: string
+  paths?: string[]
 }
 
 interface PilotApiResponse {
   message: string
+  paths?: string[]
   program?: Program
 }
 
@@ -280,23 +282,32 @@ function ProgramCard({
   )
 }
 
-// ─── LoadingDots ─────────────────────────────────────────────────────────────
+// ─── Inline markdown renderer ────────────────────────────────────────────────
 
-function LoadingDots() {
-  return (
-    <div className="flex items-center gap-1 px-1 py-0.5">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-bounce"
-          style={{ animationDelay: `${i * 150}ms` }}
-        />
-      ))}
-    </div>
-  )
+function renderContent(text: string): React.ReactNode {
+  return text.split('\n').map((line, i, arr) => {
+    const parts = line.split(/(\*\*[^*]+\*\*)/g)
+    const rendered = parts.map((p, j) =>
+      p.startsWith('**') && p.endsWith('**')
+        ? <b key={j} className="font-semibold">{p.slice(2, -2)}</b>
+        : p,
+    )
+    return <span key={i}>{rendered}{i < arr.length - 1 && <br />}</span>
+  })
 }
 
 // ─── PilotModal ───────────────────────────────────────────────────────────────
+
+const OPENING_GREETING =
+  "Hey! I'm programsPILOT. I help you build standing content programs that run automatically — pulling from a research source and producing content packs ready for your Pipeline.\n\nWhat content goal are you trying to achieve for this client?"
+
+const OPENING_PATHS = [
+  'Thought Leadership — expert takes & POV content',
+  'SEO Content — keyword-driven blogs that rank',
+  'Newsletter — recurring digest',
+  'Competitive Intel — landscape analysis',
+  'Help me choose',
+]
 
 function PilotModal({
   clientId,
@@ -309,66 +320,40 @@ function PilotModal({
   onClose: () => void
   onProgramSaved: (program: Program) => void
 }) {
-  const [messages, setMessages] = useState<PilotMessage[]>([])
+  const [messages, setMessages] = useState<PilotMessage[]>([
+    { role: 'assistant', content: OPENING_GREETING, paths: OPENING_PATHS },
+  ])
   const [input, setInput] = useState('')
   const [pilotLoading, setPilotLoading] = useState(false)
   const [createdProgram, setCreatedProgram] = useState<Program | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const lastMsgRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Auto-scroll to bottom whenever messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (lastMsgRef.current) {
+      lastMsgRef.current.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }
   }, [messages, pilotLoading])
 
-  // On mount: fetch opening question from pilot API
-  const initSession = useCallback(async () => {
-    setPilotLoading(true)
-    try {
-      const res = await apiFetch('/api/v1/programs/pilot', {
-        method: 'POST',
-        body: JSON.stringify({
-          messages: [],
-          clientId,
-          currentProgramId: editingProgram?.id ?? undefined,
-        }),
-      })
-      if (!res.ok) return
-      const body: PilotApiResponse = await res.json()
-      setMessages([{ role: 'assistant', content: body.message }])
-      if (body.program) {
-        setCreatedProgram(body.program)
-      }
-    } catch {
-      // ignore
-    } finally {
-      setPilotLoading(false)
-    }
-  }, [clientId, editingProgram?.id])
-
   useEffect(() => {
-    initSession()
-  }, [initSession])
+    setTimeout(() => inputRef.current?.focus(), 80)
+  }, [])
 
-  const sendMessage = async () => {
-    const text = input.trim()
+  const sendMessage = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim()
     if (!text || pilotLoading) return
+    if (!overrideText) setInput('')
 
-    const newMessages: PilotMessage[] = [...messages, { role: 'user', content: text }]
-    setMessages(newMessages)
-    setInput('')
+    const userMsg: PilotMessage = { role: 'user', content: text }
+    const history = [...messages, userMsg]
+    setMessages(history)
     setPilotLoading(true)
-
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
 
     try {
       const res = await apiFetch('/api/v1/programs/pilot', {
         method: 'POST',
         body: JSON.stringify({
-          messages: newMessages,
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
           clientId,
           currentProgramId: editingProgram?.id ?? undefined,
         }),
@@ -381,7 +366,10 @@ function PilotModal({
         return
       }
       const body: PilotApiResponse = await res.json()
-      setMessages((prev) => [...prev, { role: 'assistant', content: body.message }])
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: body.message, paths: body.paths },
+      ])
       if (body.program) {
         setCreatedProgram(body.program)
         onProgramSaved(body.program)
@@ -394,63 +382,51 @@ function PilotModal({
     } finally {
       setPilotLoading(false)
     }
-  }
+  }, [input, pilotLoading, messages, clientId, editingProgram?.id, onProgramSaved])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      void sendMessage()
     }
   }
 
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
-    // Auto-grow textarea up to 4 lines
-    const el = e.target
-    el.style.height = 'auto'
-    const lineHeight = 20
-    const maxHeight = lineHeight * 4 + 16 // 4 lines + padding
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90">
       <div
-        className="w-full max-w-xl rounded-2xl border border-border bg-card shadow-2xl flex flex-col overflow-hidden"
-        style={{ maxHeight: '90vh' }}
+        className="flex flex-col w-full max-w-2xl rounded-2xl border border-border bg-white shadow-2xl overflow-hidden"
+        style={{ height: '80vh' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2">
-            <Icons.Sparkles className="h-4 w-4 text-violet-400" />
-            <div>
-              <p className="text-sm font-bold text-foreground">programsPILOT</p>
-              <p className="text-[11px] text-muted-foreground">Set up your content program</p>
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3 shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full shrink-0" style={{ backgroundColor: '#a200ee' }}>
+            <Icons.Zap className="h-4 w-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold tracking-wide" style={{ color: '#a200ee' }}>programsPILOT</span>
+              {editingProgram && (
+                <>
+                  <span className="text-[10px] text-muted-foreground">·</span>
+                  <span className="text-[11px] font-medium text-foreground truncate">Editing: {editingProgram.name}</span>
+                </>
+              )}
             </div>
+            <p className="text-[10px] text-muted-foreground">Set up a standing content program</p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
           >
             <Icons.X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Editing context banner */}
-        {editingProgram && (
-          <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-5 py-2.5">
-            <Icons.Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
-            <span className="text-[11px] text-muted-foreground">Editing:</span>
-            <span className="text-[11px] font-semibold text-foreground">{editingProgram.name}</span>
-            <TypeBadge type={editingProgram.type} />
-          </div>
-        )}
-
         {/* Success state */}
         {createdProgram ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-10">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
-              <Icons.CheckCircle2 className="h-6 w-6 text-emerald-400" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+              <Icons.CheckCircle2 className="h-6 w-6 text-emerald-500" />
             </div>
             <div className="text-center">
               <p className="text-base font-bold text-foreground">
@@ -461,87 +437,100 @@ function PilotModal({
                 <TypeBadge type={createdProgram.type} />
               </div>
             </div>
-            <Button onClick={onClose} size="sm">
+            <button
+              onClick={onClose}
+              className="rounded-xl px-5 py-2 text-sm font-semibold text-white transition-colors"
+              style={{ backgroundColor: '#a200ee' }}
+            >
               Close
-            </Button>
+            </button>
           </div>
         ) : (
           <>
-            {/* Messages area */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ maxHeight: '420px' }}>
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={cn(
-                    'flex',
-                    msg.role === 'user' ? 'justify-end' : 'justify-start',
-                  )}
-                >
+            {/* Messages */}
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 min-h-0">
+              {messages.map((msg, i) => {
+                const isUser = msg.role === 'user'
+                const isLast = i === messages.length - 1 && !pilotLoading
+                return (
+                  <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined}>
+                    <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                      {!isUser && (
+                        <div
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full mt-0.5"
+                          style={{ backgroundColor: '#a200ee' }}
+                        >
+                          <Icons.Zap className="h-3.5 w-3.5 text-white" />
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-2 max-w-[88%]">
+                        <div
+                          className={cn(
+                            'rounded-xl px-3 py-2 text-[12px] leading-relaxed',
+                            isUser
+                              ? 'text-white rounded-tr-sm'
+                              : 'bg-zinc-100 text-foreground rounded-tl-sm',
+                          )}
+                          style={isUser ? { backgroundColor: '#a200ee' } : {}}
+                        >
+                          {renderContent(msg.content)}
+                        </div>
+                        {isLast && Array.isArray(msg.paths) && msg.paths.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-0.5">
+                            {msg.paths.map((path, pi) => (
+                              <button
+                                key={pi}
+                                onClick={() => void sendMessage(path)}
+                                className="rounded-full border border-border bg-white px-3 py-1 text-[11px] font-medium text-foreground hover:border-purple-400 hover:bg-purple-50 hover:text-purple-900 transition-colors"
+                              >
+                                {path}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {pilotLoading && (
+                <div className="flex gap-2 items-start">
                   <div
-                    className={cn(
-                      'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed',
-                      msg.role === 'user'
-                        ? 'bg-violet-600 text-white rounded-br-sm'
-                        : 'bg-muted/40 border border-border text-foreground rounded-bl-sm',
-                    )}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: '#a200ee' }}
                   >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <Icons.Zap className="h-3.5 w-3.5 text-white" />
                   </div>
-                </div>
-              ))}
-
-              {/* Loading indicator */}
-              {pilotLoading && messages.length > 0 && (
-                <div className="flex justify-start">
-                  <div className="rounded-2xl rounded-bl-sm border border-border bg-muted/40 px-3.5 py-2.5">
-                    <LoadingDots />
+                  <div className="flex items-center gap-1 rounded-xl bg-zinc-100 px-3 py-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce [animation-delay:300ms]" />
                   </div>
                 </div>
               )}
-
-              {/* Initial loading state (no messages yet) */}
-              {pilotLoading && messages.length === 0 && (
-                <div className="flex items-center justify-center py-8">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
-                    Starting session…
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
             </div>
 
-            {/* Input area */}
-            <div className="border-t border-border px-4 py-3">
-              <div className="flex items-end gap-2">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={handleTextareaChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Type your answer…"
-                  rows={1}
-                  disabled={pilotLoading && messages.length === 0}
-                  className="flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-violet-500 disabled:opacity-50 leading-5"
-                  style={{ minHeight: '36px' }}
-                />
-                <Button
-                  onClick={sendMessage}
-                  disabled={!input.trim() || pilotLoading}
-                  size="sm"
-                  className="shrink-0"
-                >
-                  {pilotLoading ? (
-                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  ) : (
-                    <Icons.Send className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-              <p className="mt-1.5 text-[10px] text-muted-foreground">
-                Press Enter to send · Shift+Enter for new line
-              </p>
+            {/* Input */}
+            <div className="flex items-end gap-2 border-t border-border px-3 py-2.5 shrink-0">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Reply to programsPILOT… (Shift+Enter for new line)"
+                rows={1}
+                className="flex-1 resize-none rounded-xl border border-border bg-white px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 min-h-[34px] max-h-[80px] overflow-y-auto"
+                style={{ lineHeight: '1.4', '--tw-ring-color': '#a200ee' } as React.CSSProperties}
+              />
+              <button
+                onClick={() => void sendMessage()}
+                disabled={!input.trim() || pilotLoading}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+                style={{ backgroundColor: '#a200ee' }}
+              >
+                <Icons.SendHorizontal className="h-4 w-4" />
+              </button>
             </div>
           </>
         )}

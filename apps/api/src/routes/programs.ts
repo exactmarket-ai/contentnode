@@ -209,7 +209,16 @@ When the user confirms the setup, output exactly this block and nothing else aft
 </PROGRAM_CONFIG>
 
 Use null (not the string "null") for scheduledTaskId when no task is selected.
-autoPublish should always be false unless the user explicitly requests auto-publishing.`
+autoPublish should always be false unless the user explicitly requests auto-publishing.
+
+## PATHS (quick-reply buttons):
+After each response (except when outputting PROGRAM_CONFIG), suggest 2–4 short next steps the user can click. Output them as a <PATHS> block on a new line after your reply:
+
+<PATHS>
+["option 1", "option 2", "option 3"]
+</PATHS>
+
+Keep each option under 50 characters. Do NOT output PATHS with a PROGRAM_CONFIG block.`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -367,14 +376,13 @@ export async function programRoutes(app: FastifyInstance) {
 
     const systemPrompt = buildPilotSystemPrompt(contextParts, clientName, scheduledTasks, existingPrograms)
 
-    // Call Claude
-    const conversationText = messages
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-      .join('\n\n')
+    // Call Claude — pass system prompt via config, conversation as structured text
+    const conversationText = messages.length > 0
+      ? messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
+      : '(starting conversation)'
 
-    const fullPrompt = `[programsPILOT — Client: ${clientName}]\n\n${conversationText}`
-
-    const result = await callModel(SONNET, fullPrompt)
+    const modelConfig = { ...SONNET, system_prompt: systemPrompt }
+    const result = await callModel(modelConfig, conversationText)
     const responseText = result.text
 
     // Parse PROGRAM_CONFIG block
@@ -451,9 +459,22 @@ export async function programRoutes(app: FastifyInstance) {
       }
     }
 
-    // Strip the raw XML block from the response text returned to the client
-    const cleanResponse = responseText.replace(/<PROGRAM_CONFIG>[\s\S]*?<\/PROGRAM_CONFIG>/gi, '').trim()
+    // Parse <PATHS> block for quick-reply buttons
+    const pathsMatch = responseText.match(/<PATHS>\s*([\s\S]+?)\s*<\/PATHS>/i)
+    let paths: string[] = []
+    if (pathsMatch) {
+      try {
+        const parsed = JSON.parse(pathsMatch[1].trim())
+        if (Array.isArray(parsed)) paths = parsed.filter((p): p is string => typeof p === 'string')
+      } catch { /* malformed — ignore */ }
+    }
 
-    return reply.send({ message: cleanResponse, program })
+    // Strip XML blocks from the text returned to the client
+    const cleanResponse = responseText
+      .replace(/<PROGRAM_CONFIG>[\s\S]*?<\/PROGRAM_CONFIG>/gi, '')
+      .replace(/<PATHS>[\s\S]*?<\/PATHS>/gi, '')
+      .trim()
+
+    return reply.send({ message: cleanResponse, paths, program })
   })
 }
