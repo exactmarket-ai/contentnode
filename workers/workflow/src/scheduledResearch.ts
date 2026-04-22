@@ -124,13 +124,26 @@ ${att.extractedText.slice(0, 13000)}`
 
   let blogs: unknown[] = []
   try {
-    const match = result.text.match(/\{[\s\S]*\}/)
-    if (match) {
-      const p = JSON.parse(match[0]) as { blogs?: unknown[] }
-      blogs = Array.isArray(p.blogs) ? p.blogs : []
+    // Strip markdown code fences then find the outer JSON object via brace matching
+    let text = result.text.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim()
+    const start = text.indexOf('{')
+    if (start === -1) throw new Error('no opening brace')
+    let depth = 0, inStr = false, esc = false, end = -1
+    for (let i = start; i < text.length; i++) {
+      if (esc) { esc = false; continue }
+      if (inStr && text[i] === '\\') { esc = true; continue }
+      if (text[i] === '"') { inStr = !inStr; continue }
+      if (!inStr) {
+        if (text[i] === '{') depth++
+        else if (text[i] === '}') { if (--depth === 0) { end = i; break } }
+      }
     }
-  } catch {
-    console.warn(`[auto-generate] JSON parse failed for task ${task.id}`)
+    if (end === -1) throw new Error('unclosed JSON object (possible truncation)')
+    const p = JSON.parse(text.slice(start, end + 1)) as { blogs?: unknown[] }
+    blogs = Array.isArray(p.blogs) ? p.blogs : []
+  } catch (parseErr) {
+    console.warn(`[auto-generate] JSON parse failed for task ${task.id}: ${parseErr instanceof Error ? parseErr.message : parseErr}`)
+    console.warn(`[auto-generate] Response snippet (first 600 chars): ${result.text.slice(0, 600)}`)
     return
   }
   if (!blogs.length) return
