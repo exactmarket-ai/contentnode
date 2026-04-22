@@ -127,6 +127,9 @@ export interface ClientVerticalBrainProcessJobData {
 export interface ScheduledResearchJobData {
   taskId: string
   agencyId: string
+  programId?: string
+  clientId?: string
+  manual?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

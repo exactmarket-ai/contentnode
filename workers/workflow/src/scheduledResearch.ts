@@ -517,8 +517,209 @@ async function writeToBrain(
   }
 }
 
+// ─── Manual program cycle (Run Now) ──────────────────────────────────────────
+
+async function runManualProgramCycle(
+  agencyId: string,
+  programId: string,
+  clientId: string | null,
+): Promise<void> {
+  const program = await prisma.program.findFirst({ where: { id: programId, agencyId } })
+  if (!program) { console.warn(`[manual-program-cycle] program ${programId} not found`); return }
+
+  const effectiveClientId = clientId ?? program.clientId
+  if (!effectiveClientId) return
+
+  // Prefer the most-recent scheduled brain attachment; fall back to any ready attachment
+  const contextAtt = await prisma.clientBrainAttachment.findFirst({
+    where: { agencyId, clientId: effectiveClientId, summaryStatus: 'ready', source: 'scheduled' },
+    select: { extractedText: true, filename: true },
+    orderBy: { createdAt: 'desc' },
+  }) ?? await prisma.clientBrainAttachment.findFirst({
+    where: { agencyId, clientId: effectiveClientId, summaryStatus: 'ready' },
+    select: { extractedText: true, filename: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  if (!contextAtt?.extractedText) {
+    console.warn(`[manual-program-cycle] no brain context for client ${effectiveClientId}`)
+    return
+  }
+
+  const [brandBuilder, client] = await Promise.all([
+    prisma.clientBrandBuilder.findFirst({
+      where: { clientId: effectiveClientId, agencyId },
+      select: { dataJson: true },
+      orderBy: { updatedAt: 'desc' },
+    }),
+    prisma.client.findFirst({ where: { id: effectiveClientId, agencyId }, select: { name: true } }),
+  ])
+
+  const brandData   = (brandBuilder?.dataJson ?? {}) as Record<string, unknown>
+  const toneOfVoice = String(brandData.toneOfVoice ?? brandData.tone ?? brandData.brand_voice ?? '')
+  const clientName  = client?.name ?? ''
+
+  const config = (program.contentConfig ?? {}) as {
+    blogCount?: number; platforms?: string[]; generateImages?: boolean; imageStyle?: string
+  }
+  const blogCount  = config.blogCount  ?? 2
+  const platforms  = config.platforms  ?? ['linkedin']
+  const includeImgs = config.generateImages ?? false
+  const imageStyle  = config.imageStyle ?? 'professional, clean, modern'
+
+  const platformInstructions = platforms.map((p) => {
+    if (p === 'linkedin')  return `LinkedIn post (150-200 words): hook, 3 bullet takeaways, CTA`
+    if (p === 'facebook')  return `Facebook post (100-150 words): conversational, relatable, question or CTA`
+    if (p === 'instagram') return `Instagram caption (80-120 words + 5-8 hashtags): visual hook, punchy copy`
+    return `${p} post (100-150 words)`
+  }).join('\n')
+
+  const systemPrompt = `You are a content strategist${clientName ? ` for ${clientName}` : ''} creating a content pack for a ${program.type.replace(/_/g, ' ')} program.
+${toneOfVoice ? `\nBrand voice: ${toneOfVoice}` : ''}
+Generate ${blogCount} blog post${blogCount > 1 ? 's' : ''} and matching social content from the context below.
+For EACH blog:
+- Title: compelling, SEO-friendly headline
+- 700-950 words, structured with intro, 3-4 H2 sections, conclusion
+- Cite sources inline as [source: domain.com]
+- ## Sources section at end
+For EACH blog also write:
+${platformInstructions}
+${includeImgs ? `For EACH blog also write:\n- Image prompt: blog header (style: ${imageStyle})` : ''}
+Return ONLY valid JSON:
+{"blogs":[{"title":"string","slug":"slug","excerpt":"2-sentence summary","content":"full markdown","sources":["url"],"social":{${platforms.map((p) => `"${p}":{"post":"string"${p === 'instagram' ? ',"hashtags":["string"]' : ''}${includeImgs ? ',"imagePrompt":"string"' : ''}}`).join(',')}}}]}`
+
+  const result = await callModel(
+    { ...SONNET, system_prompt: systemPrompt },
+    `Context: ${contextAtt.filename ?? 'brain'}\n\n--- CONTEXT ---\n${contextAtt.extractedText.slice(0, 13000)}`,
+  )
+
+  let blogs: unknown[] = []
+  try {
+    let text = result.text.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim()
+    const start = text.indexOf('{')
+    if (start === -1) throw new Error('no opening brace')
+    let depth = 0, inStr = false, esc = false, end = -1
+    for (let i = start; i < text.length; i++) {
+      if (esc) { esc = false; continue }
+      if (inStr && text[i] === '\\') { esc = true; continue }
+      if (text[i] === '"') { inStr = !inStr; continue }
+      if (!inStr) {
+        if (text[i] === '{') depth++
+        else if (text[i] === '}') { if (--depth === 0) { end = i; break } }
+      }
+    }
+    if (end === -1) throw new Error('unclosed JSON')
+    const parsed = JSON.parse(text.slice(start, end + 1)) as { blogs?: unknown[] }
+    blogs = Array.isArray(parsed.blogs) ? parsed.blogs : []
+  } catch (e) {
+    console.warn(`[manual-program-cycle] JSON parse failed for ${programId}: ${e instanceof Error ? e.message : e}`)
+    return
+  }
+  if (!blogs.length) return
+
+  // Find or create workflow for this program
+  let workflow = await prisma.workflow.findFirst({
+    where: { agencyId, clientId: effectiveClientId, name: program.name },
+    select: { id: true, defaultAssigneeId: true },
+  })
+  if (!workflow) {
+    workflow = await prisma.workflow.create({
+      data: { agencyId, clientId: effectiveClientId, name: program.name, connectivityMode: 'online' },
+      select: { id: true, defaultAssigneeId: true },
+    })
+  }
+
+  const firstBlog  = blogs[0] as Record<string, unknown>
+  const cycleLabel = `Manual run — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+  const itemName   = typeof firstBlog?.title === 'string'
+    ? `${firstBlog.title}${blogs.length > 1 ? ` (+${blogs.length - 1} more)` : ''}`
+    : `${program.name} — Manual run`
+
+  const assigneeId = workflow.defaultAssigneeId ?? null
+
+  // Pipeline card (WorkflowRun)
+  await prisma.workflowRun.create({
+    data: {
+      agencyId,
+      workflowId:   workflow.id,
+      programId:    program.id,
+      status:       'completed',
+      reviewStatus: 'none',
+      itemName,
+      output: {
+        programContent: true,
+        programId:   program.id,
+        programType: program.type,
+        sourceLabel: cycleLabel,
+        blogs,
+        platforms,
+      } as never,
+      ...(assigneeId ? { assigneeId } : {}),
+    },
+  })
+
+  // Content pack (visible in the Packs tab)
+  const pack = await prisma.programContentPack.create({
+    data: {
+      agencyId,
+      clientId:   effectiveClientId,
+      programId:  program.id,
+      cycleLabel,
+      status:      'completed',
+      reviewStatus: 'none',
+      ...(assigneeId ? { assigneeId } : {}),
+    },
+  })
+
+  let sortOrder = 0
+  for (const blog of blogs as Record<string, unknown>[]) {
+    const blogTitle = String(blog.title ?? 'Blog Post')
+    await prisma.programContentItem.create({
+      data: {
+        packId:    pack.id,
+        itemType:  'blog',
+        label:     blogTitle,
+        content:   String(blog.content ?? ''),
+        sortOrder: sortOrder++,
+        isTemplate: false,
+        metadata: { slug: blog.slug, excerpt: blog.excerpt, sources: blog.sources } as never,
+      },
+    })
+    const social = blog.social as Record<string, Record<string, unknown>> | undefined
+    if (social) {
+      for (const platform of platforms) {
+        const post = social[platform]
+        if (post?.post) {
+          await prisma.programContentItem.create({
+            data: {
+              packId:    pack.id,
+              itemType:  'social',
+              label:     `${platform.charAt(0).toUpperCase() + platform.slice(1)} — ${blogTitle}`,
+              content:   String(post.post),
+              sortOrder: sortOrder++,
+              isTemplate: false,
+              metadata: { platform, ...(post.hashtags ? { hashtags: post.hashtags } : {}) } as never,
+            },
+          })
+        }
+      }
+    }
+  }
+
+  await prisma.program.update({ where: { id: program.id }, data: { lastRunAt: new Date() } }).catch(() => {})
+  console.log(`[manual-program-cycle] ${program.name} → ${blogs.length} blog(s) → Pipeline + ContentPack created`)
+}
+
 export async function runScheduledResearch(job: { data: ScheduledResearchJobData }): Promise<void> {
   const { taskId, agencyId } = job.data
+
+  // Manual "Run Now" from Programs — branch out before scheduled-task logic
+  if (job.data.manual && job.data.programId) {
+    await withAgency(agencyId, () =>
+      runManualProgramCycle(agencyId, job.data.programId!, job.data.clientId ?? null),
+    )
+    return
+  }
 
   await withAgency(agencyId, async () => {
     const task = await prisma.scheduledTask.findFirst({
