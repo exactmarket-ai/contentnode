@@ -459,6 +459,7 @@ export async function runRoutes(app: FastifyInstance) {
         reviewerIds: run.reviewerIds,
         nodeStatuses: output.nodeStatuses ?? {},
         finalOutput: output.finalOutput ?? null,
+        rawOutput: run.output ?? null,
         pendingSessionId: output.pendingTranscriptionSessionId ?? null,
         pendingReviewNodeId: output.pendingReviewNodeId ?? null,
         pendingReviewContent: output.pendingReviewContent ?? null,
