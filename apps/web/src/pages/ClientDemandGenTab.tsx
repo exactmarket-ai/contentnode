@@ -690,8 +690,8 @@ function DgAttachmentRow({ attachment: a, base, deletingId, onDelete, onSummaryU
 
       {/* Raw text modal */}
       {showText && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)' }} onClick={() => setShowText(false)}>
-          <div className="flex flex-col w-full max-w-2xl max-h-[80vh] rounded-xl shadow-2xl overflow-hidden" style={{ border: '1px solid #e5e7eb' }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowText(false)}>
+          <div className="flex flex-col w-full max-w-2xl max-h-[80vh] rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex shrink-0 items-center justify-between rounded-t-xl px-5 py-4" style={{ backgroundColor: '#ea580c' }}>
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/70">Original Extracted Text</p>

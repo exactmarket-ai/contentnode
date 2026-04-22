@@ -33,8 +33,8 @@ export function HumanReviewPanel({ runId, initialContent, onComplete, onDismiss 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="flex w-full max-w-3xl flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="flex w-full max-w-3xl flex-col gap-4 rounded-xl border border-border bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">

@@ -357,8 +357,7 @@ function MasterBrainRow({
       {/* Raw text modal */}
       {showText && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           onClick={() => setShowText(false)}
         >
           <div

@@ -152,7 +152,7 @@ export function MediaFilmstrip({ assets, nodeLabel = 'generated', thumbnailHeigh
       {/* Full-size modal */}
       {modalAsset && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={() => setModalAsset(null)}
         >
           <div

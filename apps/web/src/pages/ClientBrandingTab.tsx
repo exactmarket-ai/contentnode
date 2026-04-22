@@ -509,12 +509,11 @@ function BrandAttachmentRow({
       {/* Raw original text modal */}
       {showOriginal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           onClick={() => setShowOriginal(false)}
         >
           <div
-            className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border shadow-2xl"
+            className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-2xl"
             style={{ maxHeight: '80vh' }}
             onClick={(e) => e.stopPropagation()}
           >
