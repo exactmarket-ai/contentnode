@@ -140,7 +140,7 @@ function AddStakeholderModal({ clientId, onClose, onCreate }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[480px] rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-[480px] rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold">Add Contact</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -242,7 +242,7 @@ function EditStakeholderModal({ stakeholder, clientId, onClose, onUpdate }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[480px] rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-[480px] rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold">Edit Contact</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -349,7 +349,7 @@ function AssignWorkflowModal({ clientId, existingIds, onClose, onAssign }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[440px] rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-[440px] rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold">Assign Workflow</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -464,7 +464,7 @@ function MoveStakeholderModal({ stakeholder, currentClientId, onClose, onMoved }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[480px] rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-[480px] rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold">{stakeholder.name}</h2>
@@ -669,7 +669,7 @@ function InviteResult({ data, onClose }: { data: { portalUrl: string; expiresAt:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[500px] rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-[500px] rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-2">
             <Icons.CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -1390,7 +1390,7 @@ function WorkflowsTab({ client, onUpdate }: { client: Client; onUpdate: (updated
 
       {confirmDeleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-96 rounded-xl border border-border bg-card shadow-2xl">
+          <div className="w-96 rounded-xl border border-border bg-white shadow-2xl">
             <div className="border-b border-border px-5 py-4 flex items-center gap-2">
               <Icons.Trash2 className="h-4 w-4 text-red-600" />
               <h2 className="text-sm font-semibold">Delete Workflow</h2>
@@ -1916,7 +1916,7 @@ function WriterUploadModal({ runId, clientId, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-full max-w-2xl rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold">Upload Writer Version</h2>
@@ -1994,7 +1994,7 @@ function AssignWriterModal({ runId, onClose }: { runId: string; onClose: () => v
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-full max-w-lg rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold">Assign to Writer</h2>
@@ -5267,7 +5267,7 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
       {/* Delete division confirm dialog */}
       {confirmDeleteDivision && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-96 rounded-xl border border-border bg-card shadow-2xl">
+          <div className="w-96 rounded-xl border border-border bg-white shadow-2xl">
             <div className="border-b border-border px-5 py-4 flex items-center gap-2">
               <Icons.Trash2 className="h-4 w-4 text-red-600" />
               <h2 className="text-sm font-semibold">Delete Division</h2>

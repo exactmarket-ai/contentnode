@@ -125,7 +125,7 @@ function SelectionPopover({
 
   return (
     <div
-      className="fixed z-50 w-64 rounded-lg border border-border bg-card shadow-2xl"
+      className="fixed z-50 w-64 rounded-lg border border-border bg-white shadow-2xl"
       style={{ left: state.x, top: state.y - 8, transform: 'translateY(-100%)' }}
     >
       {/* Quote preview */}
@@ -301,8 +301,8 @@ export function TranscriptViewer({
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch bg-background/80 backdrop-blur-sm">
-      <div className="relative flex w-full max-w-2xl flex-col border-r border-border bg-card shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-stretch bg-black/60 backdrop-blur-sm">
+      <div className="relative flex w-full max-w-2xl flex-col border-r border-border bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-6 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 text-purple-600">

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Enforce modal styling rule (CLAUDE.md rule #6).
+# Canonical pattern: overlay = bg-black/60 backdrop-blur-sm, content = bg-white shadow-2xl
+# Reference: apps/web/src/components/modals/CampaignCreationModal.tsx
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(tsx|ts|css)$')
+[ -z "$STAGED" ] && exit 0
+
+ERRORS=0
+
+for FILE in $STAGED; do
+  [ -f "$FILE" ] || continue
+
+  # Modal content boxes must use bg-white, not bg-card or bg-background.
+  # Only checks elements with shadow-2xl (the main modal panel), not inner elements.
+  # Excludes the overlay line (fixed inset-0) since that's the scrim, not the content box.
+  CONTENT_VIOLATIONS=$(grep -nE 'shadow-2xl' "$FILE" \
+    | grep -vE '^\s*//' \
+    | grep -vE 'fixed inset-0' \
+    | grep -E 'bg-card|bg-background\b')
+  if [ -n "$CONTENT_VIOLATIONS" ]; then
+    echo "❌  Modal content box must use bg-white, not bg-card/bg-background: $FILE"
+    echo "$CONTENT_VIOLATIONS"
+    ERRORS=1
+  fi
+done
+
+if [ "$ERRORS" -ne 0 ]; then
+  echo ""
+  echo "Modal styling violation — see CLAUDE.md rule #6."
+  echo "Content boxes: bg-white shadow-2xl. Overlays: bg-black/60 backdrop-blur-sm."
+  exit 1
+fi
+
+exit 0

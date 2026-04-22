@@ -112,7 +112,7 @@ export function ScheduleModal({ workflowId, onClose }: ScheduleModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[520px] max-h-[80vh] flex flex-col rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-[520px] max-h-[80vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-2">

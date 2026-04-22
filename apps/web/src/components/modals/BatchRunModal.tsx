@@ -135,7 +135,7 @@ export function BatchRunModal({ workflowId, onClose, onStarted }: BatchRunModalP
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl">
+      <div className="relative w-full max-w-lg rounded-xl border border-border bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-2">

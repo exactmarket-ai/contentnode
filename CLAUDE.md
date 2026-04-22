@@ -13,6 +13,12 @@ Full spec is in docs/contentnode-spec-v4.md
 4. All AI provider calls go through packages/ai/src/provider.ts — never call
    Anthropic/OpenAI/etc. directly from feature code.
 5. AuditLog entries are append-only. Never update or delete them.
+6. Modal/dialog UI rule (non-negotiable — do not deviate):
+   - Overlay div: `className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"`
+   - Content box: `bg-white border border-border rounded-xl shadow-2xl`
+   - NEVER use `bg-card`, `bg-background`, or any opacity suffix on modal content boxes
+   - Reference: apps/web/src/components/modals/CampaignCreationModal.tsx
+   - Inline list cards (non-modal): `bg-transparent border border-border`
 
 ## Tech stack
 - Frontend: React + React Flow + Zustand + TailwindCSS + shadcn/ui

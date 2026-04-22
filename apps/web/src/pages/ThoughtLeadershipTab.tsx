@@ -163,7 +163,7 @@ function MemberModal({ clientId, member, onClose, onSaved }: MemberModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
         className="w-full max-w-xl rounded-xl border border-border bg-white shadow-2xl flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}

@@ -400,8 +400,8 @@ export function SpeakerAssignmentPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch bg-background/80 backdrop-blur-sm">
-      <div className="relative flex w-full max-w-2xl flex-col border-r border-border bg-card shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-stretch bg-black/60 backdrop-blur-sm">
+      <div className="relative flex w-full max-w-2xl flex-col border-r border-border bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-6 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-600">

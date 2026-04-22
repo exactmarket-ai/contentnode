@@ -148,7 +148,7 @@ function InviteModal({ onClose, onInvited }: InviteModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="w-[420px] overflow-hidden rounded-xl bg-white shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4" style={{ backgroundColor: '#a200ee' }}>
@@ -294,7 +294,7 @@ function EditProfileModal({ member, onClose, onSaved }: EditProfileModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="w-[420px] overflow-hidden rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#e8e7e1]">
           <div>
@@ -423,7 +423,7 @@ function HistoryDrawer({ member, onClose }: { member: TeamMember; onClose: () =>
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
 
       {/* Drawer */}
       <div className="fixed right-0 top-0 z-50 h-screen w-[520px] flex flex-col bg-white shadow-2xl border-l border-[#e8e7e1]">

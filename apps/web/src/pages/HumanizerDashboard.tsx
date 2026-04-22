@@ -85,7 +85,7 @@ function ExampleModal({ id, onClose }: { id: string; onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-xl border border-border bg-card shadow-2xl">
+      <div className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-xl border border-border bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-semibold">Training Example</h2>

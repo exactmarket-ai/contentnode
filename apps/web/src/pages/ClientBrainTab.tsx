@@ -362,7 +362,7 @@ function MasterBrainRow({
           onClick={() => setShowText(false)}
         >
           <div
-            className="flex w-full max-w-2xl max-h-[80vh] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl"
+            className="flex w-full max-w-2xl max-h-[80vh] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
