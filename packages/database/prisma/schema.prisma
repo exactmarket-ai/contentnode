@@ -73,7 +73,9 @@ model Agency {
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
   brainContext        String? @db.Text @map("brain_context")
-  programs            Program[]
+  programs                 Program[]
+  programContentPacks      ProgramContentPack[]
+  verticalProgramTemplates VerticalProgramTemplate[]
 
   @@map("agencies")
 }
@@ -189,7 +191,8 @@ model Client {
   docStyle           ClientDocStyle?
   leadershipMembers  LeadershipMember[]
   frameworkRevisions FrameworkRevision[]
-  programs           Program[]
+  programs            Program[]
+  programContentPacks ProgramContentPack[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -218,7 +221,9 @@ model Vertical {
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   workflows            Workflow[]
   brainContext         String? @db.Text @map("brain_context")
-  frameworkRevisions   FrameworkRevision[]
+  frameworkRevisions       FrameworkRevision[]
+  programs                 Program[]
+  programTemplates         VerticalProgramTemplate[]
 
   @@index([agencyId])
   @@map("verticals")
@@ -1545,27 +1550,134 @@ model Program {
   id              String    @id @default(cuid())
   agencyId        String    @map("agency_id")
   clientId        String    @map("client_id")
+  verticalId      String?   @map("vertical_id")
   name            String
-  type            String    // thought_leadership | seo_content | competitive_intel | newsletter | customer_story | event_content
+  // thought_leadership | seo_content | newsletter | social_media |
+  // outbound_email_sequence | linkedin_outreach_sequence | cold_calling_program |
+  // email_nurture_sequence | lead_magnet_program | webinar_event_program |
+  // abm_program | customer_onboarding_program | reengagement_program |
+  // partner_enablement_program | product_launch_program |
+  // competitive_intel | customer_story | event_content (legacy)
+  type            String
   status          String    @default("active") // active | paused | archived
+  executionModel  String    @default("recurring") @map("execution_model") // recurring | one_time
+  // setup | think | build | complete
+  pilotPhase      String    @default("setup") @map("pilot_phase")
   scheduledTaskId String?   @map("scheduled_task_id")
+  // Vertical program template this was cloned from (if any)
+  templateId      String?   @map("template_id")
   contentConfig   Json      @default("{}") @map("content_config")
-  // { blogCount: number, platforms: string[], generateImages: boolean, imageStyle?: string }
+  brief           String?   @db.Text // written program brief from Phase 1
+  briefEditedAt   DateTime? @map("brief_edited_at")
+  cadence         String?   // human label: "Weekly", "Bi-weekly", "Monthly"
+  cadenceCronExpr String?   @map("cadence_cron_expr")
   autoPublish     Boolean   @default(false) @map("auto_publish")
-  pilotContext    Json?     @map("pilot_context") // stores conversation history
+  pilotMessages   Json?     @map("pilot_messages") // full conversation history for resuming
+  pilotContext    Json?     @map("pilot_context")  // legacy — kept for backward compat
   setupComplete   Boolean   @default(false) @map("setup_complete")
   lastRunAt       DateTime? @map("last_run_at")
+  nextRunAt       DateTime? @map("next_run_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  agency        Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  scheduledTask ScheduledTask? @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
+  agency        Agency                @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client        Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical      Vertical?             @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  scheduledTask ScheduledTask?        @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
+  template      VerticalProgramTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   workflowRuns  WorkflowRun[]
+  contentPacks  ProgramContentPack[]
 
   @@index([agencyId])
   @@index([clientId])
+  @@index([verticalId])
   @@map("programs")
+}
+
+// ─────────────────────────────────────────────
+// ProgramContentPack — one cycle's output
+// For recurring programs: one pack per cycle.
+// For one-time programs: one pack containing all templates (isTemplate=true items).
+// ─────────────────────────────────────────────
+model ProgramContentPack {
+  id           String    @id @default(cuid())
+  agencyId     String    @map("agency_id")
+  clientId     String    @map("client_id")
+  programId    String    @map("program_id")
+  cycleLabel   String    @map("cycle_label")  // "Week of Apr 21, 2026" or "v1 — Setup"
+  status       String    @default("draft")    // draft | in_review | approved | archived
+  reviewStatus String    @default("none") @map("review_status") // none | pending | sent_to_client | approved
+  sourceTaskId String?   @map("source_task_id")
+  sourceLabel  String?   @map("source_label")
+  assigneeId   String?   @map("assignee_id")
+  dueDate      DateTime? @map("due_date")
+  notes        String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  agency   Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  program  Program              @relation(fields: [programId], references: [id], onDelete: Cascade)
+  items    ProgramContentItem[]
+
+  @@index([agencyId])
+  @@index([programId])
+  @@index([clientId])
+  @@map("program_content_packs")
+}
+
+// ─────────────────────────────────────────────
+// ProgramContentItem — one deliverable within a pack
+// blog | linkedin_post | instagram_post | facebook_post | x_post |
+// email | voicemail_script | call_script | objection_guide | discovery_questions |
+// newsletter_issue | lead_magnet_doc | landing_page_copy | press_release |
+// onepager | webinar_invite | event_social | onboarding_email | sequence_template
+// ─────────────────────────────────────────────
+model ProgramContentItem {
+  id            String   @id @default(cuid())
+  packId        String   @map("pack_id")
+  itemType      String   @map("item_type")
+  label         String   // e.g. "Email 1 — Cold Intro", "LinkedIn Connection Request"
+  content       String   @db.Text
+  editedContent String?  @db.Text @map("edited_content")
+  metadata      Json     @default("{}") // { subject?, preheader?, imagePrompt?, platform?, sequenceStep?, wordCount?, slug? }
+  sortOrder     Int      @default(0) @map("sort_order")
+  isTemplate    Boolean  @default(false) @map("is_template") // true = reusable template from Phase 2
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  pack ProgramContentPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@index([packId])
+  @@map("program_content_items")
+}
+
+// ─────────────────────────────────────────────
+// VerticalProgramTemplate — agency-defined program template at the vertical level
+// Reusable across all clients in a vertical. When instantiated for a client,
+// a new Program is created with templateId pointing here.
+// ─────────────────────────────────────────────
+model VerticalProgramTemplate {
+  id            String   @id @default(cuid())
+  agencyId      String   @map("agency_id")
+  verticalId    String   @map("vertical_id")
+  name          String
+  type          String   // same type values as Program
+  executionModel String  @default("recurring") @map("execution_model")
+  brief         String?  @db.Text
+  contentConfig Json     @default("{}") @map("content_config")
+  cadence       String?
+  templateItems Json     @default("[]") @map("template_items") // array of { itemType, label, contentHint }
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  agency    Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  vertical  Vertical  @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  programs  Program[]
+
+  @@index([agencyId])
+  @@index([verticalId])
+  @@map("vertical_program_templates")
 }
 
 // ─────────────────────────────────────────────
