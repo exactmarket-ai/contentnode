@@ -631,6 +631,8 @@ function ProgramDetailPanel({
   const [scheduleCadence, setScheduleCadence] = useState<CadenceOption>('Weekly')
   const [scheduleAutoPublish, setScheduleAutoPublish] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [runNowLoading, setRunNowLoading] = useState(false)
+  const [runNowResult, setRunNowResult] = useState<'success' | 'error' | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -692,6 +694,17 @@ function ProgramDetailPanel({
         setProgram(b.data)
       }
     } finally { setScheduleSaving(false) }
+  }
+
+  const runNow = async () => {
+    setRunNowLoading(true)
+    setRunNowResult(null)
+    try {
+      const r = await apiFetch(`/api/v1/programs/${programId}/run`, { method: 'POST' })
+      setRunNowResult(r.ok ? 'success' : 'error')
+      if (r.ok) setTimeout(() => setRunNowResult(null), 4000)
+    } catch { setRunNowResult('error') }
+    finally { setRunNowLoading(false) }
   }
 
   const handleDeliverableUpdate = (itemId: string, editedContent: string) => {
@@ -909,16 +922,44 @@ function ProgramDetailPanel({
                       </button>
                     </div>
 
-                    <button
-                      onClick={saveSchedule}
-                      disabled={scheduleSaving}
-                      className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
-                      style={{ backgroundColor: '#a200ee' }}
-                    >
-                      {scheduleSaving
-                        ? <><span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> Saving…</>
-                        : <><Icons.Check className="h-3.5 w-3.5" /> Save Schedule</>}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={saveSchedule}
+                        disabled={scheduleSaving}
+                        className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
+                        style={{ backgroundColor: '#a200ee' }}
+                      >
+                        {scheduleSaving
+                          ? <><span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> Saving…</>
+                          : <><Icons.Check className="h-3.5 w-3.5" /> Save Schedule</>}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border pt-5">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Run Now</p>
+                    <p className="mb-3 text-[12px] text-muted-foreground">Trigger a manual content pack cycle immediately, outside of the schedule.</p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={runNow}
+                        disabled={runNowLoading}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-[12px] font-medium text-foreground hover:border-foreground/30 hover:bg-muted/20 disabled:opacity-50 transition-colors"
+                      >
+                        {runNowLoading
+                          ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> Running…</>
+                          : <><Icons.Play className="h-3.5 w-3.5" /> Run Now</>}
+                      </button>
+                      {runNowResult === 'success' && (
+                        <span className="flex items-center gap-1 text-[12px] text-emerald-600 font-medium">
+                          <Icons.CheckCircle2 className="h-3.5 w-3.5" /> Run started
+                        </span>
+                      )}
+                      {runNowResult === 'error' && (
+                        <span className="flex items-center gap-1 text-[12px] text-red-500 font-medium">
+                          <Icons.AlertCircle className="h-3.5 w-3.5" /> Failed to start
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {upcomingDates.length > 0 && (
