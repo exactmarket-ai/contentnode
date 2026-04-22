@@ -303,7 +303,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
   return (
     <aside
       className={cn(
-        'relative flex shrink-0 flex-col gap-1 border-r border-border bg-card py-3 px-2 transition-all duration-200',
+        'relative flex shrink-0 flex-col gap-1 border-r border-border bg-background py-3 px-2 transition-all duration-200',
         collapsed ? 'w-14' : 'w-48',
       )}
     >
@@ -311,7 +311,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
       <button
         onClick={() => setCollapsed((v) => !v)}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="absolute right-0 top-[30%] z-10 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+        className="absolute right-0 top-[30%] z-10 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-background hover:bg-muted transition-colors"
       >
         {collapsed
           ? <Icons.ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
