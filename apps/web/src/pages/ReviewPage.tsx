@@ -172,6 +172,28 @@ function extractOutputs(run: RunData): OutputTab[] {
         return { nodeId: `system-blog-${i}`, label: title, content, originalContent: content }
       }).filter((t) => t.content.trim())
     }
+    // Program content pack run — each blog becomes a tab; social posts appended to content
+    if (raw.programContent === true && Array.isArray(raw.blogs) && raw.blogs.length > 0) {
+      const platforms = Array.isArray(raw.platforms) ? (raw.platforms as string[]) : []
+      return (raw.blogs as Array<Record<string, unknown>>).map((blog, i) => {
+        const title = typeof blog.title === 'string' ? blog.title : `Blog ${i + 1}`
+        let content = typeof blog.content === 'string' ? blog.content : ''
+        // Append social posts
+        const social = blog.social as Record<string, { post?: string; hashtags?: string[] }> | undefined
+        if (social && platforms.length > 0) {
+          content += '\n\n---\n'
+          for (const platform of platforms) {
+            const s = social[platform]
+            if (s?.post) {
+              const label = platform.charAt(0).toUpperCase() + platform.slice(1)
+              content += `\n## ${label}\n${s.post}`
+              if (platform === 'instagram' && s.hashtags?.length) content += `\n\n${s.hashtags.map((h: string) => `#${h.replace(/^#/, '')}`).join(' ')}`
+            }
+          }
+        }
+        return { nodeId: `program-blog-${i}`, label: title, content, originalContent: content }
+      }).filter((t) => t.content.trim())
+    }
   }
 
   return []

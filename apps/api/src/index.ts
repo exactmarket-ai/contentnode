@@ -43,6 +43,7 @@ import { researchPilotRoutes }  from './routes/researchpilot.js'
 import { taskPilotRoutes }      from './routes/taskpilot.js'
 import { prospectAssessmentRoutes }   from './routes/prospectAssessments.js'
 import { campaignRoutes }       from './routes/campaigns.js'
+import { programRoutes }        from './routes/programs.js'
 import { scheduledTaskRoutes }  from './routes/scheduledTasks.js'
 import { docTemplateRoutes }    from './routes/docTemplates.js'
 import { leadershipRoutes }     from './routes/leadership.js'
@@ -164,6 +165,7 @@ await app.register(researchPilotRoutes,    { prefix: '/api/v1/research-pilot' })
 await app.register(taskPilotRoutes,        { prefix: '/api/v1/task-pilot' })
 await app.register(prospectAssessmentRoutes,   { prefix: '/api/v1/prospect-assessments' })
 await app.register(campaignRoutes,         { prefix: '/api/v1/campaigns' })
+await app.register(programRoutes,          { prefix: '/api/v1/programs' })
 await app.register(scheduledTaskRoutes,    { prefix: '/api/v1/scheduled-tasks' })
 await app.register(docTemplateRoutes,      { prefix: '/api/v1/doc-templates' })
 await app.register(leadershipRoutes,         { prefix: '/api/v1/leadership' })

@@ -73,6 +73,7 @@ model Agency {
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
   brainContext        String? @db.Text @map("brain_context")
+  programs            Program[]
 
   @@map("agencies")
 }
@@ -188,6 +189,7 @@ model Client {
   docStyle           ClientDocStyle?
   leadershipMembers  LeadershipMember[]
   frameworkRevisions FrameworkRevision[]
+  programs           Program[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -661,9 +663,11 @@ model WorkflowRun {
   internalNotes       String?   @map("internal_notes")
   dueDate             DateTime? @map("due_date")
   campaignId          String?   @map("campaign_id")
+  programId           String?   @map("program_id")
 
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  program           Program?              @relation(fields: [programId], references: [id], onDelete: SetNull)
   user              User?                 @relation("RunTriggeredBy", fields: [triggeredBy], references: [id])
   assignee          User?                 @relation("RunAssignee", fields: [assigneeId], references: [id])
   documents         Document[]
@@ -681,6 +685,7 @@ model WorkflowRun {
   @@index([divisionId])
   @@index([jobId])
   @@index([campaignId])
+  @@index([programId])
   @@map("workflow_runs")
 }
 
@@ -1532,6 +1537,38 @@ model CampaignBrainAttachment {
 }
 
 // ─────────────────────────────────────────────
+// Program — standing content engine (Thought Leadership, SEO, etc.)
+// Linked to a ScheduledTask as research feed. Produces WorkflowRuns
+// that land in Pipeline for review before publish.
+// ─────────────────────────────────────────────
+model Program {
+  id              String    @id @default(cuid())
+  agencyId        String    @map("agency_id")
+  clientId        String    @map("client_id")
+  name            String
+  type            String    // thought_leadership | seo_content | competitive_intel | newsletter | customer_story | event_content
+  status          String    @default("active") // active | paused | archived
+  scheduledTaskId String?   @map("scheduled_task_id")
+  contentConfig   Json      @default("{}") @map("content_config")
+  // { blogCount: number, platforms: string[], generateImages: boolean, imageStyle?: string }
+  autoPublish     Boolean   @default(false) @map("auto_publish")
+  pilotContext    Json?     @map("pilot_context") // stores conversation history
+  setupComplete   Boolean   @default(false) @map("setup_complete")
+  lastRunAt       DateTime? @map("last_run_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  agency        Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  scheduledTask ScheduledTask? @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
+  workflowRuns  WorkflowRun[]
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("programs")
+}
+
+// ─────────────────────────────────────────────
 // AgencyBrainAttachment — tier 1: agency-wide knowledge
 // Methodology, playbooks, team expertise, agency voice.
 // Always included in context. Never contains client data.
@@ -1664,6 +1701,8 @@ model ScheduledTask {
   vertical     Vertical?     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
   assignee     User?         @relation("ScheduledTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   usageRecords UsageRecord[]
+
+  programs           Program[]
 
   @@index([agencyId])
   @@index([clientId])

@@ -16,6 +16,7 @@ import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientDocStyleTab } from './ClientDocStyleTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
 import { CampaignsTab } from './CampaignsTab'
+import { ProgramsTab } from './tabs/ProgramsTab'
 import { ContentBoardTab } from './ContentBoardTab'
 import { ThoughtLeadershipTab } from './ThoughtLeadershipTab'
 import { ClientBrainTab } from './ClientBrainTab'
@@ -6533,6 +6534,8 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
   const [running, setRunning]                 = useState<Set<string>>(new Set())
   const [search, setSearch]                   = useState('')
   const [verticals, setVerticals]             = useState<{ id: string; name: string }[]>([])
+  const [programs, setPrograms]               = useState<{ id: string; name: string; type: string; scheduledTaskId: string | null }[]>([])
+  const [linkingTask, setLinkingTask]         = useState<string | null>(null) // taskId being linked
 
   useEffect(() => {
     apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`)
@@ -6544,7 +6547,36 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
       .then((r) => r.json())
       .then(({ data }) => setVerticals((data ?? []).map((v: { id: string; name: string }) => ({ id: v.id, name: v.name }))))
       .catch(() => {})
+    apiFetch(`/api/v1/programs?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => setPrograms(data ?? []))
+      .catch(() => {})
   }, [clientId])
+
+  const linkTaskToProgram = async (taskId: string, programId: string | null) => {
+    // Update the program's scheduledTaskId
+    if (programId) {
+      await apiFetch(`/api/v1/programs/${programId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduledTaskId: taskId }),
+      }).catch(() => {})
+    } else {
+      // Unlink: find which program has this task and clear it
+      const linked = programs.find((p) => p.scheduledTaskId === taskId)
+      if (linked) {
+        await apiFetch(`/api/v1/programs/${linked.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduledTaskId: null }),
+        }).catch(() => {})
+      }
+    }
+    const r = await apiFetch(`/api/v1/programs?clientId=${clientId}`)
+    const { data } = await r.json()
+    setPrograms(data ?? [])
+    setLinkingTask(null)
+  }
 
   const toggle = async (task: ScheduledTask) => {
     await apiFetch(`/api/v1/scheduled-tasks/${task.id}`, {
@@ -6761,11 +6793,46 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
                           {task.changeDetected && (
                             <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">update detected</span>
                           )}
+                          {(() => {
+                            const linked = programs.find((p) => p.scheduledTaskId === task.id)
+                            if (!linked) return null
+                            return (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-500">
+                                <Icons.Link2 className="h-2.5 w-2.5" />{linked.name}
+                              </span>
+                            )
+                          })()}
                         </div>
                         <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
                           <span>Last run: {relTime(task.lastRunAt)}</span>
                           <span>·</span>
                           <span>Next: {nextIn(task.nextRunAt)}</span>
+                          {/* Program link selector */}
+                          <span>·</span>
+                          {linkingTask === task.id ? (
+                            <span className="flex items-center gap-1">
+                              <select
+                                autoFocus
+                                className="rounded border border-border bg-background px-1 py-0.5 text-[11px] text-foreground focus:outline-none"
+                                defaultValue={programs.find((p) => p.scheduledTaskId === task.id)?.id ?? ''}
+                                onBlur={() => setLinkingTask(null)}
+                                onChange={(e) => linkTaskToProgram(task.id, e.target.value || null)}
+                              >
+                                <option value="">— unlink —</option>
+                                {programs.map((p) => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setLinkingTask(task.id)}
+                              className="flex items-center gap-0.5 text-[11px] text-muted-foreground/60 hover:text-violet-500 transition-colors"
+                            >
+                              <Icons.Link2 className="h-3 w-3" />
+                              {programs.find((p) => p.scheduledTaskId === task.id) ? 'change program' : 'link program'}
+                            </button>
+                          )}
                         </div>
                         {task.changeDetected && task.lastChangeSummary && (
                           <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{task.lastChangeSummary}</p>
@@ -6869,7 +6936,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
 // ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'board', 'deliverables', 'library', 'thought-leadership', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'campaigns', 'programs', 'board', 'deliverables', 'library', 'thought-leadership', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 export function ClientDetailPage() {
@@ -6947,6 +7014,7 @@ export function ClientDetailPage() {
     overview:      'Overview',
     workflows:     'Workflows',
     campaigns:     'Campaigns',
+    programs:      'Programs',
     deliverables:  'Deliverables',
     library:             'Library',
     'thought-leadership': 'Thought Leadership',
@@ -6979,7 +7047,7 @@ export function ClientDetailPage() {
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : [])]
   // Tabs rendered after the Demand Gen group button
-  const POST_DEMAND_GEN_TABS: Tab[] = ['branding', 'thought-leadership', 'workflows', 'reviews', 'deliverables', 'insights']
+  const POST_DEMAND_GEN_TABS: Tab[] = ['branding', 'thought-leadership', 'programs', 'workflows', 'reviews', 'deliverables', 'insights']
   const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS]
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
@@ -7190,6 +7258,7 @@ export function ClientDetailPage() {
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={switchTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
         {activeTab === 'campaigns' && <CampaignsTab clientId={client.id} clientName={client.name} />}
+        {activeTab === 'programs' && <ProgramsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'library' && (
           <div className="space-y-10">
