@@ -1038,9 +1038,21 @@ function MondayCard() {
     if (status !== 'connected') return
     apiFetch('/api/v1/integrations/monday/boards')
       .then((r) => r.json())
-      .then(({ data }) => {
-        setBoards(data ?? [])
-        if (data?.length) setBoardId(data[0].id)
+      .then(async ({ data }) => {
+        const boards = data ?? []
+        setBoards(boards)
+        if (!boards.length) return
+
+        // Default to the first board that already has webhooks, else first board
+        let defaultId = boards[0].id
+        for (const b of boards) {
+          try {
+            const r = await apiFetch(`/api/v1/integrations/monday/boards/${b.id}/webhooks`)
+            const { data: wh } = await r.json()
+            if (wh?.length) { defaultId = b.id; break }
+          } catch { /* skip */ }
+        }
+        setBoardId(defaultId)
       })
       .catch(() => {})
   }, [status])
