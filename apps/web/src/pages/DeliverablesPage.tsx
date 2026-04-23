@@ -247,6 +247,7 @@ export default function DeliverablesPage() {
   const [clients, setClients] = useState<{ id: string; name: string }[]>([])
   const [members, setMembers] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // Wrike state
   const [wrikeConnected, setWrikeConnected]       = useState(false)
@@ -255,6 +256,7 @@ export default function DeliverablesPage() {
   const [wrikeContacts, setWrikeContacts]         = useState<WrikeContact[]>([])
   const [wrikeCustomFields, setWrikeCustomFields] = useState<WrikeCustomField[]>([])
   const [wrikeLoading, setWrikeLoading]           = useState(false)
+  const [wrikeError, setWrikeError]               = useState<string | null>(null)
   const [wrikeSearch, setWrikeSearch]             = useState('')
   const [wrikeSort, setWrikeSort]                 = useState('updatedDate')
   const [wrikeOrder, setWrikeOrder]               = useState<'asc' | 'desc'>('desc')
@@ -283,7 +285,12 @@ export default function DeliverablesPage() {
       params.set('sort',  sort)
       params.set('order', order)
       const r = await apiFetch(`/api/v1/deliverables?${params}`)
-      if (!r.ok) return
+      if (!r.ok) {
+        const errBody = await r.json().catch(() => ({}))
+        setLoadError(`API error ${r.status}: ${errBody?.error ?? r.statusText}`)
+        return
+      }
+      setLoadError(null)
       const b = await r.json()
       if (tick !== fetchRef.current) return
       setRuns(b.data.runs ?? [])
@@ -343,14 +350,24 @@ export default function DeliverablesPage() {
 
   const loadWrike = () => {
     setWrikeLoading(true)
+    setWrikeError(null)
     Promise.allSettled([
-      apiFetch('/api/v1/integrations/wrike/tasks').then((r) => r.json()),
-      apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
+      apiFetch('/api/v1/integrations/wrike/tasks').then(async (r) => {
+        const body = await r.json()
+        if (!r.ok) throw new Error(`tasks ${r.status}: ${body?.error ?? r.statusText}`)
+        return body
+      }),
+      apiFetch('/api/v1/integrations/wrike/folders').then(async (r) => {
+        const body = await r.json()
+        if (!r.ok) throw new Error(`folders ${r.status}: ${body?.error ?? r.statusText}`)
+        return body
+      }),
       apiFetch('/api/v1/integrations/wrike/contacts').then((r) => r.json()),
       apiFetch('/api/v1/integrations/wrike/customfields').then((r) => r.json()),
     ])
       .then(([t, f, c, cf]) => {
         if (t.status === 'fulfilled') setWrikeTasks(t.value?.data ?? [])
+        else setWrikeError(t.reason?.message ?? 'Failed to load tasks')
         if (f.status === 'fulfilled') setWrikeFolders(f.value?.data ?? [])
         if (c.status === 'fulfilled') setWrikeContacts(c.value?.data ?? [])
         if (cf.status === 'fulfilled') setWrikeCustomFields(cf.value?.data ?? [])
@@ -725,6 +742,12 @@ export default function DeliverablesPage() {
                     Loading…
                   </td>
                 </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={23} className="px-6 py-16 text-center">
+                    <p className="text-[12px] font-medium text-red-600">{loadError}</p>
+                  </td>
+                </tr>
               ) : runs.length === 0 ? (
                 <tr>
                   <td colSpan={23} className="px-6 py-16 text-center text-[12px] text-muted-foreground">
@@ -944,7 +967,13 @@ export default function DeliverablesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredWrikeTasks.length === 0 ? (
+                {wrikeError ? (
+                  <tr>
+                    <td colSpan={11 + activeCustomFields.length} className="px-6 py-16 text-center">
+                      <p className="text-[12px] font-medium text-red-600">{wrikeError}</p>
+                    </td>
+                  </tr>
+                ) : filteredWrikeTasks.length === 0 ? (
                   <tr>
                     <td colSpan={11 + activeCustomFields.length} className="px-6 py-16 text-center text-[12px] text-muted-foreground">
                       No tasks found.{wrikeSearch && ' Try clearing your search.'}
