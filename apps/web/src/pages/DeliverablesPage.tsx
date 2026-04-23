@@ -404,6 +404,21 @@ export default function DeliverablesPage() {
     return [c.firstName, c.lastName].filter(Boolean).join(' ') || c.primaryEmail || id
   }
 
+  // Build reverse map: childFolderId → parentFolderId, so we can resolve client from project
+  const folderParentMap = new Map<string, string>()
+  for (const f of wrikeFolders) {
+    for (const childId of (f.childIds ?? [])) {
+      folderParentMap.set(childId, f.id)
+    }
+  }
+  const wrikeClientName = (task: WrikeTask): string => {
+    const projectFolder = wrikeFolders.find((f) => task.parentIds?.includes(f.id))
+    if (!projectFolder) return ''
+    const clientFolderId = folderParentMap.get(projectFolder.id)
+    if (!clientFolderId) return ''
+    return wrikeFolders.find((f) => f.id === clientFolderId)?.title ?? ''
+  }
+
   // Only show custom fields that have at least one non-empty value across all tasks
   const activeCustomFields = wrikeCustomFields.filter((cf) =>
     wrikeTasks.some((t) => t.customFields?.find((f) => f.id === cf.id && f.value?.trim()))
@@ -415,6 +430,7 @@ export default function DeliverablesPage() {
     const ws = wb.addWorksheet('Wrike Tasks')
     const staticCols = [
       { header: 'Title',          key: 'title',       width: 40 },
+      { header: 'Client',         key: 'client',      width: 24 },
       { header: 'Priority',       key: 'priority',    width: 12 },
       { header: 'Status',         key: 'status',      width: 16 },
       { header: 'Project',        key: 'project',     width: 28 },
@@ -432,6 +448,7 @@ export default function DeliverablesPage() {
       const project = wrikeFolders.find((f) => t.parentIds?.includes(f.id))?.title ?? ''
       const row: Record<string, string> = {
         title:       t.title,
+        client:      wrikeClientName(t),
         priority:    t.importance ?? '',
         status:      t.status,
         project,
@@ -950,6 +967,7 @@ export default function DeliverablesPage() {
               <thead className="sticky top-0 z-10 bg-background border-b border-border">
                 <tr>
                   <SortableHeader label="Title"       sortKey="title"       current={wrikeSort} order={wrikeOrder} onSort={handleWrikeSort} className="sticky left-0 z-20 bg-background min-w-[260px]" />
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[140px]">Client</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[90px]">Priority</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[110px]">Status</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[180px]">Project</th>
@@ -970,13 +988,13 @@ export default function DeliverablesPage() {
               <tbody>
                 {wrikeError ? (
                   <tr>
-                    <td colSpan={11 + activeCustomFields.length} className="px-6 py-16 text-center">
+                    <td colSpan={12 + activeCustomFields.length} className="px-6 py-16 text-center">
                       <p className="text-[12px] font-medium text-red-600">{wrikeError}</p>
                     </td>
                   </tr>
                 ) : filteredWrikeTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={11 + activeCustomFields.length} className="px-6 py-16 text-center text-[12px] text-muted-foreground">
+                    <td colSpan={12 + activeCustomFields.length} className="px-6 py-16 text-center text-[12px] text-muted-foreground">
                       No tasks found.{wrikeSearch && ' Try clearing your search.'}
                     </td>
                   </tr>
@@ -995,11 +1013,16 @@ export default function DeliverablesPage() {
                     t.importance === 'Low'    ? 'bg-zinc-50 text-zinc-400' :
                     'bg-zinc-50 text-zinc-400'
                   const assignees = (t.responsibleIds ?? []).map(contactName).join(', ')
+                  const clientName = wrikeClientName(t)
                   return (
                     <tr key={t.id} className="border-b border-border/50 hover:bg-muted/10 transition-colors">
                       {/* Title — sticky */}
                       <td className="sticky left-0 z-10 bg-background px-3 py-2.5">
                         <span className="text-[12px] font-medium text-foreground leading-snug">{t.title}</span>
+                      </td>
+                      {/* Client */}
+                      <td className="px-3 py-2.5 text-[12px] text-muted-foreground truncate max-w-[160px]" title={clientName}>
+                        {clientName || <span className="italic opacity-40">—</span>}
                       </td>
                       {/* Priority */}
                       <td className="px-3 py-2.5">
