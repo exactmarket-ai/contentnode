@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -613,6 +613,9 @@ function MondayTab() {
   const [itemsLoading, setItemsLoading] = useState(false)
   const [connected,    setConnected]    = useState(false)
   const [error,        setError]        = useState<string | null>(null)
+  const [editingCell,  setEditingCell]  = useState<{ itemId: string; colId: string } | null>(null)
+  const [pendingEdits, setPendingEdits] = useState<Record<string, string>>({})
+  const [savingCell,   setSavingCell]   = useState<Record<string, boolean>>({})
 
   // Check status + load boards
   useEffect(() => {
@@ -634,6 +637,51 @@ function MondayTab() {
       setGroupId('all')
     }).catch((e) => setError(e.message)).finally(() => setItemsLoading(false))
   }, [boardId])
+
+  async function patchCell(itemId: string, colId: string, rawValue: string) {
+    const col   = boardData?.columns?.find(c => c.id === colId)
+    const type  = col?.type ?? 'text'
+    let value: string
+    if (type === 'status')    value = JSON.stringify({ label: rawValue })
+    else if (type === 'date') value = JSON.stringify({ date: rawValue })
+    else if (type === 'long_text') value = JSON.stringify({ text: rawValue })
+    else                      value = JSON.stringify(rawValue)
+
+    const cKey = `${itemId}:${colId}`
+    setPendingEdits(p => ({ ...p, [cKey]: rawValue }))
+    setSavingCell(s => ({ ...s, [cKey]: true }))
+    setEditingCell(null)
+
+    try {
+      await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columnId: colId, value }),
+      })
+      setBoardData(prev => {
+        if (!prev?.items_page) return prev
+        return {
+          ...prev,
+          items_page: {
+            ...prev.items_page,
+            items: prev.items_page.items.map(it =>
+              it.id !== itemId ? it : {
+                ...it,
+                column_values: it.column_values?.map(cv =>
+                  cv.id !== colId ? cv : { ...cv, text: rawValue, label: rawValue }
+                ),
+              }
+            ),
+          },
+        }
+      })
+      setPendingEdits(p => { const n = { ...p }; delete n[cKey]; return n })
+    } catch {
+      setPendingEdits(p => { const n = { ...p }; delete n[cKey]; return n })
+    } finally {
+      setSavingCell(s => { const n = { ...s }; delete n[cKey]; return n })
+    }
+  }
 
   if (!connected && !loading) {
     return (
@@ -816,83 +864,85 @@ function MondayTab() {
             </thead>
             <tbody className="divide-y divide-border">
               {items.map((item) => {
-                const status          = colVal(item, COL.status)
-                const due             = colVal(item, COL.due)
-                const overdue         = due && new Date(due) < new Date()
                 const boxUrl          = item.column_values?.find(c => c.id === COL.boxFolder)?.url ?? ''
                 const clientFolderUrl = item.column_values?.find(c => c.id === COL.clientFolder)?.url ?? ''
+
+                const ec = (colId: string, cls: string, render?: (v: string) => React.ReactNode) => {
+                  if (!colId) return <td className={cls}>—</td>
+                  const cKey   = `${item.id}:${colId}`
+                  const isEdit = editingCell?.itemId === item.id && editingCell?.colId === colId
+                  const isSave = !!savingCell[cKey]
+                  const val    = pendingEdits[cKey] ?? colVal(item, colId)
+                  const cType  = boardData?.columns?.find(c => c.id === colId)?.type
+                  const disp   = render ? render(val) : (val || <span className="text-muted-foreground/20 text-[10px] group-hover:text-muted-foreground/40">+</span>)
+                  if (isEdit) return (
+                    <td className={cn('p-0', cls)}>
+                      <input
+                        autoFocus
+                        type={cType === 'date' ? 'date' : cType === 'numbers' ? 'number' : 'text'}
+                        defaultValue={val}
+                        className="w-full min-w-[80px] bg-violet-50 border-0 border-b-2 border-[#a200ee] px-3 py-2 text-xs outline-none"
+                        onBlur={(e) => patchCell(item.id, colId, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                          if (e.key === 'Escape') setEditingCell(null)
+                        }}
+                      />
+                    </td>
+                  )
+                  return (
+                    <td className={cn(cls, 'cursor-text group hover:bg-violet-50/30 transition-colors')} onClick={() => setEditingCell({ itemId: item.id, colId })}>
+                      {isSave ? <span className="opacity-40">{render ? render(val) : val || '—'}</span> : disp}
+                    </td>
+                  )
+                }
+
                 return (
                   <tr key={item.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-3 py-2 sticky left-0 bg-white font-medium text-foreground max-w-[200px] truncate" title={item.name}>{item.name}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[120px] truncate" title={colVal(item, COL.client)}>{colVal(item, COL.client) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.mainCategory) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.focus) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.type) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate" title={colVal(item, COL.subProject)}>{colVal(item, COL.subProject) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[200px] truncate" title={colVal(item, COL.notes)}>{colVal(item, COL.notes) || '—'}</td>
+                    {ec(COL.client,         'px-3 py-2 text-muted-foreground max-w-[120px] truncate')}
+                    {ec(COL.mainCategory,   'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.focus,          'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.type,           'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.subProject,     'px-3 py-2 text-muted-foreground max-w-[160px] truncate')}
+                    {ec(COL.notes,          'px-3 py-2 text-muted-foreground max-w-[200px] truncate')}
+                    {ec(COL.statusInternal, 'px-3 py-2', v => v ? <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(v))}>{v}</span> : undefined)}
+                    {ec(COL.statusExternal, 'px-3 py-2', v => v ? <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(v))}>{v}</span> : undefined)}
+                    {ec(COL.priority,       'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.dayMapping,     'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.stage,          'px-3 py-2 text-muted-foreground text-center')}
+                    {ec(COL.followupStatus, 'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.followupDate,   'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.mainContact,    'px-3 py-2 text-muted-foreground max-w-[140px] truncate')}
+                    {ec(COL.otherContacts,  'px-3 py-2 text-muted-foreground max-w-[160px] truncate')}
+                    {ec(COL.stakeholders,   'px-3 py-2 text-muted-foreground max-w-[160px] truncate')}
+                    {ec(COL.design,         'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.content,        'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.video,          'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.pm,             'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.lastUpdated,    'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.quarter,        'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.sowNumber,      'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.budget,         'px-3 py-2 text-muted-foreground')}
                     <td className="px-3 py-2">
-                      {colVal(item, COL.statusInternal) ? (
-                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(colVal(item, COL.statusInternal)))}>
-                          {colVal(item, COL.statusInternal)}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-3 py-2">
-                      {colVal(item, COL.statusExternal) ? (
-                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(colVal(item, COL.statusExternal)))}>
-                          {colVal(item, COL.statusExternal)}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.priority) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.dayMapping) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.stage) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.followupStatus) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.followupDate) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[140px] truncate">{colVal(item, COL.mainContact) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.otherContacts) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.stakeholders) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.design) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.content) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.video) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.pm) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.lastUpdated) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.quarter) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.sowNumber) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.budget) || '—'}</td>
-                    <td className="px-3 py-2">
-                      {boxUrl ? (
-                        <a href={boxUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-[11px]">Open</a>
-                      ) : '—'}
+                      {boxUrl ? <a href={boxUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-[11px]">Open</a> : '—'}
                     </td>
                     <td className="px-3 py-2">
-                      {clientFolderUrl ? (
-                        <a href={clientFolderUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-[11px]">Open</a>
-                      ) : '—'}
+                      {clientFolderUrl ? <a href={clientFolderUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-[11px]">Open</a> : '—'}
                     </td>
-                    <td className="px-3 py-2">
-                      {status ? (
-                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(status))}>
-                          {status}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className={cn('px-3 py-2', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
-                      {due ? new Date(due).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
-                    </td>
-                    <td className="px-3 py-2">
-                      {colVal(item, COL.gate) ? (
-                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-                          {colVal(item, COL.gate)}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[200px] truncate" title={colVal(item, COL.flagNotes)}>{colVal(item, COL.flagNotes) || '—'}</td>
+                    {ec(COL.status,    'px-3 py-2', v => v ? <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(v))}>{v}</span> : undefined)}
+                    {ec(COL.due,       'px-3 py-2', v => {
+                      if (!v) return undefined
+                      const overdue = new Date(v) < new Date()
+                      return <span className={overdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}>{new Date(v).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                    })}
+                    {ec(COL.gate,      'px-3 py-2', v => v ? <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">{v}</span> : undefined)}
+                    {ec(COL.flagNotes, 'px-3 py-2 text-muted-foreground max-w-[200px] truncate')}
                     <td className="px-3 py-2 text-muted-foreground">{item.group?.title ?? '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.autonomy) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.aiTarget) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.maxPasses) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.division) || '—'}</td>
+                    {ec(COL.autonomy,  'px-3 py-2 text-muted-foreground')}
+                    {ec(COL.aiTarget,  'px-3 py-2 text-muted-foreground text-center')}
+                    {ec(COL.maxPasses, 'px-3 py-2 text-muted-foreground text-center')}
+                    {ec(COL.division,  'px-3 py-2 text-muted-foreground')}
                   </tr>
                 )
               })}
