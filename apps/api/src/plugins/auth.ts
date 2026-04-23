@@ -45,6 +45,8 @@ async function authPluginFn(app: FastifyInstance) {
     // Portal and writer portal routes use magic link auth — skip Clerk JWT check
     if (req.url.startsWith('/portal')) return
     if (req.url.startsWith('/writer')) return
+    // Monday webhook is called by Monday.com directly — no Clerk auth
+    if (req.url.startsWith('/api/v1/integrations/monday/webhook')) return
     // Generated files are public static assets — no auth required
     if (req.url.startsWith('/files/generated/')) return
     // Wrike OAuth endpoints — callback and debug are public (called by Wrike's servers)

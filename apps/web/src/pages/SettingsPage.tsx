@@ -1009,6 +1009,111 @@ function DocTemplateSection() {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+// ── Monday integration card ────────────────────────────────────────────────────
+function MondayCard() {
+  const [status,  setStatus]  = useState<'loading' | 'connected' | 'disconnected'>('loading')
+  const [working, setWorking] = useState(false)
+  const [copied,  setCopied]  = useState(false)
+
+  const webhookUrl = `${import.meta.env.VITE_API_URL ?? ''}/api/v1/integrations/monday/webhook`
+
+  useEffect(() => {
+    apiFetch('/api/v1/integrations/monday/status')
+      .then((r) => r.json())
+      .then(({ data }) => setStatus(data?.connected ? 'connected' : 'disconnected'))
+      .catch(() => setStatus('disconnected'))
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const monday = params.get('monday')
+    if (monday === 'connected') {
+      setStatus('connected')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  const handleConnect = async () => {
+    setWorking(true)
+    const res = await apiFetch('/api/v1/integrations/monday/connect')
+    const { data } = await res.json()
+    window.location.href = data.url
+  }
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Disconnect Monday.com?')) return
+    setWorking(true)
+    await apiFetch('/api/v1/integrations/monday/disconnect', { method: 'DELETE' })
+    setStatus('disconnected')
+    setWorking(false)
+  }
+
+  const copyWebhook = () => {
+    navigator.clipboard.writeText(webhookUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="rounded-xl p-4" style={{ backgroundColor: '#fff', border: '1px solid #e8e7e1' }}>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ backgroundColor: '#ff3d57' }}>
+            <Icons.LayoutGrid className="h-4 w-4 text-white" />
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold" style={{ color: '#1a1a14' }}>Monday.com</p>
+            <p className="text-[11px]" style={{ color: '#b4b2a9' }}>CEO grid, inline editing, and workflow triggers</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {status === 'loading' && <Icons.Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {status === 'connected' && (
+            <>
+              <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
+                <Icons.CheckCircle2 className="h-3 w-3" /> Connected
+              </span>
+              <button
+                onClick={handleDisconnect}
+                disabled={working}
+                className="rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors hover:bg-accent disabled:opacity-50"
+                style={{ borderColor: '#e8e7e1', color: '#5c5b52' }}
+              >
+                Disconnect
+              </button>
+            </>
+          )}
+          {status === 'disconnected' && (
+            <button
+              onClick={handleConnect}
+              disabled={working}
+              className="rounded-md px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: '#a200ee' }}
+            >
+              {working ? 'Redirecting…' : 'Connect Monday'}
+            </button>
+          )}
+        </div>
+      </div>
+      {status === 'connected' && (
+        <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Webhook URL</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-[11px] text-foreground truncate">{webhookUrl}</code>
+            <button
+              onClick={copyWebhook}
+              className="flex-shrink-0 rounded px-2 py-1 text-[10px] font-medium border border-border hover:bg-accent transition-colors"
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">Paste into Monday Developer Center → Webhooks</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Integrations ──────────────────────────────────────────────────────────────
 function IntegrationsSection() {
   const [status, setStatus]   = useState<'loading' | 'connected' | 'disconnected'>('loading')
@@ -1055,6 +1160,7 @@ function IntegrationsSection() {
       <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
         Connect third-party tools to use as data sources in your workflows.
       </p>
+      <div className="flex flex-col gap-3">
       <div className="rounded-xl p-4" style={{ backgroundColor: '#fff', border: '1px solid #e8e7e1' }}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1095,6 +1201,8 @@ function IntegrationsSection() {
             )}
           </div>
         </div>
+      </div>
+      <MondayCard />
       </div>
     </section>
   )

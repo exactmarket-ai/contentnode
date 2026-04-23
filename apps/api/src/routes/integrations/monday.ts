@@ -280,6 +280,38 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 
     return reply.send({ data: data.change_column_value })
   })
+
+  // ── POST /webhook — receive Monday events (no Clerk auth — called by Monday) ─
+  app.post('/webhook', async (req, reply) => {
+    const body = req.body as Record<string, unknown>
+
+    // Challenge handshake — Monday sends this when you first register the URL
+    if (body.challenge) {
+      return reply.send({ challenge: body.challenge })
+    }
+
+    // Validate signing secret if configured
+    const signingSecret = process.env.MONDAY_SIGNING_SECRET
+    if (signingSecret) {
+      const auth = ((req.headers.authorization as string) ?? '').replace(/^Bearer\s+/i, '').trim()
+      if (auth !== signingSecret) {
+        return reply.code(401).send({ error: 'Invalid webhook signature' })
+      }
+    }
+
+    const event = body.event as MondayWebhookEvent | undefined
+    if (!event) return reply.send({ ok: true })
+
+    app.log.info(
+      { type: event.type, boardId: event.boardId, itemId: event.pulseId, itemName: event.pulseName },
+      'Monday webhook received'
+    )
+
+    // Placeholder for Box folder creation — wired in next phase
+    // if (event.type === 'create_pulse') { await enqueueBoxFolderCreate(event) }
+
+    return reply.send({ ok: true })
+  })
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -302,4 +334,19 @@ interface MondayItem {
   group?: { id: string; title: string }
   column_values?: { id: string; text?: string; value?: string; label?: string; date?: string; number?: number; url?: string; url_text?: string }[]
   subitems?: MondayItem[]
+}
+
+interface MondayWebhookEvent {
+  type: string
+  boardId: number
+  groupId?: string
+  pulseId?: number
+  pulseName?: string
+  columnId?: string
+  columnType?: string
+  columnTitle?: string
+  value?: Record<string, unknown>
+  previousValue?: Record<string, unknown>
+  userId?: number
+  triggerTime?: string
 }
