@@ -779,7 +779,7 @@ function MondayTab() {
                     <td className="px-3 py-2 sticky left-0 bg-white font-medium text-foreground max-w-[200px] truncate" title={item.name}>
                       {item.name}
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.jobName) || item.name}</td>
+                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.jobName) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{item.group?.title ?? '—'}</td>
                     <td className="px-3 py-2">
                       {status ? (
