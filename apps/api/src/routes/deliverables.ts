@@ -144,14 +144,28 @@ export async function deliverablesRoutes(app: FastifyInstance) {
     const limit  = Math.min(parseInt(q.limit  ?? '500'), 500)
     const offset = parseInt(q.offset ?? '0')
 
-    const [runs, total, clients, members] = await Promise.all([
-      prisma.workflowRun.findMany({ where, select: SELECT, orderBy, take: limit, skip: offset }),
-      prisma.workflowRun.count({ where }),
+    // Clients and members always load — used for filter dropdowns regardless of run query outcome
+    const [clients, members] = await Promise.all([
       prisma.client.findMany({ where: { agencyId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.user.findMany({ where: { agencyId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     ])
 
-    return reply.send({ data: { runs, total, clients, members } })
+    let runs: typeof SELECT extends object ? unknown[] : never[] = []
+    let total = 0
+    let runsError: string | null = null
+    try {
+      const [r, c] = await Promise.all([
+        prisma.workflowRun.findMany({ where, select: SELECT, orderBy, take: limit, skip: offset }),
+        prisma.workflowRun.count({ where }),
+      ])
+      runs  = r as unknown[]
+      total = c
+    } catch (err) {
+      runsError = err instanceof Error ? err.message : String(err)
+      req.log.error({ err }, 'deliverables runs query failed')
+    }
+
+    return reply.send({ data: { runs, total, clients, members, runsError } })
   })
 
   // PATCH — update a single deliverable's fields

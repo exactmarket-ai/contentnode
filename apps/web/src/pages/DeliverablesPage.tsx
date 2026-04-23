@@ -297,6 +297,7 @@ export default function DeliverablesPage() {
       setTotal(b.data.total ?? 0)
       setClients(b.data.clients ?? [])
       setMembers(b.data.members ?? [])
+      if (b.data.runsError) setLoadError(`Runs query error: ${b.data.runsError}`)
     } finally {
       if (tick === fetchRef.current) setLoading(false)
     }
