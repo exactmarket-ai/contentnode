@@ -668,7 +668,7 @@ function MondayTab() {
 
   // Column IDs (resolved by title — works even if IDs change)
   const COL = {
-    jobName:      colByTitle('Job name'),
+    jobName:      colByTitle('Project') || colByTitle('Job name'),
     autonomy:     colByTitle('Autonomy mode'),
     status:       colByTitle('Status'),
     due:          colByTitle('Due date'),
