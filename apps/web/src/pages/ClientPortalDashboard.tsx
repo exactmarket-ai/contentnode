@@ -781,7 +781,6 @@ function MondayTab() {
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[130px]">Main Category</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Focus</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Type</th>
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Project</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Sub Project</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[200px]">Workspace Notes</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[130px]">Status (Internal)</th>
@@ -829,7 +828,6 @@ function MondayTab() {
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.mainCategory) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.focus) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.type) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate" title={colVal(item, COL.jobName)}>{colVal(item, COL.jobName) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate" title={colVal(item, COL.subProject)}>{colVal(item, COL.subProject) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[200px] truncate" title={colVal(item, COL.notes)}>{colVal(item, COL.notes) || '—'}</td>
                     <td className="px-3 py-2">
