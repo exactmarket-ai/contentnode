@@ -200,7 +200,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
 
     do {
       const url = new URL(`https://${host}/api/v4/folders`)
-      url.searchParams.set('fields', JSON.stringify(['description', 'childIds', 'project']))
+      url.searchParams.set('fields', JSON.stringify(['description', 'childIds']))
       if (nextPageToken) url.searchParams.set('nextPageToken', nextPageToken)
 
       const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
