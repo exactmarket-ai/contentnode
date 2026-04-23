@@ -88,8 +88,16 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     try {
       const decoded = JSON.parse(Buffer.from(state, 'base64url').toString())
       agencyId = decoded.agencyId
+      if (!agencyId) throw new Error('missing agencyId')
     } catch {
       return reply.redirect(`${frontendBase}/settings?wrike=error&reason=invalid_state`)
+    }
+
+    // Guard: ensure this agency exists in THIS environment's database
+    const agencyExists = await prisma.agency.findUnique({ where: { id: agencyId }, select: { id: true } })
+    if (!agencyExists) {
+      // Callback landed on the wrong environment (e.g. prod redirect URI used on staging)
+      return reply.redirect(`${frontendBase}/settings?wrike=error&reason=wrong_environment`)
     }
 
     const res = await fetch(WRIKE_TOKEN_URL, {
