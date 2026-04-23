@@ -352,65 +352,85 @@ export default function DeliverablesPage() {
   }
 
   const exportWrikeXlsx = async () => {
-    const { utils, writeFile } = await import('xlsx')
-    const headers = ['Title', 'Status', 'Project', 'Description', 'Due Date', 'Updated']
-    const rows = filteredWrikeTasks.map((t) => [
-      t.title,
-      t.status,
-      wrikeFolders.find((f) => t.parentIds?.includes(f.id))?.title ?? '',
-      t.briefDescription ?? '',
-      t.dates?.due ?? '',
-      t.updatedDate ? new Date(t.updatedDate).toLocaleDateString() : '',
-    ])
-    const ws = utils.aoa_to_sheet([headers, ...rows])
-    ws['!cols'] = headers.map(() => ({ wch: 24 }))
-    const wb = utils.book_new()
-    utils.book_append_sheet(wb, ws, 'Wrike Tasks')
-    writeFile(wb, `Wrike_Tasks_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Wrike Tasks')
+    ws.columns = [
+      { header: 'Title',       key: 'title',       width: 40 },
+      { header: 'Status',      key: 'status',      width: 16 },
+      { header: 'Project',     key: 'project',     width: 28 },
+      { header: 'Description', key: 'description', width: 40 },
+      { header: 'Due Date',    key: 'due',         width: 14 },
+      { header: 'Updated',     key: 'updated',     width: 14 },
+    ]
+    filteredWrikeTasks.forEach((t) => ws.addRow({
+      title:       t.title,
+      status:      t.status,
+      project:     wrikeFolders.find((f) => t.parentIds?.includes(f.id))?.title ?? '',
+      description: t.briefDescription ?? '',
+      due:         t.dates?.due ?? '',
+      updated:     t.updatedDate ? new Date(t.updatedDate).toLocaleDateString() : '',
+    }))
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `Wrike_Tasks_${new Date().toISOString().slice(0, 10)}.xlsx`; a.click()
+    URL.revokeObjectURL(url)
   }
 
   const exportXlsx = async () => {
-    const { utils, writeFile } = await import('xlsx')
-    const headers = [
-      '', 'Client', 'Main Category', 'Focus', 'Type', 'Project', 'Sub Project',
-      'Status Internal', 'Status External', 'Priority', '', 'Stage',
-      'Followup Status', 'Followup Date', 'Main Client Name', 'Other Stakeholders',
-      'Last Updated', 'Design', 'Content', 'Video', 'PM', 'Quarter',
-      'SOW #', 'Budget for MS', 'CLIENT FOLDER (BOX)', 'CLIENT FOLDER (CLIENT)',
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Deliverables')
+    ws.columns = [
+      { header: '',                        key: 'blank1',      width: 4  },
+      { header: 'Client',                  key: 'client',      width: 22 },
+      { header: 'Main Category',           key: 'category',    width: 18 },
+      { header: 'Focus',                   key: 'focus',       width: 14 },
+      { header: 'Type',                    key: 'type',        width: 22 },
+      { header: 'Project',                 key: 'project',     width: 26 },
+      { header: 'Sub Project',             key: 'blank2',      width: 14 },
+      { header: 'Status Internal',         key: 'statusInt',   width: 28 },
+      { header: 'Status External',         key: 'statusExt',   width: 28 },
+      { header: 'Priority',                key: 'priority',    width: 12 },
+      { header: '',                        key: 'blank3',      width: 4  },
+      { header: 'Stage',                   key: 'stage',       width: 18 },
+      { header: 'Followup Status',         key: 'followup',    width: 18 },
+      { header: 'Followup Date',           key: 'followDate',  width: 14 },
+      { header: 'Main Client Name',        key: 'mainClient',  width: 18 },
+      { header: 'Other Stakeholders',      key: 'others',      width: 20 },
+      { header: 'Last Updated',            key: 'updated',     width: 14 },
+      { header: 'Design',                  key: 'design',      width: 14 },
+      { header: 'Content',                 key: 'content',     width: 14 },
+      { header: 'Video',                   key: 'video',       width: 14 },
+      { header: 'PM',                      key: 'pm',          width: 14 },
+      { header: 'Quarter',                 key: 'quarter',     width: 10 },
+      { header: 'SOW #',                   key: 'sow',         width: 12 },
+      { header: 'Budget for MS',           key: 'budget',      width: 14 },
+      { header: 'CLIENT FOLDER (BOX)',     key: 'folderBox',   width: 28 },
+      { header: 'CLIENT FOLDER (CLIENT)',  key: 'folderClient',width: 28 },
     ]
-    const rows = runs.map((r) => ([
-      '',
-      r.workflow.client.name,
-      r.mainCategory ?? '',
-      r.focus ?? '',
-      r.itemName ?? '',
-      r.workflow.name,
-      '',
-      r.internalNotes ?? '',
-      r.statusExternal ?? '',
-      r.priority ?? '',
-      '',
-      stagLabel(r.reviewStatus),
-      r.followupStatus ?? '',
-      r.dueDate ? new Date(r.dueDate).toLocaleDateString() : '',
-      r.mainClientName ?? '',
-      r.otherStakeholders ?? '',
-      new Date(r.updatedAt).toLocaleDateString(),
-      r.teamDesign ?? '',
-      r.teamContent ?? '',
-      r.teamVideo ?? '',
-      r.assignee?.name ?? '',
-      quarterOf(r.createdAt),
-      r.sowNumber ?? '',
-      r.budgetMs ?? '',
-      r.clientFolderBox ?? '',
-      r.clientFolderClient ?? '',
-    ]))
-    const ws = utils.aoa_to_sheet([headers, ...rows])
-    ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length, 14) }))
-    const wb = utils.book_new()
-    utils.book_append_sheet(wb, ws, 'Deliverables')
-    writeFile(wb, `Deliverables_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    runs.forEach((r) => ws.addRow({
+      blank1: '', client: r.workflow.client.name, category: r.mainCategory ?? '',
+      focus: r.focus ?? '', type: r.itemName ?? '', project: r.workflow.name, blank2: '',
+      statusInt: r.internalNotes ?? '', statusExt: r.statusExternal ?? '',
+      priority: r.priority ?? '', blank3: '', stage: stagLabel(r.reviewStatus),
+      followup: r.followupStatus ?? '',
+      followDate: r.dueDate ? new Date(r.dueDate).toLocaleDateString() : '',
+      mainClient: r.mainClientName ?? '', others: r.otherStakeholders ?? '',
+      updated: new Date(r.updatedAt).toLocaleDateString(),
+      design: r.teamDesign ?? '', content: r.teamContent ?? '', video: r.teamVideo ?? '',
+      pm: r.assignee?.name ?? '', quarter: quarterOf(r.createdAt),
+      sow: r.sowNumber ?? '', budget: r.budgetMs ?? '',
+      folderBox: r.clientFolderBox ?? '', folderClient: r.clientFolderClient ?? '',
+    }))
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `Deliverables_${new Date().toISOString().slice(0, 10)}.xlsx`; a.click()
+    URL.revokeObjectURL(url)
   }
 
   if (!isManager) {
