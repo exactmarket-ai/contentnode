@@ -163,10 +163,11 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const { accessToken, host } = await refreshWrikeToken(agencyId)
 
+    // Only valid optional fields — default fields (status, importance, dates,
+    // completedDate, authorIds) are always returned and must NOT be listed here
     const TASK_FIELDS = [
       'description', 'briefDescription', 'parentIds', 'superParentIds',
-      'responsibleIds', 'authorIds', 'importance', 'dates',
-      'customFields', 'permalink', 'completedDate', 'status',
+      'responsibleIds', 'customFields', 'permalink',
     ]
 
     const allTasks: unknown[] = []
