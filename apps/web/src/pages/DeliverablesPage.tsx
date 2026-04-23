@@ -812,11 +812,12 @@ export default function DeliverablesPage() {
                     <InlineCell value={r.focus} placeholder="Focus" onSave={(v) => patch(r.id, 'focus', v)} />
                   </td>
 
-                  {/* Type / Item — strip "Client | " prefix if present */}
+                  {/* Type / Item — format is "Client | Project | Deliverable"; show last segment */}
                   <td className="px-3 py-2">
                     {(() => {
                       const raw = r.itemName ?? ''
-                      const display = raw.includes('|') ? raw.split('|').slice(1).join('|').trim() : raw
+                      const parts = raw.split('|').map((s) => s.trim())
+                      const display = parts[parts.length - 1]
                       return (
                         <button
                           onClick={() => navigate(`/reviews/${r.id}`)}
