@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '@contentnode/database'
 import { requireRole } from '../../plugins/auth.js'
+import { encrypt, safeDecrypt } from '../../lib/crypto.js'
 
 const WRIKE_AUTH_URL  = 'https://login.wrike.com/oauth2/authorize/v4'
 const WRIKE_TOKEN_URL = 'https://login.wrike.com/oauth2/token'
@@ -21,10 +22,11 @@ async function refreshWrikeToken(agencyId: string): Promise<{ accessToken: strin
 
   // Return cached token if still valid (with 5 min buffer)
   if (integration.expiresAt && integration.expiresAt.getTime() > Date.now() + 5 * 60 * 1000) {
-    return { accessToken: integration.accessToken, host: meta.host ?? 'www.wrike.com' }
+    return { accessToken: safeDecrypt(integration.accessToken) ?? integration.accessToken, host: meta.host ?? 'www.wrike.com' }
   }
 
-  if (!integration.refreshToken) throw new Error('No refresh token — please reconnect Wrike')
+  const storedRefresh = safeDecrypt(integration.refreshToken) ?? integration.refreshToken
+  if (!storedRefresh) throw new Error('No refresh token — please reconnect Wrike')
 
   const res = await fetch(WRIKE_TOKEN_URL, {
     method: 'POST',
@@ -33,7 +35,7 @@ async function refreshWrikeToken(agencyId: string): Promise<{ accessToken: strin
       grant_type:    'refresh_token',
       client_id:     wrikeClientId(),
       client_secret: wrikeClientSecret(),
-      refresh_token: integration.refreshToken,
+      refresh_token: storedRefresh,
     }),
   })
 
@@ -43,8 +45,8 @@ async function refreshWrikeToken(agencyId: string): Promise<{ accessToken: strin
   await prisma.integration.update({
     where: { agencyId_provider: { agencyId, provider: 'wrike' } },
     data: {
-      accessToken:  data.access_token,
-      refreshToken: data.refresh_token,
+      accessToken:  encrypt(data.access_token),
+      refreshToken: encrypt(data.refresh_token),
       expiresAt:    new Date(Date.now() + data.expires_in * 1000),
       metadata:     { ...meta, host: data.host ?? meta.host },
     },
@@ -125,14 +127,14 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
       create: {
         agencyId,
         provider:     'wrike',
-        accessToken:  data.access_token,
-        refreshToken: data.refresh_token,
+        accessToken:  encrypt(data.access_token),
+        refreshToken: encrypt(data.refresh_token),
         expiresAt:    new Date(Date.now() + data.expires_in * 1000),
         metadata:     { host: data.host ?? 'www.wrike.com' },
       },
       update: {
-        accessToken:  data.access_token,
-        refreshToken: data.refresh_token,
+        accessToken:  encrypt(data.access_token),
+        refreshToken: encrypt(data.refresh_token),
         expiresAt:    new Date(Date.now() + data.expires_in * 1000),
         metadata:     { host: data.host ?? 'www.wrike.com' },
       },
