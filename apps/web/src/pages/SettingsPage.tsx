@@ -1043,15 +1043,16 @@ function MondayCard() {
         setBoards(boards)
         if (!boards.length) return
 
-        // Default to the first board that already has webhooks, else first board
+        // Default to the board with the most webhooks, else first board
         let defaultId = boards[0].id
-        for (const b of boards) {
+        let maxWebhooks = -1
+        await Promise.all(boards.map(async (b: { id: string }) => {
           try {
             const r = await apiFetch(`/api/v1/integrations/monday/boards/${b.id}/webhooks`)
             const { data: wh } = await r.json()
-            if (wh?.length) { defaultId = b.id; break }
+            if ((wh?.length ?? 0) > maxWebhooks) { maxWebhooks = wh.length; defaultId = b.id }
           } catch { /* skip */ }
-        }
+        }))
         setBoardId(defaultId)
       })
       .catch(() => {})
