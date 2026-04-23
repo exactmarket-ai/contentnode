@@ -705,8 +705,8 @@ function MondayTab() {
             onChange={(e) => setBoardId(e.target.value)}
           >
             <option value="all">Select a client…</option>
-            {boards.filter(b => b.name.toLowerCase().includes('campaign')).map(b => (
-              <option key={b.id} value={b.id}>{clientName(b)}</option>
+            {boards.map(b => (
+              <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
         </div>
