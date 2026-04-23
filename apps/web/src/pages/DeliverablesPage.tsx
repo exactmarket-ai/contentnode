@@ -411,8 +411,20 @@ export default function DeliverablesPage() {
       folderParentMap.set(childId, f.id)
     }
   }
+
+  // Resolve project folder for a task.
+  // Wrike tasks only carry parentIds (immediate parent), so a task nested as
+  // Project → Sub-folder → Task won't have the project ID in parentIds.
+  // superParentIds contains ALL ancestors, so searching there always surfaces the project.
+  // We prefer folders marked as Wrike projects (have a `project` field).
+  const wrikeProjectFolder = (task: WrikeTask): WrikeFolder | undefined => {
+    const allAncestors = [...new Set([...(task.parentIds ?? []), ...(task.superParentIds ?? [])])]
+    return wrikeFolders.find((f) => f.project && allAncestors.includes(f.id))
+      ?? wrikeFolders.find((f) => allAncestors.includes(f.id))
+  }
+
   const wrikeClientName = (task: WrikeTask): string => {
-    const projectFolder = wrikeFolders.find((f) => task.parentIds?.includes(f.id))
+    const projectFolder = wrikeProjectFolder(task)
     if (!projectFolder) return ''
     const clientFolderId = folderParentMap.get(projectFolder.id)
     if (!clientFolderId) return ''
@@ -445,7 +457,7 @@ export default function DeliverablesPage() {
     const cfCols = activeCustomFields.map((cf) => ({ header: cf.title, key: `cf_${cf.id}`, width: 22 }))
     ws.columns = [...staticCols, ...cfCols]
     filteredWrikeTasks.forEach((t) => {
-      const project = wrikeFolders.find((f) => t.parentIds?.includes(f.id))?.title ?? ''
+      const project = wrikeProjectFolder(t)?.title ?? ''
       const row: Record<string, string> = {
         title:       t.title,
         client:      wrikeClientName(t),
@@ -999,7 +1011,7 @@ export default function DeliverablesPage() {
                     </td>
                   </tr>
                 ) : filteredWrikeTasks.map((t) => {
-                  const project = wrikeFolders.find((f) => t.parentIds?.includes(f.id))
+                  const project = wrikeProjectFolder(t)
                   const statusColor =
                     t.status === 'Completed' ? 'bg-green-100 text-green-700' :
                     t.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :

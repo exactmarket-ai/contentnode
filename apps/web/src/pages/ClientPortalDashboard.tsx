@@ -56,6 +56,7 @@ interface WrikeTask {
   status: string
   briefDescription?: string
   parentIds?: string[]
+  superParentIds?: string[]
   responsibleIds?: string[]
   updatedDate?: string
   createdDate?: string
@@ -296,13 +297,20 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, deliverables
     statusMap[t.status] = (statusMap[t.status] ?? 0) + 1
   }
 
-  // Map tasks to folders (by parentId)
   const folderMap = Object.fromEntries(folders.map((f) => [f.id, f]))
+
+  // Resolve project folder via superParentIds so nested tasks (Project → Sub-folder → Task)
+  // still map to their project, not the intermediate sub-folder
+  const resolveProject = (t: WrikeTask): WrikeFolder | undefined => {
+    const allAncestors = [...new Set([...(t.parentIds ?? []), ...(t.superParentIds ?? [])])]
+    return folders.find((f) => f.project && allAncestors.includes(f.id))
+      ?? folders.find((f) => allAncestors.includes(f.id))
+  }
+
   const folderTaskCounts: Record<string, number> = {}
   for (const t of tasks) {
-    for (const pid of t.parentIds ?? []) {
-      folderTaskCounts[pid] = (folderTaskCounts[pid] ?? 0) + 1
-    }
+    const pf = resolveProject(t)
+    if (pf) folderTaskCounts[pf.id] = (folderTaskCounts[pf.id] ?? 0) + 1
   }
   const topFolders = Object.entries(folderTaskCounts)
     .sort((a, b) => b[1] - a[1])
@@ -406,7 +414,7 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, deliverables
             <tbody className="divide-y divide-border">
               {tasks.slice(0, 15).map((task) => {
                 const s = wrikeStatusStyle(task.status)
-                const parentFolder = task.parentIds?.map((pid) => folderMap[pid]).find(Boolean)
+                const parentFolder = resolveProject(task)
                 const dueDate = task.dates?.due
                 const overdue = dueDate && new Date(dueDate) < new Date()
                 return (
@@ -464,6 +472,11 @@ function WrikeStakeholderTab({ tasks, folders, loading, notConnected }: {
   }
 
   const folderMap = Object.fromEntries(folders.map((f) => [f.id, f]))
+  const resolveProject = (t: WrikeTask): WrikeFolder | undefined => {
+    const allAncestors = [...new Set([...(t.parentIds ?? []), ...(t.superParentIds ?? [])])]
+    return folders.find((f) => f.project && allAncestors.includes(f.id))
+      ?? folders.find((f) => allAncestors.includes(f.id))
+  }
   const uniqueStatuses = [...new Set(tasks.map((t) => t.status))]
 
   const filtered = tasks.filter((t) => {
@@ -531,7 +544,7 @@ function WrikeStakeholderTab({ tasks, folders, loading, notConnected }: {
             <tbody className="divide-y divide-border">
               {filtered.map((task) => {
                 const s = wrikeStatusStyle(task.status)
-                const parentFolder = task.parentIds?.map((pid) => folderMap[pid]).find(Boolean)
+                const parentFolder = resolveProject(task)
                 const dueDate = task.dates?.due
                 const overdue = dueDate && new Date(dueDate) < new Date()
                 return (
