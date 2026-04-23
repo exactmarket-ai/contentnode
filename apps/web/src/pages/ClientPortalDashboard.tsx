@@ -1042,31 +1042,31 @@ export function ClientPortalDashboard() {
 
   const wrikeFilterBar = (
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-white p-3 shadow-sm">
-      {/* Client picker */}
+      {/* Client picker (populated from wrikeProjectFolders — the actual client-level folders) */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Client</label>
-        <select
-          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[160px]"
-          value={wrikeClientId}
-          onChange={(e) => { setWrikeClientId(e.target.value); setWrikeProjectId('all') }}
-        >
-          <option value="all">All clients</option>
-          {wrikeClientFolders.map((f) => (
-            <option key={f.id} value={f.id}>{f.title}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Project picker */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Project</label>
         <select
           className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[180px]"
           value={wrikeProjectId}
           onChange={(e) => setWrikeProjectId(e.target.value)}
         >
-          <option value="all">All projects</option>
+          <option value="all">All clients</option>
           {wrikeProjectFolders.map((f) => (
+            <option key={f.id} value={f.id}>{f.title}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Project picker (populated from wrikeClientFolders — top-level sub-folders) */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Project</label>
+        <select
+          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[160px]"
+          value={wrikeClientId}
+          onChange={(e) => { setWrikeClientId(e.target.value); setWrikeProjectId('all') }}
+        >
+          <option value="all">All projects</option>
+          {wrikeClientFolders.map((f) => (
             <option key={f.id} value={f.id}>{f.title}</option>
           ))}
         </select>
