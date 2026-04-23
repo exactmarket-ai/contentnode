@@ -1038,22 +1038,13 @@ function MondayCard() {
     if (status !== 'connected') return
     apiFetch('/api/v1/integrations/monday/boards')
       .then((r) => r.json())
-      .then(async ({ data }) => {
+      .then(({ data }) => {
         const boards = data ?? []
         setBoards(boards)
         if (!boards.length) return
-
-        // Default to the board with the most webhooks, else first board
-        let defaultId = boards[0].id
-        let maxWebhooks = -1
-        await Promise.all(boards.map(async (b: { id: string }) => {
-          try {
-            const r = await apiFetch(`/api/v1/integrations/monday/boards/${b.id}/webhooks`)
-            const { data: wh } = await r.json()
-            if ((wh?.length ?? 0) > maxWebhooks) { maxWebhooks = wh.length; defaultId = b.id }
-          } catch { /* skip */ }
-        }))
-        setBoardId(defaultId)
+        const saved = localStorage.getItem('monday_board_id')
+        const validSaved = saved && boards.some((b: { id: string }) => b.id === saved)
+        setBoardId(validSaved ? saved : boards[0].id)
       })
       .catch(() => {})
   }, [status])
@@ -1155,7 +1146,7 @@ function MondayCard() {
           <div className="flex items-center gap-2">
             <select
               value={boardId}
-              onChange={(e) => setBoardId(e.target.value)}
+              onChange={(e) => { setBoardId(e.target.value); localStorage.setItem('monday_board_id', e.target.value) }}
               className="flex-1 h-7 rounded border border-border bg-muted/20 px-2 text-xs outline-none"
             >
               {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
