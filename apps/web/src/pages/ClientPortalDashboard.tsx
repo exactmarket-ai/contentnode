@@ -1009,8 +1009,9 @@ export function ClientPortalDashboard() {
       wrikeFolderParentMap.set(childId, f.id)
     }
   }
-  // Client folders = top-level (not a child of any other folder in the list)
-  const wrikeClientFolders = wrikeFolders.filter((f) => !wrikeFolderParentMap.has(f.id))
+  const WRIKE_SYSTEM_FOLDERS = new Set(['Root', 'Recycle Bin', 'My Work'])
+  // Client folders = top-level (not a child of any other folder in the list), excluding system folders
+  const wrikeClientFolders = wrikeFolders.filter((f) => !wrikeFolderParentMap.has(f.id) && !WRIKE_SYSTEM_FOLDERS.has(f.title))
   // Project folders = folders that have a parent in the list; filter by selected client
   const wrikeProjectFolders = wrikeFolders.filter((f) => {
     if (!wrikeFolderParentMap.has(f.id)) return false
