@@ -144,6 +144,15 @@ export async function deliverablesRoutes(app: FastifyInstance) {
     const limit  = Math.min(parseInt(q.limit  ?? '500'), 500)
     const offset = parseInt(q.offset ?? '0')
 
+    // Diagnostic: raw counts to verify agencyId matches data
+    const diagRows = await prisma.$queryRaw<{ client_count: bigint; run_count: bigint; rls_agency: string | null }[]>`
+      SELECT
+        (SELECT COUNT(*) FROM clients        WHERE agency_id = ${agencyId})::bigint AS client_count,
+        (SELECT COUNT(*) FROM workflow_runs  WHERE agency_id = ${agencyId})::bigint AS run_count,
+        current_setting('app.current_agency_id', true) AS rls_agency
+    `
+    req.log.info({ agencyId, diag: diagRows[0] }, '[deliverables] diagnostic counts')
+
     // Clients and members always load — used for filter dropdowns regardless of run query outcome
     const [clients, members] = await Promise.all([
       prisma.client.findMany({ where: { agencyId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -165,7 +174,7 @@ export async function deliverablesRoutes(app: FastifyInstance) {
       req.log.error({ err }, 'deliverables runs query failed')
     }
 
-    return reply.send({ data: { runs, total, clients, members, runsError } })
+    return reply.send({ data: { runs, total, clients, members, runsError, _diag: { agencyId, ...diagRows[0], clientCount: Number(diagRows[0]?.client_count ?? 0), runCount: Number(diagRows[0]?.run_count ?? 0) } } })
   })
 
   // PATCH — update a single deliverable's fields

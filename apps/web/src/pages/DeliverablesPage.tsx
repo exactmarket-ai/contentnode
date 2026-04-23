@@ -298,6 +298,7 @@ export default function DeliverablesPage() {
       setClients(b.data.clients ?? [])
       setMembers(b.data.members ?? [])
       if (b.data.runsError) setLoadError(`Runs query error: ${b.data.runsError}`)
+      if (b.data._diag) setLoadError(`diag — agencyId: ${b.data._diag.agencyId} | clients in DB: ${b.data._diag.clientCount} | runs in DB: ${b.data._diag.runCount} | rls_agency: ${b.data._diag.rls_agency ?? 'null'}`)
     } finally {
       if (tick === fetchRef.current) setLoading(false)
     }
