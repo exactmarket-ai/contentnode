@@ -670,6 +670,22 @@ model WorkflowRun {
   campaignId          String?   @map("campaign_id")
   programId           String?   @map("program_id")
 
+  // Deliverables board fields
+  priority            String?   // high | medium | low
+  statusExternal      String?   @db.Text @map("status_external")
+  followupStatus      String?   @db.Text @map("followup_status")
+  mainClientName      String?   @map("main_client_name")
+  otherStakeholders   String?   @db.Text @map("other_stakeholders")
+  teamDesign          String?   @map("team_design")
+  teamContent         String?   @map("team_content")
+  teamVideo           String?   @map("team_video")
+  sowNumber           String?   @map("sow_number")
+  budgetMs            Decimal?  @map("budget_ms") @db.Decimal(10, 2)
+  mainCategory        String?   @map("main_category")
+  focus               String?
+  clientFolderBox     String?   @db.Text @map("client_folder_box")
+  clientFolderClient  String?   @db.Text @map("client_folder_client")
+
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   program           Program?              @relation(fields: [programId], references: [id], onDelete: SetNull)
