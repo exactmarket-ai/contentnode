@@ -266,9 +266,10 @@ function wrikeStatusStyle(status: string) {
   return WRIKE_STATUS_COLORS[status] ?? { bg: 'bg-slate-50 border-slate-200', text: 'text-slate-600', dot: 'bg-slate-400' }
 }
 
-function WrikeExecutiveTab({ tasks, folders, loading, notConnected, error }: {
+function WrikeExecutiveTab({ tasks, folders, deliverables, loading, notConnected, error }: {
   tasks: WrikeTask[]
   folders: WrikeFolder[]
+  deliverables: Deliverable[]
   loading: boolean
   notConnected: boolean
   error?: string | null
@@ -401,47 +402,60 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, error }: {
       </div>
 
       {/* Recent tasks table */}
-      <div>
-        <h3 className="mb-3 text-sm font-semibold text-foreground">Recent Tasks</h3>
-        <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Task</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Project</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {tasks.slice(0, 15).map((task) => {
-                const s = wrikeStatusStyle(task.status)
-                const parentFolder = resolveProject(task)
-                const dueDate = task.dates?.due
-                const overdue = dueDate && new Date(dueDate) < new Date()
-                return (
-                  <tr key={task.id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-foreground line-clamp-1" title={task.title}>{task.title.split('|').map((s) => s.trim()).at(-1) ?? task.title}</p>
-                      {task.briefDescription && <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{task.briefDescription}</p>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', s.bg, s.text)}>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', s.dot)} />
-                        {task.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground truncate max-w-[160px]" title={parentFolder?.title}>{parentFolder ? (parentFolder.title.split('|').map((s) => s.trim()).at(-1) ?? parentFolder.title) : '—'}</td>
-                    <td className={cn('px-4 py-2.5', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
-                      {dueDate ? new Date(dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
-                    </td>
+      {(() => {
+        const deliverableByTitle = new Map(
+          deliverables.map((d) => [d.itemName?.split('|').at(-1)?.trim().toLowerCase() ?? '', d])
+        )
+        return (
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-foreground">Recent Tasks</h3>
+            <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Task</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Project</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Price / Cost</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {tasks.slice(0, 15).map((task) => {
+                    const s = wrikeStatusStyle(task.status)
+                    const parentFolder = resolveProject(task)
+                    const dueDate = task.dates?.due
+                    const overdue = dueDate && new Date(dueDate) < new Date()
+                    const taskKey = task.title.split('|').at(-1)?.trim().toLowerCase() ?? ''
+                    const matchedDel = deliverableByTitle.get(taskKey)
+                    return (
+                      <tr key={task.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <p className="font-medium text-foreground line-clamp-1" title={task.title}>{task.title.split('|').map((s) => s.trim()).at(-1) ?? task.title}</p>
+                          {task.briefDescription && <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{task.briefDescription}</p>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', s.bg, s.text)}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', s.dot)} />
+                            {task.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground truncate max-w-[200px]" title={parentFolder?.title}>{parentFolder ? (parentFolder.title.split('|').map((s) => s.trim()).slice(1).join(' | ') || parentFolder.title) : '—'}</td>
+                        <td className={cn('px-4 py-2.5', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
+                          {dueDate ? new Date(dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">
+                          {matchedDel?.budgetMs != null ? formatBudget(matchedDel.budgetMs) : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -561,7 +575,7 @@ function WrikeStakeholderTab({ tasks, folders, loading, notConnected }: {
                         {task.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[160px]" title={parentFolder?.title}>{parentFolder ? (parentFolder.title.split('|').map((s) => s.trim()).at(-1) ?? parentFolder.title) : '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[200px]" title={parentFolder?.title}>{parentFolder ? (parentFolder.title.split('|').map((s) => s.trim()).slice(1).join(' | ') || parentFolder.title) : '—'}</td>
                     <td className={cn('px-4 py-3', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
                       {dueDate ? new Date(dueDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                       {overdue && <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">overdue</span>}
@@ -740,7 +754,7 @@ function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, 
         <>
           {wrikeFilterBar}
           <WrikeExecutiveTab
-            tasks={wrikeTasks} folders={wrikeFolders}
+            tasks={wrikeTasks} folders={wrikeFolders} deliverables={deliverables}
             loading={wrikeLoading} notConnected={!wrikeConnected}
             error={wrikeError}
           />
@@ -951,8 +965,9 @@ export function ClientPortalDashboard() {
   // Wrike filters
   const [wrikeStart,    setWrikeStart]    = useState(() => toDateInput(new Date(Date.now() - 90 * 86400000)))
   const [wrikeEnd,      setWrikeEnd]      = useState(() => toDateInput(new Date()))
-  const [wrikeClientId, setWrikeClientId] = useState('all')
-  const [wrikeProjectId,setWrikeProjectId]= useState('all')
+  const [wrikeClientId,     setWrikeClientId]     = useState('all')
+  const [wrikeProjectId,    setWrikeProjectId]    = useState('all')
+  const [wrikeSubProjectId, setWrikeSubProjectId] = useState('all')
   const [useDates,      setUseDates]      = useState(true)
 
   // Same loading pattern as DeliverablesPage — Promise.allSettled so folders failure
@@ -1004,24 +1019,30 @@ export function ClientPortalDashboard() {
     loadWrikeData()
   }, [loadWrikeData])
 
-  // Build folder hierarchy for Client / Project dropdowns
-  const wrikeFolderParentMap = new Map<string, string>()
-  for (const f of wrikeFolders) {
-    for (const childId of (f.childIds ?? [])) {
-      wrikeFolderParentMap.set(childId, f.id)
-    }
-  }
-  const WRIKE_SYSTEM_FOLDERS = new Set(['Root', 'Recycle Bin', 'My Work'])
-  // Client folders = top-level (not a child of any other folder in the list), excluding system folders
-  const wrikeClientFolders = wrikeFolders.filter((f) => !wrikeFolderParentMap.has(f.id) && !WRIKE_SYSTEM_FOLDERS.has(f.title))
-  // Project folders = folders that have a parent in the list; filter by selected client
+  // Classify folders by pipe count in title (0=client, 1=project, 2=sub-project)
+  const WRIKE_SYS_TOP = new Set(['Root', 'Recycle Bin', 'My Work'])
+  const pipeSeg = (title: string) => title.split('|').map((s) => s.trim())
+
+  const wrikeClientFolders = wrikeFolders.filter(
+    (f) => pipeSeg(f.title).length === 1 && !WRIKE_SYS_TOP.has(f.title)
+  )
+  const selectedClientTitle = wrikeClientFolders.find((f) => f.id === wrikeClientId)?.title ?? null
   const wrikeProjectFolders = wrikeFolders.filter((f) => {
-    if (!wrikeFolderParentMap.has(f.id)) return false
-    if (wrikeClientId === 'all') return true
-    return wrikeFolderParentMap.get(f.id) === wrikeClientId
+    const segs = pipeSeg(f.title)
+    if (segs.length !== 2) return false
+    if (selectedClientTitle) return segs[0] === selectedClientTitle
+    return true
+  })
+  const selectedProjectSegs = wrikeProjectFolders.find((f) => f.id === wrikeProjectId) ? pipeSeg(wrikeProjectFolders.find((f) => f.id === wrikeProjectId)!.title) : null
+  const wrikeSubProjectFolders = wrikeFolders.filter((f) => {
+    const segs = pipeSeg(f.title)
+    if (segs.length !== 3) return false
+    if (selectedProjectSegs) return segs[0] === selectedProjectSegs[0] && segs[1] === selectedProjectSegs[1]
+    if (selectedClientTitle) return segs[0] === selectedClientTitle
+    return true
   })
 
-  // Client-side filtering: date + client + project
+  // Client-side filtering: date + client + project + sub-project (most specific wins)
   const wrikeTasks = allWrikeTasks.filter((t) => {
     if (useDates && wrikeStart && wrikeEnd) {
       const d = t.updatedDate ?? t.createdDate
@@ -1030,11 +1051,12 @@ export function ClientPortalDashboard() {
         if (ts < wrikeStart || ts > wrikeEnd) return false
       }
     }
-    if (wrikeProjectId !== 'all') {
-      const allAncestors = [...new Set([...(t.parentIds ?? []), ...(t.superParentIds ?? [])])]
+    const allAncestors = [...new Set([...(t.parentIds ?? []), ...(t.superParentIds ?? [])])]
+    if (wrikeSubProjectId !== 'all') {
+      if (!allAncestors.includes(wrikeSubProjectId)) return false
+    } else if (wrikeProjectId !== 'all') {
       if (!allAncestors.includes(wrikeProjectId)) return false
     } else if (wrikeClientId !== 'all') {
-      const allAncestors = [...new Set([...(t.parentIds ?? []), ...(t.superParentIds ?? [])])]
       if (!allAncestors.includes(wrikeClientId)) return false
     }
     return true
@@ -1042,33 +1064,50 @@ export function ClientPortalDashboard() {
 
   const wrikeFilterBar = (
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-white p-3 shadow-sm">
-      {/* Client picker (populated from wrikeProjectFolders — the actual client-level folders) */}
+      {/* Client */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Client</label>
         <select
-          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[180px]"
-          value={wrikeProjectId}
-          onChange={(e) => setWrikeProjectId(e.target.value)}
+          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[160px]"
+          value={wrikeClientId}
+          onChange={(e) => { setWrikeClientId(e.target.value); setWrikeProjectId('all'); setWrikeSubProjectId('all') }}
         >
           <option value="all">All clients</option>
-          {wrikeProjectFolders.map((f) => (
+          {wrikeClientFolders.map((f) => (
             <option key={f.id} value={f.id}>{f.title}</option>
           ))}
         </select>
       </div>
 
-      {/* Project picker (populated from wrikeClientFolders — top-level sub-folders) */}
+      {/* Project */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Project</label>
         <select
-          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[160px]"
-          value={wrikeClientId}
-          onChange={(e) => { setWrikeClientId(e.target.value); setWrikeProjectId('all') }}
+          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[180px]"
+          value={wrikeProjectId}
+          onChange={(e) => { setWrikeProjectId(e.target.value); setWrikeSubProjectId('all') }}
         >
           <option value="all">All projects</option>
-          {wrikeClientFolders.map((f) => (
-            <option key={f.id} value={f.id}>{f.title}</option>
-          ))}
+          {wrikeProjectFolders.map((f) => {
+            const segs = pipeSeg(f.title)
+            return <option key={f.id} value={f.id}>{segs[segs.length - 1]}</option>
+          })}
+        </select>
+      </div>
+
+      {/* Sub-project */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Sub-project</label>
+        <select
+          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[200px]"
+          value={wrikeSubProjectId}
+          onChange={(e) => setWrikeSubProjectId(e.target.value)}
+        >
+          <option value="all">All sub-projects</option>
+          {wrikeSubProjectFolders.map((f) => {
+            const segs = pipeSeg(f.title)
+            return <option key={f.id} value={f.id}>{segs[1]} | {segs[2]}</option>
+          })}
         </select>
       </div>
 
