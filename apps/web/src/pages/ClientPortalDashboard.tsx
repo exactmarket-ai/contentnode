@@ -320,11 +320,13 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, error }: {
     const pf = resolveProject(t)
     if (pf) folderTaskCounts[pf.id] = (folderTaskCounts[pf.id] ?? 0) + 1
   }
+  const WRIKE_SYS = new Set(['Root', 'Recycle Bin', 'My Work'])
+  const folderDisplayTitle = (title: string) => title.split('|').map((s) => s.trim()).at(-1) ?? title
   const topFolders = Object.entries(folderTaskCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
     .map(([id, count]) => ({ folder: folderMap[id], count, id }))
-    .filter((f) => f.folder)
+    .filter((f) => f.folder && !WRIKE_SYS.has(f.folder.title))
 
   const completedCount  = statusMap['Completed']  ?? 0
   const activeCount     = statusMap['Active']      ?? 0
@@ -386,7 +388,7 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, error }: {
                   return (
                     <div key={folder.id} className="flex items-center gap-3 px-4 py-3">
                       <div className={cn('h-2.5 w-2.5 rounded-sm shrink-0', psStyle)} title={ps ?? 'No status'} />
-                      <span className="flex-1 truncate text-xs font-medium text-foreground">{folder.title}</span>
+                      <span className="flex-1 truncate text-xs font-medium text-foreground" title={folder.title}>{folderDisplayTitle(folder.title)}</span>
                       <span className="text-xs font-semibold text-foreground">{count}</span>
                       <span className="text-[10px] text-muted-foreground">tasks</span>
                     </div>
@@ -429,7 +431,7 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, error }: {
                         {task.status}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground truncate max-w-[160px]">{parentFolder?.title ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground truncate max-w-[160px]" title={parentFolder?.title}>{parentFolder ? (parentFolder.title.split('|').map((s) => s.trim()).at(-1) ?? parentFolder.title) : '—'}</td>
                     <td className={cn('px-4 py-2.5', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
                       {dueDate ? new Date(dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
                     </td>
@@ -559,7 +561,7 @@ function WrikeStakeholderTab({ tasks, folders, loading, notConnected }: {
                         {task.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[160px]">{parentFolder?.title ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[160px]" title={parentFolder?.title}>{parentFolder ? (parentFolder.title.split('|').map((s) => s.trim()).at(-1) ?? parentFolder.title) : '—'}</td>
                     <td className={cn('px-4 py-3', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
                       {dueDate ? new Date(dueDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                       {overdue && <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">overdue</span>}
