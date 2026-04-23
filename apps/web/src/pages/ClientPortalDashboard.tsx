@@ -266,12 +266,11 @@ function wrikeStatusStyle(status: string) {
   return WRIKE_STATUS_COLORS[status] ?? { bg: 'bg-slate-50 border-slate-200', text: 'text-slate-600', dot: 'bg-slate-400' }
 }
 
-function WrikeExecutiveTab({ tasks, folders, loading, notConnected, deliverables }: {
+function WrikeExecutiveTab({ tasks, folders, loading, notConnected }: {
   tasks: WrikeTask[]
   folders: WrikeFolder[]
   loading: boolean
   notConnected: boolean
-  deliverables: Deliverable[]
 }) {
   if (notConnected) {
     return (
@@ -389,14 +388,6 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, deliverables
           </div>
         </div>
       </div>
-
-      {/* ContentNode Projects & Budget */}
-      {deliverables.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-sm font-semibold text-foreground">ContentNode Projects & Budget</h3>
-          <DeliverablesBudgetTable deliverables={deliverables} />
-        </div>
-      )}
 
       {/* Recent tasks table */}
       <div>
@@ -740,7 +731,6 @@ function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, 
           <WrikeExecutiveTab
             tasks={wrikeProjectId === 'all' ? wrikeTasks : wrikeTasks.filter((t) => t.parentIds?.includes(wrikeProjectId))}
             folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected}
-            deliverables={deliverables}
           />
         </>
       )}
