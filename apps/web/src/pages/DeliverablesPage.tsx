@@ -343,19 +343,18 @@ export default function DeliverablesPage() {
 
   const loadWrike = () => {
     setWrikeLoading(true)
-    Promise.all([
+    Promise.allSettled([
       apiFetch('/api/v1/integrations/wrike/tasks').then((r) => r.json()),
       apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
       apiFetch('/api/v1/integrations/wrike/contacts').then((r) => r.json()),
       apiFetch('/api/v1/integrations/wrike/customfields').then((r) => r.json()),
     ])
       .then(([t, f, c, cf]) => {
-        setWrikeTasks(t.data ?? [])
-        setWrikeFolders(f.data ?? [])
-        setWrikeContacts(c.data ?? [])
-        setWrikeCustomFields(cf.data ?? [])
+        if (t.status === 'fulfilled') setWrikeTasks(t.value?.data ?? [])
+        if (f.status === 'fulfilled') setWrikeFolders(f.value?.data ?? [])
+        if (c.status === 'fulfilled') setWrikeContacts(c.value?.data ?? [])
+        if (cf.status === 'fulfilled') setWrikeCustomFields(cf.value?.data ?? [])
       })
-      .catch(() => {})
       .finally(() => setWrikeLoading(false))
   }
 
