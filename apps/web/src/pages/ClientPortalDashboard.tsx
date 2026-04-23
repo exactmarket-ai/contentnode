@@ -420,7 +420,7 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected, error }: {
                 return (
                   <tr key={task.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-2.5">
-                      <p className="font-medium text-foreground line-clamp-1">{task.title}</p>
+                      <p className="font-medium text-foreground line-clamp-1" title={task.title}>{task.title.split('|').map((s) => s.trim()).at(-1) ?? task.title}</p>
                       {task.briefDescription && <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{task.briefDescription}</p>}
                     </td>
                     <td className="px-4 py-2.5">
@@ -550,7 +550,7 @@ function WrikeStakeholderTab({ tasks, folders, loading, notConnected }: {
                 return (
                   <tr key={task.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3 max-w-[260px]">
-                      <p className="font-medium text-foreground truncate">{task.title}</p>
+                      <p className="font-medium text-foreground truncate" title={task.title}>{task.title.split('|').map((s) => s.trim()).at(-1) ?? task.title}</p>
                       {task.briefDescription && <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{task.briefDescription}</p>}
                     </td>
                     <td className="px-4 py-3">
