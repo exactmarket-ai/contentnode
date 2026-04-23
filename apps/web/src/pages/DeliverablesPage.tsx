@@ -519,7 +519,7 @@ export default function DeliverablesPage() {
     ]
     runs.forEach((r) => ws.addRow({
       blank1: '', client: r.workflow.client.name, category: r.mainCategory ?? '',
-      focus: r.focus ?? '', type: r.itemName ?? '', project: r.workflow.name, blank2: '',
+      focus: r.focus ?? '', type: (() => { const raw = r.itemName ?? ''; return raw.includes('|') ? raw.split('|').slice(1).join('|').trim() : raw })(), project: r.workflow.name, blank2: '',
       statusInt: r.internalNotes ?? '', statusExt: r.statusExternal ?? '',
       priority: r.priority ?? '', blank3: '', stage: stagLabel(r.reviewStatus),
       followup: r.followupStatus ?? '',
@@ -812,15 +812,21 @@ export default function DeliverablesPage() {
                     <InlineCell value={r.focus} placeholder="Focus" onSave={(v) => patch(r.id, 'focus', v)} />
                   </td>
 
-                  {/* Type / Item */}
+                  {/* Type / Item — strip "Client | " prefix if present */}
                   <td className="px-3 py-2">
-                    <button
-                      onClick={() => navigate(`/reviews/${r.id}`)}
-                      className="text-left text-[12px] font-medium text-foreground hover:text-blue-600 hover:underline max-w-[200px] truncate block"
-                      title={r.itemName ?? ''}
-                    >
-                      {r.itemName || <span className="text-muted-foreground/40 italic">Untitled</span>}
-                    </button>
+                    {(() => {
+                      const raw = r.itemName ?? ''
+                      const display = raw.includes('|') ? raw.split('|').slice(1).join('|').trim() : raw
+                      return (
+                        <button
+                          onClick={() => navigate(`/reviews/${r.id}`)}
+                          className="text-left text-[12px] font-medium text-foreground hover:text-blue-600 hover:underline max-w-[200px] truncate block"
+                          title={raw}
+                        >
+                          {display || <span className="text-muted-foreground/40 italic">Untitled</span>}
+                        </button>
+                      )
+                    })()}
                   </td>
 
                   {/* Project */}
