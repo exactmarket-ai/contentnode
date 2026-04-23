@@ -32,6 +32,24 @@ interface Run {
   triggeredByUser: { name: string | null; email: string } | null
 }
 
+interface Deliverable {
+  id: string
+  itemName: string | null
+  reviewStatus: string
+  status: string
+  priority: string | null
+  budgetMs: number | null
+  sowNumber: string | null
+  mainCategory: string | null
+  dueDate: string | null
+  assignee: { id: string; name: string | null } | null
+  workflow: {
+    id: string
+    name: string
+    client: { id: string; name: string }
+  }
+}
+
 interface WrikeTask {
   id: string
   title: string
@@ -52,6 +70,11 @@ interface WrikeFolder {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+function formatBudget(v: number | null) {
+  if (v == null) return null
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v)
+}
 
 function timeAgo(iso: string | null) {
   if (!iso) return null
@@ -154,6 +177,81 @@ function SubTabToggle({ tabs, active, onChange }: {
   )
 }
 
+// ── Deliverables budget table (shared between Portfolio + Wrike tabs) ──────────
+
+const PRIORITY_STYLE: Record<string, string> = {
+  high:   'bg-red-100 text-red-700',
+  medium: 'bg-amber-100 text-amber-700',
+  low:    'bg-zinc-100 text-zinc-500',
+}
+
+function DeliverablesBudgetTable({ deliverables }: { deliverables: Deliverable[] }) {
+  const totalBudget = deliverables.reduce((s, d) => s + (d.budgetMs ?? 0), 0)
+  const withBudget  = deliverables.filter((d) => d.budgetMs != null).length
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      {withBudget > 0 && (
+        <div className="flex items-center gap-6 border-b border-border px-4 py-3 bg-muted/20">
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total Budget</p>
+            <p className="text-sm font-bold text-foreground">{formatBudget(totalBudget)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Projects w/ Budget</p>
+            <p className="text-sm font-bold text-foreground">{withBudget} / {deliverables.length}</p>
+          </div>
+        </div>
+      )}
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border bg-muted/30">
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Client</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Project</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">SOW #</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Price / Cost</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Priority</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Due</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Assignee</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {deliverables.slice(0, 20).map((d) => {
+            const overdue = d.dueDate && new Date(d.dueDate) < new Date()
+            const rs = REVIEW_STATUS[d.reviewStatus] ?? REVIEW_STATUS.none
+            const pri = d.priority?.toLowerCase() ?? ''
+            return (
+              <tr key={d.id} className="hover:bg-muted/20 transition-colors">
+                <td className="px-4 py-2.5 font-medium text-foreground">{d.workflow.client.name}</td>
+                <td className="px-4 py-2.5 text-muted-foreground max-w-[180px] truncate">{d.itemName ?? d.workflow.name}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{d.sowNumber ?? '—'}</td>
+                <td className="px-4 py-2.5 font-semibold text-foreground">{formatBudget(d.budgetMs) ?? '—'}</td>
+                <td className="px-4 py-2.5">
+                  {pri ? (
+                    <span className={cn('inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize', PRIORITY_STYLE[pri] ?? 'bg-zinc-100 text-zinc-500')}>{d.priority}</span>
+                  ) : <span className="text-muted-foreground/40">—</span>}
+                </td>
+                <td className="px-4 py-2.5">
+                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5', rs.bg, rs.color)}>
+                    <span className={cn('h-1.5 w-1.5 rounded-full', rs.dot)} />
+                    {rs.label}
+                  </span>
+                </td>
+                <td className={cn('px-4 py-2.5 whitespace-nowrap', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
+                  {d.dueDate ? new Date(d.dueDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                  {overdue && <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">overdue</span>}
+                </td>
+                <td className="px-4 py-2.5 text-muted-foreground">{d.assignee?.name ?? '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── Wrike components ───────────────────────────────────────────────────────────
 
 const WRIKE_STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -167,11 +265,12 @@ function wrikeStatusStyle(status: string) {
   return WRIKE_STATUS_COLORS[status] ?? { bg: 'bg-slate-50 border-slate-200', text: 'text-slate-600', dot: 'bg-slate-400' }
 }
 
-function WrikeExecutiveTab({ tasks, folders, loading, notConnected }: {
+function WrikeExecutiveTab({ tasks, folders, loading, notConnected, deliverables }: {
   tasks: WrikeTask[]
   folders: WrikeFolder[]
   loading: boolean
   notConnected: boolean
+  deliverables: Deliverable[]
 }) {
   if (notConnected) {
     return (
@@ -282,6 +381,14 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected }: {
           </div>
         </div>
       </div>
+
+      {/* ContentNode Projects & Budget */}
+      {deliverables.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">ContentNode Projects & Budget</h3>
+          <DeliverablesBudgetTable deliverables={deliverables} />
+        </div>
+      )}
 
       {/* Recent tasks table */}
       <div>
@@ -465,9 +572,10 @@ const EXEC_SUBTABS = [
   { value: 'wrike',     label: 'Wrike',       icon: Icons.CheckSquare },
 ]
 
-function ExecutiveView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeProjectId, wrikeFilterBar }: {
+function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeProjectId, wrikeFilterBar }: {
   clients: Client[]
   runs: Run[]
+  deliverables: Deliverable[]
   wrikeTasks: WrikeTask[]
   wrikeFolders: WrikeFolder[]
   wrikeLoading: boolean
@@ -560,6 +668,14 @@ function ExecutiveView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, 
             </div>
           </div>
 
+          {/* Projects & Budget */}
+          {deliverables.length > 0 && (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-foreground">Projects & Budget</h2>
+              <DeliverablesBudgetTable deliverables={deliverables} />
+            </div>
+          )}
+
           {/* Needs attention table */}
           {needsReview.length > 0 && (
             <div>
@@ -611,6 +727,7 @@ function ExecutiveView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, 
           <WrikeExecutiveTab
             tasks={wrikeProjectId === 'all' ? wrikeTasks : wrikeTasks.filter((t) => t.parentIds?.includes(wrikeProjectId))}
             folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected}
+            deliverables={deliverables}
           />
         </>
       )}
@@ -808,6 +925,7 @@ export function ClientPortalDashboard() {
   const [view, setView]               = useState<'executive' | 'stakeholder'>('executive')
   const [clients, setClients]         = useState<Client[]>([])
   const [runs, setRuns]               = useState<Run[]>([])
+  const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [wrikeFolders, setWrikeFolders] = useState<WrikeFolder[]>([])
   const [allWrikeTasks, setAllWrikeTasks] = useState<WrikeTask[]>([])
   const [wrikeLoading, setWrikeLoading] = useState(false)
@@ -839,10 +957,12 @@ export function ClientPortalDashboard() {
       apiFetch('/api/v1/clients').then((r) => r.json()),
       apiFetch('/api/v1/runs?limit=100').then((r) => r.json()),
       apiFetch('/api/v1/integrations/wrike/status').then((r) => r.json()),
+      apiFetch('/api/v1/deliverables?limit=500&sort=dueDate&order=asc').then((r) => r.ok ? r.json() : { data: { runs: [] } }),
     ])
-      .then(([clientRes, runRes, wrikeStatus]) => {
+      .then(([clientRes, runRes, wrikeStatus, delRes]) => {
         setClients(clientRes.data ?? [])
         setRuns(runRes.data ?? [])
+        setDeliverables(delRes.data?.runs ?? [])
         const connected = !!wrikeStatus.data?.connected
         setWrikeConnected(connected)
         if (connected) loadWrikeData()
@@ -967,7 +1087,7 @@ export function ClientPortalDashboard() {
           </div>
         ) : view === 'executive' ? (
           <ExecutiveView
-            clients={clients} runs={runs}
+            clients={clients} runs={runs} deliverables={deliverables}
             wrikeTasks={wrikeTasks} wrikeFolders={wrikeFolders}
             wrikeLoading={wrikeLoading} wrikeConnected={wrikeConnected}
             wrikeProjectId={wrikeProjectId} wrikeFilterBar={wrikeFilterBar}
