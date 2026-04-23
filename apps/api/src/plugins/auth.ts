@@ -47,6 +47,9 @@ async function authPluginFn(app: FastifyInstance) {
     if (req.url.startsWith('/writer')) return
     // Monday webhook is called by Monday.com directly — no Clerk auth
     if (req.url.startsWith('/api/v1/integrations/monday/webhook')) return
+    // OAuth callbacks are redirects from external providers — no Clerk auth
+    if (req.url.startsWith('/api/v1/integrations/box/callback')) return
+    if (req.url.startsWith('/api/v1/integrations/monday/callback')) return
     // Generated files are public static assets — no auth required
     if (req.url.startsWith('/files/generated/')) return
     // Wrike OAuth endpoints — callback and debug are public (called by Wrike's servers)
