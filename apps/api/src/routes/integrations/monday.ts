@@ -269,6 +269,26 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: { items: page?.items ?? [], cursor: page?.cursor ?? null } })
   })
 
+  // ── POST /boards/:boardId/items — create a new item ──────────────────────
+  app.post<{ Params: { boardId: string } }>('/boards/:boardId/items', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token = await getMondayToken(agencyId)
+    const { boardId } = req.params
+    const { name, groupId } = req.body as { name: string; groupId?: string }
+    if (!name) return reply.code(400).send({ error: 'name required' })
+
+    const data = await mondayGraphQL<{ create_item: { id: string; name: string } }>(token, `
+      mutation($boardId: ID!, $name: String!, $groupId: String) {
+        create_item(board_id: $boardId, item_name: $name, group_id: $groupId) {
+          id
+          name
+        }
+      }
+    `, { boardId, name, groupId: groupId ?? null })
+
+    return reply.send({ data: data.create_item })
+  })
+
   // ── PATCH /boards/:boardId/items/:itemId — update a column value ──────────
   app.patch<{ Params: { boardId: string; itemId: string } }>('/boards/:boardId/items/:itemId', async (req, reply) => {
     const { agencyId } = req.auth

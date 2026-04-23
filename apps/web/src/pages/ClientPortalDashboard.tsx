@@ -616,6 +616,8 @@ function MondayTab() {
   const [editingCell,  setEditingCell]  = useState<{ itemId: string; colId: string } | null>(null)
   const [pendingEdits, setPendingEdits] = useState<Record<string, string>>({})
   const [savingCell,   setSavingCell]   = useState<Record<string, boolean>>({})
+  const [newItemName,  setNewItemName]  = useState('')
+  const [addingItem,   setAddingItem]   = useState(false)
 
   // Check status + load boards
   useEffect(() => {
@@ -954,6 +956,40 @@ function MondayTab() {
       {!itemsLoading && boardData && items.length === 0 && (
         <div className="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
           No items in this board
+        </div>
+      )}
+
+      {boardData && (
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            type="text"
+            placeholder="New item name…"
+            value={newItemName}
+            onChange={e => setNewItemName(e.target.value)}
+            onKeyDown={async e => {
+              if (e.key === 'Enter' && newItemName.trim()) {
+                setAddingItem(true)
+                const gId = groupId !== 'all' ? groupId : undefined
+                const res = await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/items`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: newItemName.trim(), groupId: gId }),
+                })
+                const { data: newItem } = await res.json()
+                if (newItem) {
+                  setBoardData(prev => prev ? {
+                    ...prev,
+                    items_page: { ...prev.items_page!, items: [...(prev.items_page?.items ?? []), newItem] }
+                  } : prev)
+                }
+                setNewItemName('')
+                setAddingItem(false)
+              }
+            }}
+            className="h-8 rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-[#a200ee] w-64"
+          />
+          <span className="text-[11px] text-muted-foreground">Press Enter to create</span>
+          {addingItem && <span className="text-[11px] text-muted-foreground">Creating…</span>}
         </div>
       )}
     </div>
