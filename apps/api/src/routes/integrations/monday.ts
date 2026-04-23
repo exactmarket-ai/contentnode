@@ -281,6 +281,74 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: data.change_column_value })
   })
 
+  // ── GET /webhooks — list active board webhooks ────────────────────────────
+  app.get<{ Params: { boardId: string } }>('/boards/:boardId/webhooks', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token = await getMondayToken(agencyId)
+    const { boardId } = req.params
+
+    const data = await mondayGraphQL<{ webhooks: { id: string; board_id: string; event: string; config: string }[] }>(token, `
+      query($boardId: ID!) {
+        webhooks(board_id: $boardId) {
+          id
+          board_id
+          event
+          config
+        }
+      }
+    `, { boardId })
+
+    return reply.send({ data: data.webhooks ?? [] })
+  })
+
+  // ── POST /boards/:boardId/webhooks — subscribe to board events ────────────
+  app.post<{ Params: { boardId: string } }>('/boards/:boardId/webhooks', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token = await getMondayToken(agencyId)
+    const { boardId } = req.params
+    const { events } = req.body as { events?: string[] }
+
+    const webhookUrl = (() => {
+      if (process.env.MONDAY_WEBHOOK_URL) return process.env.MONDAY_WEBHOOK_URL
+      const apiBase = (process.env.API_BASE_URL ?? '').replace(/\/$/, '')
+      return `${apiBase}/api/v1/integrations/monday/webhook`
+    })()
+
+    const eventList = events ?? ['create_pulse', 'change_column_value']
+    const results = []
+
+    for (const event of eventList) {
+      const data = await mondayGraphQL<{ create_webhook: { id: string; board_id: string } }>(token, `
+        mutation($boardId: ID!, $url: String!, $event: WebhookEventType!) {
+          create_webhook(board_id: $boardId, url: $url, event: $event) {
+            id
+            board_id
+          }
+        }
+      `, { boardId, url: webhookUrl, event })
+      results.push(data.create_webhook)
+    }
+
+    return reply.send({ data: results })
+  })
+
+  // ── DELETE /boards/:boardId/webhooks/:webhookId — unsubscribe ─────────────
+  app.delete<{ Params: { boardId: string; webhookId: string } }>('/boards/:boardId/webhooks/:webhookId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token = await getMondayToken(agencyId)
+    const { webhookId } = req.params
+
+    const data = await mondayGraphQL<{ delete_webhook: { id: string } }>(token, `
+      mutation($id: ID!) {
+        delete_webhook(id: $id) {
+          id
+        }
+      }
+    `, { id: webhookId })
+
+    return reply.send({ data: data.delete_webhook })
+  })
+
   // ── POST /webhook — receive Monday events (no Clerk auth — called by Monday) ─
   app.post('/webhook', async (req, reply) => {
     const body = req.body as Record<string, unknown>

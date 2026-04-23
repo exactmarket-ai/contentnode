@@ -1011,11 +1011,13 @@ function DocTemplateSection() {
 
 // ── Monday integration card ────────────────────────────────────────────────────
 function MondayCard() {
-  const [status,  setStatus]  = useState<'loading' | 'connected' | 'disconnected'>('loading')
-  const [working, setWorking] = useState(false)
-  const [copied,  setCopied]  = useState(false)
-
-  const webhookUrl = `${import.meta.env.VITE_API_URL ?? ''}/api/v1/integrations/monday/webhook`
+  const [status,   setStatus]   = useState<'loading' | 'connected' | 'disconnected'>('loading')
+  const [working,  setWorking]  = useState(false)
+  const [boards,   setBoards]   = useState<{ id: string; name: string }[]>([])
+  const [boardId,  setBoardId]  = useState('')
+  const [webhooks, setWebhooks] = useState<{ id: string; event: string }[]>([])
+  const [subbing,  setSubbing]  = useState(false)
+  const [subMsg,   setSubMsg]   = useState<string | null>(null)
 
   useEffect(() => {
     apiFetch('/api/v1/integrations/monday/status')
@@ -1026,12 +1028,30 @@ function MondayCard() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const monday = params.get('monday')
-    if (monday === 'connected') {
+    if (params.get('monday') === 'connected') {
       setStatus('connected')
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
+
+  useEffect(() => {
+    if (status !== 'connected') return
+    apiFetch('/api/v1/integrations/monday/boards')
+      .then((r) => r.json())
+      .then(({ data }) => {
+        setBoards(data ?? [])
+        if (data?.length) setBoardId(data[0].id)
+      })
+      .catch(() => {})
+  }, [status])
+
+  useEffect(() => {
+    if (!boardId) return
+    apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks`)
+      .then((r) => r.json())
+      .then(({ data }) => setWebhooks(data ?? []))
+      .catch(() => setWebhooks([]))
+  }, [boardId])
 
   const handleConnect = async () => {
     setWorking(true)
@@ -1048,10 +1068,30 @@ function MondayCard() {
     setWorking(false)
   }
 
-  const copyWebhook = () => {
-    navigator.clipboard.writeText(webhookUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const handleSubscribe = async () => {
+    if (!boardId) return
+    setSubbing(true)
+    setSubMsg(null)
+    try {
+      await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ events: ['create_pulse', 'change_column_value'] }),
+      })
+      const res = await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks`)
+      const { data } = await res.json()
+      setWebhooks(data ?? [])
+      setSubMsg('Subscribed')
+    } catch {
+      setSubMsg('Error — check API logs')
+    } finally {
+      setSubbing(false)
+    }
+  }
+
+  const handleUnsubscribe = async (webhookId: string) => {
+    await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks/${webhookId}`, { method: 'DELETE' })
+    setWebhooks(w => w.filter(x => x.id !== webhookId))
   }
 
   return (
@@ -1095,19 +1135,38 @@ function MondayCard() {
           )}
         </div>
       </div>
-      {status === 'connected' && (
-        <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Webhook URL</p>
+
+      {status === 'connected' && boards.length > 0 && (
+        <div className="mt-3 border-t border-border pt-3 flex flex-col gap-2">
+          <p className="text-[11px] font-medium text-muted-foreground">Board webhook subscriptions</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-[11px] text-foreground truncate">{webhookUrl}</code>
-            <button
-              onClick={copyWebhook}
-              className="flex-shrink-0 rounded px-2 py-1 text-[10px] font-medium border border-border hover:bg-accent transition-colors"
+            <select
+              value={boardId}
+              onChange={(e) => setBoardId(e.target.value)}
+              className="flex-1 h-7 rounded border border-border bg-muted/20 px-2 text-xs outline-none"
             >
-              {copied ? 'Copied!' : 'Copy'}
+              {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <button
+              onClick={handleSubscribe}
+              disabled={subbing || !boardId}
+              className="rounded px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+              style={{ backgroundColor: '#a200ee' }}
+            >
+              {subbing ? 'Subscribing…' : 'Subscribe'}
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">Paste into Monday Developer Center → Webhooks</p>
+          {subMsg && <p className="text-[11px] text-green-600">{subMsg}</p>}
+          {webhooks.length > 0 && (
+            <div className="flex flex-col gap-1">
+              {webhooks.map(w => (
+                <div key={w.id} className="flex items-center justify-between rounded bg-muted/20 px-2 py-1">
+                  <span className="text-[11px] text-muted-foreground">{w.event}</span>
+                  <button onClick={() => handleUnsubscribe(w.id)} className="text-[10px] text-red-500 hover:text-red-700">Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
