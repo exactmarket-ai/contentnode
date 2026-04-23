@@ -15,12 +15,19 @@ interface WrikeTask {
   id: string
   title: string
   status: string
+  importance?: string
   briefDescription?: string
+  description?: string
   parentIds?: string[]
+  superParentIds?: string[]
   responsibleIds?: string[]
+  authorIds?: string[]
   updatedDate?: string
   createdDate?: string
-  dates?: { due?: string; start?: string }
+  completedDate?: string
+  dates?: { due?: string; start?: string; duration?: number; type?: string }
+  customFields?: { id: string; value: string }[]
+  permalink?: string
 }
 
 interface WrikeFolder {
@@ -28,6 +35,20 @@ interface WrikeFolder {
   title: string
   childIds?: string[]
   project?: { status?: string }
+}
+
+interface WrikeContact {
+  id: string
+  firstName: string
+  lastName: string
+  primaryEmail?: string
+  profiles?: { email?: string }[]
+}
+
+interface WrikeCustomField {
+  id: string
+  title: string
+  type: string
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -228,14 +249,16 @@ export default function DeliverablesPage() {
   const [loading, setLoading] = useState(true)
 
   // Wrike state
-  const [wrikeConnected, setWrikeConnected] = useState(false)
-  const [wrikeTasks, setWrikeTasks]         = useState<WrikeTask[]>([])
-  const [wrikeFolders, setWrikeFolders]     = useState<WrikeFolder[]>([])
-  const [wrikeLoading, setWrikeLoading]     = useState(false)
-  const [wrikeSearch, setWrikeSearch]       = useState('')
-  const [wrikeSort, setWrikeSort]           = useState('updatedDate')
-  const [wrikeOrder, setWrikeOrder]         = useState<'asc' | 'desc'>('desc')
-  const [wrikeFolderId, setWrikeFolderId]   = useState('all')
+  const [wrikeConnected, setWrikeConnected]       = useState(false)
+  const [wrikeTasks, setWrikeTasks]               = useState<WrikeTask[]>([])
+  const [wrikeFolders, setWrikeFolders]           = useState<WrikeFolder[]>([])
+  const [wrikeContacts, setWrikeContacts]         = useState<WrikeContact[]>([])
+  const [wrikeCustomFields, setWrikeCustomFields] = useState<WrikeCustomField[]>([])
+  const [wrikeLoading, setWrikeLoading]           = useState(false)
+  const [wrikeSearch, setWrikeSearch]             = useState('')
+  const [wrikeSort, setWrikeSort]                 = useState('updatedDate')
+  const [wrikeOrder, setWrikeOrder]               = useState<'asc' | 'desc'>('desc')
+  const [wrikeFolderId, setWrikeFolderId]         = useState('all')
 
   const [filters, setFilters] = useState<FilterState>({
     q: '', clientId: '', stage: '', priority: '', assigneeId: '',
@@ -323,8 +346,15 @@ export default function DeliverablesPage() {
     Promise.all([
       apiFetch('/api/v1/integrations/wrike/tasks').then((r) => r.json()),
       apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
+      apiFetch('/api/v1/integrations/wrike/contacts').then((r) => r.json()),
+      apiFetch('/api/v1/integrations/wrike/customfields').then((r) => r.json()),
     ])
-      .then(([t, f]) => { setWrikeTasks(t.data ?? []); setWrikeFolders(f.data ?? []) })
+      .then(([t, f, c, cf]) => {
+        setWrikeTasks(t.data ?? [])
+        setWrikeFolders(f.data ?? [])
+        setWrikeContacts(c.data ?? [])
+        setWrikeCustomFields(cf.data ?? [])
+      })
       .catch(() => {})
       .finally(() => setWrikeLoading(false))
   }
@@ -351,26 +381,56 @@ export default function DeliverablesPage() {
     else { setWrikeSort(key); setWrikeOrder('asc') }
   }
 
+  const contactName = (id: string) => {
+    const c = wrikeContacts.find((x) => x.id === id)
+    if (!c) return id
+    return [c.firstName, c.lastName].filter(Boolean).join(' ') || c.primaryEmail || id
+  }
+
+  // Only show custom fields that have at least one non-empty value across all tasks
+  const activeCustomFields = wrikeCustomFields.filter((cf) =>
+    wrikeTasks.some((t) => t.customFields?.find((f) => f.id === cf.id && f.value?.trim()))
+  )
+
   const exportWrikeXlsx = async () => {
     const ExcelJS = (await import('exceljs')).default
     const wb = new ExcelJS.Workbook()
     const ws = wb.addWorksheet('Wrike Tasks')
-    ws.columns = [
-      { header: 'Title',       key: 'title',       width: 40 },
-      { header: 'Status',      key: 'status',      width: 16 },
-      { header: 'Project',     key: 'project',     width: 28 },
-      { header: 'Description', key: 'description', width: 40 },
-      { header: 'Due Date',    key: 'due',         width: 14 },
-      { header: 'Updated',     key: 'updated',     width: 14 },
+    const staticCols = [
+      { header: 'Title',          key: 'title',       width: 40 },
+      { header: 'Priority',       key: 'priority',    width: 12 },
+      { header: 'Status',         key: 'status',      width: 16 },
+      { header: 'Project',        key: 'project',     width: 28 },
+      { header: 'Assigned To',    key: 'assignees',   width: 24 },
+      { header: 'Start Date',     key: 'startDate',   width: 14 },
+      { header: 'Due Date',       key: 'dueDate',     width: 14 },
+      { header: 'Completed Date', key: 'completed',   width: 16 },
+      { header: 'Description',    key: 'description', width: 40 },
+      { header: 'Link',           key: 'permalink',   width: 40 },
+      { header: 'Updated',        key: 'updated',     width: 14 },
     ]
-    filteredWrikeTasks.forEach((t) => ws.addRow({
-      title:       t.title,
-      status:      t.status,
-      project:     wrikeFolders.find((f) => t.parentIds?.includes(f.id))?.title ?? '',
-      description: t.briefDescription ?? '',
-      due:         t.dates?.due ?? '',
-      updated:     t.updatedDate ? new Date(t.updatedDate).toLocaleDateString() : '',
-    }))
+    const cfCols = activeCustomFields.map((cf) => ({ header: cf.title, key: `cf_${cf.id}`, width: 22 }))
+    ws.columns = [...staticCols, ...cfCols]
+    filteredWrikeTasks.forEach((t) => {
+      const project = wrikeFolders.find((f) => t.parentIds?.includes(f.id))?.title ?? ''
+      const row: Record<string, string> = {
+        title:       t.title,
+        priority:    t.importance ?? '',
+        status:      t.status,
+        project,
+        assignees:   (t.responsibleIds ?? []).map(contactName).join(', '),
+        startDate:   t.dates?.start ? new Date(t.dates.start).toLocaleDateString() : '',
+        dueDate:     t.dates?.due   ? new Date(t.dates.due).toLocaleDateString()   : '',
+        completed:   t.completedDate ? new Date(t.completedDate).toLocaleDateString() : '',
+        description: t.briefDescription ?? '',
+        permalink:   t.permalink ?? '',
+        updated:     t.updatedDate ? new Date(t.updatedDate).toLocaleDateString() : '',
+      }
+      activeCustomFields.forEach((cf) => {
+        row[`cf_${cf.id}`] = t.customFields?.find((f) => f.id === cf.id)?.value ?? ''
+      })
+      ws.addRow(row)
+    })
     const buf = await wb.xlsx.writeBuffer()
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
@@ -863,21 +923,31 @@ export default function DeliverablesPage() {
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
             </div>
           ) : (
-            <table className="w-full border-collapse text-[12px]" style={{ minWidth: '900px' }}>
+            <table className="w-full border-collapse text-[12px]" style={{ minWidth: `${1200 + activeCustomFields.length * 160}px` }}>
               <thead className="sticky top-0 z-10 bg-background border-b border-border">
                 <tr>
-                  <SortableHeader label="Title"    sortKey="title"       current={wrikeSort} order={wrikeOrder} onSort={handleWrikeSort} className="min-w-[300px]" />
+                  <SortableHeader label="Title"       sortKey="title"       current={wrikeSort} order={wrikeOrder} onSort={handleWrikeSort} className="sticky left-0 z-20 bg-background min-w-[260px]" />
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[90px]">Priority</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[110px]">Status</th>
-                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[180px]">Project / Folder</th>
-                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[220px]">Description</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[180px]">Project</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[160px]">Assigned To</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[110px]">Start Date</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[110px]">Due Date</th>
-                  <SortableHeader label="Updated"  sortKey="updatedDate" current={wrikeSort} order={wrikeOrder} onSort={handleWrikeSort} className="min-w-[110px]" />
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[110px]">Completed</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[220px]">Description</th>
+                  <SortableHeader label="Updated"     sortKey="updatedDate" current={wrikeSort} order={wrikeOrder} onSort={handleWrikeSort} className="min-w-[110px]" />
+                  {activeCustomFields.map((cf) => (
+                    <th key={cf.id} className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[140px]">
+                      {cf.title}
+                    </th>
+                  ))}
+                  <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground min-w-[60px]">Link</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredWrikeTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center text-[12px] text-muted-foreground">
+                    <td colSpan={11 + activeCustomFields.length} className="px-6 py-16 text-center text-[12px] text-muted-foreground">
                       No tasks found.{wrikeSearch && ' Try clearing your search.'}
                     </td>
                   </tr>
@@ -890,29 +960,78 @@ export default function DeliverablesPage() {
                     t.status === 'Deferred' ? 'bg-amber-100 text-amber-700' :
                     t.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
                     'bg-zinc-100 text-zinc-500'
+                  const importanceColor =
+                    t.importance === 'High'   ? 'bg-red-100 text-red-700' :
+                    t.importance === 'Normal' ? 'bg-zinc-100 text-zinc-500' :
+                    t.importance === 'Low'    ? 'bg-zinc-50 text-zinc-400' :
+                    'bg-zinc-50 text-zinc-400'
+                  const assignees = (t.responsibleIds ?? []).map(contactName).join(', ')
                   return (
                     <tr key={t.id} className="border-b border-border/50 hover:bg-muted/10 transition-colors">
-                      <td className="px-3 py-2.5">
+                      {/* Title — sticky */}
+                      <td className="sticky left-0 z-10 bg-background px-3 py-2.5">
                         <span className="text-[12px] font-medium text-foreground leading-snug">{t.title}</span>
                       </td>
+                      {/* Priority */}
+                      <td className="px-3 py-2.5">
+                        {t.importance
+                          ? <span className={cn('inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold', importanceColor)}>{t.importance}</span>
+                          : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      {/* Status */}
                       <td className="px-3 py-2.5">
                         <span className={cn('inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold', statusColor)}>
                           {t.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-[12px] text-muted-foreground">
+                      {/* Project */}
+                      <td className="px-3 py-2.5 text-[12px] text-muted-foreground truncate max-w-[200px]" title={project?.title}>
                         {project?.title ?? <span className="italic opacity-40">—</span>}
                       </td>
+                      {/* Assigned To */}
+                      <td className="px-3 py-2.5 text-[11px] text-muted-foreground">
+                        {assignees || <span className="italic opacity-40">—</span>}
+                      </td>
+                      {/* Start Date */}
+                      <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                        {t.dates?.start ? new Date(t.dates.start).toLocaleDateString() : '—'}
+                      </td>
+                      {/* Due Date */}
+                      <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                        {t.dates?.due ? new Date(t.dates.due).toLocaleDateString() : '—'}
+                      </td>
+                      {/* Completed */}
+                      <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                        {t.completedDate ? new Date(t.completedDate).toLocaleDateString() : '—'}
+                      </td>
+                      {/* Description */}
                       <td className="px-3 py-2.5 max-w-[260px]">
                         <span className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
                           {t.briefDescription || <span className="italic opacity-40">—</span>}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
-                        {t.dates?.due ? new Date(t.dates.due).toLocaleDateString() : '—'}
-                      </td>
+                      {/* Updated */}
                       <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
                         {t.updatedDate ? new Date(t.updatedDate).toLocaleDateString() : '—'}
+                      </td>
+                      {/* Dynamic custom fields */}
+                      {activeCustomFields.map((cf) => {
+                        const val = t.customFields?.find((f) => f.id === cf.id)?.value
+                        return (
+                          <td key={cf.id} className="px-3 py-2.5 text-[11px] text-muted-foreground max-w-[160px]">
+                            {val
+                              ? (val.startsWith('http') || val.startsWith('www'))
+                                ? <a href={val.startsWith('http') ? val : `https://${val}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline truncate block max-w-[150px]">Open ↗</a>
+                                : <span className="line-clamp-2 leading-snug">{val}</span>
+                              : <span className="italic opacity-40">—</span>}
+                          </td>
+                        )
+                      })}
+                      {/* Permalink */}
+                      <td className="px-3 py-2.5">
+                        {t.permalink
+                          ? <a href={t.permalink} target="_blank" rel="noreferrer" className="text-[11px] text-blue-500 hover:underline">↗</a>
+                          : <span className="text-muted-foreground/40">—</span>}
                       </td>
                     </tr>
                   )

@@ -158,17 +158,23 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: { ok: true } })
   })
 
-  // ── GET /tasks — fetch ALL tasks with pagination ─────────────────────────
+  // ── GET /tasks — fetch ALL tasks with full field set ────────────────────
   app.get('/tasks', async (req, reply) => {
     const { agencyId } = req.auth
     const { accessToken, host } = await refreshWrikeToken(agencyId)
+
+    const TASK_FIELDS = [
+      'description', 'briefDescription', 'parentIds', 'superParentIds',
+      'responsibleIds', 'authorIds', 'importance', 'dates',
+      'customFields', 'permalink', 'completedDate', 'status',
+    ]
 
     const allTasks: unknown[] = []
     let nextPageToken: string | undefined
 
     do {
       const url = new URL(`https://${host}/api/v4/tasks`)
-      url.searchParams.set('fields',   JSON.stringify(['description', 'briefDescription', 'parentIds', 'responsibleIds']))
+      url.searchParams.set('fields',   JSON.stringify(TASK_FIELDS))
       url.searchParams.set('pageSize', '1000')
       if (nextPageToken) url.searchParams.set('nextPageToken', nextPageToken)
 
@@ -206,6 +212,32 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
     } while (nextPageToken)
 
     return reply.send({ data: allFolders })
+  })
+
+  // ── GET /contacts — fetch all workspace contacts for name resolution ──────
+  app.get('/contacts', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { accessToken, host } = await refreshWrikeToken(agencyId)
+
+    const res = await fetch(`https://${host}/api/v4/contacts`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status}` })
+    const body = await res.json() as { data: unknown[] }
+    return reply.send({ data: body.data ?? [] })
+  })
+
+  // ── GET /customfields — fetch all custom field definitions ────────────────
+  app.get('/customfields', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { accessToken, host } = await refreshWrikeToken(agencyId)
+
+    const res = await fetch(`https://${host}/api/v4/customfields`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return reply.code(502).send({ error: `Wrike API error: ${res.status}` })
+    const body = await res.json() as { data: unknown[] }
+    return reply.send({ data: body.data ?? [] })
   })
 }
 
