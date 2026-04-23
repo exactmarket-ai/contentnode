@@ -783,32 +783,32 @@ function MondayTab() {
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Type</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Project</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Sub Project</th>
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[120px]">Group</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[200px]">Workspace Notes</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[130px]">Status (Internal)</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[130px]">Status (External)</th>
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Status</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[90px]">Priority</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[110px]">Day Mapping</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Stage</th>
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Due</th>
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[90px]">Gate</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[130px]">Followup Status</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Followup Date</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[140px]">Main Contact</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Other Contacts</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Stakeholders</th>
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Last Updated</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Design</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Content</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Video</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">PM</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Last Updated</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Quarter</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">SOW #</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[110px]">Budget for MS</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Box</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Client Folder</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Status</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Due</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[90px]">Gate</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[200px]">Flag Notes</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[120px]">Group</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Autonomy</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">AI Target %</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Max Passes</th>
@@ -831,7 +831,6 @@ function MondayTab() {
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.type) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate" title={colVal(item, COL.jobName)}>{colVal(item, COL.jobName) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate" title={colVal(item, COL.subProject)}>{colVal(item, COL.subProject) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{item.group?.title ?? '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[200px] truncate" title={colVal(item, COL.notes)}>{colVal(item, COL.notes) || '—'}</td>
                     <td className="px-3 py-2">
                       {colVal(item, COL.statusInternal) ? (
@@ -847,36 +846,19 @@ function MondayTab() {
                         </span>
                       ) : '—'}
                     </td>
-                    <td className="px-3 py-2">
-                      {status ? (
-                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(status))}>
-                          {status}
-                        </span>
-                      ) : '—'}
-                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.priority) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.dayMapping) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.stage) || '—'}</td>
-                    <td className={cn('px-3 py-2', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
-                      {due ? new Date(due).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
-                    </td>
-                    <td className="px-3 py-2">
-                      {colVal(item, COL.gate) ? (
-                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-                          {colVal(item, COL.gate)}
-                        </span>
-                      ) : '—'}
-                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.followupStatus) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.followupDate) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[140px] truncate">{colVal(item, COL.mainContact) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.otherContacts) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.stakeholders) || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.lastUpdated) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.design) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.content) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.video) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.pm) || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.lastUpdated) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.quarter) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.sowNumber) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.budget) || '—'}</td>
@@ -890,7 +872,25 @@ function MondayTab() {
                         <a href={clientFolderUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-[11px]">Open</a>
                       ) : '—'}
                     </td>
+                    <td className="px-3 py-2">
+                      {status ? (
+                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(status))}>
+                          {status}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className={cn('px-3 py-2', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
+                      {due ? new Date(due).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      {colVal(item, COL.gate) ? (
+                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                          {colVal(item, COL.gate)}
+                        </span>
+                      ) : '—'}
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[200px] truncate" title={colVal(item, COL.flagNotes)}>{colVal(item, COL.flagNotes) || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{item.group?.title ?? '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.autonomy) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.aiTarget) || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.maxPasses) || '—'}</td>
