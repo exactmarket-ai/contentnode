@@ -753,8 +753,8 @@ function MondayTab() {
           <table className="w-full text-xs whitespace-nowrap">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground sticky left-0 bg-muted/30 min-w-[200px]">Item</th>
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Job Name</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground sticky left-0 bg-muted/30 min-w-[200px]">Job Name</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Project</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Group</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Status</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Due</th>
@@ -779,7 +779,7 @@ function MondayTab() {
                     <td className="px-3 py-2 sticky left-0 bg-white font-medium text-foreground max-w-[200px] truncate" title={item.name}>
                       {item.name}
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.jobName)}</td>
+                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.jobName) || item.name}</td>
                     <td className="px-3 py-2 text-muted-foreground">{item.group?.title ?? '—'}</td>
                     <td className="px-3 py-2">
                       {status ? (
