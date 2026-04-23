@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { prisma } from '@contentnode/database'
 import { requireRole } from '../../plugins/auth.js'
 import { encrypt, safeDecrypt } from '../../lib/crypto.js'
+import { createBoxFolder } from './box.js'
 
 const MONDAY_AUTH_URL  = 'https://auth.monday.com/oauth2/authorize'
 const MONDAY_TOKEN_URL = 'https://auth.monday.com/oauth2/token'
@@ -15,6 +16,11 @@ function redirectUri() {
   if (process.env.MONDAY_REDIRECT_URI) return process.env.MONDAY_REDIRECT_URI
   const apiBase = (process.env.API_BASE_URL ?? '').replace(/\/$/, '')
   return `${apiBase}/api/v1/integrations/monday/callback`
+}
+
+async function getDefaultAgencyId(): Promise<string | null> {
+  const agency = await prisma.agency.findFirst({ select: { id: true } })
+  return agency?.id ?? null
 }
 
 async function getMondayToken(agencyId: string): Promise<string> {
@@ -378,8 +384,49 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       'Monday webhook received'
     )
 
-    // Placeholder for Box folder creation — wired in next phase
-    // if (event.type === 'create_pulse') { await enqueueBoxFolderCreate(event) }
+    if (event.type === 'create_pulse' && event.pulseId && event.pulseName) {
+      // Find the agency that owns this Monday board
+      const integration = await prisma.integration.findFirst({
+        where: { provider: 'monday' },
+        select: { agencyId: true },
+      })
+      const agencyId = integration?.agencyId
+        ?? (process.env.MONDAY_API_TOKEN ? await getDefaultAgencyId() : null)
+
+      if (agencyId) {
+        try {
+          const folderName = event.pulseName.trim()
+          const { url } = await createBoxFolder(agencyId, folderName)
+
+          // Write Box URL back to the Monday item's "Client Folder - Box" column
+          const token    = await getMondayToken(agencyId)
+          const boardId  = String(event.boardId)
+          const itemId   = String(event.pulseId)
+
+          // Resolve the "Client Folder - Box" column ID from the board
+          const boardData = await mondayGraphQL<{ boards: { columns: { id: string; title: string }[] }[] }>(token, `
+            query($id: [ID!]) {
+              boards(ids: $id) { columns { id title } }
+            }
+          `, { id: [boardId] })
+          const col = boardData.boards?.[0]?.columns?.find(
+            c => c.title.toLowerCase().includes('box')
+          )
+
+          if (col) {
+            await mondayGraphQL(token, `
+              mutation($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+                change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+              }
+            `, { boardId, itemId, columnId: col.id, value: JSON.stringify({ url, text: 'Open in Box' }) })
+          }
+
+          app.log.info({ folderName, url }, 'Box folder created and URL written back to Monday')
+        } catch (err) {
+          app.log.error({ err }, 'Box folder creation failed')
+        }
+      }
+    }
 
     return reply.send({ ok: true })
   })

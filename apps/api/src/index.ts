@@ -51,6 +51,7 @@ import { notificationsRoutes }  from './routes/notifications.js'
 import { contentGeneratorRoutes } from './routes/contentGenerator.js'
 import { wrikeIntegrationRoutes }  from './routes/integrations/wrike.js'
 import { mondayIntegrationRoutes } from './routes/integrations/monday.js'
+import { boxIntegrationRoutes }    from './routes/integrations/box.js'
 import { pipelineRoutes }         from './routes/pipeline.js'
 import { deliverablesRoutes }     from './routes/deliverables.js'
 import { getRedis } from './lib/redis.js'
@@ -175,6 +176,7 @@ await app.register(notificationsRoutes,      { prefix: '/api/v1/notifications' }
 await app.register(contentGeneratorRoutes,   { prefix: '/api/v1/content-generator' })
 await app.register(wrikeIntegrationRoutes,   { prefix: '/api/v1/integrations/wrike' })
 await app.register(mondayIntegrationRoutes,  { prefix: '/api/v1/integrations/monday' })
+await app.register(boxIntegrationRoutes,     { prefix: '/api/v1/integrations/box' })
 await app.register(pipelineRoutes,           { prefix: '/api/v1/pipeline' })
 await app.register(deliverablesRoutes,       { prefix: '/api/v1/deliverables' })
 
