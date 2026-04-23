@@ -594,11 +594,248 @@ function WrikeStakeholderTab({ tasks, folders, loading, notConnected }: {
   )
 }
 
+// ── Monday types ──────────────────────────────────────────────────────────────
+
+interface MondayColumn { id: string; title: string; type: string }
+interface MondayGroup  { id: string; title: string; color: string }
+interface MondayColVal { id: string; text?: string; value?: string; label?: string; date?: string; number?: number; url?: string; url_text?: string }
+interface MondayItem   { id: string; name: string; state?: string; group?: { id: string; title: string }; column_values?: MondayColVal[]; subitems?: MondayItem[] }
+interface MondayBoard  { id: string; name: string; columns?: MondayColumn[]; groups?: MondayGroup[]; items_page?: { items: MondayItem[] } }
+
+// ── Monday CEO grid ───────────────────────────────────────────────────────────
+
+function MondayTab() {
+  const [boards,       setBoards]       = useState<MondayBoard[]>([])
+  const [boardId,      setBoardId]      = useState<string>('all')
+  const [boardData,    setBoardData]    = useState<MondayBoard | null>(null)
+  const [groupId,      setGroupId]      = useState<string>('all')
+  const [loading,      setLoading]      = useState(true)
+  const [itemsLoading, setItemsLoading] = useState(false)
+  const [connected,    setConnected]    = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
+
+  // Check status + load boards
+  useEffect(() => {
+    apiFetch('/api/v1/integrations/monday/status').then(r => r.json()).then(({ data }) => {
+      setConnected(!!data?.connected)
+      if (!data?.connected) { setLoading(false); return }
+      apiFetch('/api/v1/integrations/monday/boards').then(r => r.json()).then(({ data: b }) => {
+        setBoards(b ?? [])
+      }).catch((e) => setError(e.message)).finally(() => setLoading(false))
+    }).catch(() => setLoading(false))
+  }, [])
+
+  // Load selected board items
+  useEffect(() => {
+    if (boardId === 'all') { setBoardData(null); return }
+    setItemsLoading(true)
+    apiFetch(`/api/v1/integrations/monday/boards/${boardId}`).then(r => r.json()).then(({ data }) => {
+      setBoardData(data)
+      setGroupId('all')
+    }).catch((e) => setError(e.message)).finally(() => setItemsLoading(false))
+  }, [boardId])
+
+  if (!connected && !loading) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+        <Icons.LayoutGrid className="h-8 w-8 text-muted-foreground/40 mb-3" />
+        <p className="text-sm font-medium text-foreground">Monday.com not connected</p>
+        <p className="mt-1 text-xs text-muted-foreground">Go to Settings → Integrations to connect Monday</p>
+      </div>
+    )
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#a200ee] border-t-transparent" />
+      <span className="ml-3 text-sm text-muted-foreground">Loading Monday boards…</span>
+    </div>
+  )
+
+  // Build column value lookup: colId → text
+  const colVal = (item: MondayItem, colId: string): string => {
+    const cv = item.column_values?.find(c => c.id === colId)
+    return cv?.label ?? cv?.text ?? cv?.date ?? cv?.url ?? (cv?.number != null ? String(cv.number) : '') ?? ''
+  }
+
+  // Build colId lookup by title
+  const colByTitle = (title: string): string =>
+    boardData?.columns?.find(c => c.title.toLowerCase() === title.toLowerCase())?.id ?? ''
+
+  const groups   = boardData?.groups ?? []
+  const allItems = boardData?.items_page?.items ?? []
+  const items    = groupId === 'all' ? allItems : allItems.filter(i => i.group?.id === groupId)
+
+  // Column IDs (resolved by title — works even if IDs change)
+  const COL = {
+    jobName:      colByTitle('Job name'),
+    autonomy:     colByTitle('Autonomy mode'),
+    status:       colByTitle('Status'),
+    due:          colByTitle('Due date'),
+    stage:        colByTitle('Stage'),
+    gate:         colByTitle('Gate status'),
+    flagNotes:    colByTitle('Flag notes'),
+    boxFolder:    colByTitle('Box folder'),
+    aiTarget:     colByTitle('AI Target %'),
+    maxPasses:    colByTitle('Max AI Passes'),
+    division:     colByTitle('Division'),
+    deliverables: colByTitle('Deliverables'),
+  }
+
+  const statusColor = (label: string) => {
+    const l = label?.toLowerCase() ?? ''
+    if (l.includes('complete'))  return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    if (l.includes('escalate'))  return 'bg-red-100 text-red-700 border-red-200'
+    if (l.includes('progress') || l.includes('active')) return 'bg-blue-100 text-blue-700 border-blue-200'
+    if (l.includes('stuck') || l.includes('block'))     return 'bg-orange-100 text-orange-700 border-orange-200'
+    return 'bg-muted/40 text-muted-foreground border-border'
+  }
+
+  const clientName = (board: MondayBoard) => board.name.replace(/\s*[-–]\s*campaigns?$/i, '').trim()
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Client / Board</label>
+          <select
+            className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-[#a200ee] min-w-[200px]"
+            value={boardId}
+            onChange={(e) => setBoardId(e.target.value)}
+          >
+            <option value="all">Select a client…</option>
+            {boards.filter(b => b.name.toLowerCase().includes('campaign')).map(b => (
+              <option key={b.id} value={b.id}>{clientName(b)}</option>
+            ))}
+          </select>
+        </div>
+        {groups.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Group / Project</label>
+            <select
+              className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-[#a200ee] min-w-[180px]"
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+            >
+              <option value="all">All groups</option>
+              {groups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+            </select>
+          </div>
+        )}
+        {boardId !== 'all' && (
+          <div className="ml-auto text-xs text-muted-foreground self-center">
+            {items.length} items
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>
+      )}
+
+      {itemsLoading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#a200ee] border-t-transparent" />
+          <span className="ml-3 text-sm text-muted-foreground">Loading items…</span>
+        </div>
+      )}
+
+      {!itemsLoading && boardId === 'all' && (
+        <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+          Select a client board to view items
+        </div>
+      )}
+
+      {/* CEO grid */}
+      {!itemsLoading && boardData && items.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-sm">
+          <table className="w-full text-xs whitespace-nowrap">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground sticky left-0 bg-muted/30 min-w-[200px]">Item</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[160px]">Job Name</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Group</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Status</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Due</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Stage</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[90px]">Gate</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[200px]">Flag Notes</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Autonomy</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">AI Target %</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Max Passes</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Division</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Box</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {items.map((item) => {
+                const status    = colVal(item, COL.status)
+                const due       = colVal(item, COL.due)
+                const overdue   = due && new Date(due) < new Date()
+                const boxUrl    = item.column_values?.find(c => c.id === COL.boxFolder)?.url ?? ''
+                return (
+                  <tr key={item.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-3 py-2 sticky left-0 bg-white font-medium text-foreground max-w-[200px] truncate" title={item.name}>
+                      {item.name}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{colVal(item, COL.jobName)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{item.group?.title ?? '—'}</td>
+                    <td className="px-3 py-2">
+                      {status ? (
+                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', statusColor(status))}>
+                          {status}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className={cn('px-3 py-2', overdue ? 'text-red-600 font-medium' : 'text-muted-foreground')}>
+                      {due ? new Date(due).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.stage) || '—'}</td>
+                    <td className="px-3 py-2">
+                      {colVal(item, COL.gate) ? (
+                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                          {colVal(item, COL.gate)}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground max-w-[200px] truncate" title={colVal(item, COL.flagNotes)}>
+                      {colVal(item, COL.flagNotes) || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.autonomy) || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.aiTarget) || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-center">{colVal(item, COL.maxPasses) || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{colVal(item, COL.division) || '—'}</td>
+                    <td className="px-3 py-2">
+                      {boxUrl ? (
+                        <a href={boxUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-[11px]">
+                          Open
+                        </a>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!itemsLoading && boardData && items.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+          No items in this board
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Executive View ─────────────────────────────────────────────────────────────
 
 const EXEC_SUBTABS = [
   { value: 'portfolio', label: 'Portfolio',   icon: Icons.LayoutDashboard },
   { value: 'wrike',     label: 'Wrike',       icon: Icons.CheckSquare },
+  { value: 'monday',    label: 'Monday',      icon: Icons.LayoutGrid },
 ]
 
 function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeError, wrikeFilterBar }: {
@@ -760,6 +997,8 @@ function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, 
           />
         </>
       )}
+
+      {subTab === 'monday' && <MondayTab />}
     </div>
   )
 }
