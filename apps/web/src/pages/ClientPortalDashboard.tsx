@@ -266,11 +266,12 @@ function wrikeStatusStyle(status: string) {
   return WRIKE_STATUS_COLORS[status] ?? { bg: 'bg-slate-50 border-slate-200', text: 'text-slate-600', dot: 'bg-slate-400' }
 }
 
-function WrikeExecutiveTab({ tasks, folders, loading, notConnected }: {
+function WrikeExecutiveTab({ tasks, folders, loading, notConnected, error }: {
   tasks: WrikeTask[]
   folders: WrikeFolder[]
   loading: boolean
   notConnected: boolean
+  error?: string | null
 }) {
   if (notConnected) {
     return (
@@ -286,6 +287,14 @@ function WrikeExecutiveTab({ tasks, folders, loading, notConnected }: {
       <div className="flex h-48 items-center justify-center gap-2 text-muted-foreground">
         <Icons.Loader2 className="h-5 w-5 animate-spin" />
         <span className="text-sm">Loading Wrike data…</span>
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-6 text-center">
+        <p className="text-sm font-medium text-red-700">Failed to load Wrike data</p>
+        <p className="mt-1 text-xs text-red-500">{error}</p>
       </div>
     )
   }
@@ -576,7 +585,7 @@ const EXEC_SUBTABS = [
   { value: 'wrike',     label: 'Wrike',       icon: Icons.CheckSquare },
 ]
 
-function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeProjectId, wrikeFilterBar }: {
+function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeError, wrikeFilterBar }: {
   clients: Client[]
   runs: Run[]
   deliverables: Deliverable[]
@@ -584,7 +593,7 @@ function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, 
   wrikeFolders: WrikeFolder[]
   wrikeLoading: boolean
   wrikeConnected: boolean
-  wrikeProjectId: string
+  wrikeError: string | null
   wrikeFilterBar: React.ReactNode
 }) {
   const navigate = useNavigate()
@@ -729,8 +738,9 @@ function ExecutiveView({ clients, runs, deliverables, wrikeTasks, wrikeFolders, 
         <>
           {wrikeFilterBar}
           <WrikeExecutiveTab
-            tasks={wrikeProjectId === 'all' ? wrikeTasks : wrikeTasks.filter((t) => t.parentIds?.includes(wrikeProjectId))}
-            folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected}
+            tasks={wrikeTasks} folders={wrikeFolders}
+            loading={wrikeLoading} notConnected={!wrikeConnected}
+            error={wrikeError}
           />
         </>
       )}
@@ -754,14 +764,13 @@ const STAKEHOLDER_SUBTABS = [
   { value: 'wrike',    label: 'Wrike',    icon: Icons.CheckSquare },
 ]
 
-function StakeholderView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeProjectId, wrikeFilterBar }: {
+function StakeholderView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading, wrikeConnected, wrikeFilterBar }: {
   clients: Client[]
   runs: Run[]
   wrikeTasks: WrikeTask[]
   wrikeFolders: WrikeFolder[]
   wrikeLoading: boolean
   wrikeConnected: boolean
-  wrikeProjectId: string
   wrikeFilterBar: React.ReactNode
 }) {
   const navigate = useNavigate()
@@ -909,8 +918,8 @@ function StakeholderView({ clients, runs, wrikeTasks, wrikeFolders, wrikeLoading
         <>
           {wrikeFilterBar}
           <WrikeStakeholderTab
-            tasks={wrikeProjectId === 'all' ? wrikeTasks : wrikeTasks.filter((t) => t.parentIds?.includes(wrikeProjectId))}
-            folders={wrikeFolders} loading={wrikeLoading} notConnected={!wrikeConnected}
+            tasks={wrikeTasks} folders={wrikeFolders}
+            loading={wrikeLoading} notConnected={!wrikeConnected}
           />
         </>
       )}
@@ -935,23 +944,38 @@ export function ClientPortalDashboard() {
   const [wrikeConnected, setWrikeConnected] = useState(false)
   const [loading, setLoading]         = useState(true)
 
-  // Wrike filters
-  const [wrikeStart,     setWrikeStart]     = useState(() => toDateInput(new Date(Date.now() - 90 * 86400000)))
-  const [wrikeEnd,       setWrikeEnd]       = useState(() => toDateInput(new Date()))
-  const [wrikeProjectId, setWrikeProjectId] = useState('all')
-  const [useDates,       setUseDates]       = useState(true)
+  const [wrikeError, setWrikeError] = useState<string | null>(null)
 
+  // Wrike filters
+  const [wrikeStart,    setWrikeStart]    = useState(() => toDateInput(new Date(Date.now() - 90 * 86400000)))
+  const [wrikeEnd,      setWrikeEnd]      = useState(() => toDateInput(new Date()))
+  const [wrikeClientId, setWrikeClientId] = useState('all')
+  const [wrikeProjectId,setWrikeProjectId]= useState('all')
+  const [useDates,      setUseDates]      = useState(true)
+
+  // Same loading pattern as DeliverablesPage — Promise.allSettled so folders failure
+  // doesn't silently swallow task data
   const loadWrikeData = useCallback(() => {
     setWrikeLoading(true)
-    Promise.all([
-      apiFetch('/api/v1/integrations/wrike/tasks').then((r) => r.json()),
-      apiFetch('/api/v1/integrations/wrike/folders').then((r) => r.json()),
+    setWrikeError(null)
+    Promise.allSettled([
+      apiFetch('/api/v1/integrations/wrike/tasks').then(async (r) => {
+        const body = await r.json()
+        if (!r.ok) throw new Error(`tasks ${r.status}: ${body?.error ?? r.statusText}`)
+        return body
+      }),
+      apiFetch('/api/v1/integrations/wrike/folders').then(async (r) => {
+        const body = await r.json()
+        if (!r.ok) throw new Error(`folders ${r.status}: ${body?.error ?? r.statusText}`)
+        return body
+      }),
     ])
-      .then(([tasksRes, foldersRes]) => {
-        setAllWrikeTasks(tasksRes.data ?? [])
-        setWrikeFolders(foldersRes.data ?? [])
+      .then(([t, f]) => {
+        if (t.status === 'fulfilled') setAllWrikeTasks(t.value?.data ?? [])
+        else setWrikeError(t.reason?.message ?? 'Failed to load tasks')
+        if (f.status === 'fulfilled') setWrikeFolders(f.value?.data ?? [])
+        else setWrikeError((prev) => prev ?? f.reason?.message ?? 'Failed to load folders')
       })
-      .catch(() => {})
       .finally(() => setWrikeLoading(false))
   }, [])
 
@@ -978,29 +1002,68 @@ export function ClientPortalDashboard() {
     loadWrikeData()
   }, [loadWrikeData])
 
-  // Client-side date + project filtering
+  // Build folder hierarchy for Client / Project dropdowns
+  const wrikeFolderParentMap = new Map<string, string>()
+  for (const f of wrikeFolders) {
+    for (const childId of (f.childIds ?? [])) {
+      wrikeFolderParentMap.set(childId, f.id)
+    }
+  }
+  // Client folders = top-level (not a child of any other folder in the list)
+  const wrikeClientFolders = wrikeFolders.filter((f) => !wrikeFolderParentMap.has(f.id))
+  // Project folders = folders that have a parent in the list; filter by selected client
+  const wrikeProjectFolders = wrikeFolders.filter((f) => {
+    if (!wrikeFolderParentMap.has(f.id)) return false
+    if (wrikeClientId === 'all') return true
+    return wrikeFolderParentMap.get(f.id) === wrikeClientId
+  })
+
+  // Client-side filtering: date + client + project
   const wrikeTasks = allWrikeTasks.filter((t) => {
     if (useDates && wrikeStart && wrikeEnd) {
       const d = t.updatedDate ?? t.createdDate
-      if (!d) return true
-      const ts = d.slice(0, 10)
-      if (ts < wrikeStart || ts > wrikeEnd) return false
+      if (d) {
+        const ts = d.slice(0, 10)
+        if (ts < wrikeStart || ts > wrikeEnd) return false
+      }
+    }
+    if (wrikeProjectId !== 'all') {
+      const allAncestors = [...new Set([...(t.parentIds ?? []), ...(t.superParentIds ?? [])])]
+      if (!allAncestors.includes(wrikeProjectId)) return false
+    } else if (wrikeClientId !== 'all') {
+      const allAncestors = [...new Set([...(t.parentIds ?? []), ...(t.superParentIds ?? [])])]
+      if (!allAncestors.includes(wrikeClientId)) return false
     }
     return true
   })
 
   const wrikeFilterBar = (
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-white p-3 shadow-sm">
+      {/* Client picker */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Client</label>
+        <select
+          className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[160px]"
+          value={wrikeClientId}
+          onChange={(e) => { setWrikeClientId(e.target.value); setWrikeProjectId('all') }}
+        >
+          <option value="all">All clients</option>
+          {wrikeClientFolders.map((f) => (
+            <option key={f.id} value={f.id}>{f.title}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Project picker */}
       <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Project / Client</label>
+        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Project</label>
         <select
           className="h-8 rounded-lg border border-border bg-muted/20 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 min-w-[180px]"
           value={wrikeProjectId}
           onChange={(e) => setWrikeProjectId(e.target.value)}
         >
           <option value="all">All projects</option>
-          {wrikeFolders.map((f) => (
+          {wrikeProjectFolders.map((f) => (
             <option key={f.id} value={f.id}>{f.title}</option>
           ))}
         </select>
@@ -1093,14 +1156,14 @@ export function ClientPortalDashboard() {
             clients={clients} runs={runs} deliverables={deliverables}
             wrikeTasks={wrikeTasks} wrikeFolders={wrikeFolders}
             wrikeLoading={wrikeLoading} wrikeConnected={wrikeConnected}
-            wrikeProjectId={wrikeProjectId} wrikeFilterBar={wrikeFilterBar}
+            wrikeError={wrikeError} wrikeFilterBar={wrikeFilterBar}
           />
         ) : (
           <StakeholderView
             clients={clients} runs={runs}
             wrikeTasks={wrikeTasks} wrikeFolders={wrikeFolders}
             wrikeLoading={wrikeLoading} wrikeConnected={wrikeConnected}
-            wrikeProjectId={wrikeProjectId} wrikeFilterBar={wrikeFilterBar}
+            wrikeFilterBar={wrikeFilterBar}
           />
         )}
       </div>
