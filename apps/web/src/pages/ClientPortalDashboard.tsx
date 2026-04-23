@@ -776,7 +776,7 @@ function MondayTab() {
           <table className="w-full text-xs whitespace-nowrap">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground sticky left-0 bg-muted/30 min-w-[200px]">Item</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground sticky left-0 bg-muted/30 min-w-[200px]">Project</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[120px]">Client</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[130px]">Main Category</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground min-w-[100px]">Focus</th>
