@@ -478,6 +478,9 @@ model Workflow {
   firstRunAt       DateTime? @map("first_run_at") // connectivity_mode locked after this is set
   projectName      String?   @map("project_name")
   itemName         String?   @map("item_name")
+  mondayGroupId    String?   @map("monday_group_id")
+  mondayGroupName  String?   @map("monday_group_name")
+  boxProjectFolderId String? @map("box_project_folder_id")
   isTemplate       Boolean   @default(false) @map("is_template")
   templateCategory String?   @map("template_category")
   templateDescription String? @map("template_description")

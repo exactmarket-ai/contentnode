@@ -393,6 +393,7 @@ export function TopBar() {
   const [pendingRunAfterSave, setPendingRunAfterSave] = useState(false)
   const [runTriggerOpen, setRunTriggerOpen] = useState(false)
   const [pendingTopic, setPendingTopic] = useState('')
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false)
 
   // Keep nameValue in sync when a different workflow is loaded
   useEffect(() => {
@@ -730,6 +731,23 @@ export function TopBar() {
         ) : null
       )}
 
+      {/* Project routing badge */}
+      {workflow.id && (
+        <button
+          onClick={() => setProjectPickerOpen(true)}
+          title="Set Monday group + Box project folder for this workflow's runs"
+          className={cn(
+            'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+            (workflow.mondayGroupId || workflow.boxProjectFolderId)
+              ? 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100'
+              : 'border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+          )}
+        >
+          <Icons.FolderKanban className="h-3 w-3" />
+          {workflow.mondayGroupName ?? workflow.boxProjectFolderId ? 'Project' : 'Set Project'}
+        </button>
+      )}
+
       {/* Spacer */}
       <div className="flex-1" />
 
@@ -942,6 +960,36 @@ export function TopBar() {
         />
       )}
 
+      {/* Project picker modal */}
+      {projectPickerOpen && workflow.id && (
+        <ProjectPickerModal
+          workflowId={workflow.id}
+          clientMondayBoardId={workflow.clientMondayBoardId ?? null}
+          clientBoxFolderId={workflow.clientBoxFolderId ?? null}
+          current={{
+            mondayGroupId: workflow.mondayGroupId ?? null,
+            mondayGroupName: workflow.mondayGroupName ?? null,
+            boxProjectFolderId: workflow.boxProjectFolderId ?? null,
+          }}
+          onSave={(data) => {
+            setWorkflow(data)
+            setProjectPickerOpen(false)
+            const wf = useWorkflowStore.getState().workflow
+            if (wf.id) {
+              apiFetch(`/api/v1/workflows/${wf.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                  mondayGroupId: data.mondayGroupId ?? null,
+                  mondayGroupName: data.mondayGroupName ?? null,
+                  boxProjectFolderId: data.boxProjectFolderId ?? null,
+                }),
+              }).catch(() => {})
+            }
+          }}
+          onClose={() => setProjectPickerOpen(false)}
+        />
+      )}
+
       {/* Duplicate toast */}
       {duplicateToast && (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-700 shadow-lg">
@@ -1083,6 +1131,153 @@ function SaveWorkflowDialog({
                 : <Icons.Check className="h-3.5 w-3.5" />}
             {saving ? (isDuplicate ? 'Duplicating…' : 'Saving…') : isDuplicate ? 'Duplicate' : createNew ? 'Save as New Workflow' : 'Save Workflow'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Project Picker Modal ──────────────────────────────────────────────────────
+
+interface ProjectPickerModalProps {
+  workflowId: string
+  clientMondayBoardId: string | null
+  clientBoxFolderId: string | null
+  current: {
+    mondayGroupId: string | null
+    mondayGroupName: string | null
+    boxProjectFolderId: string | null
+  }
+  onSave: (data: { mondayGroupId?: string | null; mondayGroupName?: string | null; boxProjectFolderId?: string | null }) => void
+  onClose: () => void
+}
+
+function ProjectPickerModal({
+  clientMondayBoardId,
+  clientBoxFolderId,
+  current,
+  onSave,
+  onClose,
+}: ProjectPickerModalProps) {
+  const [mondayGroups, setMondayGroups] = useState<{ id: string; title: string }[]>([])
+  const [boxFolders, setBoxFolders] = useState<{ id: string; name: string }[]>([])
+  const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
+  const [selectedMondayGroupName, setSelectedMondayGroupName] = useState(current.mondayGroupName ?? '')
+  const [selectedBoxFolderId, setSelectedBoxFolderId] = useState(current.boxProjectFolderId ?? '')
+  const [loadingMonday, setLoadingMonday] = useState(false)
+  const [loadingBox, setLoadingBox] = useState(false)
+
+  useEffect(() => {
+    if (!clientMondayBoardId) return
+    setLoadingMonday(true)
+    apiFetch(`/api/v1/integrations/monday/boards/${clientMondayBoardId}/groups`)
+      .then((r) => r.json())
+      .then(({ data }) => { setMondayGroups(data ?? []) })
+      .catch(() => {})
+      .finally(() => setLoadingMonday(false))
+  }, [clientMondayBoardId])
+
+  useEffect(() => {
+    if (!clientBoxFolderId) return
+    setLoadingBox(true)
+    apiFetch(`/api/v1/integrations/box/folders/${clientBoxFolderId}/subfolders`)
+      .then((r) => r.json())
+      .then(({ data }) => { setBoxFolders(data ?? []) })
+      .catch(() => {})
+      .finally(() => setLoadingBox(false))
+  }, [clientBoxFolderId])
+
+  const handleSave = () => {
+    const group = mondayGroups.find((g) => g.id === selectedMondayGroupId)
+    onSave({
+      mondayGroupId: selectedMondayGroupId || null,
+      mondayGroupName: (group?.title ?? selectedMondayGroupName) || null,
+      boxProjectFolderId: selectedBoxFolderId || null,
+    })
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="w-full max-w-sm bg-white border border-border rounded-xl shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Icons.FolderKanban className="h-4 w-4 text-sky-600" />
+            <h2 className="text-sm font-semibold text-foreground">Project Routing</h2>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          {/* Monday group */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <Icons.LayoutGrid className="h-3 w-3" />
+              Monday Group
+            </label>
+            {!clientMondayBoardId ? (
+              <p className="text-xs text-muted-foreground italic">No Monday board connected to this client.</p>
+            ) : loadingMonday ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Icons.Loader2 className="h-3 w-3 animate-spin" />Loading groups…
+              </div>
+            ) : mondayGroups.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No groups found.</p>
+            ) : (
+              <Select value={selectedMondayGroupId} onValueChange={setSelectedMondayGroupId}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select group…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                  {mondayGroups.map((g) => (
+                    <SelectItem key={g.id} value={g.id} className="text-xs">{g.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <p className="text-[10px] text-muted-foreground">New Monday items from this workflow will be created in this group.</p>
+          </div>
+
+          {/* Box project folder */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <Icons.Box className="h-3 w-3" />
+              Box Project Folder
+            </label>
+            {!clientBoxFolderId ? (
+              <p className="text-xs text-muted-foreground italic">No Box folder connected to this client.</p>
+            ) : loadingBox ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Icons.Loader2 className="h-3 w-3 animate-spin" />Loading folders…
+              </div>
+            ) : (
+              <Select value={selectedBoxFolderId} onValueChange={setSelectedBoxFolderId}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select folder…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" className="text-xs text-muted-foreground">— None (use client root) —</SelectItem>
+                  {boxFolders.map((f) => (
+                    <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <p className="text-[10px] text-muted-foreground">Run output folders will be created inside this project folder.</p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={handleSave}>
+            <Icons.Check className="mr-1.5 h-3.5 w-3.5" />
+            Save
+          </Button>
         </div>
       </div>
     </div>

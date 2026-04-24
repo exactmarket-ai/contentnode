@@ -253,6 +253,60 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: data.boards?.[0] ?? null })
   })
 
+  // ── GET /boards/:id/groups — lightweight groups list ─────────────────────
+  app.get<{ Params: { id: string } }>('/boards/:id/groups', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token = await getMondayToken(agencyId)
+    const { id } = req.params
+
+    const data = await mondayGraphQL<{ boards: { groups: { id: string; title: string; color: string }[] }[] }>(token, `
+      query($id: [ID!]) {
+        boards(ids: $id) {
+          groups {
+            id
+            title
+            color
+          }
+        }
+      }
+    `, { id: [id] })
+
+    return reply.send({ data: data.boards?.[0]?.groups ?? [] })
+  })
+
+  // ── GET /boards/:id/columns-meta — columns with status labels ────────────
+  app.get<{ Params: { id: string } }>('/boards/:id/columns-meta', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token = await getMondayToken(agencyId)
+    const { id } = req.params
+
+    const data = await mondayGraphQL<{ boards: { columns: { id: string; title: string; type: string; settings_str: string }[] }[] }>(token, `
+      query($id: [ID!]) {
+        boards(ids: $id) {
+          columns {
+            id
+            title
+            type
+            settings_str
+          }
+        }
+      }
+    `, { id: [id] })
+
+    const columns = (data.boards?.[0]?.columns ?? []).map((col) => {
+      let labels: string[] = []
+      if (col.type === 'color') {
+        try {
+          const settings = JSON.parse(col.settings_str ?? '{}')
+          labels = Object.values(settings.labels ?? {}) as string[]
+        } catch { /* ignore */ }
+      }
+      return { id: col.id, title: col.title, type: col.type, labels }
+    })
+
+    return reply.send({ data: columns })
+  })
+
   // ── GET /boards/:id/items — paginated items with cursor ───────────────────
   app.get<{ Params: { id: string } }>('/boards/:id/items', async (req, reply) => {
     const { agencyId } = req.auth

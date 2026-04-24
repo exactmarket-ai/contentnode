@@ -35,6 +35,14 @@ export interface WorkflowMeta {
   isTemplate?: boolean
   templateCategory?: string | null
   templateDescription?: string | null
+  /** PM routing — Monday group this workflow's runs go into */
+  mondayGroupId?: string | null
+  mondayGroupName?: string | null
+  /** PM routing — Box project folder to create run subfolders inside */
+  boxProjectFolderId?: string | null
+  /** Client-level PM connections (read from client record, not editable here) */
+  clientMondayBoardId?: string | null
+  clientBoxFolderId?: string | null
 }
 
 export interface NodeRunStatus {

@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import * as Icons from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useOllamaModels } from '@/hooks/useOllamaModels'
+import { useWorkflowStore } from '@/store/workflowStore'
+import { apiFetch } from '@/lib/api'
 
 // ─── Model constants ──────────────────────────────────────────────────────────
 
@@ -103,9 +105,12 @@ export function FieldGroup({ label, description, children }: { label: string; de
 
 // ─── PMRoutingSection ─────────────────────────────────────────────────────────
 
+interface MondayColumn { id: string; title: string; type: string; labels: string[] }
+
 /**
  * Collapsible "PM Routing" section appended to any output node config.
  * Controls where Box files land and what gets written back to Monday.
+ * Loads live column/status data from the client's Monday board when available.
  */
 export function PMRoutingSection({
   config,
@@ -114,9 +119,26 @@ export function PMRoutingSection({
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
 }) {
+  const workflow = useWorkflowStore((s) => s.workflow)
+  const boardId = workflow.clientMondayBoardId
+
   const [open, setOpen] = useState(
     !!(config.delivery_box_subfolder || config.delivery_monday_column || config.delivery_monday_status)
   )
+  const [columns, setColumns] = useState<MondayColumn[]>([])
+
+  useEffect(() => {
+    if (!boardId) return
+    apiFetch(`/api/v1/integrations/monday/boards/${boardId}/columns-meta`)
+      .then((r) => r.json())
+      .then(({ data }) => { if (Array.isArray(data)) setColumns(data) })
+      .catch(() => {})
+  }, [boardId])
+
+  const linkColumns = columns.filter((c) => c.type === 'link' || c.type === 'text')
+  const statusColumns = columns.filter((c) => c.type === 'color')
+  const selectedStatusColumn = columns.find((c) => c.title === config.delivery_monday_status_column)
+  const statusLabels = selectedStatusColumn?.labels ?? []
 
   return (
     <div className="border-t border-border pt-3">
@@ -148,27 +170,95 @@ export function PMRoutingSection({
 
           <FieldGroup
             label="Monday URL Column"
-            description="Column title to receive the Box file URL (exact match, case-insensitive)."
+            description="Column to receive the Box file URL after delivery."
           >
-            <Input
-              placeholder="e.g. Blog URL"
-              className="text-xs"
-              value={(config.delivery_monday_column as string) ?? ''}
-              onChange={(e) => onChange('delivery_monday_column', e.target.value)}
-            />
+            {linkColumns.length > 0 ? (
+              <Select
+                value={(config.delivery_monday_column as string) ?? ''}
+                onValueChange={(v) => onChange('delivery_monday_column', v)}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select column…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                  {linkColumns.map((c) => (
+                    <SelectItem key={c.id} value={c.title} className="text-xs">{c.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                placeholder="e.g. Blog URL"
+                className="text-xs"
+                value={(config.delivery_monday_column as string) ?? ''}
+                onChange={(e) => onChange('delivery_monday_column', e.target.value)}
+              />
+            )}
           </FieldGroup>
 
           <FieldGroup
-            label="Monday Status on Delivery"
-            description="Sets the Status column to this label when the file lands in Box."
+            label="Monday Status Column"
+            description="Which status column to update on delivery."
           >
-            <Input
-              placeholder="e.g. Ready for Review"
-              className="text-xs"
-              value={(config.delivery_monday_status as string) ?? ''}
-              onChange={(e) => onChange('delivery_monday_status', e.target.value)}
-            />
+            {statusColumns.length > 0 ? (
+              <Select
+                value={(config.delivery_monday_status_column as string) ?? ''}
+                onValueChange={(v) => {
+                  onChange('delivery_monday_status_column', v)
+                  onChange('delivery_monday_status', '')
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select column…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                  {statusColumns.map((c) => (
+                    <SelectItem key={c.id} value={c.title} className="text-xs">{c.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                placeholder="e.g. Stage"
+                className="text-xs"
+                value={(config.delivery_monday_status_column as string) ?? ''}
+                onChange={(e) => onChange('delivery_monday_status_column', e.target.value)}
+              />
+            )}
           </FieldGroup>
+
+          {!!(config.delivery_monday_status_column || config.delivery_monday_status) && (
+            <FieldGroup
+              label="Status Label on Delivery"
+              description="Sets the status column to this label when the file lands in Box."
+            >
+              {statusLabels.length > 0 ? (
+                <Select
+                  value={(config.delivery_monday_status as string) ?? ''}
+                  onValueChange={(v) => onChange('delivery_monday_status', v)}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Select label…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                    {statusLabels.map((label) => (
+                      <SelectItem key={label} value={label} className="text-xs">{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder="e.g. Ready for Review"
+                  className="text-xs"
+                  value={(config.delivery_monday_status as string) ?? ''}
+                  onChange={(e) => onChange('delivery_monday_status', e.target.value)}
+                />
+              )}
+            </FieldGroup>
+          )}
         </div>
       )}
     </div>

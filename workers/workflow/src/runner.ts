@@ -391,7 +391,7 @@ export class WorkflowRunner {
           include: {
             nodes: true,
             edges: true,
-            client: { select: { name: true } },
+            client: { select: { name: true, mondayBoardId: true, boxFolderId: true } },
           },
         },
       },
@@ -1128,9 +1128,8 @@ export class WorkflowRunner {
         // Filename helpers
         const runRecord  = run as unknown as Record<string, unknown>
         const runTopic   = (runRecord.topic as string | undefined)?.trim() ?? ''
-        const clientName = (workflow as unknown as Record<string, unknown>).client
-          ? ((workflow as unknown as Record<string, unknown>).client as Record<string, unknown>).name as string ?? ''
-          : ''
+        const clientObj  = (workflow as unknown as Record<string, unknown>).client as Record<string, unknown> | undefined
+        const clientName = (clientObj?.name as string | undefined) ?? ''
         const version    = run.itemVersion ?? 1
 
         const slugify = (s: string) =>
@@ -1149,11 +1148,26 @@ export class WorkflowRunner {
 
         // Monday routing context — prefer first-class fields (post-migration),
         // fall back to the input JSON written by earlier builds
-        const runRecord     = run as unknown as Record<string, unknown>
         const mondayItemId  = (runRecord.mondayItemId as string | undefined)
           ?? (runInput.mondayItemId as string | undefined) ?? null
         const mondayBoardId = (runRecord.mondayBoardId as string | undefined)
-          ?? (runInput.mondayBoardId as string | undefined) ?? null
+          ?? (runInput.mondayBoardId as string | undefined)
+          ?? (clientObj?.mondayBoardId as string | undefined) ?? null
+
+        // Workflow-level project routing: if a Box project folder is set on the
+        // workflow, create a run subfolder inside it and use that as the root.
+        // Name: {topic}-{date} (or just {date} when no topic).
+        const wfRecord = workflow as unknown as Record<string, unknown>
+        const boxProjectFolderId = (wfRecord.boxProjectFolderId as string | undefined) ?? null
+        let effectiveRootFolderId = rootFolderId
+        if (boxProjectFolderId) {
+          const runFolderName = [slugify(runTopic), dateStr].filter(Boolean).join('-') || dateStr
+          try {
+            effectiveRootFolderId = await ensureBoxSubfolder(this.agencyId, boxProjectFolderId, runFolderName)
+          } catch (err) {
+            console.error('[runner] Failed to create run folder in project folder:', err)
+          }
+        }
 
         // Clear per-run column cache so stale data doesn't bleed between jobs
         clearMondayCache()
@@ -1172,14 +1186,15 @@ export class WorkflowRunner {
           const label      = (cfg.label as string | undefined) ?? (cfg.output_type as string | undefined) ?? subtype ?? node.id
 
           // Per-node PM routing config (set from output node config panel)
-          const subfolder    = (cfg.delivery_box_subfolder as string | undefined)?.trim() || null
-          const mondayColumn = (cfg.delivery_monday_column as string | undefined)?.trim() || null
-          const mondayStatus = (cfg.delivery_monday_status as string | undefined)?.trim() || null
+          const subfolder          = (cfg.delivery_box_subfolder as string | undefined)?.trim() || null
+          const mondayColumn       = (cfg.delivery_monday_column as string | undefined)?.trim() || null
+          const mondayStatusCol    = (cfg.delivery_monday_status_column as string | undefined)?.trim() || 'Status'
+          const mondayStatus       = (cfg.delivery_monday_status as string | undefined)?.trim() || null
 
           // Resolve the target Box folder (create subfolder on demand if configured)
           const targetFolderId = subfolder
-            ? await ensureBoxSubfolder(this.agencyId, rootFolderId, subfolder)
-            : rootFolderId
+            ? await ensureBoxSubfolder(this.agencyId, effectiveRootFolderId, subfolder)
+            : effectiveRootFolderId
 
           // Helper: write URL + optional status back to Monday after delivery
           const writeMonday = async (boxUrl: string) => {
@@ -1198,7 +1213,7 @@ export class WorkflowRunner {
                 agencyId:    this.agencyId,
                 boardId:     mondayBoardId,
                 itemId:      mondayItemId,
-                columnTitle: 'Status',
+                columnTitle: mondayStatusCol,
                 label:       mondayStatus,
               }).catch((err) => console.error('[runner] Monday status writeback failed:', err))
             }

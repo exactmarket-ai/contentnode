@@ -282,4 +282,21 @@ export async function boxIntegrationRoutes(app: FastifyInstance) {
     const folder         = await boxApi<{ id: string; name: string; item_count: number }>(token, `/folders/${id}`)
     return reply.send({ data: folder })
   })
+
+  // ── GET /folders/:id/subfolders — list immediate subfolders ──────────────────
+  app.get<{ Params: { id: string } }>('/folders/:id/subfolders', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token        = await getBoxToken(agencyId)
+    const { id }       = req.params
+
+    const result = await boxApi<{
+      item_collection: { entries: { type: string; id: string; name: string }[] }
+    }>(token, `/folders/${id}/items?fields=id,name,type&limit=200`)
+
+    const folders = (result.item_collection?.entries ?? [])
+      .filter((e) => e.type === 'folder')
+      .map((e) => ({ id: e.id, name: e.name }))
+
+    return reply.send({ data: folders })
+  })
 }

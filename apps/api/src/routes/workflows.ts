@@ -23,6 +23,10 @@ const updateWorkflowBody = z.object({
   status: z.enum(['draft', 'active', 'archived']).optional(),
   defaultAssigneeId: z.string().nullable().optional(),
   isLocked: z.boolean().optional(),
+  projectName: z.string().nullable().optional(),
+  mondayGroupId: z.string().nullable().optional(),
+  mondayGroupName: z.string().nullable().optional(),
+  boxProjectFolderId: z.string().nullable().optional(),
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,7 +62,7 @@ export async function workflowRoutes(app: FastifyInstance) {
     const workflow = await prisma.workflow.findFirst({
       where: { id: req.params.id, agencyId },
       include: {
-        client: { select: { id: true, name: true, slug: true } },
+        client: { select: { id: true, name: true, slug: true, mondayBoardId: true, boxFolderId: true } },
         nodes: { orderBy: { createdAt: 'asc' } },
         edges: { orderBy: { createdAt: 'asc' } },
         defaultAssignee: { select: { id: true, name: true, avatarStorageKey: true } },
@@ -157,9 +161,13 @@ export async function workflowRoutes(app: FastifyInstance) {
         ...(parsed.data.status ? { status: parsed.data.status } : {}),
         ...(parsed.data.defaultAssigneeId !== undefined ? { defaultAssigneeId: parsed.data.defaultAssigneeId } : {}),
         ...(parsed.data.isLocked !== undefined ? { isLocked: parsed.data.isLocked } : {}),
+        ...(parsed.data.projectName !== undefined ? { projectName: parsed.data.projectName } : {}),
+        ...(parsed.data.mondayGroupId !== undefined ? { mondayGroupId: parsed.data.mondayGroupId } : {}),
+        ...(parsed.data.mondayGroupName !== undefined ? { mondayGroupName: parsed.data.mondayGroupName } : {}),
+        ...(parsed.data.boxProjectFolderId !== undefined ? { boxProjectFolderId: parsed.data.boxProjectFolderId } : {}),
       },
       include: {
-        client: { select: { id: true, name: true, slug: true } },
+        client: { select: { id: true, name: true, slug: true, mondayBoardId: true, boxFolderId: true } },
         defaultAssignee: { select: { id: true, name: true, avatarStorageKey: true } },
         _count: { select: { runs: true } },
       },
