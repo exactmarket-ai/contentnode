@@ -388,7 +388,11 @@ export class WorkflowRunner {
       where: { id: this.workflowRunId },
       include: {
         workflow: {
-          include: { nodes: true, edges: true },
+          include: {
+            nodes: true,
+            edges: true,
+            client: { select: { name: true } },
+          },
         },
       },
     })
@@ -1121,6 +1125,28 @@ export class WorkflowRunner {
         const reviewerIds = (run.reviewerIds as string[]) ?? []
         const dateStr     = new Date().toISOString().slice(0, 10)
 
+        // Filename helpers
+        const runRecord  = run as unknown as Record<string, unknown>
+        const runTopic   = (runRecord.topic as string | undefined)?.trim() ?? ''
+        const clientName = (workflow as unknown as Record<string, unknown>).client
+          ? ((workflow as unknown as Record<string, unknown>).client as Record<string, unknown>).name as string ?? ''
+          : ''
+        const version    = run.itemVersion ?? 1
+
+        const slugify = (s: string) =>
+          s.replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '-')
+
+        const buildFilename = (docTitle: string, ext: string) => {
+          const segments = [
+            slugify(clientName),
+            slugify(runTopic),
+            slugify(docTitle),
+            dateStr,
+            `v${version}`,
+          ].filter(Boolean)
+          return segments.join('-') + `.${ext}`
+        }
+
         // Monday routing context — prefer first-class fields (post-migration),
         // fall back to the input JSON written by earlier builds
         const runRecord     = run as unknown as Record<string, unknown>
@@ -1187,10 +1213,9 @@ export class WorkflowRunner {
               for (let i = 0; i < assets.length; i++) {
                 const sk = assets[i]?.storageKey
                 if (!sk) continue
-                const safeName    = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'image'
                 const imgFilename = assets.length > 1
-                  ? `${safeName}-${i + 1}-${dateStr}.png`
-                  : `${safeName}-${dateStr}.png`
+                  ? buildFilename(`${label}-${i + 1}`, 'png')
+                  : buildFilename(label || 'image', 'png')
                 try {
                   const boxUrl = await deliverImageToBox({
                     agencyId:      this.agencyId,
@@ -1216,7 +1241,6 @@ export class WorkflowRunner {
           if (!rawContent || typeof rawContent !== 'string') return
 
           anyTextDelivered = true
-          const safeName = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
           const fmt      = (cfg.format as string | undefined) ?? 'docx'
           const ext      = fmt === 'txt' ? 'txt' : 'docx'
           const mimeType = ext === 'docx'
@@ -1230,7 +1254,7 @@ export class WorkflowRunner {
               runId:         this.workflowRunId,
               stakeholderId: reviewerIds[0] ?? null,
               folderId:      targetFolderId,
-              filename:      `${safeName}-${dateStr}.${ext}`,
+              filename:      buildFilename(label || 'output', ext),
               content:       rawContent,
               mimeType,
               mondayItemId,
@@ -1249,7 +1273,6 @@ export class WorkflowRunner {
           if (!anyTextDelivered) {
             const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
             const text     = typeof finalOut?.content === 'string' ? finalOut.content : JSON.stringify(finalOut?.content ?? '')
-            const safeName = workflow.name.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
             try {
               const boxUrl = await deliverRunToBox({
                 agencyId:      this.agencyId,
@@ -1257,7 +1280,7 @@ export class WorkflowRunner {
                 runId:         this.workflowRunId,
                 stakeholderId: reviewerIds[0] ?? null,
                 folderId:      rootFolderId,
-                filename:      `${safeName}-${dateStr}.docx`,
+                filename:      buildFilename(workflow.name || 'output', 'docx'),
                 content:       text,
                 mimeType:      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 mondayItemId,

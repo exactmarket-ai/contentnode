@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { BatchRunModal } from '@/components/modals/BatchRunModal'
+import { RunTriggerModal } from '@/components/modals/RunTriggerModal'
 import { ScheduleModal } from '@/components/modals/ScheduleModal'
 import { triggerRun } from '@/lib/runWorkflow'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -390,6 +391,8 @@ export function TopBar() {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const [pendingRunAfterSave, setPendingRunAfterSave] = useState(false)
+  const [runTriggerOpen, setRunTriggerOpen] = useState(false)
+  const [pendingTopic, setPendingTopic] = useState('')
 
   // Keep nameValue in sync when a different workflow is loaded
   useEffect(() => {
@@ -491,11 +494,18 @@ export function TopBar() {
     setTimeout(() => setDuplicateToast(null), 6000)
   }
 
-  const handleRun = async () => {
+  const handleRun = () => {
     if (runStatus === 'running') return
+    setRunTriggerOpen(true)
+  }
+
+  const handleTopicConfirm = async (topic: string) => {
+    setRunTriggerOpen(false)
+    setPendingTopic(topic)
     const wf = useWorkflowStore.getState().workflow
     if (!wf.id) { setPendingRunAfterSave(true); setSaveDialogOpen(true); return }
-    await triggerRun()
+    await triggerRun(undefined, topic)
+    setPendingTopic('')
   }
 
   const handleSave = async (name: string, clientId: string, createNew = false) => {
@@ -894,6 +904,15 @@ export function TopBar() {
         </div>
       )}
 
+      {/* Run trigger modal */}
+      {runTriggerOpen && (
+        <RunTriggerModal
+          workflowName={workflow.name}
+          onConfirm={handleTopicConfirm}
+          onClose={() => setRunTriggerOpen(false)}
+        />
+      )}
+
       {/* Save dialog */}
       {saveDialogOpen && (
         <SaveWorkflowDialog
@@ -903,7 +922,9 @@ export function TopBar() {
             setSaveDialogOpen(false)
             if (pendingRunAfterSave) {
               setPendingRunAfterSave(false)
-              await triggerRun()
+              const topic = pendingTopic
+              setPendingTopic('')
+              await triggerRun(undefined, topic)
             }
           }}
         />

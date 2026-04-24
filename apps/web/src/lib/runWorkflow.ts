@@ -43,7 +43,7 @@ function isSourceNodeConfigured(n: Node): boolean {
   )
 }
 
-export async function triggerRun(stopAtNodeId?: string): Promise<void> {
+export async function triggerRun(stopAtNodeId?: string, topic?: string): Promise<void> {
   const store = useWorkflowStore.getState()
   const { nodes, edges, workflow: wf } = store
 
@@ -106,6 +106,7 @@ export async function triggerRun(stopAtNodeId?: string): Promise<void> {
         connectivity_mode: wf.connectivity_mode,
         ...(stopAtNodeId ? { stopAtNodeId } : {}),
         ...(Object.keys(seedNodeStatuses).length > 0 ? { seedNodeStatuses } : {}),
+        ...(topic?.trim() ? { topic: topic.trim() } : {}),
       }),
     })
 
