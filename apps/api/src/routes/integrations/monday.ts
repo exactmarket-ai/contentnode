@@ -340,8 +340,6 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return `${apiBase}/api/v1/integrations/monday/webhook`
     })()
 
-    req.log.info({ webhookUrl }, '[monday] registering webhook')
-
     const eventList = events ?? ['create_item']
     const results = []
 
@@ -385,8 +383,6 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     if (body.challenge) {
       return reply.send({ challenge: body.challenge })
     }
-
-    req.log.info({ bodyKeys: Object.keys(body), eventType: (body.event as any)?.type }, '[monday] webhook body received')
 
     // Validate signing secret if configured — if not set, accept all (dev/staging)
     const signingSecret = process.env.MONDAY_SIGNING_SECRET
