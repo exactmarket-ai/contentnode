@@ -931,6 +931,8 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
 
   return (
     <div className="space-y-6">
+      <UnknownEditorsAlert clientId={client.id} onTabChange={onTabChange} />
+
       <div className="grid grid-cols-4 gap-3">
         {[
           { icon: Icons.Users, value: client._count.stakeholders, label: 'Contacts', tab: 'stakeholders' as Tab },
@@ -957,6 +959,37 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
         <BrainEntriesCard clientId={client.id} onTabChange={onTabChange} />
       </div>
     </div>
+  )
+}
+
+function UnknownEditorsAlert({ clientId, onTabChange }: { clientId: string; onTabChange: (tab: Tab) => void }) {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${clientId}/unknown-editors`)
+      .then((r) => r.json())
+      .then((j) => setCount((j.data ?? []).length))
+      .catch(() => {})
+  }, [clientId])
+
+  if (count === 0) return null
+
+  return (
+    <button
+      onClick={() => onTabChange('stakeholders')}
+      className="flex w-full items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left hover:bg-amber-100 transition-colors"
+    >
+      <Icons.UserX className="h-4 w-4 shrink-0 text-amber-600" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-amber-900">
+          {count === 1 ? '1 unidentified Box editor' : `${count} unidentified Box editors`}
+        </p>
+        <p className="text-[11px] text-amber-700">
+          Edited documents in Box but not yet in ContentNode — add them to capture their style preferences
+        </p>
+      </div>
+      <Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+    </button>
   )
 }
 
