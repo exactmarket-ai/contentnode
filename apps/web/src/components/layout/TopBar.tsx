@@ -1185,7 +1185,7 @@ function ProjectPickerModal({
     setLoadingBox(true)
     const url = boxRootId
       ? `/api/v1/integrations/box/folders/${boxRootId}/subfolders`
-      : `/api/v1/integrations/box/folders/0/subfolders`
+      : `/api/v1/integrations/box/root-subfolders`
     apiFetch(url)
       .then((r) => r.json())
       .then(({ data }) => { setBoxFolders(data ?? []) })
@@ -1248,7 +1248,7 @@ function ProjectPickerModal({
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select group…" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper" sideOffset={4}>
                   <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
                   {mondayGroups.map((g) => (
                     <SelectItem key={g.id} value={g.id} className="text-xs">{g.title}</SelectItem>
@@ -1276,7 +1276,7 @@ function ProjectPickerModal({
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Select client root folder…" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={4}>
                     <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
                     {boxFolders.map((f) => (
                       <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
@@ -1289,7 +1289,7 @@ function ProjectPickerModal({
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select project folder…" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper" sideOffset={4}>
                   <SelectItem value="__none__" className="text-xs text-muted-foreground">— None (use client root) —</SelectItem>
                   {boxFolders.map((f) => (
                     <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
