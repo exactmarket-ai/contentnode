@@ -1168,6 +1168,7 @@ function ProjectPickerModal({
   const [selectedClientBoxRootId, setSelectedClientBoxRootId] = useState(clientBoxFolderId ?? '')
   const [loadingMonday, setLoadingMonday] = useState(false)
   const [loadingBox, setLoadingBox] = useState(false)
+  const [boxError, setBoxError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!clientMondayBoardId) return
@@ -1183,13 +1184,17 @@ function ProjectPickerModal({
   const boxRootId = selectedClientBoxRootId || clientBoxFolderId || ''
   useEffect(() => {
     setLoadingBox(true)
+    setBoxError(null)
     const url = boxRootId
       ? `/api/v1/integrations/box/folders/${boxRootId}/subfolders`
       : `/api/v1/integrations/box/root-subfolders`
     apiFetch(url)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return r.json().then((e) => { throw new Error(e?.error ?? `HTTP ${r.status}`) })
+        return r.json()
+      })
       .then(({ data }) => { setBoxFolders(data ?? []) })
-      .catch(() => {})
+      .catch((err: Error) => { setBoxError(err.message ?? 'Failed to load Box folders') })
       .finally(() => setLoadingBox(false))
   }, [boxRootId])
 
@@ -1269,6 +1274,8 @@ function ProjectPickerModal({
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Icons.Loader2 className="h-3 w-3 animate-spin" />Loading folders…
               </div>
+            ) : boxError ? (
+              <p className="text-xs text-red-500">{boxError}</p>
             ) : !clientBoxFolderId ? (
               <>
                 <p className="text-[10px] text-amber-600">No client root folder set — pick one to link it:</p>
