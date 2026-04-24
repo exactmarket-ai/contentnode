@@ -438,24 +438,30 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         dbg(`token=ok boardId=${boardId} itemId=${itemId}`)
         app.log.info({ boardId, itemId }, '[monday-webhook] fetching item column values')
 
-        // Fetch item's current column values + board name
+        // Fetch item's column values + board name + board column definitions (title lives on Column, not ColumnValue)
         const itemData = await mondayGraphQL<{
           items: Array<{
-            board: { id: string; name: string }
-            column_values: Array<{ id: string; title: string; text: string }>
+            board: { id: string; name: string; columns: Array<{ id: string; title: string }> }
+            column_values: Array<{ id: string; text: string }>
           }>
         }>(token, `
           query($itemId: [ID!]) {
             items(ids: $itemId) {
-              board { id name }
-              column_values { id title text }
+              board { id name columns { id title } }
+              column_values { id text }
             }
           }
         `, { itemId: [itemId] })
 
         const item      = itemData.items?.[0]
         const boardName = item?.board?.name ?? ''
-        const colValues = item?.column_values ?? []
+        // Join column values with column definitions so we have { id, title, text }
+        const colDefs   = item?.board?.columns ?? []
+        const colValues = (item?.column_values ?? []).map(cv => ({
+          id:    cv.id,
+          title: colDefs.find(c => c.id === cv.id)?.title ?? cv.id,
+          text:  cv.text,
+        }))
 
         dbg(`boardName=${boardName} columns=${colValues.map(c => `"${c.title}"=${JSON.stringify(c.text)}`).join(', ')}`)
         app.log.info({ boardName, columnCount: colValues.length, columns: colValues.map(c => `${c.title}=${c.text}`) }, '[monday-webhook] item columns')
