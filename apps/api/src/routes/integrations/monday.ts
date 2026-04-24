@@ -430,7 +430,9 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
             }
           `, { id: [boardId] })
           const col = boardData.boards?.[0]?.columns?.find(
-            c => c.title.toLowerCase().includes('box')
+            c => c.title.toLowerCase().includes('client folder') && c.title.toLowerCase().includes('box')
+          ) ?? boardData.boards?.[0]?.columns?.find(
+            c => c.title.toLowerCase() === 'box'
           )
 
           if (col) {
