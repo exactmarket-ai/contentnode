@@ -955,7 +955,7 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
       <div className="grid grid-cols-2 gap-4">
         <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
         <div className="flex flex-col gap-4">
-          <UnknownEditorsAlert clientId={client.id} onTabChange={onTabChange} />
+          <ContactsCard client={client} onTabChange={onTabChange} />
           <BrainEntriesCard clientId={client.id} onTabChange={onTabChange} />
         </div>
       </div>
@@ -963,34 +963,84 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
   )
 }
 
-function UnknownEditorsAlert({ clientId, onTabChange }: { clientId: string; onTabChange: (tab: Tab) => void }) {
-  const [count, setCount] = useState(0)
+function ContactsCard({ client, onTabChange }: { client: Client; onTabChange: (tab: Tab) => void }) {
+  const [unknownEditors, setUnknownEditors] = useState<{ email: string; editCount: number; lastSeenAt: string }[]>([])
 
   useEffect(() => {
-    apiFetch(`/api/v1/clients/${clientId}/unknown-editors`)
+    apiFetch(`/api/v1/clients/${client.id}/unknown-editors`)
       .then((r) => r.json())
-      .then((j) => setCount((j.data ?? []).length))
+      .then((j) => setUnknownEditors(j.data ?? []))
       .catch(() => {})
-  }, [clientId])
+  }, [client.id])
 
-  if (count === 0) return null
+  const activeStakeholders = client.stakeholders.filter((s) => !s.archivedAt)
+  const totalCount = activeStakeholders.length + unknownEditors.length
 
   return (
-    <button
-      onClick={() => onTabChange('stakeholders')}
-      className="flex w-full items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left hover:bg-amber-100 transition-colors"
-    >
-      <Icons.UserX className="h-4 w-4 shrink-0 text-amber-600" />
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-amber-900">
-          {count === 1 ? '1 unidentified Box editor' : `${count} unidentified Box editors`}
-        </p>
-        <p className="text-[11px] text-amber-700">
-          Edited documents in Box but not yet in ContentNode — add them to capture their style preferences
-        </p>
+    <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 shrink-0">
+        <div className="flex items-center gap-2">
+          <Icons.Users className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium">Contacts</span>
+          {unknownEditors.length > 0 && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+              {unknownEditors.length} unresolved
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => onTabChange('stakeholders')}
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View all →
+        </button>
       </div>
-      <Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-    </button>
+
+      {totalCount === 0 ? (
+        <p className="py-8 text-center text-xs text-muted-foreground">No contacts yet.</p>
+      ) : (
+        <div className="divide-y divide-border/40 overflow-y-auto max-h-64">
+          {/* Unknown editors first — need action */}
+          {unknownEditors.map((u) => (
+            <button
+              key={u.email}
+              onClick={() => onTabChange('stakeholders')}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-amber-50/60 transition-colors"
+            >
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
+                {u.email.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs truncate text-foreground/80">{u.email}</p>
+                <p className="text-[10px] text-muted-foreground">{u.editCount} {u.editCount === 1 ? 'edit' : 'edits'} in Box</p>
+              </div>
+              <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+                <Icons.AlertCircle className="h-2.5 w-2.5" />
+                Add
+              </span>
+            </button>
+          ))}
+
+          {/* Known contacts */}
+          {activeStakeholders.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onTabChange('stakeholders')}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/30 transition-colors"
+            >
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold">
+                {s.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs truncate font-medium">{s.name}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{s.role ?? s.email}</p>
+              </div>
+              <SeniorityBadge seniority={s.seniority} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
