@@ -206,8 +206,6 @@ const NAV_ITEMS = [
   { to: '/workflows',    icon: Icons.Workflow,       label: 'Workflows',         ...ACTIVE },
   { to: '/clients',      icon: Icons.Users,          label: 'Clients',           ...ACTIVE },
   { to: '/calendar',     icon: Icons.CalendarDays,   label: 'Calendar',          ...ACTIVE },
-  { to: '/reviews',      icon: Icons.ClipboardEdit,  label: 'Reviews & Runs',    ...ACTIVE },
-  { to: '/quality',      icon: Icons.TrendingUp,     label: 'Quality & Reports', ...ACTIVE },
   { to: '/usage',        icon: Icons.BarChart2,      label: 'Usage',             ...ACTIVE },
   { to: '/humanizer',    icon: Icons.BrainCircuit,   label: 'cnHumanizer',       ...ACTIVE },
 ]
@@ -360,6 +358,20 @@ export function AppNav({ onSignOut }: AppNavProps) {
                 collapsed={collapsed}
                 icon={Icons.TableProperties}
                 label="Deliverables"
+                {...ACTIVE}
+              />
+              <NavItem
+                to="/reviews"
+                collapsed={collapsed}
+                icon={Icons.ClipboardEdit}
+                label="Reviews & Runs"
+                {...ACTIVE}
+              />
+              <NavItem
+                to="/quality"
+                collapsed={collapsed}
+                icon={Icons.TrendingUp}
+                label="Quality & Reports"
                 {...ACTIVE}
               />
             </div>
