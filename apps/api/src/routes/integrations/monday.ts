@@ -56,6 +56,26 @@ async function mondayGraphQL<T = unknown>(token: string, query: string, variable
 
 export async function mondayIntegrationRoutes(app: FastifyInstance) {
 
+  // Monday webhook bodies are sometimes non-standard JSON (extra whitespace,
+  // BOM, or URL-encoded payloads). Register a lenient parser scoped to this
+  // plugin so real Monday events aren't rejected before reaching the handler.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    try {
+      done(null, JSON.parse(body as string))
+    } catch {
+      // Try stripping a BOM or leading/trailing noise then re-parse
+      try {
+        const cleaned = (body as string).replace(/^﻿/, '').trim()
+        done(null, JSON.parse(cleaned))
+      } catch {
+        done(null, {})
+      }
+    }
+  })
+  app.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => {
+    try { done(null, JSON.parse(body as string)) } catch { done(null, {}) }
+  })
+
   // ── GET /connect — return OAuth redirect URL ─────────────────────────────
   app.get('/connect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
