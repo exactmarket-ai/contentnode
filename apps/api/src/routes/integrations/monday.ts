@@ -340,7 +340,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return `${apiBase}/api/v1/integrations/monday/webhook`
     })()
 
-    const eventList = events ?? ['change_column_values']
+    const eventList = events ?? ['change_column_value']
     const results = []
 
     for (const event of eventList) {
