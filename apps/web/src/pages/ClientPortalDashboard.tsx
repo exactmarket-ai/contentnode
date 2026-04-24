@@ -1561,7 +1561,7 @@ export function ClientPortalDashboard() {
   return (
     <div className="flex h-full flex-col overflow-auto bg-background">
       {/* Page header */}
-      <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-4">
+      <div className="sticky top-0 z-10 border-b border-border bg-background px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold text-foreground">Client Dashboard</h1>
