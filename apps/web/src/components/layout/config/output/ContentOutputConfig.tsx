@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn, stripMarkdown } from '@/lib/utils'
 import { downloadDocx } from '@/lib/downloadDocx'
 import { useWorkflowStore } from '@/store/workflowStore'
-import { FieldGroup } from '../shared'
+import { FieldGroup, PMRoutingSection } from '../shared'
 import { MarkdownContent } from '@/components/ui/markdown-content'
 
 const OUTPUT_TYPES = [
@@ -360,6 +360,8 @@ export function ContentOutputConfig({
         options={formatOptions}
         onOptionsChange={(opts) => onChange('format_options', opts)}
       />
+
+      <PMRoutingSection config={config} onChange={onChange} />
     </>
   )
 }

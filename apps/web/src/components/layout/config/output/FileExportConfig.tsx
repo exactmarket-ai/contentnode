@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { downloadDocx } from '@/lib/downloadDocx'
 import { stripMarkdown } from '@/lib/utils'
-import { FieldGroup } from '../shared'
+import { FieldGroup, PMRoutingSection } from '../shared'
 import { MarkdownContent } from '@/components/ui/markdown-content'
 
 export function FileExportOutput({
@@ -110,6 +110,8 @@ export function FileExportConfig({ config, onChange }: { config: Record<string, 
           onChange={(e) => onChange('filename', e.target.value)}
         />
       </FieldGroup>
+
+      <PMRoutingSection config={config} onChange={onChange} />
     </>
   )
 }

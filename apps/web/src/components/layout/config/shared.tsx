@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import * as Icons from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
@@ -94,6 +97,80 @@ export function FieldGroup({ label, description, children }: { label: string; de
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
       {description && <p className="text-[10px] text-muted-foreground">{description}</p>}
+    </div>
+  )
+}
+
+// ─── PMRoutingSection ─────────────────────────────────────────────────────────
+
+/**
+ * Collapsible "PM Routing" section appended to any output node config.
+ * Controls where Box files land and what gets written back to Monday.
+ */
+export function PMRoutingSection({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>
+  onChange: (k: string, v: unknown) => void
+}) {
+  const [open, setOpen] = useState(
+    !!(config.delivery_box_subfolder || config.delivery_monday_column || config.delivery_monday_status)
+  )
+
+  return (
+    <div className="border-t border-border pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <span className="flex items-center gap-1.5">
+          <Icons.Share2 className="h-3.5 w-3.5" />
+          PM Routing
+        </span>
+        <Icons.ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <FieldGroup
+            label="Box Subfolder"
+            description="Creates this subfolder inside the run's Box folder and delivers the file there."
+          >
+            <Input
+              placeholder="e.g. Blog"
+              className="text-xs"
+              value={(config.delivery_box_subfolder as string) ?? ''}
+              onChange={(e) => onChange('delivery_box_subfolder', e.target.value)}
+            />
+          </FieldGroup>
+
+          <FieldGroup
+            label="Monday URL Column"
+            description="Column title to receive the Box file URL (exact match, case-insensitive)."
+          >
+            <Input
+              placeholder="e.g. Blog URL"
+              className="text-xs"
+              value={(config.delivery_monday_column as string) ?? ''}
+              onChange={(e) => onChange('delivery_monday_column', e.target.value)}
+            />
+          </FieldGroup>
+
+          <FieldGroup
+            label="Monday Status on Delivery"
+            description="Sets the Status column to this label when the file lands in Box."
+          >
+            <Input
+              placeholder="e.g. Ready for Review"
+              className="text-xs"
+              value={(config.delivery_monday_status as string) ?? ''}
+              onChange={(e) => onChange('delivery_monday_status', e.target.value)}
+            />
+          </FieldGroup>
+        </div>
+      )}
     </div>
   )
 }

@@ -576,9 +576,11 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
                     agencyId,
                     triggeredBy:     null,
                     status:          'pending',
-                    input:           { mondayItemId: itemId, mondayBoardId: boardId, triggerSource: 'monday_webhook' } as Prisma.InputJsonValue,
+                    input:           { triggerSource: 'monday_webhook' } as Prisma.InputJsonValue,
                     output:          { nodeStatuses: {} } as Prisma.InputJsonValue,
                     clientFolderBox: url,
+                    mondayItemId:    itemId,
+                    mondayBoardId:   boardId,
                     ...(workflow.defaultAssigneeId ? { assigneeId: workflow.defaultAssigneeId } : {}),
                   },
                 })

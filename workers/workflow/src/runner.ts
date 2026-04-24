@@ -47,7 +47,8 @@ import { WrikeSourceExecutor } from './executors/wrikeSource.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
-import { deliverRunToBox, deliverImageToBox } from './boxDelivery.js'
+import { deliverRunToBox, deliverImageToBox, ensureBoxSubfolder } from './boxDelivery.js'
+import { writeFileUrlToMonday, setMondayStatus, clearMondayCache } from './mondayWriteback.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-node status stored inside WorkflowRun.output
@@ -1115,93 +1116,173 @@ export class WorkflowRunner {
     // Deliver output to Box if folder is configured on the run (non-blocking)
     if (finalStatus === 'completed' && run.clientFolderBox && workflow.clientId) {
       const folderIdMatch = run.clientFolderBox.match(/\/folder\/(\d+)/)
-      const folderId = folderIdMatch?.[1]
-      if (folderId) {
+      const rootFolderId = folderIdMatch?.[1]
+      if (rootFolderId) {
         const reviewerIds = (run.reviewerIds as string[]) ?? []
         const dateStr     = new Date().toISOString().slice(0, 10)
 
-        // Collect deliverables from all output nodes
-        const outputNodes = workflow.nodes.filter((n) => n.type === 'output')
-        const deliverables: Array<{ filename: string; content: string; mimeType?: string }> = []
+        // Monday routing context — prefer first-class fields (post-migration),
+        // fall back to the input JSON written by earlier builds
+        const runRecord     = run as unknown as Record<string, unknown>
+        const mondayItemId  = (runRecord.mondayItemId as string | undefined)
+          ?? (runInput.mondayItemId as string | undefined) ?? null
+        const mondayBoardId = (runRecord.mondayBoardId as string | undefined)
+          ?? (runInput.mondayBoardId as string | undefined) ?? null
 
-        for (const node of outputNodes) {
+        // Clear per-run column cache so stale data doesn't bleed between jobs
+        clearMondayCache()
+
+        // Deliver each output node independently so each can use its own
+        // routing config (subfolder, Monday column, Monday status)
+        const outputNodes   = workflow.nodes.filter((n) => n.type === 'output')
+        let anyTextDelivered = false
+
+        const deliverNode = async (node: (typeof outputNodes)[number]) => {
           const nodeOutput = runOutput.nodeStatuses[node.id]?.output as Record<string, unknown> | undefined
-          if (!nodeOutput) continue
+          if (!nodeOutput) return
 
-          const cfg     = (node.config ?? {}) as Record<string, unknown>
-          const subtype = cfg.subtype as string | undefined
-          const label   = (cfg.label as string | undefined) ?? (cfg.output_type as string | undefined) ?? subtype ?? node.id
+          const cfg        = (node.config ?? {}) as Record<string, unknown>
+          const subtype    = cfg.subtype as string | undefined
+          const label      = (cfg.label as string | undefined) ?? (cfg.output_type as string | undefined) ?? subtype ?? node.id
 
-          // Image/video/audio nodes deliver via separate image-aware path
+          // Per-node PM routing config (set from output node config panel)
+          const subfolder    = (cfg.delivery_box_subfolder as string | undefined)?.trim() || null
+          const mondayColumn = (cfg.delivery_monday_column as string | undefined)?.trim() || null
+          const mondayStatus = (cfg.delivery_monday_status as string | undefined)?.trim() || null
+
+          // Resolve the target Box folder (create subfolder on demand if configured)
+          const targetFolderId = subfolder
+            ? await ensureBoxSubfolder(this.agencyId, rootFolderId, subfolder)
+            : rootFolderId
+
+          // Helper: write URL + optional status back to Monday after delivery
+          const writeMonday = async (boxUrl: string) => {
+            if (!mondayItemId || !mondayBoardId) return
+            if (mondayColumn) {
+              await writeFileUrlToMonday({
+                agencyId:    this.agencyId,
+                boardId:     mondayBoardId,
+                itemId:      mondayItemId,
+                columnTitle: mondayColumn,
+                url:         boxUrl,
+              }).catch((err) => console.error('[runner] Monday URL writeback failed:', err))
+            }
+            if (mondayStatus) {
+              await setMondayStatus({
+                agencyId:    this.agencyId,
+                boardId:     mondayBoardId,
+                itemId:      mondayItemId,
+                columnTitle: 'Status',
+                label:       mondayStatus,
+              }).catch((err) => console.error('[runner] Monday status writeback failed:', err))
+            }
+          }
+
+          // ── Image/video/audio nodes ───────────────────────────────────────
           const isMedia = subtype === 'image-generation' || subtype === 'video-generation'
             || subtype === 'voice-output' || subtype === 'music-generation'
           if (isMedia) {
             if (subtype === 'image-generation') {
-              const assets = (nodeOutput.assets as Array<{ storageKey?: string; localPath?: string }>) ?? []
+              const assets = (nodeOutput.assets as Array<{ storageKey?: string }>) ?? []
               for (let i = 0; i < assets.length; i++) {
-                const asset = assets[i]
-                const sk = asset.storageKey
+                const sk = assets[i]?.storageKey
                 if (!sk) continue
-                const safeName = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'image'
+                const safeName    = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'image'
                 const imgFilename = assets.length > 1
                   ? `${safeName}-${i + 1}-${dateStr}.png`
                   : `${safeName}-${dateStr}.png`
-                deliverImageToBox({
-                  agencyId:      this.agencyId,
-                  clientId:      workflow.clientId!,
-                  runId:         this.workflowRunId,
-                  stakeholderId: reviewerIds[0] ?? null,
-                  folderId,
-                  storageKey:    sk,
-                  filename:      imgFilename,
-                  mondayItemId:  null,
-                }).catch((err) => {
+                try {
+                  const boxUrl = await deliverImageToBox({
+                    agencyId:      this.agencyId,
+                    clientId:      workflow.clientId!,
+                    runId:         this.workflowRunId,
+                    stakeholderId: reviewerIds[0] ?? null,
+                    folderId:      targetFolderId,
+                    storageKey:    sk,
+                    filename:      imgFilename,
+                    mondayItemId,
+                  })
+                  await writeMonday(boxUrl)
+                } catch (err) {
                   console.error(`[runner] Box image delivery failed for ${imgFilename}:`, err)
-                })
+                }
               }
             }
-            continue
+            return
           }
 
+          // ── Text output nodes ─────────────────────────────────────────────
           const rawContent = nodeOutput.content ?? nodeOutput.outputText ?? nodeOutput.humanizedContent ?? nodeOutput.text
-          if (!rawContent || typeof rawContent !== 'string') continue
+          if (!rawContent || typeof rawContent !== 'string') return
 
+          anyTextDelivered = true
           const safeName = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
-          const fmt = (cfg.format as string | undefined) ?? 'docx'
-          const ext = fmt === 'txt' ? 'txt' : 'docx'
+          const fmt      = (cfg.format as string | undefined) ?? 'docx'
+          const ext      = fmt === 'txt' ? 'txt' : 'docx'
           const mimeType = ext === 'docx'
             ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             : 'text/plain'
-          deliverables.push({ filename: `${safeName}-${dateStr}.${ext}`, content: rawContent, mimeType })
+
+          try {
+            const boxUrl = await deliverRunToBox({
+              agencyId:      this.agencyId,
+              clientId:      workflow.clientId!,
+              runId:         this.workflowRunId,
+              stakeholderId: reviewerIds[0] ?? null,
+              folderId:      targetFolderId,
+              filename:      `${safeName}-${dateStr}.${ext}`,
+              content:       rawContent,
+              mimeType,
+              mondayItemId,
+            })
+            await writeMonday(boxUrl)
+          } catch (err) {
+            console.error(`[runner] Box text delivery failed for node ${node.id}:`, err)
+          }
         }
 
-        // Fall back to finalOutput if no output nodes yielded content
-        if (deliverables.length === 0) {
-          const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
-          const text = typeof finalOut?.content === 'string' ? finalOut.content : JSON.stringify(finalOut?.content ?? '')
-          const safeName = workflow.name.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
-          deliverables.push({
-            filename: `${safeName}-${dateStr}.docx`,
-            content:  text,
-            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          })
-        }
+        // Run all output node deliveries concurrently (non-blocking overall)
+        ;(async () => {
+          await Promise.allSettled(outputNodes.map(deliverNode))
 
-        for (const { filename, content, mimeType } of deliverables) {
-          deliverRunToBox({
-            agencyId:      this.agencyId,
-            clientId:      workflow.clientId,
-            runId:         this.workflowRunId,
-            stakeholderId: reviewerIds[0] ?? null,
-            folderId,
-            filename,
-            content,
-            mimeType,
-            mondayItemId:  null,
-          }).catch((err) => {
-            console.error(`[runner] Box delivery failed for ${filename}:`, err)
-          })
-        }
+          // Fall back to finalOutput if no output nodes yielded text content
+          if (!anyTextDelivered) {
+            const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
+            const text     = typeof finalOut?.content === 'string' ? finalOut.content : JSON.stringify(finalOut?.content ?? '')
+            const safeName = workflow.name.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
+            try {
+              const boxUrl = await deliverRunToBox({
+                agencyId:      this.agencyId,
+                clientId:      workflow.clientId!,
+                runId:         this.workflowRunId,
+                stakeholderId: reviewerIds[0] ?? null,
+                folderId:      rootFolderId,
+                filename:      `${safeName}-${dateStr}.docx`,
+                content:       text,
+                mimeType:      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                mondayItemId,
+              })
+              // No per-node Monday column for the fallback — just the status if any
+              if (mondayItemId && mondayBoardId) {
+                const anyStatus = outputNodes
+                  .map((n) => ((n.config ?? {}) as Record<string, unknown>).delivery_monday_status as string | undefined)
+                  .find((s) => s?.trim())
+                if (anyStatus) {
+                  await setMondayStatus({
+                    agencyId:    this.agencyId,
+                    boardId:     mondayBoardId,
+                    itemId:      mondayItemId,
+                    columnTitle: 'Status',
+                    label:       anyStatus,
+                  }).catch(() => {})
+                }
+              }
+              void boxUrl // suppress unused-variable warning
+            } catch (err) {
+              console.error('[runner] Box fallback delivery failed:', err)
+            }
+          }
+        })().catch((err) => console.error('[runner] Box delivery block failed:', err))
       }
     }
   }

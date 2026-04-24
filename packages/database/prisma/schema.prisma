@@ -695,6 +695,8 @@ model WorkflowRun {
   focus               String?
   clientFolderBox     String?   @db.Text @map("client_folder_box")
   clientFolderClient  String?   @db.Text @map("client_folder_client")
+  mondayItemId        String?   @map("monday_item_id")
+  mondayBoardId       String?   @map("monday_board_id")
 
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)

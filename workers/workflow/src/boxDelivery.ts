@@ -65,7 +65,7 @@ export async function deliverRunToBox(params: {
   content:       string
   mimeType?:     string   // defaults to text/plain
   mondayItemId:  string | null
-}): Promise<void> {
+}): Promise<string> { // returns Box file URL
   const { agencyId, clientId, runId, stakeholderId, folderId, filename, content, mimeType, mondayItemId } = params
 
   const token = await getBoxToken(agencyId)
@@ -138,6 +138,7 @@ export async function deliverRunToBox(params: {
   })
 
   console.log(`[boxDelivery] delivered run ${runId} → Box file ${fileId} in folder ${folderId}`)
+  return `https://app.box.com/file/${fileId}`
 }
 
 // ── Image asset delivery ──────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ export async function deliverImageToBox(params: {
   storageKey:    string   // R2 storage key
   filename:      string   // e.g. "NexusTek Blog Image-2025-04-24.png"
   mondayItemId:  string | null
-}): Promise<void> {
+}): Promise<string> { // returns Box file URL
   const { agencyId, clientId, runId, stakeholderId, folderId, storageKey, filename, mondayItemId } = params
 
   const token = await getBoxToken(agencyId)
@@ -208,4 +209,57 @@ export async function deliverImageToBox(params: {
   })
 
   console.log(`[boxDelivery] delivered image ${storageKey} → Box file ${fileId}`)
+  return `https://app.box.com/file/${fileId}`
+}
+
+// ── Subfolder helper ──────────────────────────────────────────────────────────
+
+/**
+ * Returns the Box folder ID for `name` inside `parentFolderId`, creating it
+ * if it doesn't exist yet. Uses Box's conflict response (409) to detect
+ * existing folders without a separate list call.
+ */
+export async function ensureBoxSubfolder(
+  agencyId:       string,
+  parentFolderId: string,
+  name:           string,
+): Promise<string> {
+  const token = await getBoxToken(agencyId)
+
+  // Try to create; Box returns 409 with the existing folder in context_info
+  const res = await fetch(`${BOX_API_URL}/folders`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ name, parent: { id: parentFolderId } }),
+  })
+
+  if (res.ok) {
+    const data = await res.json() as { id: string }
+    console.log(`[boxDelivery] created subfolder "${name}" → ${data.id}`)
+    return data.id
+  }
+
+  if (res.status === 409) {
+    // Folder already exists — Box returns the existing folder in context_info.conflicts
+    const body = await res.json() as {
+      context_info?: { conflicts?: Array<{ id?: string; sequence_id?: string }> }
+    }
+    const existingId = body.context_info?.conflicts?.[0]?.id
+    if (existingId) {
+      console.log(`[boxDelivery] subfolder "${name}" already exists → ${existingId}`)
+      return existingId
+    }
+    // Fallback: search the parent folder's items for a matching name
+    const listRes = await fetch(
+      `${BOX_API_URL}/folders/${parentFolderId}/items?type=folder&limit=200`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (listRes.ok) {
+      const listData = await listRes.json() as { entries: Array<{ id: string; name: string }> }
+      const match = listData.entries.find((e) => e.name === name)
+      if (match) return match.id
+    }
+  }
+
+  throw new Error(`ensureBoxSubfolder failed for "${name}" in ${parentFolderId}: ${res.status}`)
 }
