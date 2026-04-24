@@ -62,6 +62,13 @@ export class LogicNodeExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as LogicNodeConfig
 
+    // Merge node — concatenates inputs without any AI call
+    if (cfg.subtype === 'merge') {
+      const inputs = Array.isArray(input) ? input : [input]
+      const parts = inputs.map(i => (typeof i === 'string' ? i : JSON.stringify(i, null, 2)))
+      return { output: parts.join('\n\n') }
+    }
+
     if (!cfg.provider || !cfg.model) {
       throw new Error(
         `Logic node ${ctx.nodeId}: config must include provider and model`
