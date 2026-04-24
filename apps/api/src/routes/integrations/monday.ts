@@ -347,13 +347,13 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 
     for (const event of eventList) {
       const data = await mondayGraphQL<{ create_webhook: { id: string; board_id: string } }>(token, `
-        mutation($boardId: ID!, $url: String!, $event: WebhookEventType!) {
-          create_webhook(board_id: $boardId, url: $url, event: $event) {
+        mutation($boardId: ID!, $url: String!) {
+          create_webhook(board_id: $boardId, url: $url, event: ${event}) {
             id
             board_id
           }
         }
-      `, { boardId, url: webhookUrl, event })
+      `, { boardId, url: webhookUrl })
       results.push(data.create_webhook)
     }
 
