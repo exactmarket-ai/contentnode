@@ -1122,7 +1122,7 @@ export class WorkflowRunner {
 
         // Collect deliverables from all output nodes
         const outputNodes = workflow.nodes.filter((n) => n.type === 'output')
-        const deliverables: Array<{ filename: string; content: string }> = []
+        const deliverables: Array<{ filename: string; content: string; mimeType?: string }> = []
 
         for (const node of outputNodes) {
           const nodeOutput = runOutput.nodeStatuses[node.id]?.output as Record<string, unknown> | undefined
@@ -1167,7 +1167,12 @@ export class WorkflowRunner {
           if (!rawContent || typeof rawContent !== 'string') continue
 
           const safeName = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
-          deliverables.push({ filename: `${safeName}-${dateStr}.txt`, content: rawContent })
+          const fmt = (cfg.format as string | undefined) ?? 'docx'
+          const ext = fmt === 'txt' ? 'txt' : 'docx'
+          const mimeType = ext === 'docx'
+            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            : 'text/plain'
+          deliverables.push({ filename: `${safeName}-${dateStr}.${ext}`, content: rawContent, mimeType })
         }
 
         // Fall back to finalOutput if no output nodes yielded content
@@ -1175,10 +1180,14 @@ export class WorkflowRunner {
           const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
           const text = typeof finalOut?.content === 'string' ? finalOut.content : JSON.stringify(finalOut?.content ?? '')
           const safeName = workflow.name.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
-          deliverables.push({ filename: `${safeName}-${dateStr}.txt`, content: text })
+          deliverables.push({
+            filename: `${safeName}-${dateStr}.docx`,
+            content:  text,
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          })
         }
 
-        for (const { filename, content } of deliverables) {
+        for (const { filename, content, mimeType } of deliverables) {
           deliverRunToBox({
             agencyId:      this.agencyId,
             clientId:      workflow.clientId,
@@ -1187,6 +1196,7 @@ export class WorkflowRunner {
             folderId,
             filename,
             content,
+            mimeType,
             mondayItemId:  null,
           }).catch((err) => {
             console.error(`[runner] Box delivery failed for ${filename}:`, err)

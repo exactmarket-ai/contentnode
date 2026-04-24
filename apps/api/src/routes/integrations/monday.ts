@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, type Prisma } from '@contentnode/database'
 import { requireRole } from '../../plugins/auth.js'
 import { encrypt, safeDecrypt } from '../../lib/crypto.js'
 import { createBoxFolder } from './box.js'
+import { getWorkflowRunsQueue } from '../../lib/queues.js'
 
 const MONDAY_AUTH_URL  = 'https://auth.monday.com/oauth2/authorize'
 const MONDAY_TOKEN_URL = 'https://auth.monday.com/oauth2/token'
@@ -555,6 +556,47 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         }
 
         app.log.info({ folderName, boardName, clientName, parentId, url }, '[monday-webhook] Box project subfolder created successfully')
+
+        // Auto-trigger: find the client's most recently active workflow and enqueue a run
+        if (client?.id) {
+          try {
+            const workflow = await withAgency(agencyId, () =>
+              prisma.workflow.findFirst({
+                where:   { clientId: client.id, agencyId, status: { not: 'archived' } },
+                orderBy: { updatedAt: 'desc' },
+                select:  { id: true, defaultAssigneeId: true },
+              })
+            )
+
+            if (workflow) {
+              const run = await withAgency(agencyId, () =>
+                prisma.workflowRun.create({
+                  data: {
+                    workflowId:      workflow.id,
+                    agencyId,
+                    triggeredBy:     null,
+                    status:          'pending',
+                    input:           { mondayItemId: itemId, mondayBoardId: boardId, triggerSource: 'monday_webhook' } as Prisma.InputJsonValue,
+                    output:          { nodeStatuses: {} } as Prisma.InputJsonValue,
+                    clientFolderBox: url,
+                    ...(workflow.defaultAssigneeId ? { assigneeId: workflow.defaultAssigneeId } : {}),
+                  },
+                })
+              )
+
+              const queue = getWorkflowRunsQueue()
+              await queue.add('run-workflow', { workflowRunId: run.id, agencyId }, { jobId: run.id })
+
+              dbg(`auto-triggered run ${run.id} for workflow ${workflow.id}`)
+              app.log.info({ workflowId: workflow.id, runId: run.id, url }, '[monday-webhook] auto-triggered workflow run')
+            } else {
+              dbg(`no workflow found for clientId=${client.id}`)
+              app.log.info({ clientId: client.id }, '[monday-webhook] no active workflow found — skipping auto-trigger')
+            }
+          } catch (triggerErr) {
+            app.log.error({ err: triggerErr }, '[monday-webhook] auto-trigger failed (non-fatal)')
+          }
+        }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
         dbg(`ERROR: ${errMsg}`)
