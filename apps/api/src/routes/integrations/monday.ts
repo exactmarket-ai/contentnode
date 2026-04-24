@@ -342,7 +342,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 
     req.log.info({ webhookUrl }, '[monday] registering webhook')
 
-    const eventList = events ?? ['create_item', 'change_column_value']
+    const eventList = events ?? ['create_item']
     const results = []
 
     for (const event of eventList) {
