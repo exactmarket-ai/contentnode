@@ -954,10 +954,11 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
 
       <div className="grid grid-cols-2 gap-4">
         <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
-        <div className="flex flex-col gap-4">
-          <UnknownEditorsAlert clientId={client.id} onTabChange={onTabChange} />
-          <BrainEntriesCard clientId={client.id} onTabChange={onTabChange} />
-        </div>
+        <BrainEntriesCard clientId={client.id} onTabChange={onTabChange} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <UnknownEditorsAlert clientId={client.id} onTabChange={onTabChange} />
       </div>
     </div>
   )
