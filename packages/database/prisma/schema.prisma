@@ -2117,8 +2117,9 @@ model HumanizerSignal {
   // box_direct = client edited in Box; box_mediated = employee uploaded client's version;
   // portal_feedback = via ContentNode review portal; import = manual agency import
   source          String   @default("box_direct")
-  // stakeholder = edits attributed to the stakeholder; employee = employee uploaded on behalf of client
+  // stakeholder = known stakeholder; employee = agency staff upload; unknown_external = email not in system yet
   attributedTo    String   @default("stakeholder") @map("attributed_to")
+  editorEmail     String?  @map("editor_email")        // raw email from Box — used to retroactively link when stakeholder is added
   boxFileId       String?  @map("box_file_id")        // links back to BoxFileTracking.boxFileId
   createdAt       DateTime @default(now()) @map("created_at")
 

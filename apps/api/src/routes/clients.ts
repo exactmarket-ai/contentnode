@@ -948,6 +948,21 @@ export async function clientRoutes(app: FastifyInstance) {
       },
     })
 
+    // Retroactively link any HumanizerSignals that came from this email address
+    // before the person was in the system (attributedTo = 'unknown_external').
+    if (email) {
+      const backfilled = await prisma.humanizerSignal.updateMany({
+        where: { agencyId, editorEmail: email, stakeholderId: null, attributedTo: 'unknown_external' },
+        data:  { stakeholderId: stakeholder.id, attributedTo: 'stakeholder' },
+      })
+      if (backfilled.count > 0) {
+        req.log.info(
+          { stakeholderId: stakeholder.id, email, count: backfilled.count },
+          'Retroactively linked HumanizerSignals to new stakeholder',
+        )
+      }
+    }
+
     return reply.code(201).send({ data: stakeholder })
   })
 

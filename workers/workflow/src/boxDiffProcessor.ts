@@ -67,7 +67,7 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
     agencyId, clientId, runId, stakeholderId,
     boxFileId, mondayItemId,
     originalText, editedText,
-    attributedTo,
+    attributedTo, editorEmail,
   } = job.data
 
   // 1. Extract style signals via Claude
@@ -125,8 +125,10 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
           mimeType:         'text/markdown',
           summaryStatus:    'ready',
           summary:          brainContent,
-          // Tag with stakeholderId so preference queries can filter per-person
-          metadata: stakeholderId ? { stakeholderId, runId, attributedTo } : { runId, attributedTo },
+          // Tag with stakeholderId/editorEmail for preference queries and retroactive linking
+          metadata: stakeholderId
+            ? { stakeholderId, runId, attributedTo, editorEmail }
+            : { runId, attributedTo, editorEmail },
         },
       })
     }

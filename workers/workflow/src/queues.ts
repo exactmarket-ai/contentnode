@@ -142,7 +142,8 @@ export interface BoxDiffJobData {
   mondayItemId:   string | null
   originalText:   string
   editedText:     string
-  attributedTo:   string
+  attributedTo:   string   // 'stakeholder' | 'employee' | 'unknown_external'
+  editorEmail:    string | null
   filename:       string
 }
 

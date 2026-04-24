@@ -101,9 +101,14 @@ export async function boxFileWebhookRoutes(app: FastifyInstance) {
       const { agencyId, clientId, runId, stakeholderId, mondayItemId, filename } = tracking
 
       // ── Determine attribution ───────────────────────────────────────────────
-      // If the editor's email matches a known stakeholder, attribute to them.
-      // Otherwise attribute as employee-mediated (employee uploaded on client's behalf).
-      let resolvedStakeholderId = stakeholderId
+      // Three outcomes:
+      //   'stakeholder'      — editor email matches a known stakeholder in ContentNode
+      //   'unknown_external' — editor email present but not in system yet (e.g. Tommy)
+      //   'employee'         — no editor email from Box (agency staff upload, or Box didn't report one)
+      //
+      // Crucially: never inherit the original delivery stakeholder when a *different*
+      // person edited the file. That would silently pollute Sarah's profile with Tommy's edits.
+      let resolvedStakeholderId: string | null = null
       let attributedTo = 'employee'
 
       if (editorEmail) {
@@ -114,7 +119,14 @@ export async function boxFileWebhookRoutes(app: FastifyInstance) {
         if (matchedStakeholder) {
           resolvedStakeholderId = matchedStakeholder.id
           attributedTo = 'stakeholder'
+        } else {
+          // Editor is a real person (has an email) but not in the system yet.
+          // Store editorEmail so it can be retroactively linked when they're added.
+          attributedTo = 'unknown_external'
         }
+      } else {
+        // No email from Box — fall back to the delivery stakeholder (mediated upload).
+        resolvedStakeholderId = stakeholderId
       }
 
       // ── Download new version ────────────────────────────────────────────────
@@ -161,6 +173,7 @@ export async function boxFileWebhookRoutes(app: FastifyInstance) {
           editedText,
           source:         attributedTo === 'stakeholder' ? 'box_direct' : 'box_mediated',
           attributedTo,
+          editorEmail:    editorEmail ?? null,
           boxFileId,
         },
       })
@@ -183,6 +196,7 @@ export async function boxFileWebhookRoutes(app: FastifyInstance) {
           originalText: originalText || '[original not available]',
           editedText,
           attributedTo,
+          editorEmail:  editorEmail ?? null,
           filename,
         })
       } catch (err) {
