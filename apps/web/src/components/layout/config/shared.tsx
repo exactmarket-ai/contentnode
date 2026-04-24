@@ -174,14 +174,14 @@ export function PMRoutingSection({
           >
             {linkColumns.length > 0 ? (
               <Select
-                value={(config.delivery_monday_column as string) ?? ''}
-                onValueChange={(v) => onChange('delivery_monday_column', v)}
+                value={(config.delivery_monday_column as string) || '__none__'}
+                onValueChange={(v) => onChange('delivery_monday_column', v === '__none__' ? '' : v)}
               >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select column…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                  <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
                   {linkColumns.map((c) => (
                     <SelectItem key={c.id} value={c.title} className="text-xs">{c.title}</SelectItem>
                   ))}
@@ -203,9 +203,9 @@ export function PMRoutingSection({
           >
             {statusColumns.length > 0 ? (
               <Select
-                value={(config.delivery_monday_status_column as string) ?? ''}
+                value={(config.delivery_monday_status_column as string) || '__none__'}
                 onValueChange={(v) => {
-                  onChange('delivery_monday_status_column', v)
+                  onChange('delivery_monday_status_column', v === '__none__' ? '' : v)
                   onChange('delivery_monday_status', '')
                 }}
               >
@@ -213,7 +213,7 @@ export function PMRoutingSection({
                   <SelectValue placeholder="Select column…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                  <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
                   {statusColumns.map((c) => (
                     <SelectItem key={c.id} value={c.title} className="text-xs">{c.title}</SelectItem>
                   ))}
@@ -236,14 +236,14 @@ export function PMRoutingSection({
             >
               {statusLabels.length > 0 ? (
                 <Select
-                  value={(config.delivery_monday_status as string) ?? ''}
-                  onValueChange={(v) => onChange('delivery_monday_status', v)}
+                  value={(config.delivery_monday_status as string) || '__none__'}
+                  onValueChange={(v) => onChange('delivery_monday_status', v === '__none__' ? '' : v)}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Select label…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                    <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
                     {statusLabels.map((label) => (
                       <SelectItem key={label} value={label} className="text-xs">{label}</SelectItem>
                     ))}

@@ -1244,12 +1244,12 @@ function ProjectPickerModal({
             ) : mondayGroups.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">No groups found.</p>
             ) : (
-              <Select value={selectedMondayGroupId} onValueChange={setSelectedMondayGroupId}>
+              <Select value={selectedMondayGroupId || '__none__'} onValueChange={(v) => setSelectedMondayGroupId(v === '__none__' ? '' : v)}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select group…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                  <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
                   {mondayGroups.map((g) => (
                     <SelectItem key={g.id} value={g.id} className="text-xs">{g.title}</SelectItem>
                   ))}
@@ -1272,12 +1272,12 @@ function ProjectPickerModal({
             ) : !clientBoxFolderId ? (
               <>
                 <p className="text-[10px] text-amber-600">No client root folder set — pick one to link it:</p>
-                <Select value={selectedClientBoxRootId} onValueChange={(v) => { setSelectedClientBoxRootId(v); setSelectedBoxFolderId('') }}>
+                <Select value={selectedClientBoxRootId || '__none__'} onValueChange={(v) => { setSelectedClientBoxRootId(v === '__none__' ? '' : v); setSelectedBoxFolderId('') }}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Select client root folder…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                    <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
                     {boxFolders.map((f) => (
                       <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
                     ))}
@@ -1285,12 +1285,12 @@ function ProjectPickerModal({
                 </Select>
               </>
             ) : (
-              <Select value={selectedBoxFolderId} onValueChange={setSelectedBoxFolderId}>
+              <Select value={selectedBoxFolderId || '__none__'} onValueChange={(v) => setSelectedBoxFolderId(v === '__none__' ? '' : v)}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select project folder…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" className="text-xs text-muted-foreground">— None (use client root) —</SelectItem>
+                  <SelectItem value="__none__" className="text-xs text-muted-foreground">— None (use client root) —</SelectItem>
                   {boxFolders.map((f) => (
                     <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
                   ))}
