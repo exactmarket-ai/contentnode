@@ -17,7 +17,7 @@ export function QualityAndReportsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Tab bar */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-border bg-card px-4">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border bg-background px-4">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
