@@ -630,6 +630,26 @@ function MondayTab() {
     }).catch(() => setLoading(false))
   }, [])
 
+  // When a board is selected, save its ID back to the matching client record
+  // so Project Routing dropdowns can use it without manual configuration.
+  useEffect(() => {
+    if (boardId === 'all') return
+    const board = boards.find(b => b.id === boardId)
+    if (!board) return
+    const name = board.name.replace(/\s*[-–]\s*campaigns?$/i, '').trim()
+    apiFetch('/api/v1/clients').then(r => r.json()).then(({ data: clients }) => {
+      const match = (clients ?? []).find((c: { id: string; name: string }) =>
+        c.name.toLowerCase() === name.toLowerCase()
+      )
+      if (match) {
+        apiFetch(`/api/v1/clients/${match.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ mondayBoardId: boardId }),
+        }).catch(() => {})
+      }
+    }).catch(() => {})
+  }, [boardId, boards])
+
   // Load selected board items
   useEffect(() => {
     if (boardId === 'all') { setBoardData(null); return }

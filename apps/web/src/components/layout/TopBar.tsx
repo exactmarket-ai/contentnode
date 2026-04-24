@@ -1164,6 +1164,8 @@ function ProjectPickerModal({
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
   const [selectedMondayGroupName, setSelectedMondayGroupName] = useState(current.mondayGroupName ?? '')
   const [selectedBoxFolderId, setSelectedBoxFolderId] = useState(current.boxProjectFolderId ?? '')
+  // When no client root folder is set, let user pick from the top-level Box root
+  const [selectedClientBoxRootId, setSelectedClientBoxRootId] = useState(clientBoxFolderId ?? '')
   const [loadingMonday, setLoadingMonday] = useState(false)
   const [loadingBox, setLoadingBox] = useState(false)
 
@@ -1177,18 +1179,32 @@ function ProjectPickerModal({
       .finally(() => setLoadingMonday(false))
   }, [clientMondayBoardId])
 
+  // If client root is set, load its subfolders. Otherwise load top-level Box root folders.
+  const boxRootId = selectedClientBoxRootId || clientBoxFolderId || ''
   useEffect(() => {
-    if (!clientBoxFolderId) return
     setLoadingBox(true)
-    apiFetch(`/api/v1/integrations/box/folders/${clientBoxFolderId}/subfolders`)
+    const url = boxRootId
+      ? `/api/v1/integrations/box/folders/${boxRootId}/subfolders`
+      : `/api/v1/integrations/box/folders/0/subfolders`
+    apiFetch(url)
       .then((r) => r.json())
       .then(({ data }) => { setBoxFolders(data ?? []) })
       .catch(() => {})
       .finally(() => setLoadingBox(false))
-  }, [clientBoxFolderId])
+  }, [boxRootId])
 
   const handleSave = () => {
     const group = mondayGroups.find((g) => g.id === selectedMondayGroupId)
+    // If client had no root folder and user picked one, save it as the client root
+    if (!clientBoxFolderId && selectedClientBoxRootId) {
+      const wf = useWorkflowStore.getState().workflow
+      if (wf.clientId) {
+        apiFetch(`/api/v1/clients/${wf.clientId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ boxFolderId: selectedClientBoxRootId }),
+        }).catch(() => {})
+      }
+    }
     onSave({
       mondayGroupId: selectedMondayGroupId || null,
       mondayGroupName: (group?.title ?? selectedMondayGroupName) || null,
@@ -1249,16 +1265,29 @@ function ProjectPickerModal({
               <Icons.Box className="h-3 w-3" />
               Box Project Folder
             </label>
-            {!clientBoxFolderId ? (
-              <p className="text-xs text-muted-foreground italic">No Box folder connected to this client.</p>
-            ) : loadingBox ? (
+            {loadingBox ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Icons.Loader2 className="h-3 w-3 animate-spin" />Loading folders…
               </div>
+            ) : !clientBoxFolderId ? (
+              <>
+                <p className="text-[10px] text-amber-600">No client root folder set — pick one to link it:</p>
+                <Select value={selectedClientBoxRootId} onValueChange={(v) => { setSelectedClientBoxRootId(v); setSelectedBoxFolderId('') }}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Select client root folder…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="" className="text-xs text-muted-foreground">— None —</SelectItem>
+                    {boxFolders.map((f) => (
+                      <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
             ) : (
               <Select value={selectedBoxFolderId} onValueChange={setSelectedBoxFolderId}>
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select folder…" />
+                  <SelectValue placeholder="Select project folder…" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="" className="text-xs text-muted-foreground">— None (use client root) —</SelectItem>
