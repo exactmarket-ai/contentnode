@@ -102,13 +102,14 @@ function SeniorityBadge({ seniority }: { seniority: string }) {
 
 // ── Modals ────────────────────────────────────────────────────────────────────
 
-function AddStakeholderModal({ clientId, onClose, onCreate }: {
+function AddStakeholderModal({ clientId, onClose, onCreate, initialEmail }: {
   clientId: string
   onClose: () => void
   onCreate: (s: Stakeholder) => void
+  initialEmail?: string
 }) {
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(initialEmail ?? '')
   const [role, setRole] = useState('')
   const [seniority, setSeniority] = useState<'owner' | 'senior' | 'member' | 'junior'>('member')
   const [loading, setLoading] = useState(false)
@@ -1011,6 +1012,7 @@ function ScheduledTaskAlerts({ clientId }: { clientId: string }) {
 
 function StakeholdersTab({ client, onUpdate }: { client: Client; onUpdate: (updated: Client) => void }) {
   const [showAdd, setShowAdd] = useState(false)
+  const [addWithEmail, setAddWithEmail] = useState<string | undefined>(undefined)
   const [editing, setEditing] = useState<Stakeholder | null>(null)
   const [moving, setMoving] = useState<Stakeholder | null>(null)
   const [inviteResult, setInviteResult] = useState<null | { portalUrl: string; expiresAt: string; stakeholder: { name: string; email: string } }>(null)
@@ -1018,6 +1020,14 @@ function StakeholdersTab({ client, onUpdate }: { client: Client; onUpdate: (upda
   const [deleting, setDeleting] = useState<string | null>(null)
   const [archiving, setArchiving] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
+  const [unknownEditors, setUnknownEditors] = useState<{ email: string; editCount: number; lastSeenAt: string }[]>([])
+
+  useEffect(() => {
+    apiFetch(`/api/v1/clients/${client.id}/unknown-editors`)
+      .then((r) => r.json())
+      .then((j) => setUnknownEditors(j.data ?? []))
+      .catch(() => {})
+  }, [client.id])
 
   const activeStakeholders = client.stakeholders.filter((s) => !s.archivedAt)
   const archivedStakeholders = client.stakeholders.filter((s) => !!s.archivedAt)
@@ -1197,6 +1207,44 @@ function StakeholdersTab({ client, onUpdate }: { client: Client; onUpdate: (upda
 
   return (
     <div className="space-y-4">
+      {/* Unidentified Box editors */}
+      {unknownEditors.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Icons.UserX className="h-4 w-4 text-amber-600 shrink-0" />
+            <p className="text-sm font-medium text-amber-900">
+              {unknownEditors.length === 1 ? '1 unidentified Box editor' : `${unknownEditors.length} unidentified Box editors`}
+            </p>
+          </div>
+          <p className="text-xs text-amber-700">
+            These email addresses edited documents in Box but aren't in ContentNode yet. Add them as contacts to capture their style preferences.
+          </p>
+          <div className="space-y-2">
+            {unknownEditors.map((u) => (
+              <div key={u.email} className="flex items-center gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-semibold text-amber-700">
+                  {u.email.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{u.email}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {u.editCount} {u.editCount === 1 ? 'edit' : 'edits'} · last seen {new Date(u.lastSeenAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs shrink-0"
+                  onClick={() => { setAddWithEmail(u.email); setShowAdd(true) }}
+                >
+                  <Icons.UserPlus className="mr-1.5 h-3 w-3" />
+                  Add as contact
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">{activeStakeholders.length} contacts</p>
         <Button size="sm" className="h-7 text-xs" onClick={() => setShowAdd(true)}>
@@ -1242,10 +1290,13 @@ function StakeholdersTab({ client, onUpdate }: { client: Client; onUpdate: (upda
       {showAdd && (
         <AddStakeholderModal
           clientId={client.id}
-          onClose={() => setShowAdd(false)}
+          initialEmail={addWithEmail}
+          onClose={() => { setShowAdd(false); setAddWithEmail(undefined) }}
           onCreate={(s) => {
             onUpdate({ ...client, stakeholders: [...client.stakeholders, s] })
+            setUnknownEditors((prev) => prev.filter((u) => u.email !== s.email))
             setShowAdd(false)
+            setAddWithEmail(undefined)
           }}
         />
       )}

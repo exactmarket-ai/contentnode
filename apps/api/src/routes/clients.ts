@@ -1122,6 +1122,34 @@ export async function clientRoutes(app: FastifyInstance) {
     })
   })
 
+  // ── GET /:id/unknown-editors — Box editors not yet in the system ──────────
+  app.get<{ Params: { id: string } }>('/:id/unknown-editors', async (req, reply) => {
+    const { agencyId } = req.auth
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    const rows = await prisma.humanizerSignal.groupBy({
+      by: ['editorEmail'],
+      where: {
+        agencyId,
+        clientId: req.params.id,
+        attributedTo: 'unknown_external',
+        stakeholderId: null,
+        editorEmail: { not: null },
+      },
+      _count: { id: true },
+      _max:   { createdAt: true },
+    })
+
+    const data = rows.map((r) => ({
+      email:    r.editorEmail!,
+      editCount: r._count.id,
+      lastSeenAt: r._max.createdAt,
+    }))
+
+    return reply.send({ data })
+  })
+
   // ── GET /:id/stakeholders/:sid/feedback ───────────────────────────────────
   app.get<{ Params: { id: string; sid: string } }>('/:id/stakeholders/:sid/feedback', async (req, reply) => {
     const { agencyId } = req.auth
