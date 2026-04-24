@@ -54,6 +54,7 @@ const createRunBody = z.object({
   divisionId: z.string().optional(),
   jobId: z.string().optional(),
   itemName: z.string().optional(),
+  clientFolderBox: z.string().optional(),
 })
 
 // Default dev client used when no clientId is provided
@@ -299,6 +300,7 @@ export async function runRoutes(app: FastifyInstance) {
         ...(body.divisionId ? { divisionId: body.divisionId } : {}),
         ...(body.jobId ? { jobId: body.jobId } : {}),
         ...(body.itemName ? { itemName: body.itemName } : {}),
+        ...(body.clientFolderBox ? { clientFolderBox: body.clientFolderBox } : {}),
         // Inherit default assignee from workflow
         ...(workflowWithAssignee?.defaultAssigneeId ? { assigneeId: workflowWithAssignee.defaultAssigneeId } : {}),
       },

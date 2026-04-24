@@ -47,7 +47,7 @@ import { WrikeSourceExecutor } from './executors/wrikeSource.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
-import { deliverRunToBox } from './boxDelivery.js'
+import { deliverRunToBox, deliverImageToBox } from './boxDelivery.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-node status stored inside WorkflowRun.output
@@ -1117,27 +1117,81 @@ export class WorkflowRunner {
       const folderIdMatch = run.clientFolderBox.match(/\/folder\/(\d+)/)
       const folderId = folderIdMatch?.[1]
       if (folderId) {
-        const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
-        const text = typeof finalOut?.content === 'string'
-          ? finalOut.content
-          : JSON.stringify(finalOut?.content ?? '')
+        const reviewerIds = (run.reviewerIds as string[]) ?? []
+        const dateStr     = new Date().toISOString().slice(0, 10)
 
-        const safeName = workflow.name.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
-        const filename  = `${safeName}-${new Date().toISOString().slice(0, 10)}.txt`
-        const reviewerIds  = (run.reviewerIds as string[]) ?? []
+        // Collect deliverables from all output nodes
+        const outputNodes = workflow.nodes.filter((n) => n.type === 'output')
+        const deliverables: Array<{ filename: string; content: string }> = []
 
-        deliverRunToBox({
-          agencyId:      this.agencyId,
-          clientId:      workflow.clientId,
-          runId:         this.workflowRunId,
-          stakeholderId: reviewerIds[0] ?? null,
-          folderId,
-          filename,
-          content:       text,
-          mondayItemId:  null,
-        }).catch((err) => {
-          console.error('[runner] Box delivery failed:', err)
-        })
+        for (const node of outputNodes) {
+          const nodeOutput = runOutput.nodeStatuses[node.id]?.output as Record<string, unknown> | undefined
+          if (!nodeOutput) continue
+
+          const cfg     = (node.config ?? {}) as Record<string, unknown>
+          const subtype = cfg.subtype as string | undefined
+          const label   = (cfg.label as string | undefined) ?? (cfg.output_type as string | undefined) ?? subtype ?? node.id
+
+          // Image/video/audio nodes deliver via separate image-aware path
+          const isMedia = subtype === 'image-generation' || subtype === 'video-generation'
+            || subtype === 'voice-output' || subtype === 'music-generation'
+          if (isMedia) {
+            if (subtype === 'image-generation') {
+              const assets = (nodeOutput.assets as Array<{ storageKey?: string; localPath?: string }>) ?? []
+              for (let i = 0; i < assets.length; i++) {
+                const asset = assets[i]
+                const sk = asset.storageKey
+                if (!sk) continue
+                const safeName = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'image'
+                const imgFilename = assets.length > 1
+                  ? `${safeName}-${i + 1}-${dateStr}.png`
+                  : `${safeName}-${dateStr}.png`
+                deliverImageToBox({
+                  agencyId:      this.agencyId,
+                  clientId:      workflow.clientId!,
+                  runId:         this.workflowRunId,
+                  stakeholderId: reviewerIds[0] ?? null,
+                  folderId,
+                  storageKey:    sk,
+                  filename:      imgFilename,
+                  mondayItemId:  null,
+                }).catch((err) => {
+                  console.error(`[runner] Box image delivery failed for ${imgFilename}:`, err)
+                })
+              }
+            }
+            continue
+          }
+
+          const rawContent = nodeOutput.content ?? nodeOutput.outputText ?? nodeOutput.humanizedContent ?? nodeOutput.text
+          if (!rawContent || typeof rawContent !== 'string') continue
+
+          const safeName = label.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
+          deliverables.push({ filename: `${safeName}-${dateStr}.txt`, content: rawContent })
+        }
+
+        // Fall back to finalOutput if no output nodes yielded content
+        if (deliverables.length === 0) {
+          const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
+          const text = typeof finalOut?.content === 'string' ? finalOut.content : JSON.stringify(finalOut?.content ?? '')
+          const safeName = workflow.name.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
+          deliverables.push({ filename: `${safeName}-${dateStr}.txt`, content: text })
+        }
+
+        for (const { filename, content } of deliverables) {
+          deliverRunToBox({
+            agencyId:      this.agencyId,
+            clientId:      workflow.clientId,
+            runId:         this.workflowRunId,
+            stakeholderId: reviewerIds[0] ?? null,
+            folderId,
+            filename,
+            content,
+            mondayItemId:  null,
+          }).catch((err) => {
+            console.error(`[runner] Box delivery failed for ${filename}:`, err)
+          })
+        }
       }
     }
   }

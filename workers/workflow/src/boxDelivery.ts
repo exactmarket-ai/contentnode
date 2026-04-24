@@ -8,6 +8,7 @@
 
 import { prisma } from '@contentnode/database'
 import { encrypt, safeDecrypt } from './lib/crypto.js'
+import { downloadBuffer } from '@contentnode/storage'
 
 const BOX_TOKEN_URL  = 'https://api.box.com/oauth2/token'
 const BOX_API_URL    = 'https://api.box.com/2.0'
@@ -62,9 +63,10 @@ export async function deliverRunToBox(params: {
   folderId:      string
   filename:      string
   content:       string
+  mimeType?:     string   // defaults to text/plain
   mondayItemId:  string | null
 }): Promise<void> {
-  const { agencyId, clientId, runId, stakeholderId, folderId, filename, content, mondayItemId } = params
+  const { agencyId, clientId, runId, stakeholderId, folderId, filename, content, mimeType, mondayItemId } = params
 
   const token = await getBoxToken(agencyId)
 
@@ -72,7 +74,7 @@ export async function deliverRunToBox(params: {
   const buf  = Buffer.from(content, 'utf-8')
   const form = new FormData()
   form.append('attributes', JSON.stringify({ name: filename, parent: { id: folderId } }))
-  form.append('file', new Blob([buf], { type: 'text/plain' }), filename)
+  form.append('file', new Blob([buf], { type: mimeType ?? 'text/plain' }), filename)
 
   const uploadRes = await fetch(BOX_UPLOAD_URL, {
     method:  'POST',
@@ -136,4 +138,74 @@ export async function deliverRunToBox(params: {
   })
 
   console.log(`[boxDelivery] delivered run ${runId} → Box file ${fileId} in folder ${folderId}`)
+}
+
+// ── Image asset delivery ──────────────────────────────────────────────────────
+export async function deliverImageToBox(params: {
+  agencyId:      string
+  clientId:      string
+  runId:         string
+  stakeholderId: string | null
+  folderId:      string
+  storageKey:    string   // R2 storage key
+  filename:      string   // e.g. "NexusTek Blog Image-2025-04-24.png"
+  mondayItemId:  string | null
+}): Promise<void> {
+  const { agencyId, clientId, runId, stakeholderId, folderId, storageKey, filename, mondayItemId } = params
+
+  const token = await getBoxToken(agencyId)
+
+  // Download image bytes from R2
+  const imageBuffer = await downloadBuffer(storageKey)
+
+  // Detect mime type from first bytes
+  const sniff = imageBuffer.subarray(0, 4)
+  let mimeType = 'image/png'
+  if (sniff[0] === 0xff && sniff[1] === 0xd8) mimeType = 'image/jpeg'
+  else if (sniff[0] === 0x52 && sniff[1] === 0x49) mimeType = 'image/webp'
+
+  // Upload to Box
+  const form = new FormData()
+  form.append('attributes', JSON.stringify({ name: filename, parent: { id: folderId } }))
+  form.append('file', new Blob([imageBuffer], { type: mimeType }), filename)
+
+  const uploadRes = await fetch(BOX_UPLOAD_URL, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body:    form,
+  })
+  if (!uploadRes.ok) {
+    throw new Error(`Box image upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
+  }
+  const uploadData = await uploadRes.json() as { entries: Array<{ id: string }> }
+  const fileId = uploadData.entries[0].id
+
+  // Register FILE.NEW_VERSION webhook
+  const webhookBase = (process.env.API_BASE_URL ?? '').replace(/\/$/, '')
+  try {
+    await fetch(`${BOX_API_URL}/webhooks`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target:   { id: fileId, type: 'file' },
+        triggers: ['FILE.NEW_VERSION'],
+        address:  `${webhookBase}/api/v1/webhooks/box-file`,
+      }),
+    })
+  } catch {}
+
+  await prisma.boxFileTracking.create({
+    data: {
+      agencyId,
+      clientId,
+      runId,
+      stakeholderId: stakeholderId ?? null,
+      boxFileId:     fileId,
+      boxFolderId:   folderId,
+      filename,
+      mondayItemId:  mondayItemId ?? null,
+    },
+  })
+
+  console.log(`[boxDelivery] delivered image ${storageKey} → Box file ${fileId}`)
 }

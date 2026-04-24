@@ -191,6 +191,8 @@ model Client {
   usageRecords       UsageRecord[]
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   brainContext       String?  @db.Text @map("brain_context")
+  boxFolderId        String?  @map("box_folder_id")    // Box folder ID for this client's root folder
+  mondayBoardId      String?  @map("monday_board_id")  // Monday board ID for this client (for Board→Client mapping)
   docStyle           ClientDocStyle?
   leadershipMembers  LeadershipMember[]
   frameworkRevisions FrameworkRevision[]

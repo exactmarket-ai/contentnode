@@ -42,6 +42,8 @@ const updateClientBody = createClientBody.partial().extend({
   industry: z.string().nullable().optional(),
   requireOffline: z.boolean().optional(),
   isOrgClient: z.boolean().optional(),
+  boxFolderId: z.string().nullable().optional(),
+  mondayBoardId: z.string().nullable().optional(),
 })
 
 const createStakeholderBody = z.object({
@@ -790,6 +792,8 @@ export async function clientRoutes(app: FastifyInstance) {
         ...(isUnarchiving ? { archivedAt: null } : {}),
         ...(parsed.data.requireOffline !== undefined ? { requireOffline: parsed.data.requireOffline } : {}),
         ...(parsed.data.isOrgClient !== undefined ? { isOrgClient: parsed.data.isOrgClient } : {}),
+        ...(parsed.data.boxFolderId !== undefined ? { boxFolderId: parsed.data.boxFolderId } : {}),
+        ...(parsed.data.mondayBoardId !== undefined ? { mondayBoardId: parsed.data.mondayBoardId } : {}),
       },
     })
 
