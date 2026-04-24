@@ -413,7 +413,8 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       if (agencyId) {
         try {
           const folderName = event.pulseName.trim()
-          const { url } = await createBoxFolder(agencyId, folderName)
+          const boxParentId = process.env.BOX_PARENT_FOLDER_ID ?? '0'
+          const { url } = await createBoxFolder(agencyId, folderName, boxParentId)
 
           // Write Box URL back to the Monday item's "Client Folder - Box" column
           const token    = await getMondayToken(agencyId)
