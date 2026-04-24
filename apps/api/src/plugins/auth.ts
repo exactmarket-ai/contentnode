@@ -47,6 +47,8 @@ async function authPluginFn(app: FastifyInstance) {
     if (req.url.startsWith('/writer')) return
     // Monday webhook is called by Monday.com directly — no Clerk auth
     if (req.url.startsWith('/api/v1/integrations/monday/webhook')) return
+    // Box webhook is called by Box servers directly — verified by HMAC, no Clerk auth
+    if (req.url.startsWith('/api/v1/webhooks/box-file')) return
     // OAuth callbacks are redirects from external providers — no Clerk auth
     if (req.url.startsWith('/api/v1/integrations/box/callback')) return
     if (req.url.startsWith('/api/v1/integrations/monday/callback')) return

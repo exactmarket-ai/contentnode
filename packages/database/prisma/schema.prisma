@@ -69,6 +69,9 @@ model Agency {
   integrations                   Integration[]
   skillSessionTemplates          SkillSessionTemplate[]
   frameworkRevisions             FrameworkRevision[]
+  boxFileTrackings               BoxFileTracking[]
+  humanizerSignals               HumanizerSignal[]
+  stakeholderPreferenceProfiles  StakeholderPreferenceProfile[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -191,6 +194,8 @@ model Client {
   docStyle           ClientDocStyle?
   leadershipMembers  LeadershipMember[]
   frameworkRevisions FrameworkRevision[]
+  boxFileTrackings   BoxFileTracking[]
+  humanizerSignals   HumanizerSignal[]
   programs            Program[]
   programContentPacks ProgramContentPack[]
 
@@ -407,6 +412,9 @@ model Stakeholder {
   transcriptSessions   TranscriptSession[]
   transcriptSegments   TranscriptSegment[]
   deliverableAccess    DeliverableAccess[]
+  boxFileTrackings     BoxFileTracking[]
+  humanizerSignals     HumanizerSignal[]
+  preferenceProfile    StakeholderPreferenceProfile?
 
   @@unique([clientId, email])
   @@index([agencyId])
@@ -699,6 +707,8 @@ model WorkflowRun {
   division          Division?             @relation(fields: [divisionId], references: [id])
   job               Job?                  @relation(fields: [jobId], references: [id])
   comments          Comment[]
+  boxFileTrackings  BoxFileTracking[]
+  humanizerSignals  HumanizerSignal[]
 
   @@index([agencyId])
   @@index([workflowId])
@@ -2056,4 +2066,96 @@ model FrameworkRevision {
   @@index([clientId, verticalId])
   @@index([agencyId])
   @@map("framework_revisions")
+}
+
+// ─────────────────────────────────────────────
+// BoxFileTracking — links a Box file to a WorkflowRun so webhook events
+// can be routed back to the right run/client/stakeholder.
+// Created at file upload time; deleted when run is archived.
+// ─────────────────────────────────────────────
+model BoxFileTracking {
+  id              String    @id @default(cuid())
+  agencyId        String    @map("agency_id")
+  clientId        String    @map("client_id")
+  runId           String    @map("run_id")
+  stakeholderId   String?   @map("stakeholder_id")   // primary intended recipient (nullable — not always known at upload time)
+  boxFileId       String    @unique @map("box_file_id")
+  boxWebhookId    String?   @map("box_webhook_id")   // null until webhook registered
+  boxFolderId     String    @map("box_folder_id")
+  filename        String
+  originalTextKey String?   @map("original_text_key") // R2 storage key for original extracted text (used for diffing)
+  mondayItemId    String?   @map("monday_item_id")    // for status writeback
+  revisionCount   Int       @default(0) @map("revision_count")
+  lastVersionAt   DateTime? @map("last_version_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  agency      Agency       @relation(fields: [agencyId],      references: [id], onDelete: Cascade)
+  client      Client       @relation(fields: [clientId],      references: [id], onDelete: Cascade)
+  run         WorkflowRun  @relation(fields: [runId],         references: [id], onDelete: Cascade)
+  stakeholder Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@index([runId])
+  @@map("box_file_trackings")
+}
+
+// ─────────────────────────────────────────────
+// HumanizerSignal — before/after edit pairs attributed to a specific stakeholder.
+// Source of truth for per-user style preference learning and humanizer few-shot examples.
+// Populated from Box revisions, portal feedback, and manual imports.
+// ─────────────────────────────────────────────
+model HumanizerSignal {
+  id              String   @id @default(cuid())
+  agencyId        String   @map("agency_id")
+  clientId        String   @map("client_id")
+  stakeholderId   String?  @map("stakeholder_id")    // the person whose preferences this reflects (portable across clients)
+  runId           String?  @map("run_id")             // the WorkflowRun this edit originated from
+  originalText    String   @db.Text @map("original_text")    // AI-generated content before edits
+  editedText      String   @db.Text @map("edited_text")      // human-revised content
+  diffSummary     String?  @db.Text @map("diff_summary")     // Claude-extracted style rules from the diff
+  // box_direct = client edited in Box; box_mediated = employee uploaded client's version;
+  // portal_feedback = via ContentNode review portal; import = manual agency import
+  source          String   @default("box_direct")
+  // stakeholder = edits attributed to the stakeholder; employee = employee uploaded on behalf of client
+  attributedTo    String   @default("stakeholder") @map("attributed_to")
+  boxFileId       String?  @map("box_file_id")        // links back to BoxFileTracking.boxFileId
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  agency      Agency       @relation(fields: [agencyId],      references: [id], onDelete: Cascade)
+  client      Client       @relation(fields: [clientId],      references: [id], onDelete: Cascade)
+  stakeholder Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
+  run         WorkflowRun? @relation(fields: [runId],         references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@index([stakeholderId])
+  @@index([runId])
+  @@map("humanizer_signals")
+}
+
+// ─────────────────────────────────────────────
+// StakeholderPreferenceProfile — per-person content style profile.
+// Portable across clients — when a stakeholder moves to a new client,
+// this record moves with them (clientId on Stakeholder updates; this stays).
+// ─────────────────────────────────────────────
+model StakeholderPreferenceProfile {
+  id              String   @id @default(cuid())
+  stakeholderId   String   @unique @map("stakeholder_id")
+  agencyId        String   @map("agency_id")
+  // Derived from HumanizerSignal diffs — updated after each processed revision
+  toneSignals     Json     @default("[]") @map("tone_signals")       // [{ signal, confidence, exampleCount }]
+  structureSignals Json    @default("[]") @map("structure_signals")  // e.g. prefers bullets, short paragraphs
+  rejectPatterns  Json     @default("[]") @map("reject_patterns")    // things they consistently remove
+  approvalRate    Float?   @map("approval_rate")                     // % of runs approved without revision
+  revisionCount   Int      @default(0) @map("revision_count")        // total edit pairs processed
+  lastSignalAt    DateTime? @map("last_signal_at")                   // when the profile was last updated
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  stakeholder Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+  agency      Agency      @relation(fields: [agencyId],      references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@map("stakeholder_preference_profiles")
 }

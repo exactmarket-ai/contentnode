@@ -81,6 +81,99 @@ export async function createBoxFolder(agencyId: string, name: string, parentId =
   return { id: folder.id, url: `https://app.box.com/folder/${folder.id}` }
 }
 
+// ── File upload + metadata + webhook registration ──────────────────────────────
+// Called after a run completes to deliver the output file to Box and register
+// a FILE.NEW_VERSION webhook so edits feed back into ContentNode automatically.
+export async function deliverRunToBox(params: {
+  agencyId:      string
+  clientId:      string
+  runId:         string
+  stakeholderId: string | null
+  folderId:      string
+  filename:      string
+  content:       Buffer | string   // file content (.docx bytes or UTF-8 text)
+  mimeType:      string
+  mondayItemId?: string
+}): Promise<{ fileId: string; fileUrl: string }> {
+  const { agencyId, clientId, runId, stakeholderId, folderId, filename, content, mimeType, mondayItemId } = params
+  const token = await getBoxToken(agencyId)
+
+  // 1. Upload file
+  const buf = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8')
+  const form = new FormData()
+  form.append('attributes', JSON.stringify({ name: filename, parent: { id: folderId } }))
+  form.append('file', new Blob([buf], { type: mimeType }), filename)
+
+  const uploadRes = await fetch('https://upload.box.com/api/2.0/files/content', {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body:    form,
+  })
+  if (!uploadRes.ok) throw new Error(`Box upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
+  const uploadData = await uploadRes.json() as { entries: Array<{ id: string }> }
+  const fileId = uploadData.entries[0].id
+  const fileUrl = `https://app.box.com/file/${fileId}`
+
+  // 2. Write metadata template so any future version can be routed back here
+  //    Uses the "global" scope with the "properties" template (no custom template required).
+  await fetch(`${BOX_API_URL}/files/${fileId}/metadata/global/properties`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contentNodeSource: 'true',
+      agencyId,
+      clientId,
+      runId,
+      stakeholderId: stakeholderId ?? '',
+      deliveredAt:   new Date().toISOString(),
+    }),
+  }).catch(() => { /* metadata write is best-effort — don't fail the upload */ })
+
+  // 3. Register FILE.NEW_VERSION webhook on the specific file
+  const webhookBase = (process.env.API_BASE_URL ?? '').replace(/\/$/, '')
+  let boxWebhookId: string | null = null
+  try {
+    const wh = await boxApi<{ id: string }>(token, '/webhooks', {
+      method: 'POST',
+      body: JSON.stringify({
+        target:  { id: fileId, type: 'file' },
+        triggers: ['FILE.NEW_VERSION'],
+        address:  `${webhookBase}/api/v1/webhooks/box-file`,
+      }),
+    })
+    boxWebhookId = wh.id
+  } catch (err) {
+    // Webhook registration failure is non-fatal — file is still delivered
+    console.error('[box] webhook registration failed:', err)
+  }
+
+  // 4. Store tracking record
+  await prisma.boxFileTracking.create({
+    data: {
+      agencyId,
+      clientId,
+      runId,
+      stakeholderId: stakeholderId ?? null,
+      boxFileId:  fileId,
+      boxWebhookId,
+      boxFolderId: folderId,
+      filename,
+      mondayItemId: mondayItemId ?? null,
+    },
+  })
+
+  return { fileId, fileUrl }
+}
+
+// ── Delete Box webhook when a run is archived ──────────────────────────────────
+export async function deregisterBoxWebhook(agencyId: string, boxWebhookId: string): Promise<void> {
+  const token = await getBoxToken(agencyId)
+  await fetch(`${BOX_API_URL}/webhooks/${boxWebhookId}`, {
+    method:  'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {})
+}
+
 export async function boxIntegrationRoutes(app: FastifyInstance) {
 
   // ── GET /connect ─────────────────────────────────────────────────────────────

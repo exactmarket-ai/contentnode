@@ -1,0 +1,192 @@
+/**
+ * boxDiffProcessor — processes Box FILE.NEW_VERSION diffs
+ *
+ * For each before/after edit pair:
+ * 1. Runs Claude to extract style signals from the diff
+ * 2. Updates HumanizerSignal with the diffSummary
+ * 3. Creates a BrainAttachment on the client tagged to the stakeholder
+ * 4. Updates or creates the StakeholderPreferenceProfile
+ * 5. Updates Monday item with "Revised ✓" status + comment
+ */
+
+import { prisma, withAgency } from '@contentnode/database'
+import { callModel } from '@contentnode/ai'
+import { QUEUE_BOX_DIFF, type BoxDiffJobData, getConnection } from './queues.js'
+import { Worker, type Job } from 'bullmq'
+
+const DIFF_EXTRACTION_PROMPT = (original: string, edited: string) => `
+You are analyzing the difference between an AI-generated piece of content and a human-edited version to extract the editor's style preferences.
+
+AI-GENERATED ORIGINAL:
+---
+${original.slice(0, 4000)}
+---
+
+HUMAN-EDITED VERSION:
+---
+${edited.slice(0, 4000)}
+---
+
+Analyze the changes and extract the editor's style signals. Return ONLY a JSON object with this exact structure:
+{
+  "summary": "2-3 sentence plain-English description of what this person changed and why",
+  "toneSignals": ["list of tone-related patterns, e.g. 'prefers direct over passive voice'"],
+  "structureSignals": ["list of structural preferences, e.g. 'breaks long paragraphs into shorter ones'"],
+  "rejectPatterns": ["things they consistently removed, e.g. 'removes superlatives', 'removes pricing language'"],
+  "confidence": 0.7
+}
+
+If the texts are too similar to extract meaningful signals, return confidence: 0 and empty arrays.
+`.trim()
+
+// ── Monday GraphQL helper (light — no auth plugin here) ───────────────────────
+async function updateMondayRevised(agencyId: string, mondayItemId: string) {
+  const { prisma: db } = await import('@contentnode/database')
+  const integration = await db.integration.findUnique({
+    where: { agencyId_provider: { agencyId, provider: 'monday' } },
+  })
+  if (!integration) return
+
+  const { safeDecrypt } = await import('./lib/crypto.js').catch(() => ({ safeDecrypt: (v: string) => v }))
+  const token = safeDecrypt(integration.accessToken) ?? integration.accessToken
+
+  const comment = `Document revised in Box on ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — content profile updated automatically`
+
+  await fetch('https://api.monday.com/v2', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `mutation { create_update(item_id: ${mondayItemId}, body: "${comment.replace(/"/g, '\\"')}") { id } }`,
+    }),
+  }).catch(() => {}) // non-fatal
+}
+
+// ── Main processor ────────────────────────────────────────────────────────────
+async function processBoxDiff(job: Job<BoxDiffJobData>) {
+  const {
+    agencyId, clientId, runId, stakeholderId,
+    boxFileId, mondayItemId,
+    originalText, editedText,
+    attributedTo,
+  } = job.data
+
+  // 1. Extract style signals via Claude
+  let diffResult: {
+    summary: string
+    toneSignals: string[]
+    structureSignals: string[]
+    rejectPatterns: string[]
+    confidence: number
+  } = { summary: '', toneSignals: [], structureSignals: [], rejectPatterns: [], confidence: 0 }
+
+  try {
+    const raw = await callModel(
+      {
+        provider:    'anthropic',
+        model:       'claude-haiku-4-5-20251001',
+        api_key_ref: 'ANTHROPIC_API_KEY',
+      },
+      DIFF_EXTRACTION_PROMPT(originalText, editedText),
+    )
+    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+    if (jsonMatch) diffResult = JSON.parse(jsonMatch[0])
+  } catch (err) {
+    console.error('[boxDiff] Claude style extraction failed:', err)
+    // Continue — we still store the signal, just without the summary
+  }
+
+  await withAgency(agencyId, async () => {
+    // 2. Update HumanizerSignal with extracted summary
+    if (diffResult.summary) {
+      await prisma.humanizerSignal.updateMany({
+        where: { agencyId, boxFileId, diffSummary: null },
+        data:  { diffSummary: diffResult.summary },
+      })
+    }
+
+    // 3. Store as BrainAttachment on the client so it informs future runs
+    if (diffResult.confidence > 0.2) {
+      const brainContent = [
+        `## Style signals from Box revision${stakeholderId ? ' (stakeholder-specific)' : ''}`,
+        '',
+        diffResult.summary,
+        '',
+        diffResult.toneSignals.length    ? `**Tone:** ${diffResult.toneSignals.join('; ')}` : '',
+        diffResult.structureSignals.length ? `**Structure:** ${diffResult.structureSignals.join('; ')}` : '',
+        diffResult.rejectPatterns.length  ? `**Removes:** ${diffResult.rejectPatterns.join('; ')}` : '',
+      ].filter(Boolean).join('\n')
+
+      await prisma.brainAttachment.create({
+        data: {
+          agencyId,
+          clientId,
+          source:           'box_revision',
+          filename:         `box-revision-${boxFileId}.md`,
+          mimeType:         'text/markdown',
+          summaryStatus:    'ready',
+          summary:          brainContent,
+          // Tag with stakeholderId so preference queries can filter per-person
+          metadata: stakeholderId ? { stakeholderId, runId, attributedTo } : { runId, attributedTo },
+        },
+      })
+    }
+
+    // 4. Update or create StakeholderPreferenceProfile
+    if (stakeholderId && diffResult.confidence > 0.2) {
+      const existing = await prisma.stakeholderPreferenceProfile.findUnique({
+        where: { stakeholderId },
+      })
+
+      if (existing) {
+        // Merge new signals into existing arrays (append, deduplicate)
+        const merge = (arr: string[], incoming: string[]) =>
+          Array.from(new Set([...arr, ...incoming])).slice(0, 50)
+
+        await prisma.stakeholderPreferenceProfile.update({
+          where: { stakeholderId },
+          data: {
+            toneSignals:     merge(existing.toneSignals     as string[], diffResult.toneSignals),
+            structureSignals: merge(existing.structureSignals as string[], diffResult.structureSignals),
+            rejectPatterns:   merge(existing.rejectPatterns   as string[], diffResult.rejectPatterns),
+            revisionCount:   { increment: 1 },
+            lastSignalAt:    new Date(),
+          },
+        })
+      } else {
+        await prisma.stakeholderPreferenceProfile.create({
+          data: {
+            stakeholderId,
+            agencyId,
+            toneSignals:      diffResult.toneSignals,
+            structureSignals: diffResult.structureSignals,
+            rejectPatterns:   diffResult.rejectPatterns,
+            revisionCount:    1,
+            lastSignalAt:     new Date(),
+          },
+        })
+      }
+    }
+  })
+
+  // 5. Update Monday item — outside withAgency (no tenant data accessed)
+  if (mondayItemId) {
+    await updateMondayRevised(agencyId, mondayItemId)
+  }
+
+  console.log(`[boxDiff] processed ${boxFileId} — confidence ${diffResult.confidence}`)
+}
+
+// ── Worker registration ───────────────────────────────────────────────────────
+export function startBoxDiffWorker() {
+  const worker = new Worker<BoxDiffJobData>(
+    QUEUE_BOX_DIFF,
+    processBoxDiff,
+    { connection: getConnection(), concurrency: 3 },
+  )
+
+  worker.on('failed', (job, err) => {
+    console.error(`[boxDiff] job ${job?.id} failed:`, err)
+  })
+
+  return worker
+}

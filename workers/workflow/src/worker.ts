@@ -53,6 +53,7 @@ import {
   QUEUE_RESEARCH_CHECKER,
   type ScheduledResearchJobData,
 } from './queues.js'
+import { startBoxDiffWorker } from './boxDiffProcessor.js'
 import { withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -342,6 +343,9 @@ const scheduledResearchWorker = createWorker<ScheduledResearchJobData>(
   3
 )
 
+// ── box-diff ──────────────────────────────────────────────────────────────
+const boxDiffWorker = startBoxDiffWorker()
+
 // ── file-cleanup — runs once per day ─────────────────────────────────────────
 const QUEUE_FILE_CLEANUP = 'file-cleanup'
 const fileCleanupQueue = createQueue(QUEUE_FILE_CLEANUP)
@@ -380,6 +384,7 @@ async function shutdown() {
     clientVerticalBrainProcessWorker.close(),
     researchCheckerWorker.close(),
     scheduledResearchWorker.close(),
+    boxDiffWorker.close(),
     fileCleanupWorker.close(),
   ])
   process.exit(0)

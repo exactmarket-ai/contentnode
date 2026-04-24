@@ -55,6 +55,7 @@ import { boxIntegrationRoutes }    from './routes/integrations/box.js'
 import { pipelineRoutes }         from './routes/pipeline.js'
 import { deliverablesRoutes }     from './routes/deliverables.js'
 import { myWorkRoutes }           from './routes/myWork.js'
+import { boxFileWebhookRoutes }   from './routes/webhooks/boxFile.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -181,6 +182,8 @@ await app.register(boxIntegrationRoutes,     { prefix: '/api/v1/integrations/box
 await app.register(pipelineRoutes,           { prefix: '/api/v1/pipeline' })
 await app.register(deliverablesRoutes,       { prefix: '/api/v1/deliverables' })
 await app.register(myWorkRoutes,             { prefix: '/api/v1/my-work' })
+// Box webhook — public (no auth), verified by HMAC signature
+await app.register(boxFileWebhookRoutes,     { prefix: '/api/v1/webhooks/box-file' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

@@ -14,6 +14,7 @@ export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
 export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
+export const QUEUE_BOX_DIFF = 'box-diff'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -102,6 +103,19 @@ export interface ScheduledResearchJobData {
   manual?: boolean
 }
 
+export interface BoxDiffJobData {
+  agencyId:       string
+  clientId:       string
+  runId:          string | null
+  stakeholderId:  string | null
+  boxFileId:      string
+  mondayItemId:   string | null
+  originalText:   string
+  editedText:     string
+  attributedTo:   string   // 'stakeholder' | 'employee'
+  filename:       string
+}
+
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
 let patternDetectionQueue: Queue<PatternDetectionJobData> | null = null
 let editAnalysisQueue: Queue<EditAnalysisJobData> | null = null
@@ -113,6 +127,7 @@ let clientBrainProcessQueue: Queue<ClientBrainProcessJobData> | null = null
 let agencyBrainProcessQueue: Queue<AgencyBrainProcessJobData> | null = null
 let verticalBrainProcessQueue: Queue<VerticalBrainProcessJobData> | null = null
 let clientVerticalBrainProcessQueue: Queue<ClientVerticalBrainProcessJobData> | null = null
+let boxDiffQueue: Queue<BoxDiffJobData> | null = null
 
 /**
  * Returns the singleton Queue instance for dispatching workflow run jobs.
@@ -230,4 +245,11 @@ export function getScheduledResearchQueue(): Queue<ScheduledResearchJobData> {
     scheduledResearchQueue = new Queue<ScheduledResearchJobData>(QUEUE_SCHEDULED_RESEARCH, { connection: getRedis() })
   }
   return scheduledResearchQueue
+}
+
+export function getBoxDiffQueue(): Queue<BoxDiffJobData> {
+  if (!boxDiffQueue) {
+    boxDiffQueue = new Queue<BoxDiffJobData>(QUEUE_BOX_DIFF, { connection: getRedis() })
+  }
+  return boxDiffQueue
 }

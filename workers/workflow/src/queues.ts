@@ -22,6 +22,7 @@ export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-proces
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
 export const QUEUE_RESEARCH_CHECKER = 'research-checker'
+export const QUEUE_BOX_DIFF = 'box-diff'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -130,6 +131,19 @@ export interface ScheduledResearchJobData {
   programId?: string
   clientId?: string
   manual?: boolean
+}
+
+export interface BoxDiffJobData {
+  agencyId:       string
+  clientId:       string
+  runId:          string | null
+  stakeholderId:  string | null
+  boxFileId:      string
+  mondayItemId:   string | null
+  originalText:   string
+  editedText:     string
+  attributedTo:   string
+  filename:       string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

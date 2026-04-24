@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command'); if echo \"$cmd\" | grep -q 'push origin main' && ! echo \"$cmd\" | grep -q 'push origin main:'; then echo '{\"decision\":\"block\",\"reason\":\"Production push blocked. Say \\\"push to production\\\" or \\\"push to main\\\" explicitly to authorize.\"}'; else echo '{\"decision\":\"allow\"}'; fi"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
