@@ -378,6 +378,9 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
   // ── POST /webhook — receive Monday events (no Clerk auth — called by Monday) ─
   app.post('/webhook', async (req, reply) => {
     const body = req.body as Record<string, unknown>
+    const debugMode = (req.query as Record<string, string>).debug === '1'
+    const debugLog: string[] = []
+    const dbg = (msg: string) => { if (debugMode) debugLog.push(msg) }
 
     // Challenge handshake — Monday sends this when you first register the URL
     if (body.challenge) {
@@ -394,7 +397,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     }
 
     const event = body.event as MondayWebhookEvent | undefined
-    if (!event) return reply.send({ ok: true })
+    if (!event) return reply.send({ ok: true, debug: debugLog })
 
     app.log.info(
       { type: event.type, boardId: event.boardId, itemId: event.pulseId, itemName: event.pulseName },
@@ -406,21 +409,25 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       event.type === 'change_column_value' || event.type === 'update_column_value'
     ) && event.pulseId
 
+    dbg(`event.type=${event.type} isColumnChange=${!!isColumnChange}`)
+
     if (isColumnChange) {
       // Integration is not a tenant-scoped model so this works without agency context
       const integration = await prisma.integration.findFirst({
         where: { provider: 'monday' },
         select: { agencyId: true },
       })
+      dbg(`integration.agencyId=${integration?.agencyId ?? 'null'}`)
       app.log.info({ integration: integration?.agencyId ?? null }, '[monday-webhook] integration lookup')
 
       // Fall back to getDefaultAgencyId() regardless of API token (just needs any agency in DB)
       const agencyId = integration?.agencyId ?? await getDefaultAgencyId()
+      dbg(`agencyId=${agencyId ?? 'null'}`)
       app.log.info({ agencyId }, '[monday-webhook] resolved agencyId')
 
       if (!agencyId) {
         app.log.error('[monday-webhook] no agencyId — skipping Box folder creation')
-        return reply.send({ ok: true })
+        return reply.send({ ok: true, debug: debugLog })
       }
 
       try {
@@ -428,6 +435,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         const boardId = String(event.boardId)
         const itemId  = String(event.pulseId)
 
+        dbg(`token=ok boardId=${boardId} itemId=${itemId}`)
         app.log.info({ boardId, itemId }, '[monday-webhook] fetching item column values')
 
         // Fetch item's current column values + board name
@@ -449,26 +457,30 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         const boardName = item?.board?.name ?? ''
         const colValues = item?.column_values ?? []
 
+        dbg(`boardName=${boardName} columns=${colValues.map(c => `"${c.title}"=${JSON.stringify(c.text)}`).join(', ')}`)
         app.log.info({ boardName, columnCount: colValues.length, columns: colValues.map(c => `${c.title}=${c.text}`) }, '[monday-webhook] item columns')
 
         // Only proceed if Sub Project has a value
         const subProjectCol = colValues.find(cv => cv.title.toLowerCase().includes('sub project'))
         const folderName = subProjectCol?.text?.trim()
+        dbg(`subProjectCol="${subProjectCol?.title}" folderName="${folderName}"`)
         app.log.info({ subProjectColTitle: subProjectCol?.title, folderName }, '[monday-webhook] sub project check')
-        if (!folderName) return reply.send({ ok: true })
+        if (!folderName) return reply.send({ ok: true, debug: debugLog })
 
         // Skip if Box folder URL already set for this item (dedup)
         const existingBoxCol = colValues.find(
           cv => cv.title.toLowerCase().includes('client folder') && cv.title.toLowerCase().includes('box')
         ) ?? colValues.find(cv => cv.title.toLowerCase() === 'box')
+        dbg(`existingBoxCol="${existingBoxCol?.title}" text="${existingBoxCol?.text}"`)
         app.log.info({ existingBoxText: existingBoxCol?.text }, '[monday-webhook] dedup check')
         if (existingBoxCol?.text?.trim()) {
           app.log.info({ itemId, folderName }, '[monday-webhook] Box folder already set — skipping')
-          return reply.send({ ok: true })
+          return reply.send({ ok: true, debug: debugLog })
         }
 
         // Match board → ContentNode client by board name, run inside agency context
         const clientName = boardName.replace(/\s*-\s*campaigns?$/i, '').trim()
+        dbg(`clientName="${clientName}"`)
         app.log.info({ clientName, agencyId }, '[monday-webhook] looking up client')
 
         const client = await withAgency(agencyId, async () => {
@@ -478,6 +490,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
             select: { id: true, boxFolderId: true },
           })
         })
+        dbg(`client.id=${client?.id} client.boxFolderId=${client?.boxFolderId}`)
         app.log.info({ clientId: client?.id, clientBoxFolderId: client?.boxFolderId }, '[monday-webhook] client lookup result')
 
         // Store mondayBoardId on client if not already set
@@ -488,8 +501,10 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         }
 
         const parentId = client?.boxFolderId ?? process.env.BOX_PARENT_FOLDER_ID ?? '0'
+        dbg(`parentId=${parentId} — creating folder "${folderName}"`)
         app.log.info({ folderName, parentId }, '[monday-webhook] creating Box folder')
         const { id: folderId, url } = await createBoxFolder(agencyId, folderName, parentId)
+        dbg(`CREATED folderId=${folderId} url=${url}`)
         app.log.info({ folderId, url }, '[monday-webhook] Box folder created')
 
         // Write Box URL back to "Client Folder - Box" column
@@ -500,6 +515,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
           c => c.title.toLowerCase().includes('client folder') && c.title.toLowerCase().includes('box')
         ) ?? boardData.boards?.[0]?.columns?.find(c => c.title.toLowerCase() === 'box')
 
+        dbg(`writeCol="${writeCol?.id}" title="${writeCol?.title}"`)
         app.log.info({ writeColId: writeCol?.id, writeColTitle: writeCol?.title }, '[monday-webhook] write-back column')
 
         if (writeCol) {
@@ -508,16 +524,19 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
               change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
             }
           `, { boardId, itemId, columnId: writeCol.id, value: JSON.stringify({ url, text: 'Open in Box' }) })
+          dbg(`URL written back to Monday column ${writeCol.id}`)
           app.log.info({ itemId, url }, '[monday-webhook] Box URL written back to Monday')
         }
 
         app.log.info({ folderName, boardName, clientName, parentId, url }, '[monday-webhook] Box project subfolder created successfully')
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        dbg(`ERROR: ${errMsg}`)
         app.log.error({ err }, '[monday-webhook] Box folder creation failed')
       }
     }
 
-    return reply.send({ ok: true })
+    return reply.send({ ok: true, debug: debugLog })
   })
 }
 
