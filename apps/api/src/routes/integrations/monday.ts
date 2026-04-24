@@ -132,7 +132,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       where: { agencyId_provider: { agencyId, provider: 'monday' } },
       select: { id: true, createdAt: true },
     })
-    const connected = !!integration || !!mondayApiToken()
+    const connected = !!integration
     return reply.send({ data: { connected, connectedAt: integration?.createdAt ?? null } })
   })
 
