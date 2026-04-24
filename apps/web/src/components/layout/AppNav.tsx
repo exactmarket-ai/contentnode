@@ -216,6 +216,7 @@ const BOTTOM_NAV_ITEMS = [
   { to: '/access',   icon: Icons.ShieldCheck, label: 'Access',   ...ACTIVE },
   { to: '/team',     icon: Icons.UserCog,     label: 'Team',     ...ACTIVE },
   { to: '/settings', icon: Icons.Settings2,   label: 'Settings', ...ACTIVE },
+  { to: '/theme',    icon: Icons.Palette,     label: 'Theme',    activeBg: '#fdf5ff', activeText: '#a200ee', activeBorder: '#e9c8ff', ownerOnly: true },
 ]
 
 
@@ -384,7 +385,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
 
       <div className="mt-auto pt-2">
         <div className="my-1 h-px w-full bg-border" />
-        {BOTTOM_NAV_ITEMS.map((item) => (
+        {BOTTOM_NAV_ITEMS.filter((item) => !('ownerOnly' in item) || isOwner).map((item) => (
           <NavItem key={item.to} {...item} collapsed={collapsed} />
         ))}
         {/* Invite — admin/owner only */}

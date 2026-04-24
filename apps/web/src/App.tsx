@@ -29,6 +29,7 @@ import { WriterPortalPage } from '@/pages/writer/WriterPortalPage'
 import { PipelinePage } from '@/pages/PipelinePage'
 import { MyWorkPage }   from '@/pages/MyWorkPage'
 import DeliverablesPage from '@/pages/DeliverablesPage'
+import { ThemePage } from '@/pages/ThemePage'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
@@ -134,6 +135,7 @@ const protectedChildren = [
   { path: 'access', element: <AccessPage /> },
   { path: 'settings', element: <SettingsPage /> },
   { path: 'profile', element: <UserProfilePage /> },
+  { path: 'theme', element: <ThemePage /> },
   { path: 'review/:runId', element: <ReviewPage /> },
 ]
 
