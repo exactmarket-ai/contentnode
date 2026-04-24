@@ -931,8 +931,6 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
 
   return (
     <div className="space-y-6">
-      <UnknownEditorsAlert clientId={client.id} onTabChange={onTabChange} />
-
       <div className="grid grid-cols-4 gap-3">
         {[
           { icon: Icons.Users, value: client._count.stakeholders, label: 'Contacts', tab: 'stakeholders' as Tab },
@@ -956,7 +954,10 @@ function OverviewTab({ client, onTabChange }: { client: Client; onTabChange: (ta
 
       <div className="grid grid-cols-2 gap-4">
         <OverviewReviewsCard clientId={client.id} onTabChange={onTabChange} />
-        <BrainEntriesCard clientId={client.id} onTabChange={onTabChange} />
+        <div className="flex flex-col gap-4">
+          <UnknownEditorsAlert clientId={client.id} onTabChange={onTabChange} />
+          <BrainEntriesCard clientId={client.id} onTabChange={onTabChange} />
+        </div>
       </div>
     </div>
   )
