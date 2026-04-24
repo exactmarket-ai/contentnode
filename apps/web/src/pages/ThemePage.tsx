@@ -17,21 +17,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function Swatch({ label, bg, hex, tailwind, textClass = 'text-foreground' }: {
-  label: string; bg: string; hex: string; tailwind: string; textClass?: string
+function Swatch({ label, bg, hex, tailwind }: {
+  label: string; bg: string; hex: string; tailwind: string
 }) {
   const [copied, setCopied] = useState(false)
+  // bg can be a Tailwind class (bg-*) or empty — if empty we use inline hex style
+  const useTailwind = bg.startsWith('bg-')
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(tailwind); setCopied(true); setTimeout(() => setCopied(false), 1200) }}
+      onClick={() => { navigator.clipboard.writeText(hex); setCopied(true); setTimeout(() => setCopied(false), 1200) }}
       className="flex flex-col overflow-hidden rounded-lg border border-border text-left hover:shadow-md transition-shadow"
-      title={`Click to copy: ${tailwind}`}
+      title={`Click to copy hex: ${hex}`}
     >
-      <div className={cn('h-16 w-full', bg)} style={bg.startsWith('bg-') ? undefined : { background: bg }} />
+      <div
+        className={cn('h-14 w-full', useTailwind ? bg : '')}
+        style={!useTailwind ? { background: hex } : undefined}
+      />
       <div className="bg-white px-2.5 py-2 space-y-0.5">
         <p className="text-[11px] font-semibold text-foreground">{label}</p>
-        <p className="font-mono text-[10px] text-muted-foreground">{tailwind}</p>
         <p className="font-mono text-[10px] text-muted-foreground">{hex}</p>
+        <p className="font-mono text-[10px] text-muted-foreground/60 truncate">{tailwind}</p>
         {copied && <p className="text-[10px] text-emerald-600 font-medium">Copied!</p>}
       </div>
     </button>
@@ -228,78 +233,120 @@ export function MyPage() {
           </div>
         </Section>
 
-        {/* ── 2. Color Palette ──────────────────────────────────────────────── */}
-        <Section title="Semantic Color Tokens">
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Always prefer these tokens over hardcoded hex or Tailwind color classes.
-            They adapt to theme changes and keep the UI consistent.
-          </p>
-          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
-            <Swatch label="background" bg="bg-background" hex="#f5f4ef" tailwind="bg-background" />
-            <Swatch label="foreground" bg="bg-foreground" hex="#1a1a14" tailwind="bg-foreground" textClass="text-white" />
-            <Swatch label="card" bg="bg-card" hex="#ffffff" tailwind="bg-card" />
-            <Swatch label="muted" bg="bg-muted" hex="#fafaf7" tailwind="bg-muted" />
-            <Swatch label="muted-fg" bg="bg-muted-foreground" hex="#5f5e5a" tailwind="bg-muted-foreground" textClass="text-white" />
-            <Swatch label="accent" bg="bg-accent" hex="#f0ede8" tailwind="bg-accent" />
-            <Swatch label="primary" bg="bg-primary" hex="#a200ee" tailwind="bg-primary" textClass="text-white" />
-            <Swatch label="border" bg="bg-border" hex="#e0deda" tailwind="bg-border" />
-            <Swatch label="destructive" bg="bg-destructive" hex="#dc2626" tailwind="bg-destructive" textClass="text-white" />
+        {/* ── 2. Brand Colors ───────────────────────────────────────────────── */}
+        <Section title="Brand">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+            <Swatch label="Primary" bg="bg-primary" hex="#a200ee" tailwind="bg-primary / #a200ee" />
+            <Swatch label="Primary Hover" bg="" hex="#c44fff" tailwind="#c44fff" />
+            <Swatch label="Primary Tint" bg="" hex="#f0d6ff" tailwind="#f0d6ff" />
           </div>
         </Section>
 
-        <Section title="Status & Accent Colors">
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Hardcoded Tailwind colors used for semantic state. Use these consistently.
+        {/* ── 3. Neutrals ───────────────────────────────────────────────────── */}
+        <Section title="Neutrals">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+            <Swatch label="Foreground" bg="bg-foreground" hex="#1a1a14" tailwind="bg-foreground" />
+            <Swatch label="Muted Fg" bg="bg-muted-foreground" hex="#5f5e5a" tailwind="bg-muted-foreground" />
+            <Swatch label="Placeholder" bg="" hex="#8a8a80" tailwind="#8a8a80" />
+            <Swatch label="Border" bg="bg-border" hex="#e0deda" tailwind="bg-border" />
+          </div>
+        </Section>
+
+        {/* ── 4. Backgrounds ────────────────────────────────────────────────── */}
+        <Section title="Backgrounds & Surfaces">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+            <Swatch label="Background" bg="bg-background" hex="#f5f4ef" tailwind="bg-background" />
+            <Swatch label="Muted" bg="bg-muted" hex="#fafaf7" tailwind="bg-muted" />
+            <Swatch label="Card / Popover" bg="bg-card" hex="#ffffff" tailwind="bg-card" />
+            <Swatch label="Accent" bg="bg-accent" hex="#f0ede8" tailwind="bg-accent" />
+          </div>
+        </Section>
+
+        {/* ── 5. Status ─────────────────────────────────────────────────────── */}
+        <Section title="Status & Semantic">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Swatch label="Success" bg="" hex="#22c55e" tailwind="emerald-500 · #22c55e" />
+            <Swatch label="Info / Running" bg="" hex="#3b82f6" tailwind="blue-500 · #3b82f6" />
+            <Swatch label="Warning" bg="" hex="#f59e0b" tailwind="amber-500 · #f59e0b" />
+            <Swatch label="Error / Destructive" bg="bg-destructive" hex="#ef4444" tailwind="bg-destructive · #ef4444" />
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-3">
+            Use the full Tailwind scale for tinted backgrounds: e.g. <code className="font-mono text-[10px] bg-muted px-1 rounded">bg-emerald-50 border-emerald-200 text-emerald-700</code>
           </p>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        </Section>
+
+        {/* ── 6. Node categories ────────────────────────────────────────────── */}
+        <Section title="Node Categories">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Swatch label="Source Nodes" bg="" hex="#185fa5" tailwind="#185fa5" />
+            <Swatch label="Logic Nodes" bg="" hex="#7c3aed" tailwind="violet-700 · #7c3aed" />
+            <Swatch label="Output Nodes" bg="" hex="#888780" tailwind="#888780" />
+            <Swatch label="Insight Nodes" bg="" hex="#d97706" tailwind="amber-600 · #d97706" />
+          </div>
+        </Section>
+
+        {/* ── 7. CSS Variable reference ─────────────────────────────────────── */}
+        <Section title="CSS Variable Reference">
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="bg-muted border-b border-border">
+                  <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Variable</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Hex</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">HSL</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Used for</th>
+                </tr>
+              </thead>
+              <tbody className="bg-card divide-y divide-border/60">
+                {[
+                  { v: '--background',       hex: '#f5f4ef', hsl: '48 20% 95%',   use: 'App shell, page body, headers' },
+                  { v: '--foreground',       hex: '#1a1a14', hsl: '60 14% 9%',    use: 'All body text' },
+                  { v: '--card',             hex: '#ffffff', hsl: '0 0% 100%',    use: 'Cards, modals, dropdowns' },
+                  { v: '--primary',          hex: '#a200ee', hsl: '280 100% 47%', use: 'CTAs, active nav, brand accent' },
+                  { v: '--muted',            hex: '#fafaf7', hsl: '60 11% 97%',   use: 'Subtle backgrounds, table rows' },
+                  { v: '--muted-foreground', hex: '#5f5e5a', hsl: '45 3% 36%',    use: 'Secondary text, meta, timestamps' },
+                  { v: '--accent',           hex: '#f0ede8', hsl: '35 14% 93%',   use: 'Ghost hover, tag backgrounds' },
+                  { v: '--border',           hex: '#e0deda', hsl: '35 9% 87%',    use: 'All dividers and outlines' },
+                  { v: '--destructive',      hex: '#ef4444', hsl: '0 72% 51%',    use: 'Errors, delete, failed states' },
+                  { v: '--ring',             hex: '#a200ee', hsl: '280 100% 47%', use: 'Focus rings on inputs' },
+                ].map((row) => (
+                  <tr key={row.v}>
+                    <td className="px-4 py-2.5 font-mono text-[10px] text-foreground/80">{row.v}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="h-3.5 w-3.5 rounded border border-black/10 shrink-0 inline-block" style={{ background: row.hex }} />
+                        <span className="font-mono text-[10px]">{row.hex}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">{row.hsl}</td>
+                    <td className="px-4 py-2.5 text-[11px] text-muted-foreground">{row.use}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+
+        {/* ── Typography ────────────────────────────────────────────────────── */}
+        <Section title="Typography Scale">
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
             {[
-              { label: 'Approved / Success', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500', name: 'emerald' },
-              { label: 'Warning / Pending', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500', name: 'amber' },
-              { label: 'Error / Rejected', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', dot: 'bg-red-500', name: 'red' },
-              { label: 'Info / Active', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', dot: 'bg-blue-500', name: 'blue' },
-              { label: 'In Review', bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', dot: 'bg-violet-500', name: 'violet' },
-              { label: 'AI / Insights', bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', dot: 'bg-purple-500', name: 'purple' },
-              { label: 'Overdue', bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', dot: 'bg-orange-500', name: 'orange' },
-              { label: 'Neutral / Draft', bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', dot: 'bg-slate-400', name: 'slate' },
-            ].map((s) => (
-              <div key={s.name} className={cn('rounded-lg border p-3 flex items-center gap-2.5', s.bg, s.border)}>
-                <div className={cn('h-2.5 w-2.5 rounded-full shrink-0', s.dot)} />
-                <div>
-                  <p className={cn('text-[11px] font-semibold', s.text)}>{s.label}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono">{s.name}-50/200/700</p>
-                </div>
+              { size: '22px / 700',      style: { fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px' },                                   sample: 'Page Title',                                    use: 'Page headings (marketing, landing)' },
+              { size: '18px / 600',      style: { fontSize: 18, fontWeight: 600, letterSpacing: '-0.2px' },                                   sample: 'Section Heading',                               use: 'Section headers, dialog titles' },
+              { size: '15px / 600',      style: { fontSize: 15, fontWeight: 600 },                                                             sample: 'Card Heading',                                  use: 'Card titles, panel headers' },
+              { size: '13px / 500',      style: { fontSize: 13, fontWeight: 500 },                                                             sample: 'Sub-heading / Label',                           use: 'Form labels, sidebar section titles' },
+              { size: '12px / 400',      style: { fontSize: 12 },                                                                              sample: 'Body text — standard UI copy and descriptions.', use: 'text-xs — default body' },
+              { size: '11px / 400',      style: { fontSize: 11, color: '#5f5e5a' },                                                            sample: 'Secondary copy — meta, timestamps, hints.',     use: 'text-[11px] text-muted-foreground' },
+              { size: '10px / 700 caps', style: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.08em', color: '#5f5e5a' }, sample: 'SECTION LABEL', use: 'Section dividers, table headers' },
+              { size: '9px / 700 caps',  style: { fontSize: 9,  fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.1em',  color: '#8a8a80' }, sample: 'BADGE / TAG',   use: 'Badge text, pill labels' },
+              { size: 'Mono 11px',       style: { fontSize: 11, fontFamily: 'monospace', color: '#5f5e5a' },                                  sample: 'ANTHROPIC_API_KEY · error messages · IDs',      use: 'font-mono — code, env vars, IDs' },
+            ].map((row, i) => (
+              <div key={i} className="flex items-baseline gap-4 px-5 py-3 border-b border-border/50 last:border-b-0">
+                <span className="w-28 shrink-0 text-[10px] font-mono text-muted-foreground/60">{row.size}</span>
+                <span style={row.style} className="flex-1">{row.sample}</span>
+                <span className="text-[10px] text-muted-foreground/50 hidden sm:block">{row.use}</span>
               </div>
             ))}
-          </div>
-        </Section>
-
-        {/* ── 3. Typography ─────────────────────────────────────────────────── */}
-        <Section title="Typography">
-          <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-            <div className="space-y-1">
-              <p className="text-[10px] font-mono text-muted-foreground">text-sm font-semibold — page title / section header</p>
-              <p className="text-sm font-semibold">Page Title or Section Header</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] font-mono text-muted-foreground">text-xs font-semibold — card title / label</p>
-              <p className="text-xs font-semibold">Card Title or Label</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] font-mono text-muted-foreground">text-xs — body text</p>
-              <p className="text-xs">Standard body text for descriptions and content inside cards or forms.</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] font-mono text-muted-foreground">text-[11px] text-muted-foreground — secondary / helper text</p>
-              <p className="text-[11px] text-muted-foreground">Secondary description, timestamps, helper text below fields.</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] font-mono text-muted-foreground">text-[10px] font-mono text-muted-foreground — code / meta</p>
-              <p className="text-[10px] font-mono text-muted-foreground">SYSTEM_ENV_VAR, token references, small code snippets</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] font-mono text-muted-foreground">text-xs font-semibold uppercase tracking-widest text-muted-foreground — section divider label</p>
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Section Divider Label</p>
-            </div>
           </div>
         </Section>
 
