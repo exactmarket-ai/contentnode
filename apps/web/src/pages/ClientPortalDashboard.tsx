@@ -641,8 +641,10 @@ function MondayTab() {
   }, [boardId])
 
   async function patchCell(itemId: string, colId: string, rawValue: string) {
+    if (!rawValue.trim()) { setEditingCell(null); return }
     const col   = boardData?.columns?.find(c => c.id === colId)
     const type  = col?.type ?? 'text'
+    if (type === 'dropdown') { setEditingCell(null); return }
     let value: string
     if (type === 'status')    value = JSON.stringify({ label: rawValue })
     else if (type === 'date') value = JSON.stringify({ date: rawValue })
