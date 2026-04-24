@@ -340,7 +340,9 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return `${apiBase}/api/v1/integrations/monday/webhook`
     })()
 
-    const eventList = events ?? ['create_pulse', 'change_column_value']
+    req.log.info({ webhookUrl }, '[monday] registering webhook')
+
+    const eventList = events ?? ['create_item', 'change_column_value']
     const results = []
 
     for (const event of eventList) {
@@ -404,7 +406,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       'Monday webhook received'
     )
 
-    if (event.type === 'create_pulse' && event.pulseId && event.pulseName) {
+    if ((event.type === 'create_pulse' || event.type === 'create_item') && event.pulseId && event.pulseName) {
       // Find the agency that owns this Monday board
       const integration = await prisma.integration.findFirst({
         where: { provider: 'monday' },
