@@ -27,6 +27,7 @@ import { PortalPage } from '@/pages/portal/PortalPage'
 import { PortalReviewPage } from '@/pages/portal/PortalReviewPage'
 import { WriterPortalPage } from '@/pages/writer/WriterPortalPage'
 import { PipelinePage } from '@/pages/PipelinePage'
+import { MyWorkPage }   from '@/pages/MyWorkPage'
 import DeliverablesPage from '@/pages/DeliverablesPage'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
@@ -111,6 +112,7 @@ function ProtectedLayout() {
 // ── App routes (protected content) ───────────────────────────────────────────
 const protectedChildren = [
   { index: true, element: <Navigate to="/pipeline" replace /> },
+  { path: 'my-work',      element: <MyWorkPage /> },
   { path: 'pipeline',     element: <PipelinePage /> },
   { path: 'deliverables', element: <DeliverablesPage /> },
   { path: 'workflows', element: <WorkflowListPage /> },

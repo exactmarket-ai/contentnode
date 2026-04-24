@@ -54,6 +54,7 @@ import { mondayIntegrationRoutes } from './routes/integrations/monday.js'
 import { boxIntegrationRoutes }    from './routes/integrations/box.js'
 import { pipelineRoutes }         from './routes/pipeline.js'
 import { deliverablesRoutes }     from './routes/deliverables.js'
+import { myWorkRoutes }           from './routes/myWork.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -179,6 +180,7 @@ await app.register(mondayIntegrationRoutes,  { prefix: '/api/v1/integrations/mon
 await app.register(boxIntegrationRoutes,     { prefix: '/api/v1/integrations/box' })
 await app.register(pipelineRoutes,           { prefix: '/api/v1/pipeline' })
 await app.register(deliverablesRoutes,       { prefix: '/api/v1/deliverables' })
+await app.register(myWorkRoutes,             { prefix: '/api/v1/my-work' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

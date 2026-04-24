@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { prisma, type Prisma, permissionService } from '@contentnode/database'
 import { auditService } from '../services/audit.js'
 import { getWorkflowRunsQueue, getEditAnalysisQueue } from '../lib/queues.js'
-import { sendReviewEmail, sendAssignmentEmail } from '../lib/email.js'
+import { sendReviewEmail, sendAssignmentEmail, sendMentionEmail } from '../lib/email.js'
 import { getClerkUserNames } from '../lib/clerk.js'
 
 // Providers that are local/offline for permission classification
@@ -1158,7 +1158,14 @@ export async function runRoutes(app: FastifyInstance) {
     const parsed = z.object({ body: z.string().min(1).max(2000) }).safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'body is required' })
 
-    const run = await prisma.workflowRun.findFirst({ where: { id, agencyId }, select: { id: true } })
+    const run = await prisma.workflowRun.findFirst({
+      where: { id, agencyId },
+      select: {
+        id: true,
+        itemName: true,
+        workflow: { select: { name: true, client: { select: { id: true, name: true } } } },
+      },
+    })
     if (!run) return reply.code(404).send({ error: 'Run not found' })
 
     const user = await prisma.user.findFirst({
@@ -1174,6 +1181,51 @@ export async function runRoutes(app: FastifyInstance) {
         user: { select: { id: true, name: true, avatarStorageKey: true } },
       },
     })
+
+    // ── @mention notifications ──────────────────────────────────────────────
+    const handleMatches = [...parsed.data.body.matchAll(/@(\w+)/g)].map((m) => m[1].toLowerCase())
+    if (handleMatches.length > 0) {
+      const agencyUsers = await prisma.user.findMany({
+        where: { agencyId },
+        select: { id: true, name: true, email: true },
+      })
+
+      const mentioned = new Map<string, { id: string; name: string | null; email: string }>()
+      for (const handle of handleMatches) {
+        const match = agencyUsers.find(
+          (u) => u.id !== user.id && u.name?.toLowerCase().startsWith(handle),
+        )
+        if (match) mentioned.set(match.id, match)
+      }
+
+      const runName  = run.itemName ?? run.workflow?.name ?? 'Untitled'
+      const clientName = run.workflow?.client?.name ?? ''
+      const boardUrl = `${process.env.APP_BASE_URL ?? process.env.PORTAL_BASE_URL ?? 'https://app.contentnode.ai'}/pipeline`
+
+      for (const m of mentioned.values()) {
+        prisma.notification.create({
+          data: {
+            agencyId,
+            userId:       m.id,
+            type:         'mention',
+            title:        `${user.name ?? 'Someone'} mentioned you`,
+            body:         parsed.data.body.slice(0, 200),
+            resourceId:   id,
+            resourceType: 'run',
+            clientId:     run.workflow?.client?.id ?? null,
+          },
+        }).catch(() => {})
+
+        sendMentionEmail({
+          to:          { name: m.name, email: m.email },
+          mentionedBy: user.name ?? 'A teammate',
+          runName,
+          clientName,
+          commentBody: parsed.data.body,
+          boardUrl,
+        }).catch(() => {})
+      }
+    }
 
     return reply.code(201).send({ data: comment })
   })

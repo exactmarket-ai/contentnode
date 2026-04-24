@@ -10,10 +10,12 @@ import {
   RUN_COL_TO_STATUS, REV_COL_TO_STATUS,
 } from './types'
 import { AssigneePicker } from './shared'
+import { CommentsPanel } from './CommentsPanel'
 
 interface Props {
   item: CardItem | null
   members: Member[]
+  currentUserId?: string
   onClose: () => void
   onAssignRun: (id: string, m: Member | null) => void
   onAssignRevision: (id: string, m: Member | null) => void
@@ -21,12 +23,14 @@ interface Props {
   onNavigate: (item: CardItem) => void
 }
 
-export function TaskDetailPanel({ item, members, onClose, onAssignRun, onAssignRevision, onStageChange, onNavigate }: Props) {
+export function TaskDetailPanel({ item, members, currentUserId, onClose, onAssignRun, onAssignRevision, onStageChange, onNavigate }: Props) {
+  const [tab,         setTab]         = useState<'details' | 'comments'>('details')
   const [dueDateEdit, setDueDateEdit] = useState<string>('')
-  const [savingDate, setSavingDate]   = useState(false)
+  const [savingDate,  setSavingDate]  = useState(false)
 
-  // Sync due date input when item changes
+  // Reset to details tab + sync due date when item changes
   useEffect(() => {
+    setTab('details')
     if (item?._type === 'run' && item.data.dueDate) {
       setDueDateEdit(item.data.dueDate.slice(0, 10))
     } else {
@@ -116,7 +120,48 @@ export function TaskDetailPanel({ item, members, onClose, onAssignRun, onAssignR
               </button>
             </div>
 
-            {/* Body */}
+            {/* Tab switcher (only for runs which have comments) */}
+            {isRun && (
+              <div className="flex border-b border-border shrink-0">
+                {(['details', 'comments'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={cn(
+                      'flex-1 py-2 text-[11px] font-medium transition-colors',
+                      tab === t
+                        ? 'border-b-2 border-blue-500 text-blue-600'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {t === 'details' ? 'Details' : (
+                      <span className="flex items-center justify-center gap-1">
+                        Comments
+                        {(item as { _type: 'run'; data: { _count: { comments: number } } }).data._count.comments > 0 && (
+                          <span className="rounded-full bg-blue-100 text-blue-600 px-1.5 py-0.5 text-[9px] font-bold">
+                            {(item as { _type: 'run'; data: { _count: { comments: number } } }).data._count.comments}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Comments tab */}
+            {isRun && tab === 'comments' && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                <CommentsPanel
+                  runId={item!.data.id}
+                  members={members}
+                  currentUserId={currentUserId ?? ''}
+                />
+              </div>
+            )}
+
+            {/* Details tab (or full body for revisions) */}
+            {(tab === 'details' || !isRun) && (
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
 
               {/* Stage picker */}
@@ -241,6 +286,7 @@ export function TaskDetailPanel({ item, members, onClose, onAssignRun, onAssignR
                 </div>
               )}
             </div>
+            )}
 
             {/* Footer actions */}
             <div className="shrink-0 border-t border-border px-5 py-4">

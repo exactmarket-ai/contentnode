@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 import {
   type Client, type Member, type PipelineRun, type PipelineRevision, type CardItem, type ColKey,
   type PipelineView,
@@ -195,6 +196,7 @@ const VIEW_OPTIONS: { key: PipelineView; label: string; icon: keyof typeof Icons
 export function PipelinePage() {
   const navigate                        = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { user }                        = useCurrentUser()
 
   const [runs,      setRuns]      = useState<PipelineRun[]>([])
   const [revisions, setRevisions] = useState<PipelineRevision[]>([])
@@ -422,6 +424,22 @@ export function PipelinePage() {
               ))}
             </div>
 
+            {/* Mine quick-filter */}
+            {user && (
+              <button
+                onClick={() => setFilterAssignee(filterAssignee === user.id ? '' : user.id)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-medium transition-colors',
+                  filterAssignee === user.id
+                    ? 'border-blue-400 bg-blue-50 text-blue-600'
+                    : 'border-border text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Icons.UserCircle className="h-3 w-3" />
+                Mine
+              </button>
+            )}
+
             {/* Overdue toggle */}
             <button
               onClick={() => setOverdueOnly((v) => !v)}
@@ -511,6 +529,7 @@ export function PipelinePage() {
       <TaskDetailPanel
         item={selectedItem}
         members={members}
+        currentUserId={user?.id}
         onClose={() => setSelectedItem(null)}
         onAssignRun={assignRun}
         onAssignRevision={assignRevision}
