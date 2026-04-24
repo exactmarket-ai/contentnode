@@ -456,7 +456,7 @@ export function CalendarPage() {
   return (
     <div className="flex h-full flex-col bg-background overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border bg-card px-5 py-3 shrink-0">
+      <div className="flex items-center gap-3 border-b border-border bg-background px-5 py-3 shrink-0">
         <Icons.CalendarDays className="h-4 w-4 text-blue-600" />
         <h1 className="text-sm font-semibold">Content Calendar</h1>
 
