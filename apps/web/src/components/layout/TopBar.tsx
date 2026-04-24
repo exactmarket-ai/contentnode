@@ -1217,7 +1217,7 @@ function ProjectPickerModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-sm bg-white border border-border rounded-xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-sm bg-white border border-border rounded-xl shadow-2xl">
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Icons.FolderKanban className="h-4 w-4 text-sky-600" />
