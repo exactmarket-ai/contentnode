@@ -1294,7 +1294,7 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      {/* Content + demandPILOT */}
+      {/* Content */}
       <div className="flex flex-col flex-1 min-h-0">
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-8 py-8 space-y-16">
@@ -1340,19 +1340,19 @@ export function ClientDemandGenTab({ clientId }: { clientId: string }) {
 
           </div>
         </div>
-
-        {/* demandPILOT — anchored to bottom, expands to 40vh */}
-        <DemandPilot
-          clientId={clientId}
-          selectedVertical={selectedVertical}
-          data={data as Record<string, unknown> | null}
-          filledSections={filledSections}
-          emptySections={emptySections}
-          onApplySection={handleApplySection}
-          onScrollToSection={(num) => scrollTo(num)}
-        />
       </div>
       </div>{/* end main content area */}
+
+      {/* demandPILOT — full-width, outside body row, matches gtmPILOT placement */}
+      <DemandPilot
+        clientId={clientId}
+        selectedVertical={selectedVertical}
+        data={data as Record<string, unknown> | null}
+        filledSections={filledSections}
+        emptySections={emptySections}
+        onApplySection={handleApplySection}
+        onScrollToSection={(num) => scrollTo(num)}
+      />
     </div>
   )
 }
