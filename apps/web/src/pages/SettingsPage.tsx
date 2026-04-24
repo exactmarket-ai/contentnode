@@ -1080,7 +1080,7 @@ function MondayCard() {
       await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ events: ['create_pulse', 'change_column_value'] }),
+        body: JSON.stringify({ events: ['create_item'] }),
       })
       const res = await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks`)
       const { data } = await res.json()
