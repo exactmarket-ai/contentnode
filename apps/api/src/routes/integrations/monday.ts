@@ -340,7 +340,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return `${apiBase}/api/v1/integrations/monday/webhook`
     })()
 
-    const eventList = events ?? ['create_item']
+    const eventList = events ?? ['change_column_values']
     const results = []
 
     for (const event of eventList) {
@@ -401,8 +401,35 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       'Monday webhook received'
     )
 
-    if ((event.type === 'create_pulse' || event.type === 'create_item') && event.pulseId && event.pulseName) {
-      // Find the agency that owns this Monday board
+    // ── Box folder creation: fires when "Sub Project" column is set/changed ──
+    // We intentionally do NOT trigger on create_item because Monday fires that
+    // webhook the instant the item name is typed — before Sub Project is filled.
+    // Instead we subscribe to change_column_values and react when Sub Project
+    // gets a value.  Deduplication: skip if the item already has a Box folder URL.
+    const isSubProjectChange = (
+      event.type === 'change_column_value' || event.type === 'update_column_value'
+    ) && event.pulseId && (
+      event.columnTitle?.toLowerCase().includes('sub project') ||
+      event.columnId?.toLowerCase().includes('sub_project') ||
+      event.columnId?.toLowerCase().includes('sub-project')
+    )
+
+    if (isSubProjectChange) {
+      // Extract new text value from the column change event
+      // Monday sends value as JSON — could be { "value": "text" } or { "text": "text" }
+      let folderName = ''
+      try {
+        const v = event.value as Record<string, unknown> | string | undefined
+        if (typeof v === 'string') {
+          const parsed = JSON.parse(v) as Record<string, unknown>
+          folderName = (parsed.value as string ?? parsed.text as string ?? '').trim()
+        } else if (v && typeof v === 'object') {
+          folderName = ((v.value as string) ?? (v.text as string) ?? '').trim()
+        }
+      } catch { /* non-fatal — fall through to item name fetch */ }
+
+      if (!folderName) return reply.send({ ok: true }) // Sub Project was cleared
+
       const integration = await prisma.integration.findFirst({
         where: { provider: 'monday' },
         select: { agencyId: true },
@@ -416,7 +443,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
           const boardId = String(event.boardId)
           const itemId  = String(event.pulseId)
 
-          // Fetch item's column values + board name in one call
+          // Fetch board name + existing Box column value for dedup check
           const itemData = await mondayGraphQL<{
             items: Array<{
               board: { id: string; name: string }
@@ -431,17 +458,20 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
             }
           `, { itemId: [itemId] })
 
-          const item       = itemData.items?.[0]
-          const boardName  = item?.board?.name ?? event.pulseName ?? ''
-          const colValues  = item?.column_values ?? []
+          const item      = itemData.items?.[0]
+          const boardName = item?.board?.name ?? ''
+          const colValues = item?.column_values ?? []
 
-          // Extract "Sub Project" column for the folder name
-          const subProjectCol = colValues.find(
-            cv => cv.title.toLowerCase().includes('sub project')
-          )
-          const folderName = subProjectCol?.text?.trim() || event.pulseName?.trim() || 'Untitled'
+          // Skip if Box folder already set for this item
+          const existingBoxCol = colValues.find(
+            cv => cv.title.toLowerCase().includes('client folder') && cv.title.toLowerCase().includes('box')
+          ) ?? colValues.find(cv => cv.title.toLowerCase() === 'box')
+          if (existingBoxCol?.text?.trim()) {
+            app.log.info({ itemId, folderName }, 'Box folder already set — skipping')
+            return reply.send({ ok: true })
+          }
 
-          // Match board → ContentNode client by board name (strip " - Campaigns" suffix)
+          // Match board → ContentNode client
           const clientName = boardName.replace(/\s*-\s*campaigns?$/i, '').trim()
           const client = clientName
             ? await prisma.client.findFirst({
@@ -450,39 +480,39 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
               })
             : null
 
-          // Update mondayBoardId on the client if not already set
-          if (client && !client.boxFolderId && boardId) {
+          // Store mondayBoardId if not already set
+          if (client && boardId) {
             await prisma.client.update({
               where: { id: client.id },
               data: { mondayBoardId: boardId },
             }).catch(() => {})
           }
 
-          // Create project subfolder inside client's Box folder, or fall back to root parent
           const parentId = client?.boxFolderId ?? process.env.BOX_PARENT_FOLDER_ID ?? '0'
           const { url } = await createBoxFolder(agencyId, folderName, parentId)
 
-          // Resolve the "Client Folder - Box" column ID from the board
-          const boardData = await mondayGraphQL<{ boards: { columns: { id: string; title: string }[] }[] }>(token, `
-            query($id: [ID!]) {
-              boards(ids: $id) { columns { id title } }
-            }
-          `, { id: [boardId] })
-          const col = boardData.boards?.[0]?.columns?.find(
-            c => c.title.toLowerCase().includes('client folder') && c.title.toLowerCase().includes('box')
-          ) ?? boardData.boards?.[0]?.columns?.find(
-            c => c.title.toLowerCase() === 'box'
-          )
+          // Write Box URL back to "Client Folder - Box" column
+          const boxCol = existingBoxCol ?? colValues.find(
+            cv => cv.title.toLowerCase().includes('client folder') && cv.title.toLowerCase().includes('box')
+          ) ?? colValues.find(cv => cv.title.toLowerCase() === 'box')
 
-          if (col) {
+          // Fetch column list if we didn't get it already
+          const boardData = await mondayGraphQL<{ boards: { columns: { id: string; title: string }[] }[] }>(token, `
+            query($id: [ID!]) { boards(ids: $id) { columns { id title } } }
+          `, { id: [boardId] })
+          const writeCol = boardData.boards?.[0]?.columns?.find(
+            c => c.title.toLowerCase().includes('client folder') && c.title.toLowerCase().includes('box')
+          ) ?? boardData.boards?.[0]?.columns?.find(c => c.title.toLowerCase() === 'box')
+
+          if (writeCol) {
             await mondayGraphQL(token, `
               mutation($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
                 change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
               }
-            `, { boardId, itemId, columnId: col.id, value: JSON.stringify({ url, text: 'Open in Box' }) })
+            `, { boardId, itemId, columnId: writeCol.id, value: JSON.stringify({ url, text: 'Open in Box' }) })
           }
 
-          app.log.info({ folderName, boardName, clientName, parentId, url }, 'Box project subfolder created')
+          app.log.info({ folderName, boardName, clientName, parentId, url }, 'Box project subfolder created from Sub Project column')
         } catch (err) {
           app.log.error({ err }, 'Box folder creation failed')
         }
