@@ -386,9 +386,12 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return reply.send({ challenge: body.challenge })
     }
 
+    req.log.info({ bodyKeys: Object.keys(body), eventType: (body.event as any)?.type }, '[monday] webhook body received')
+
     // Validate signing secret — required in production
     const signingSecret = process.env.MONDAY_SIGNING_SECRET
     if (process.env.NODE_ENV === 'production' && !signingSecret) {
+      req.log.warn('[monday] webhook blocked — NODE_ENV=production but MONDAY_SIGNING_SECRET not set')
       return reply.code(503).send({ error: 'Webhook not configured' })
     }
     if (signingSecret) {
