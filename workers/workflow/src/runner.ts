@@ -47,6 +47,7 @@ import { WrikeSourceExecutor } from './executors/wrikeSource.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
+import { deliverRunToBox } from './boxDelivery.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-node status stored inside WorkflowRun.output
@@ -1109,6 +1110,35 @@ export class WorkflowRunner {
       extractAndSaveQuality(this.agencyId, this.workflowRunId).catch((err) => {
         console.error('[runner] quality extraction failed:', err)
       })
+    }
+
+    // Deliver output to Box if folder is configured on the run (non-blocking)
+    if (finalStatus === 'completed' && run.clientFolderBox && workflow.clientId) {
+      const folderIdMatch = run.clientFolderBox.match(/\/folder\/(\d+)/)
+      const folderId = folderIdMatch?.[1]
+      if (folderId) {
+        const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
+        const text = typeof finalOut?.content === 'string'
+          ? finalOut.content
+          : JSON.stringify(finalOut?.content ?? '')
+
+        const safeName = workflow.name.replace(/[^a-zA-Z0-9 ._-]/g, '').trim() || 'output'
+        const filename  = `${safeName}-${new Date().toISOString().slice(0, 10)}.txt`
+        const reviewerIds  = (run.reviewerIds as string[]) ?? []
+
+        deliverRunToBox({
+          agencyId:      this.agencyId,
+          clientId:      workflow.clientId,
+          runId:         this.workflowRunId,
+          stakeholderId: reviewerIds[0] ?? null,
+          folderId,
+          filename,
+          content:       text,
+          mondayItemId:  null,
+        }).catch((err) => {
+          console.error('[runner] Box delivery failed:', err)
+        })
+      }
     }
   }
 
