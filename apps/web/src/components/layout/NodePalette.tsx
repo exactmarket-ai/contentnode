@@ -528,12 +528,12 @@ export function NodePalette() {
   // Collapsed icon-bar mode
   if (collapsed) {
     return (
-      <div className="relative flex h-full w-[52px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+      <div className="relative flex h-full w-[52px] shrink-0 flex-col overflow-hidden border-r border-border bg-background">
         {/* Right-edge expand handle */}
         <button
           onClick={() => setCollapsed(false)}
           title="Expand palette"
-          className="absolute right-0 top-[40%] z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+          className="absolute right-0 top-[40%] z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-background hover:bg-muted transition-colors"
         >
           <Icons.ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
         </button>
@@ -544,12 +544,12 @@ export function NodePalette() {
 
   // Expanded mode
   return (
-    <div className="relative flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+    <div className="relative flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-background">
       {/* Right-edge collapse handle */}
       <button
         onClick={() => setCollapsed(true)}
         title="Collapse palette"
-        className="absolute right-0 top-[40%] z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-card hover:bg-muted transition-colors"
+        className="absolute right-0 top-[40%] z-10 -translate-y-1/2 flex h-12 w-3 items-center justify-center rounded-l-sm border border-r-0 border-border bg-background hover:bg-muted transition-colors"
       >
         <Icons.ChevronLeft className="h-2.5 w-2.5 text-muted-foreground" />
       </button>
