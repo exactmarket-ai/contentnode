@@ -1294,7 +1294,7 @@ function ProjectPickerModal({
             <div className="relative">
               <input
                 type="text"
-                className={`w-full rounded-md border px-3 py-1.5 text-xs outline-none focus:ring-1 ${
+                className={`w-full rounded-md border pl-3 pr-24 py-1.5 text-xs outline-none focus:ring-1 ${
                   boxValid ? 'border-border focus:ring-ring' : 'border-red-400 focus:ring-red-400'
                 }`}
                 placeholder="https://app.box.com/folder/123456789"
