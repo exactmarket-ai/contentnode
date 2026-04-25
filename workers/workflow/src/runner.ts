@@ -1117,18 +1117,31 @@ export class WorkflowRunner {
       })
     }
 
-    // Deliver output to Box if folder is configured on the run (non-blocking)
-    if (finalStatus === 'completed' && run.clientFolderBox && workflow.clientId) {
-      const folderIdMatch = run.clientFolderBox.match(/\/folder\/(\d+)/)
-      const rootFolderId = folderIdMatch?.[1]
+    // Deliver output to Box if a folder is configured — either on the run record
+    // (clientFolderBox, set by webhook or frontend) or on the workflow itself
+    // (boxProjectFolderId, set via Project Routing). Workflow-level config is the
+    // fallback so delivery works even when clientFolderBox wasn't passed at run time.
+    if (finalStatus === 'completed' && workflow.clientId) {
+      const runRecord  = run as unknown as Record<string, unknown>
+      const wfRecord   = workflow as unknown as Record<string, unknown>
+      const clientObj  = wfRecord.client as Record<string, unknown> | undefined
+
+      // Workflow-level project folder (set via Project Routing modal)
+      const boxProjectFolderId = (wfRecord.boxProjectFolderId as string | undefined) ?? null
+
+      // Run-level folder override (set by webhook or passed by frontend)
+      const folderIdFromRun = (run.clientFolderBox ?? '')
+        .match(/\/folder\/(\d+)/)?.[1] ?? null
+
+      // Use run-level override if present, otherwise fall back to workflow project folder
+      const rootFolderId = folderIdFromRun ?? boxProjectFolderId
+
       if (rootFolderId) {
         const reviewerIds = (run.reviewerIds as string[]) ?? []
         const dateStr     = new Date().toISOString().slice(0, 10)
 
         // Filename helpers
-        const runRecord  = run as unknown as Record<string, unknown>
         const runTopic   = (runRecord.topic as string | undefined)?.trim() ?? ''
-        const clientObj  = (workflow as unknown as Record<string, unknown>).client as Record<string, unknown> | undefined
         const clientName = (clientObj?.name as string | undefined) ?? ''
         const version    = run.itemVersion ?? 1
 
@@ -1146,19 +1159,15 @@ export class WorkflowRunner {
           return segments.join('-') + `.${ext}`
         }
 
-        // Monday routing context — prefer first-class fields (post-migration),
-        // fall back to the input JSON written by earlier builds
+        // Monday routing: prefer run-level fields, fall back to workflow-level project routing
         const mondayItemId  = (runRecord.mondayItemId as string | undefined)
-          ?? (runInput.mondayItemId as string | undefined) ?? null
+          ?? (runInput.mondayItemId as string | undefined)
+          ?? (wfRecord.mondayGroupId as string | undefined) ?? null
         const mondayBoardId = (runRecord.mondayBoardId as string | undefined)
           ?? (runInput.mondayBoardId as string | undefined)
           ?? (clientObj?.mondayBoardId as string | undefined) ?? null
 
-        // Workflow-level project routing: if a Box project folder is set on the
-        // workflow, create a run subfolder inside it and use that as the root.
-        // Name: {topic}-{date} (or just {date} when no topic).
-        const wfRecord = workflow as unknown as Record<string, unknown>
-        const boxProjectFolderId = (wfRecord.boxProjectFolderId as string | undefined) ?? null
+        // Create a per-run subfolder inside the project folder (name: {topic}-{date})
         let effectiveRootFolderId = rootFolderId
         if (boxProjectFolderId) {
           const runFolderName = [slugify(runTopic), dateStr].filter(Boolean).join('-') || dateStr
