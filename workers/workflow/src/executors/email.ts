@@ -55,6 +55,8 @@ function extractText(input: unknown): string {
   const o = input as Record<string, unknown>
   if (typeof o.content === 'string') return o.content
   if (typeof o.text === 'string') return o.text
+  // Image generation output — no text body, skip it
+  if (Array.isArray(o.assets) || Array.isArray(o.generatedAssets)) return ''
   return JSON.stringify(input, null, 2)
 }
 
