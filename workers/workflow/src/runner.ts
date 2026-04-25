@@ -377,7 +377,15 @@ export class WorkflowRunner {
   ) {}
 
   async run(): Promise<void> {
-    return withAgency(this.agencyId, async () => {
+    // Load outside withAgency so middleware doesn't filter by agencyId from job data.
+    // The job-data agencyId can diverge from the DB record's agencyId in edge cases,
+    // causing findFirst to return null. We use the DB's authoritative agencyId instead.
+    const bootstrap = await prisma.workflowRun.findFirst({
+      where: { id: this.workflowRunId },
+      select: { agencyId: true },
+    })
+    if (!bootstrap) throw new Error(`WorkflowRun "${this.workflowRunId}" not found`)
+    return withAgency(bootstrap.agencyId, async () => {
       await this.execute()
     }) as Promise<void>
   }
