@@ -11,11 +11,17 @@ import { FieldGroup, formatBytes, UploadedAudioFile, CONTENT_ROLES } from '../sh
 const AUDIO_ACCEPTED_EXTENSIONS = '.mp3,.wav,.m4a,.ogg,.flac,.mp4,.mov,.avi,.webm,.mkv,.m4v,audio/*,video/*'
 const AUDIO_FILE_SIZE_LIMIT_MB = 500
 
+const OPENAI_TRANSCRIPTION_MODELS = [
+  { value: 'gpt-4o-transcribe',      label: 'GPT-4o Transcribe (best)' },
+  { value: 'gpt-4o-mini-transcribe', label: 'GPT-4o Mini Transcribe (fast)' },
+  { value: 'whisper-1',              label: 'Whisper 1 (legacy)' },
+]
+
 const TRANSCRIPTION_PROVIDERS = [
   { value: 'assemblyai',    label: 'AssemblyAI' },
   { value: 'deepgram',      label: 'Deepgram' },
   { value: 'local',         label: 'Local (mock)' },
-  { value: 'openai-whisper', label: 'OpenAI Whisper' },
+  { value: 'openai-whisper', label: 'OpenAI' },
 ]
 
 export function TranscriptionConfig({
@@ -32,6 +38,7 @@ export function TranscriptionConfig({
   const nodes = useWorkflowStore((s) => s.nodes)
   const audioFiles = (config.audio_files as UploadedAudioFile[]) ?? []
   const provider = (config.provider as string) ?? 'deepgram'
+  const openaiModel = (config.openai_model as string) ?? 'gpt-4o-transcribe'
   const enableDiarization = (config.enable_diarization as boolean) ?? true
   const maxSpeakers = (config.max_speakers as number | null) ?? null
   const apiKeyRef = (config.api_key_ref as string) ?? ''
@@ -191,6 +198,20 @@ export function TranscriptionConfig({
       </FieldGroup>
 
       {/* API key env-var reference (hidden for local) */}
+      {provider === 'openai-whisper' && (
+        <FieldGroup label="Model">
+          <select
+            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+            value={openaiModel}
+            onChange={(e) => onChange('openai_model', e.target.value)}
+          >
+            {OPENAI_TRANSCRIPTION_MODELS.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </FieldGroup>
+      )}
+
       {provider !== 'local' && (
         <FieldGroup label="API Key (env var name)">
           <Input

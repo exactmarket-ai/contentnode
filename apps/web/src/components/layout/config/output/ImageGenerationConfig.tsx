@@ -12,7 +12,10 @@ import { MediaFilmstrip, type MediaAsset } from '../MediaFilmstrip'
 // ─── Provider metadata ────────────────────────────────────────────────────────
 
 const PROVIDERS = [
-  { value: 'dalle3',        label: 'DALL-E 3',       desc: 'OpenAI' },
+  { value: 'gptimage2',     label: 'GPT Image 2',    desc: 'OpenAI' },
+  { value: 'gptimage15',    label: 'GPT Image 1.5',  desc: 'OpenAI' },
+  { value: 'gptimage1mini', label: 'GPT Image Mini', desc: 'OpenAI' },
+  { value: 'dalle3',        label: 'DALL-E 3',       desc: 'OpenAI (legacy)' },
   { value: 'ideogram',      label: 'Ideogram v2',    desc: 'Ideogram' },
   { value: 'leonardo',      label: 'Leonardo.ai',    desc: 'Phoenix' },
   { value: 'fal',           label: 'Fal.ai',         desc: 'FLUX Dev' },
@@ -30,6 +33,33 @@ const PROVIDER_SUPPORT: Record<string, {
   negativePrompt: boolean
   referenceImage: boolean
 }> = {
+  gptimage2: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: false,
+    seed: false,
+    negativePrompt: false,
+    referenceImage: false,
+  },
+  gptimage15: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: false,
+    seed: false,
+    negativePrompt: false,
+    referenceImage: false,
+  },
+  gptimage1mini: {
+    aspectRatio: true,
+    quality: true,
+    numOutputs: true,
+    cfgScale: false,
+    seed: false,
+    negativePrompt: false,
+    referenceImage: false,
+  },
   dalle3: {
     aspectRatio: true,
     quality: true,

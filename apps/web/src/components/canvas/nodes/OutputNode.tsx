@@ -12,7 +12,10 @@ import { EditableLabel } from './EditableLabel'
 const GENERATION_SUBTYPES = new Set(['image-generation', 'video-generation'])
 
 const IMAGE_PROVIDERS = [
-  { value: 'dalle3',        label: 'DALL-E 3' },
+  { value: 'gptimage2',     label: 'GPT Image 2' },
+  { value: 'gptimage15',    label: 'GPT Image 1.5' },
+  { value: 'gptimage1mini', label: 'GPT Image Mini' },
+  { value: 'dalle3',        label: 'DALL-E 3 (legacy)' },
   { value: 'ideogram',      label: 'Ideogram v2' },
   { value: 'leonardo',      label: 'Leonardo.ai' },
   { value: 'fal',           label: 'Fal.ai' },

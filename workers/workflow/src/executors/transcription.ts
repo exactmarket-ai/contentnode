@@ -184,11 +184,12 @@ async function callAssemblyAI(
 async function callWhisper(
   filePath: string,
   apiKey: string,
+  openaiModel = 'gpt-4o-transcribe',
 ): Promise<{ segments: ParsedSegment[]; durationSecs: number }> {
   const formData = new FormData()
   const stream = createReadStream(filePath)
   formData.append('file', stream as unknown as Blob, filePath.split('/').pop())
-  formData.append('model', 'whisper-1')
+  formData.append('model', openaiModel)
   formData.append('response_format', 'verbose_json')
   formData.append('timestamp_granularities[]', 'segment')
 
@@ -350,6 +351,7 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const provider = (config.provider as string) ?? 'local'
     const apiKeyRef = (config.api_key_ref as string) ?? ''
+    const openaiModel = (config.openai_model as string) ?? 'gpt-4o-transcribe'
     const enableDiarization = (config.enable_diarization as boolean) ?? true
     const maxSpeakers = (config.max_speakers as number | null) ?? null
     const targetNodeIds = (config.target_node_ids as string[]) ?? []
@@ -401,7 +403,7 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
           text = segments.map((s) => s.text).join(' ')
         } else if (provider === 'openai-whisper') {
           if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for OpenAI Whisper`)
-          const { segments } = await callWhisper(audioPath, apiKey)
+          const { segments } = await callWhisper(audioPath, apiKey, openaiModel)
           text = segments.map((s) => s.text).join(' ')
         } else {
           throw new Error(`Unknown transcription provider: "${provider}"`)
@@ -469,7 +471,7 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
         console.log(`[transcription] AssemblyAI returned ${segments.length} segments`)
       } else if (provider === 'openai-whisper') {
         if (!apiKey) throw new Error(`Transcription: API key env var "${apiKeyRef}" is not set for OpenAI Whisper`)
-        ;({ segments, durationSecs } = await callWhisper(filePath, apiKey))
+        ;({ segments, durationSecs } = await callWhisper(filePath, apiKey, openaiModel))
       } else {
         throw new Error(`Unknown transcription provider: ${provider}`)
       }

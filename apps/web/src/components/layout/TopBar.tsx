@@ -23,10 +23,18 @@ const ANTHROPIC_MODELS = [
   { value: 'claude-haiku-4-5-20251001',  label: 'Haiku 4.5' },
 ]
 const OPENAI_MODELS = [
+  { value: 'gpt-5.5',      label: 'GPT-5.5' },
+  { value: 'gpt-5.5-pro',  label: 'GPT-5.5 Pro' },
+  { value: 'gpt-5.4',      label: 'GPT-5.4' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+  { value: 'gpt-4.1',      label: 'GPT-4.1' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+  { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
   { value: 'gpt-4o',       label: 'GPT-4o' },
   { value: 'gpt-4o-mini',  label: 'GPT-4o Mini' },
-  { value: 'gpt-4-turbo',  label: 'GPT-4 Turbo' },
-  { value: 'o1-mini',      label: 'o1 Mini' },
+  { value: 'o3',           label: 'o3' },
+  { value: 'o3-pro',       label: 'o3 Pro' },
 ]
 const OLLAMA_MODELS = [
   { value: 'gemma4:e4b',    label: 'Gemma 4 E4B' },

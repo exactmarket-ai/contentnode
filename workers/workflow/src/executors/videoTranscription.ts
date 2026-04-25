@@ -72,14 +72,14 @@ async function transcribeWithAssemblyAI(audioPath: string, apiKeyRef: string): P
   })
 }
 
-async function transcribeWithWhisper(audioPath: string, apiKeyRef: string): Promise<string> {
+async function transcribeWithWhisper(audioPath: string, apiKeyRef: string, openaiModel = 'gpt-4o-transcribe'): Promise<string> {
   const apiKey = process.env[apiKeyRef]
   if (!apiKey) throw new Error(`OpenAI API key env var "${apiKeyRef}" is not set`)
 
   const audioBuffer = readFileSync(audioPath)
   const formData = new FormData()
   formData.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), 'audio.mp3')
-  formData.append('model', 'whisper-1')
+  formData.append('model', openaiModel)
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',

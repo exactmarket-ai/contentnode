@@ -14,19 +14,22 @@ const OFFLINE_IMAGE_PROVIDERS = new Set(['comfyui', 'automatic1111'])
 interface ImageServiceInfo { costProvider: string; model: string; displayService: string }
 
 const IMAGE_SERVICE_MAP: Record<string, ImageServiceInfo> = {
-  dalle3:        { costProvider: 'openai',   model: 'dall-e-3',    displayService: 'DALL-E 3' },
-  ideogram:      { costProvider: 'ideogram',  model: 'ideogram-v2',    displayService: 'Ideogram v2' },
-  leonardo:      { costProvider: 'leonardo', model: 'leonardo-phoenix', displayService: 'Leonardo Phoenix' },
-  fal:           { costProvider: 'fal',      model: 'flux-dev',        displayService: 'FAL FLUX Dev' },
-  comfyui:       { costProvider: '',         model: 'comfyui',     displayService: 'ComfyUI' },
-  automatic1111: { costProvider: '',         model: 'automatic1111', displayService: 'AUTOMATIC1111' },
+  dalle3:         { costProvider: 'openai',   model: 'dall-e-3',         displayService: 'DALL-E 3' },
+  gptimage15:     { costProvider: 'openai',   model: 'gpt-image-1.5',    displayService: 'GPT Image 1.5' },
+  gptimage1mini:  { costProvider: 'openai',   model: 'gpt-image-1-mini', displayService: 'GPT Image 1 Mini' },
+  gptimage2:      { costProvider: 'openai',   model: 'gpt-image-2',      displayService: 'GPT Image 2' },
+  ideogram:       { costProvider: 'ideogram', model: 'ideogram-v2',      displayService: 'Ideogram v2' },
+  leonardo:       { costProvider: 'leonardo', model: 'leonardo-phoenix',  displayService: 'Leonardo Phoenix' },
+  fal:            { costProvider: 'fal',      model: 'flux-dev',         displayService: 'FAL FLUX Dev' },
+  comfyui:        { costProvider: '',         model: 'comfyui',          displayService: 'ComfyUI' },
+  automatic1111:  { costProvider: '',         model: 'automatic1111',    displayService: 'AUTOMATIC1111' },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Provider = 'dalle3' | 'ideogram' | 'leonardo' | 'fal' | 'comfyui' | 'automatic1111'
+type Provider = 'dalle3' | 'gptimage15' | 'gptimage1mini' | 'gptimage2' | 'ideogram' | 'leonardo' | 'fal' | 'comfyui' | 'automatic1111'
 type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3'
 type Quality = 'draft' | 'standard' | 'high'
 
@@ -297,6 +300,45 @@ async function generateDalle3(
     urls.push(data.data[0].url)
   }
   return urls
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GPT Image 1.5 / 1 Mini / 2 (OpenAI) — returns base64, not URLs
+// ─────────────────────────────────────────────────────────────────────────────
+
+function gptImageSize(ratio: AspectRatio): '1024x1024' | '1536x1024' | '1024x1536' {
+  if (ratio === '16:9' || ratio === '4:3') return '1536x1024'
+  if (ratio === '9:16') return '1024x1536'
+  return '1024x1024'
+}
+
+async function generateGptImage(
+  prompt: ImagePromptOutput,
+  cfg: ImageGenerationConfig,
+  model: string,
+): Promise<string[]> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
+
+  const size = gptImageSize(cfg.aspect_ratio ?? prompt.aspectRatio ?? '1:1')
+  const quality = cfg.quality === 'high' ? 'high' : cfg.quality === 'draft' ? 'low' : 'medium'
+  const n = Math.min(cfg.num_outputs ?? 1, 4)
+
+  const dataUrls: string[] = []
+  for (let i = 0; i < n; i++) {
+    const res = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, prompt: prompt.positivePrompt, n: 1, size, quality }),
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`${model} error: ${res.status} ${err}`)
+    }
+    const data = await res.json() as { data: { b64_json: string }[] }
+    dataUrls.push(`data:image/png;base64,${data.data[0].b64_json}`)
+  }
+  return dataUrls
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -743,6 +785,15 @@ export class ImageGenerationExecutor extends NodeExecutor {
       switch (provider) {
         case 'dalle3':
           rawUrls = await generateDalle3(prompt, cfg)
+          break
+        case 'gptimage15':
+          rawUrls = await generateGptImage(prompt, cfg, 'gpt-image-1.5')
+          break
+        case 'gptimage1mini':
+          rawUrls = await generateGptImage(prompt, cfg, 'gpt-image-1-mini')
+          break
+        case 'gptimage2':
+          rawUrls = await generateGptImage(prompt, cfg, 'gpt-image-2')
           break
         case 'ideogram':
           rawUrls = await generateIdeogram(prompt, cfg)
