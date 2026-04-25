@@ -80,7 +80,7 @@ const workflowRunsWorker = createWorker<WorkflowRunJobData>(
       try {
         const { prisma, withAgency } = await import('@contentnode/database')
         await withAgency(agencyId, async () => {
-          await prisma.workflowRun.update({
+          await prisma.workflowRun.updateMany({
             where: { id: workflowRunId },
             data: { status: 'failed', completedAt: new Date(), errorMessage },
           })

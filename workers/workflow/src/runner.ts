@@ -384,7 +384,7 @@ export class WorkflowRunner {
 
   private async execute(): Promise<void> {
     // ── Load run + workflow ──────────────────────────────────────────────────
-    const run = await prisma.workflowRun.findUnique({
+    const run = await prisma.workflowRun.findFirst({
       where: { id: this.workflowRunId },
       include: {
         workflow: {
