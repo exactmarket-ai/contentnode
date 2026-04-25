@@ -316,4 +316,21 @@ export async function boxIntegrationRoutes(app: FastifyInstance) {
 
     return reply.send({ data: folders })
   })
+
+  // ── GET /folder-for-item?mondayItemId=XXX ─────────────────────────────────
+  // Returns the most recent Box project folder used for a given Monday item.
+  // Used by the Project Routing modal to auto-populate the folder field.
+  app.get('/folder-for-item', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { mondayItemId } = req.query as { mondayItemId?: string }
+    if (!mondayItemId) return reply.send({ folderId: null })
+
+    const tracking = await prisma.boxFileTracking.findFirst({
+      where:   { agencyId, mondayItemId },
+      orderBy: { createdAt: 'desc' },
+      select:  { boxFolderId: true },
+    })
+
+    return reply.send({ folderId: tracking?.boxFolderId ?? null })
+  })
 }

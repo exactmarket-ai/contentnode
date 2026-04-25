@@ -1166,6 +1166,7 @@ function ProjectPickerModal({
   type MondayItem = { id: string; name: string; column_values?: { url?: string; text?: string }[] }
   const [mondayItems, setMondayItems] = useState<MondayItem[]>([])
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
+  const [noBoxFolderWarning, setNoBoxFolderWarning] = useState(false)
   const [boxInput, setBoxInput] = useState(() => {
     const id = current.boxProjectFolderId ?? ''
     if (!id) return ''
@@ -1186,10 +1187,22 @@ function ProjectPickerModal({
   }, [clientMondayBoardId])
 
   const autoFillBoxFromItem = (itemId: string) => {
+    setNoBoxFolderWarning(false)
     const item = mondayItems.find((i) => i.id === itemId)
-    const boxCol = item?.column_values?.find((cv) => cv.url?.includes('box.com') || cv.text?.includes('box.com'))
-    const url = boxCol?.url || boxCol?.text || ''
-    if (url) setBoxInput(url)
+    // Prefer folder URLs; accept any box.com URL as fallback
+    const folderCol = item?.column_values?.find((cv) =>
+      cv.url?.includes('box.com/folder/') || cv.text?.includes('box.com/folder/')
+    )
+    const anyBoxCol = item?.column_values?.find((cv) =>
+      cv.url?.includes('box.com') || cv.text?.includes('box.com')
+    )
+    const url = folderCol?.url || folderCol?.text || anyBoxCol?.url || anyBoxCol?.text || ''
+    if (url) {
+      setBoxInput(url)
+    } else {
+      setBoxInput('')
+      setNoBoxFolderWarning(true)
+    }
   }
 
   const parsedFolderId = parseFolderId(boxInput)
@@ -1242,6 +1255,7 @@ function ProjectPickerModal({
                   const id = v === '__none__' ? '' : v
                   setSelectedMondayGroupId(id)
                   if (id) autoFillBoxFromItem(id)
+                  else { setBoxInput(''); setNoBoxFolderWarning(false) }
                 }}
               >
                 <SelectTrigger className="h-8 text-xs">
@@ -1272,7 +1286,7 @@ function ProjectPickerModal({
                 }`}
                 placeholder="https://app.box.com/folder/123456789"
                 value={boxInput}
-                onChange={(e) => setBoxInput(e.target.value)}
+                onChange={(e) => { setBoxInput(e.target.value); setNoBoxFolderWarning(false) }}
               />
               {parsedFolderId && (
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-600 font-mono">
@@ -1281,7 +1295,8 @@ function ProjectPickerModal({
               )}
             </div>
             {!boxValid && <p className="text-[10px] text-red-500">Paste a Box folder URL or numeric ID.</p>}
-            <p className="text-[10px] text-muted-foreground">Paste the Box folder URL. Run output files will be delivered here.</p>
+            {noBoxFolderWarning && <p className="text-[10px] text-amber-600">No Box folder found on this Monday item. Add a Box folder link to the item in Monday and reselect.</p>}
+            <p className="text-[10px] text-muted-foreground">Pulled from Monday. Run output files will be delivered here.</p>
           </div>
         </div>
 
