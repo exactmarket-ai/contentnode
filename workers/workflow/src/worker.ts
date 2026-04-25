@@ -35,7 +35,7 @@ import {
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns, detectEditPatterns } from './patternDetector.js'
-import { runScheduleChecker } from './scheduleChecker.js'
+import { runScheduleChecker, runOrphanSweeper } from './scheduleChecker.js'
 import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
 import { processBrandAttachment } from './brandExtraction.js'
@@ -184,7 +184,7 @@ await scheduleCheckerQueue.add(
 )
 const scheduleCheckerWorker = createWorker(
   QUEUE_SCHEDULE_CHECKER,
-  async () => { await runScheduleChecker() },
+  async () => { await runScheduleChecker(); await runOrphanSweeper() },
   1
 )
 

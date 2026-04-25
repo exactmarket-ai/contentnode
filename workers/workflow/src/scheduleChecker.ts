@@ -5,6 +5,24 @@ import { createQueue, QUEUE_WORKFLOW_RUNS, type WorkflowRunJobData } from './que
 // Singleton — creating a new Queue on every tick leaks a Redis connection each time
 const runsQueue = createQueue<WorkflowRunJobData>(QUEUE_WORKFLOW_RUNS)
 
+// Re-enqueue any run stuck in 'pending' for more than 60s (dropped pub/sub notification)
+export async function runOrphanSweeper(): Promise<void> {
+  const cutoff = new Date(Date.now() - 60_000)
+  const orphans = await prisma.workflowRun.findMany({
+    where: { status: 'pending', createdAt: { lte: cutoff } },
+    select: { id: true, agencyId: true },
+    take: 20,
+  })
+  for (const run of orphans) {
+    await runsQueue.add(
+      'run-workflow',
+      { workflowRunId: run.id, agencyId: run.agencyId },
+      { jobId: `${run.id}-sweep-${Date.now()}`, removeOnComplete: { count: 100 }, removeOnFail: { count: 50 } }
+    )
+    console.log(`[orphan-sweeper] re-enqueued stuck pending run ${run.id}`)
+  }
+}
+
 export async function runScheduleChecker(): Promise<void> {
   const now = new Date()
 
