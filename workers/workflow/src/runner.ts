@@ -1141,16 +1141,19 @@ export class WorkflowRunner {
         const dateStr     = new Date().toISOString().slice(0, 10)
 
         // Filename helpers
-        const runTopic   = (runRecord.topic as string | undefined)?.trim() ?? ''
-        const clientName = (clientObj?.name as string | undefined) ?? ''
-        const version    = run.itemVersion ?? 1
+        const runTopic    = (runRecord.topic as string | undefined)?.trim() ?? ''
+        const clientName  = (clientObj?.name as string | undefined) ?? ''
+        const projectName = (wfRecord.name as string | undefined)?.trim() ?? ''
+        const version     = run.itemVersion ?? 1
 
         const slugify = (s: string) =>
           s.replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '-')
 
+        // Format: ClientName-Project-SubProject-Filename-Date-vN
         const buildFilename = (docTitle: string, ext: string) => {
           const segments = [
             slugify(clientName),
+            slugify(projectName),
             slugify(runTopic),
             slugify(docTitle),
             dateStr,
