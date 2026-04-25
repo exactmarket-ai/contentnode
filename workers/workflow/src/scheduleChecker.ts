@@ -7,9 +7,11 @@ const runsQueue = createQueue<WorkflowRunJobData>(QUEUE_WORKFLOW_RUNS)
 
 // Re-enqueue any run stuck in 'pending' for more than 60s (dropped pub/sub notification)
 export async function runOrphanSweeper(): Promise<void> {
-  const cutoff = new Date(Date.now() - 60_000)
+  // Only sweep runs stuck in pending between 60s and 5min — older ones are dead
+  const tooRecent = new Date(Date.now() - 60_000)
+  const tooOld    = new Date(Date.now() - 5 * 60_000)
   const orphans = await prisma.workflowRun.findMany({
-    where: { status: 'pending', createdAt: { lte: cutoff } },
+    where: { status: 'pending', createdAt: { lte: tooRecent, gte: tooOld } },
     select: { id: true, agencyId: true },
     take: 20,
   })
@@ -21,6 +23,12 @@ export async function runOrphanSweeper(): Promise<void> {
     )
     console.log(`[orphan-sweeper] re-enqueued stuck pending run ${run.id}`)
   }
+  // Mark anything pending for >5min as failed — it will never recover on its own
+  const abandoned = await prisma.workflowRun.updateMany({
+    where: { status: 'pending', createdAt: { lt: tooOld } },
+    data:  { status: 'failed', errorMessage: 'Run timed out waiting for worker', completedAt: new Date() },
+  })
+  if (abandoned.count > 0) console.log(`[orphan-sweeper] marked ${abandoned.count} abandoned pending run(s) as failed`)
 }
 
 export async function runScheduleChecker(): Promise<void> {
