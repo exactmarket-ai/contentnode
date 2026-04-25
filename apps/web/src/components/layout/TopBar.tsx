@@ -1163,7 +1163,8 @@ function ProjectPickerModal({
   onSave,
   onClose,
 }: ProjectPickerModalProps) {
-  const [mondayItems, setMondayItems] = useState<{ id: string; name: string }[]>([])
+  type MondayItem = { id: string; name: string; column_values?: { url?: string; text?: string }[] }
+  const [mondayItems, setMondayItems] = useState<MondayItem[]>([])
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
   const [boxInput, setBoxInput] = useState(() => {
     const id = current.boxProjectFolderId ?? ''
@@ -1180,6 +1181,13 @@ function ProjectPickerModal({
       .catch(() => {})
       .finally(() => setLoadingMonday(false))
   }, [clientMondayBoardId])
+
+  const autoFillBoxFromItem = (itemId: string) => {
+    const item = mondayItems.find((i) => i.id === itemId)
+    const boxCol = item?.column_values?.find((cv) => cv.url?.includes('box.com') || cv.text?.includes('box.com'))
+    const url = boxCol?.url || boxCol?.text || ''
+    if (url) setBoxInput(url)
+  }
 
   const parsedFolderId = parseFolderId(boxInput)
   const boxValid = boxInput === '' || parsedFolderId !== ''
@@ -1225,7 +1233,14 @@ function ProjectPickerModal({
             ) : mondayItems.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">No projects found on this board.</p>
             ) : (
-              <Select value={selectedMondayGroupId || '__none__'} onValueChange={(v) => setSelectedMondayGroupId(v === '__none__' ? '' : v)}>
+              <Select
+                value={selectedMondayGroupId || '__none__'}
+                onValueChange={(v) => {
+                  const id = v === '__none__' ? '' : v
+                  setSelectedMondayGroupId(id)
+                  if (id) autoFillBoxFromItem(id)
+                }}
+              >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select project…" />
                 </SelectTrigger>
