@@ -2,8 +2,14 @@ import { prisma } from '@contentnode/database'
 import { safeDecrypt } from '../lib/crypto.js'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
+const PROVIDER_DEFAULT_ENV: Record<string, string> = {
+  sendgrid: 'SENDGRID_API_KEY',
+  resend:   'RESEND_API_KEY',
+  mailgun:  'MAILGUN_API_KEY',
+}
+
 async function resolveEmailCredential(agencyId: string, provider: string, apiKeyRef: string): Promise<{ apiKey: string; meta: Record<string, unknown> }> {
-  // 1. Try agency-level credential in DB (preferred — no key in node config)
+  // 1. Try agency-level credential in DB (Settings → Email Provider Credentials)
   const cred = await prisma.agencyCredential.findFirst({
     where: { agencyId, provider },
     orderBy: { createdAt: 'asc' },
@@ -14,9 +20,18 @@ async function resolveEmailCredential(agencyId: string, provider: string, apiKey
     return { apiKey: key, meta: (cred.meta as Record<string, unknown>) ?? {} }
   }
 
-  // 2. Fall back to env var reference (legacy node configs that still have api_key_ref set)
-  const key = apiKeyRef ? (process.env[apiKeyRef] ?? '') : ''
-  return { apiKey: key, meta: {} }
+  // 2. Explicit env var reference from node config (legacy)
+  if (apiKeyRef && process.env[apiKeyRef]) {
+    return { apiKey: process.env[apiKeyRef]!, meta: {} }
+  }
+
+  // 3. Well-known env var for the provider (e.g. SENDGRID_API_KEY in worker env)
+  const defaultRef = PROVIDER_DEFAULT_ENV[provider]
+  if (defaultRef && process.env[defaultRef]) {
+    return { apiKey: process.env[defaultRef]!, meta: {} }
+  }
+
+  return { apiKey: '', meta: {} }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
