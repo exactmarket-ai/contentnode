@@ -6,6 +6,9 @@ import {
   QUEUE_SCHEDULED_RESEARCH,
   type ScheduledResearchJobData,
 } from './queues.js'
+
+// Singleton — reuse one Queue connection across all invocations of runResearchChecker
+const researchQueue = createQueue<ScheduledResearchJobData>(QUEUE_SCHEDULED_RESEARCH)
 import { DeepWebScrapeExecutor } from './executors/deepWebScrape.js'
 import { ReviewMinerExecutor } from './executors/reviewMiner.js'
 import { AudienceSignalExecutor } from './executors/audienceSignal.js'
@@ -883,9 +886,8 @@ export async function runResearchChecker(): Promise<void> {
   if (dueTasks.length === 0) return
   console.log(`[research-checker] ${dueTasks.length} task(s) due`)
 
-  const queue = createQueue<ScheduledResearchJobData>(QUEUE_SCHEDULED_RESEARCH)
   for (const task of dueTasks) {
-    await queue.add(
+    await researchQueue.add(
       'run-research',
       { taskId: task.id, agencyId: task.agencyId },
       {

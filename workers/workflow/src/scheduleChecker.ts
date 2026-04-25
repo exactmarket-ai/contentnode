@@ -2,6 +2,9 @@ import { Cron } from 'croner'
 import { prisma } from '@contentnode/database'
 import { createQueue, QUEUE_WORKFLOW_RUNS, type WorkflowRunJobData } from './queues.js'
 
+// Singleton — creating a new Queue on every tick leaks a Redis connection each time
+const runsQueue = createQueue<WorkflowRunJobData>(QUEUE_WORKFLOW_RUNS)
+
 export async function runScheduleChecker(): Promise<void> {
   const now = new Date()
 
@@ -13,8 +16,6 @@ export async function runScheduleChecker(): Promise<void> {
   if (dueSchedules.length === 0) return
 
   console.log(`[schedule-checker] ${dueSchedules.length} schedule(s) due`)
-
-  const runsQueue = createQueue<WorkflowRunJobData>(QUEUE_WORKFLOW_RUNS)
 
   for (const sched of dueSchedules) {
     if (sched.workflow.status === 'archived') {
