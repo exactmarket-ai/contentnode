@@ -3,6 +3,8 @@ import sgMail from '@sendgrid/mail'
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY ?? ''
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'reviews@exactmarket.com'
 const FROM_NAME = process.env.FROM_NAME ?? 'Exact Market'
+const TEAM_FROM_EMAIL = process.env.TEAM_FROM_EMAIL ?? 'team@exactmarket.com'
+const TEAM_FROM_NAME = process.env.TEAM_FROM_NAME ?? FROM_NAME
 
 if (SENDGRID_API_KEY) {
   sgMail.setApiKey(SENDGRID_API_KEY)
@@ -89,7 +91,7 @@ export async function sendAssignmentEmail(params: AssignmentEmailParams): Promis
   try {
     await sgMail.send({
       to: { name: to.name ?? to.email, email: to.email },
-      from: { name: FROM_NAME, email: FROM_EMAIL },
+      from: { name: TEAM_FROM_NAME, email: TEAM_FROM_EMAIL },
       subject: `You've been assigned: ${runName}`,
       html: `
         <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
@@ -155,7 +157,7 @@ export async function sendMentionEmail(params: MentionEmailParams): Promise<void
   try {
     await sgMail.send({
       to: { name: to.name ?? to.email, email: to.email },
-      from: { name: FROM_NAME, email: FROM_EMAIL },
+      from: { name: TEAM_FROM_NAME, email: TEAM_FROM_EMAIL },
       subject: `${mentionedBy} mentioned you in: ${runName}`,
       html: `
         <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
