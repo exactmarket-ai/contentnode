@@ -2,27 +2,30 @@ import { Queue, Worker, type ConnectionOptions } from 'bullmq'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Queue names — single source of truth
+// Set QUEUE_ENV_PREFIX (e.g. "staging") to isolate environments that share Redis.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const QUEUE_WORKFLOW_RUNS = 'workflow-runs'
-export const QUEUE_NODE_EXECUTION = 'node-execution'
-export const QUEUE_TRANSCRIPTION = 'transcription'
-export const QUEUE_ASSET_GENERATION = 'asset-generation'
-export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
-export const QUEUE_EDIT_ANALYSIS = 'edit-analysis'
-export const QUEUE_SCHEDULE_CHECKER = 'schedule-checker'
-export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
-export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
-export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
-export const QUEUE_CAMPAIGN_BRAIN_PROCESS = 'campaign-brain-process'
-export const QUEUE_CLIENT_BRAIN_PROCESS = 'client-brain-process'
-export const QUEUE_AGENCY_BRAIN_PROCESS = 'agency-brain-process'
-export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
-export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
-export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
-export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
-export const QUEUE_RESEARCH_CHECKER = 'research-checker'
-export const QUEUE_BOX_DIFF = 'box-diff'
+const _p = process.env.QUEUE_ENV_PREFIX ? `${process.env.QUEUE_ENV_PREFIX}:` : ''
+
+export const QUEUE_WORKFLOW_RUNS                  = `${_p}workflow-runs`
+export const QUEUE_NODE_EXECUTION                 = `${_p}node-execution`
+export const QUEUE_TRANSCRIPTION                  = `${_p}transcription`
+export const QUEUE_ASSET_GENERATION               = `${_p}asset-generation`
+export const QUEUE_PATTERN_DETECTION              = `${_p}pattern-detection`
+export const QUEUE_EDIT_ANALYSIS                  = `${_p}edit-analysis`
+export const QUEUE_SCHEDULE_CHECKER               = `${_p}schedule-checker`
+export const QUEUE_FRAMEWORK_RESEARCH             = `${_p}framework-research`
+export const QUEUE_ATTACHMENT_PROCESS             = `${_p}attachment-process`
+export const QUEUE_BRAND_ATTACHMENT_PROCESS       = `${_p}brand-attachment-process`
+export const QUEUE_CAMPAIGN_BRAIN_PROCESS         = `${_p}campaign-brain-process`
+export const QUEUE_CLIENT_BRAIN_PROCESS           = `${_p}client-brain-process`
+export const QUEUE_AGENCY_BRAIN_PROCESS           = `${_p}agency-brain-process`
+export const QUEUE_VERTICAL_BRAIN_PROCESS         = `${_p}vertical-brain-process`
+export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS  = `${_p}client-vertical-brain-process`
+export const QUEUE_PROMPT_SUGGEST                 = `${_p}prompt-suggestion`
+export const QUEUE_SCHEDULED_RESEARCH             = `${_p}scheduled-research`
+export const QUEUE_RESEARCH_CHECKER               = `${_p}research-checker`
+export const QUEUE_BOX_DIFF                       = `${_p}box-diff`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
