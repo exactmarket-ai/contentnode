@@ -57,6 +57,9 @@ const createRunBody = z.object({
   clientFolderBox: z.string().optional(),
   mondayItemId: z.string().optional(),
   mondayBoardId: z.string().optional(),
+  mondaySubItemId: z.string().optional(),
+  mondaySubItemBoardId: z.string().optional(),
+  mondaySubItemName: z.string().optional(),
   topic: z.string().optional(),
 })
 
@@ -298,7 +301,14 @@ export async function runRoutes(app: FastifyInstance) {
         agencyId,
         triggeredBy: dbUserRecord?.id ?? null,
         status: 'pending',
-        input: { ...(body.input ?? {}), resolvedPermissions, triggeredByClerkId: userId } as Prisma.InputJsonValue,
+        input: {
+          ...(body.input ?? {}),
+          resolvedPermissions,
+          triggeredByClerkId: userId,
+          ...(body.mondaySubItemId      ? { mondaySubItemId:      body.mondaySubItemId      } : {}),
+          ...(body.mondaySubItemBoardId ? { mondaySubItemBoardId: body.mondaySubItemBoardId } : {}),
+          ...(body.mondaySubItemName    ? { mondaySubItemName:    body.mondaySubItemName    } : {}),
+        } as Prisma.InputJsonValue,
         output: initialOutput as Prisma.InputJsonValue,
         ...(body.divisionId ? { divisionId: body.divisionId } : {}),
         ...(body.jobId ? { jobId: body.jobId } : {}),
