@@ -120,7 +120,8 @@ export function PMRoutingSection({
   onChange: (k: string, v: unknown) => void
 }) {
   const workflow = useWorkflowStore((s) => s.workflow)
-  const boardId = workflow.clientMondayBoardId
+  // When a subitem is selected, its board has different columns/labels than the parent board
+  const boardId = workflow.mondaySubItemBoardId ?? workflow.clientMondayBoardId
 
   const [open, setOpen] = useState(
     !!(config.delivery_box_subfolder || config.delivery_monday_column || config.delivery_monday_status)
@@ -129,6 +130,7 @@ export function PMRoutingSection({
 
   useEffect(() => {
     if (!boardId) return
+    setColumns([]) // clear stale columns when board changes
     apiFetch(`/api/v1/integrations/monday/boards/${boardId}/columns-meta`)
       .then((r) => r.json())
       .then(({ data }) => { if (Array.isArray(data)) setColumns(data) })
