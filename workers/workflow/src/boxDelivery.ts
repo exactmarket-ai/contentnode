@@ -22,7 +22,10 @@ async function getBoxToken(agencyId: string): Promise<string> {
   if (!integration) throw new Error('Box not connected')
 
   if (integration.expiresAt && integration.expiresAt.getTime() > Date.now() + 5 * 60 * 1000) {
-    return safeDecrypt(integration.accessToken) ?? integration.accessToken
+    const token = safeDecrypt(integration.accessToken) ?? integration.accessToken
+    const isHex = /^[0-9a-f]+$/i.test(token) && token.length > 100
+    console.log(`[boxDelivery] using cached token, expiresAt=${integration.expiresAt.toISOString()} looksEncrypted=${isHex} len=${token.length}`)
+    return token
   }
 
   const storedRefresh = safeDecrypt(integration.refreshToken) ?? integration.refreshToken
@@ -261,5 +264,7 @@ export async function ensureBoxSubfolder(
     }
   }
 
-  throw new Error(`ensureBoxSubfolder failed for "${name}" in ${parentFolderId}: ${res.status}`)
+  const errBody = await res.text().catch(() => '')
+  console.error(`[boxDelivery] ensureBoxSubfolder ${res.status} body:`, errBody)
+  throw new Error(`ensureBoxSubfolder failed for "${name}" in ${parentFolderId}: ${res.status} ${errBody}`)
 }
