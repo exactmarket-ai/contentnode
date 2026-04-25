@@ -1,6 +1,17 @@
 import { prisma } from '@contentnode/database'
+import { downloadBuffer } from '@contentnode/storage'
 import { safeDecrypt } from '../lib/crypto.js'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+
+interface ImageAsset { storageKey?: string; url?: string; filename?: string }
+
+function extractImageAssets(input: unknown): ImageAsset[] {
+  if (!input || typeof input !== 'object') return []
+  const o = input as Record<string, unknown>
+  if (Array.isArray(o.assets)) return o.assets as ImageAsset[]
+  if (Array.isArray(o.generatedAssets)) return o.generatedAssets as ImageAsset[]
+  return []
+}
 
 const PROVIDER_DEFAULT_ENV: Record<string, string> = {
   sendgrid: 'SENDGRID_API_KEY',
@@ -114,6 +125,8 @@ async function sendViaResend(params: {
   console.log(`[email] Resend delivered, id: ${data.id}`)
 }
 
+interface EmailAttachment { filename: string; content: string; type: string; disposition: 'attachment' }
+
 async function sendViaSendGrid(params: {
   apiKey: string
   from: string
@@ -121,6 +134,7 @@ async function sendViaSendGrid(params: {
   subject: string
   text: string
   html: string
+  attachments?: EmailAttachment[]
 }): Promise<void> {
   const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -136,6 +150,7 @@ async function sendViaSendGrid(params: {
         { type: 'text/plain', value: params.text },
         { type: 'text/html', value: params.html },
       ],
+      ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     }),
   })
   if (!res.ok) {
@@ -201,19 +216,41 @@ export class EmailNodeExecutor extends NodeExecutor {
     const resolvedMailgunDomain = (meta.mailgunDomain as string | undefined) ?? mailgunDomain
     if (!apiKey) throw new Error(`Email node: no ${provider} API key configured. Add one in Settings → Credentials.`)
 
+    const imageAssets = extractImageAssets(input)
     const content = extractText(input)
     const cleanContent = stripMarkdown(content)
     const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail
     const to = toRaw.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean)
     const subject = interpolate(subjectTemplate, { content: cleanContent.slice(0, 60) })
-    const html = textToHtml(content)
 
-    console.log(`[email] sending via ${provider} to ${to.join(', ')}, subject: "${subject}"`)
+    // Build attachments from image assets
+    const attachments: EmailAttachment[] = []
+    for (const asset of imageAssets) {
+      if (!asset.storageKey) continue
+      try {
+        const buffer = await downloadBuffer(asset.storageKey)
+        const ext = asset.storageKey.split('.').pop()?.toLowerCase() ?? 'jpg'
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+        const filename = asset.filename ?? `image-${attachments.length + 1}.${ext}`
+        attachments.push({ filename, content: buffer.toString('base64'), type: mime, disposition: 'attachment' })
+      } catch (err) {
+        console.warn(`[email] could not load image asset ${asset.storageKey}:`, err)
+      }
+    }
+
+    // Build HTML — embed images inline if present, otherwise plain text-to-html
+    const html = attachments.length > 0
+      ? textToHtml(content) + attachments.map((a) =>
+          `<p><img src="data:${a.type};base64,${a.content}" style="max-width:100%" alt="${a.filename}" /></p>`
+        ).join('')
+      : textToHtml(content)
+
+    console.log(`[email] sending via ${provider} to ${to.join(', ')}, subject: "${subject}", attachments: ${attachments.length}`)
 
     if (provider === 'resend') {
       await sendViaResend({ apiKey, from, to, subject, text: cleanContent, html })
     } else if (provider === 'sendgrid') {
-      await sendViaSendGrid({ apiKey, from, to, subject, text: cleanContent, html })
+      await sendViaSendGrid({ apiKey, from, to, subject, text: cleanContent, html, attachments })
     } else if (provider === 'mailgun') {
       if (!resolvedMailgunDomain) throw new Error('Email node: Mailgun domain is required')
       await sendViaMailgun({ apiKey, domain: resolvedMailgunDomain, from, to, subject, text: cleanContent, html })
@@ -227,6 +264,7 @@ export class EmailNodeExecutor extends NodeExecutor {
         provider,
         to,
         subject,
+        attachments: attachments.length,
         charCount: content.length,
       },
     }
