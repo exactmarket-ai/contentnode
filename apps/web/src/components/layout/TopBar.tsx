@@ -1163,7 +1163,7 @@ function ProjectPickerModal({
   onSave,
   onClose,
 }: ProjectPickerModalProps) {
-  type MondayItem = { id: string; name: string; column_values?: { url?: string; text?: string; value?: string }[] }
+  type MondayItem = { id: string; name: string; column_values?: { id: string; url?: string; text?: string; value?: string; column?: { title: string } }[] }
   const [mondayItems, setMondayItems] = useState<MondayItem[]>([])
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
   const [noBoxFolderWarning, setNoBoxFolderWarning] = useState(false)
@@ -1190,23 +1190,15 @@ function ProjectPickerModal({
     setNoBoxFolderWarning(false)
     const item = mondayItems.find((i) => i.id === itemId)
 
-    // Extract URL from a column value — checks url field, text field, and value JSON
-    const getUrl = (cv: { url?: string; text?: string; value?: string }) => {
-      if (cv.url?.includes('box.com')) return cv.url
-      if (cv.text?.includes('box.com')) return cv.text
-      // Link columns store URL in value as JSON: {"url":"...","text":"..."}
-      try {
-        const parsed = JSON.parse(cv.value ?? '')
-        if (typeof parsed?.url === 'string' && parsed.url.includes('box.com')) return parsed.url
-      } catch {}
-      return ''
-    }
+    const clientFolderCol = (item?.column_values ?? []).find(
+      (cv) => cv.column?.title?.toLowerCase() === 'client folder - box'
+    )
 
-    const cols = item?.column_values ?? []
-    // Prefer folder URLs over file URLs
-    const folderUrl = cols.map(getUrl).find((u) => u.includes('box.com/folder/'))
-    const anyUrl    = cols.map(getUrl).find((u) => u.includes('box.com'))
-    const url = folderUrl || anyUrl || ''
+    // Link columns store URL in value as JSON: {"url":"...","text":"..."}
+    let url = clientFolderCol?.url || ''
+    if (!url && clientFolderCol?.value) {
+      try { url = (JSON.parse(clientFolderCol.value) as { url?: string })?.url ?? '' } catch {}
+    }
 
     if (url) {
       setBoxInput(url)

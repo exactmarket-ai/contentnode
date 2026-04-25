@@ -328,6 +328,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
                 id
                 text
                 value
+                column { title }
                 ... on StatusValue { label index }
                 ... on DateValue { date }
                 ... on NumbersValue { number }
