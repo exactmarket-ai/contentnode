@@ -98,6 +98,16 @@ const workflowRunsWorker = createWorker<WorkflowRunJobData>(
 
 // Catch stalled/crashed jobs that bypass the internal try/catch (e.g. OOM, unhandled rejection).
 // BullMQ fires this after all retries are exhausted; we ensure the DB reflects 'failed'.
+workflowRunsWorker.on('error', (err) => {
+  console.error('[workflow-runs-worker] connection/worker error:', err)
+})
+workflowRunsWorker.on('stalled', (jobId) => {
+  console.warn('[workflow-runs-worker] stalled job detected:', jobId)
+})
+workflowRunsWorker.on('active', (job) => {
+  console.log('[workflow-runs-worker] picked up job', job.id, 'for run', job.data.workflowRunId)
+})
+
 workflowRunsWorker.on('failed', async (job, err) => {
   if (!job) return
   const { workflowRunId, agencyId } = job.data

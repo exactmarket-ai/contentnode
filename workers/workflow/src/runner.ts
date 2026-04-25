@@ -410,6 +410,13 @@ export class WorkflowRunner {
 
     if (!run) throw new Error(`WorkflowRun "${this.workflowRunId}" not found`)
 
+    // Guard against duplicate execution — if another sweep job already started this run, bail out
+    const resumable = ['pending', 'waiting_feedback', 'awaiting_assignment']
+    if (!resumable.includes(run.status)) {
+      console.log(`[runner] skipping run ${this.workflowRunId} — status is already '${run.status}'`)
+      return
+    }
+
     const { workflow } = run
 
     // ── Extract caller context stored at run-creation time ───────────────────

@@ -156,12 +156,16 @@ export interface BoxDiffJobData {
 
 export function getConnection(): ConnectionOptions {
   const url = process.env.REDIS_URL ?? 'redis://localhost:6379'
-  // Parse redis://[user:pass@]host:port into ConnectionOptions
   const parsed = new URL(url)
+  const isTls = url.startsWith('rediss://')
   return {
     host: parsed.hostname,
-    port: parseInt(parsed.port || '6379', 10),
+    port: parseInt(parsed.port || (isTls ? '6380' : '6379'), 10),
     ...(parsed.password ? { password: parsed.password } : {}),
+    ...(isTls ? { tls: {} } : {}),
+    // Ensure ioredis retries indefinitely rather than giving up silently
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
   }
 }
 
