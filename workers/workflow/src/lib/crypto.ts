@@ -34,8 +34,5 @@ export function decrypt(ciphertext: string): string {
 
 export function safeDecrypt(value: string | null | undefined): string | null {
   if (!value) return null
-  try { return decrypt(value) } catch (e) {
-    console.error('[crypto] safeDecrypt failed:', e instanceof Error ? e.message : e)
-    return value
-  }
+  try { return decrypt(value) } catch { return value }
 }
