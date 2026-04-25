@@ -330,22 +330,15 @@ function ProjectIndicator() {
       {/* Box folder URL — shown when a project is selected or manually set */}
       {(workflow.mondayGroupId || boxUrl) && (
         <div>
-          <div className="relative">
-            <input
-              type="text"
-              className={`w-full rounded-md border pl-2.5 pr-16 py-1 text-[11px] outline-none focus:ring-1 ${
-                boxValid ? 'border-border focus:ring-ring' : 'border-red-400 focus:ring-red-400'
-              }`}
-              placeholder="https://app.box.com/folder/…"
-              value={boxUrl}
-              onChange={handleBoxUrlChange}
-            />
-            {parsedId && (
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-600 font-mono">
-                #{parsedId}
-              </span>
-            )}
-          </div>
+          <input
+            type="text"
+            className={`w-full rounded-md border px-2.5 py-1 text-[11px] outline-none focus:ring-1 ${
+              boxValid ? 'border-border focus:ring-ring' : 'border-red-400 focus:ring-red-400'
+            }`}
+            placeholder="https://app.box.com/folder/…"
+            value={boxUrl}
+            onChange={handleBoxUrlChange}
+          />
           {!boxValid && boxUrl.includes('box.com/file/') && (
             <p className="text-[10px] text-red-500 mt-0.5">File link — needs a Box <em>folder</em> URL.</p>
           )}

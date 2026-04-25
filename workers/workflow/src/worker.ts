@@ -76,11 +76,13 @@ const workflowRunsWorker = createWorker<WorkflowRunJobData>(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       console.error(`[workflow-runs] run ${workflowRunId} crashed:`, errorMessage)
-      // Mark run as failed so the frontend doesn't stay stuck at "running"
+      // Mark run as failed so the frontend doesn't stay stuck at "running".
+      // Use $transaction + set_config so RLS is satisfied regardless of BYPASSRLS.
       try {
-        const { prisma, withAgency } = await import('@contentnode/database')
-        await withAgency(agencyId, async () => {
-          await prisma.workflowRun.updateMany({
+        const { prisma } = await import('@contentnode/database')
+        await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.current_agency_id', ${agencyId}, true)`
+          await tx.workflowRun.updateMany({
             where: { id: workflowRunId },
             data: { status: 'failed', completedAt: new Date(), errorMessage },
           })
@@ -93,6 +95,23 @@ const workflowRunsWorker = createWorker<WorkflowRunJobData>(
   },
   3 // max 3 concurrent workflow runs
 )
+
+// Catch stalled/crashed jobs that bypass the internal try/catch (e.g. OOM, unhandled rejection).
+// BullMQ fires this after all retries are exhausted; we ensure the DB reflects 'failed'.
+workflowRunsWorker.on('failed', async (job, err) => {
+  if (!job) return
+  const { workflowRunId, agencyId } = job.data
+  try {
+    const { prisma } = await import('@contentnode/database')
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_agency_id', ${agencyId}, true)`
+      await tx.workflowRun.updateMany({
+        where: { id: workflowRunId, status: { in: ['pending', 'running'] } },
+        data: { status: 'failed', completedAt: new Date(), errorMessage: err.message },
+      })
+    })
+  } catch { /* best-effort */ }
+})
 
 // ── node-execution ────────────────────────────────────────────────────────────
 // Individual node jobs can be dispatched here for external orchestration.
