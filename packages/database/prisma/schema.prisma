@@ -79,8 +79,25 @@ model Agency {
   programs                 Program[]
   programContentPacks      ProgramContentPack[]
   verticalProgramTemplates VerticalProgramTemplate[]
+  agencyCredentials        AgencyCredential[]
 
   @@map("agencies")
+}
+
+model AgencyCredential {
+  id        String   @id @default(cuid())
+  agencyId  String   @map("agency_id")
+  provider  String   // e.g. "sendgrid", "resend", "mailgun"
+  keyName   String   @map("key_name")   // human label, e.g. "SendGrid Production"
+  keyValue  String   @db.Text @map("key_value")  // AES-256-GCM encrypted
+  meta      Json?    // extra config, e.g. { mailgunDomain, fromEmail }
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, provider, keyName])
+  @@map("agency_credentials")
 }
 
 // ─────────────────────────────────────────────

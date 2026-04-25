@@ -1,4 +1,23 @@
+import { prisma } from '@contentnode/database'
+import { safeDecrypt } from '../lib/crypto.js'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
+
+async function resolveEmailCredential(agencyId: string, provider: string, apiKeyRef: string): Promise<{ apiKey: string; meta: Record<string, unknown> }> {
+  // 1. Try agency-level credential in DB (preferred — no key in node config)
+  const cred = await prisma.agencyCredential.findFirst({
+    where: { agencyId, provider },
+    orderBy: { createdAt: 'asc' },
+  }).catch(() => null)
+
+  if (cred?.keyValue) {
+    const key = safeDecrypt(cred.keyValue) ?? cred.keyValue
+    return { apiKey: key, meta: (cred.meta as Record<string, unknown>) ?? {} }
+  }
+
+  // 2. Fall back to env var reference (legacy node configs that still have api_key_ref set)
+  const key = apiKeyRef ? (process.env[apiKeyRef] ?? '') : ''
+  return { apiKey: key, meta: {} }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -151,10 +170,10 @@ export class EmailNodeExecutor extends NodeExecutor {
   async execute(
     input: unknown,
     config: Record<string, unknown>,
-    _ctx: NodeExecutionContext,
+    ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const provider = (config.provider as string) ?? 'resend'
-    const apiKeyRef = (config.api_key_ref as string) ?? ''
+    const apiKeyRef = (config.api_key_ref as string) ?? ''  // legacy fallback only
     const fromEmail = (config.from_email as string) ?? 'noreply@example.com'
     const fromName = (config.from_name as string) ?? ''
     const toRaw = (config.to as string) ?? ''
@@ -163,8 +182,9 @@ export class EmailNodeExecutor extends NodeExecutor {
 
     if (!toRaw.trim()) throw new Error('Email node: "To" address is required')
 
-    const apiKey = apiKeyRef ? (process.env[apiKeyRef] ?? '') : ''
-    if (!apiKey) throw new Error(`Email node: API key env var "${apiKeyRef}" is not set`)
+    const { apiKey, meta } = await resolveEmailCredential(ctx.agencyId, provider, apiKeyRef)
+    const resolvedMailgunDomain = (meta.mailgunDomain as string | undefined) ?? mailgunDomain
+    if (!apiKey) throw new Error(`Email node: no ${provider} API key configured. Add one in Settings → Credentials.`)
 
     const content = extractText(input)
     const cleanContent = stripMarkdown(content)
@@ -180,8 +200,8 @@ export class EmailNodeExecutor extends NodeExecutor {
     } else if (provider === 'sendgrid') {
       await sendViaSendGrid({ apiKey, from, to, subject, text: cleanContent, html })
     } else if (provider === 'mailgun') {
-      if (!mailgunDomain) throw new Error('Email node: Mailgun domain is required')
-      await sendViaMailgun({ apiKey, domain: mailgunDomain, from, to, subject, text: cleanContent, html })
+      if (!resolvedMailgunDomain) throw new Error('Email node: Mailgun domain is required')
+      await sendViaMailgun({ apiKey, domain: resolvedMailgunDomain, from, to, subject, text: cleanContent, html })
     } else {
       throw new Error(`Email node: unknown provider "${provider}"`)
     }

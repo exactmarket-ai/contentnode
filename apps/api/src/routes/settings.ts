@@ -5,6 +5,7 @@ import { prisma } from '@contentnode/database'
 import { requireRole } from '../plugins/auth.js'
 import { uploadStream, deleteObject } from '@contentnode/storage'
 import { getAgencyBrainProcessQueue } from '../lib/queues.js'
+import { encrypt, safeDecrypt } from '../lib/crypto.js'
 
 export async function settingsRoutes(app: FastifyInstance) {
   // ── GET / — get agency settings (upserts defaults on first access) ─────────
@@ -202,5 +203,59 @@ export async function settingsRoutes(app: FastifyInstance) {
       try { await deleteObject(attachment.storageKey) } catch {}
     }
     return reply.send({ data: { ok: true } })
+  })
+
+  // ── GET /credentials — list provider credentials (keys masked) ───────────
+  app.get('/credentials', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
+    const { agencyId } = req.auth
+    const creds = await prisma.agencyCredential.findMany({
+      where: { agencyId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, provider: true, keyName: true, meta: true, createdAt: true },
+    })
+    return reply.send({ data: creds })
+  })
+
+  // ── POST /credentials — save a new provider credential ───────────────────
+  const credentialBody = z.object({
+    provider: z.enum(['sendgrid', 'resend', 'mailgun']),
+    keyName:  z.string().min(1),
+    keyValue: z.string().min(1),
+    meta:     z.record(z.unknown()).optional(),
+  })
+  app.post<{ Body: z.infer<typeof credentialBody> }>('/credentials', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
+    const { agencyId } = req.auth
+    const parsed = credentialBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
+    const { provider, keyName, keyValue, meta } = parsed.data
+    const encrypted = encrypt(keyValue)
+    const cred = await prisma.agencyCredential.upsert({
+      where: { agencyId_provider_keyName: { agencyId, provider, keyName } },
+      create: { agencyId, provider, keyName, keyValue: encrypted, meta: (meta ?? null) as never },
+      update: { keyValue: encrypted, meta: (meta ?? undefined) as never },
+    })
+    return reply.send({ data: { id: cred.id, provider: cred.provider, keyName: cred.keyName } })
+  })
+
+  // ── DELETE /credentials/:id ───────────────────────────────────────────────
+  app.delete<{ Params: { id: string } }>('/credentials/:id', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
+    const { agencyId } = req.auth
+    const cred = await prisma.agencyCredential.findFirst({ where: { id: req.params.id, agencyId } })
+    if (!cred) return reply.code(404).send({ error: 'Credential not found' })
+    await prisma.agencyCredential.delete({ where: { id: req.params.id } })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // ── GET /credentials/resolve/:provider — return decrypted key for worker use ─
+  // Internal-only: called by worker via service-to-service auth (agencyId from token)
+  app.get<{ Params: { provider: string } }>('/credentials/resolve/:provider', async (req, reply) => {
+    const { agencyId } = req.auth
+    const cred = await prisma.agencyCredential.findFirst({
+      where: { agencyId, provider: req.params.provider },
+      orderBy: { createdAt: 'asc' },
+    })
+    if (!cred) return reply.code(404).send({ error: 'No credential configured for this provider' })
+    const decrypted = safeDecrypt(cred.keyValue)
+    return reply.send({ data: { keyValue: decrypted, meta: cred.meta } })
   })
 }

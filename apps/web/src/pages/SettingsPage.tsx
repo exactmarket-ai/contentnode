@@ -1258,6 +1258,144 @@ function BoxCard() {
 }
 
 // ── Integrations ──────────────────────────────────────────────────────────────
+// ── CredentialsSection ────────────────────────────────────────────────────────
+
+interface Credential { id: string; provider: string; keyName: string; meta: Record<string, unknown> | null }
+
+const PROVIDERS = [
+  { value: 'sendgrid', label: 'SendGrid' },
+  { value: 'resend',   label: 'Resend'   },
+  { value: 'mailgun',  label: 'Mailgun'  },
+]
+
+function CredentialsSection() {
+  const [creds, setCreds]     = useState<Credential[]>([])
+  const [adding, setAdding]   = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [provider, setProvider] = useState('sendgrid')
+  const [keyName, setKeyName]   = useState('Default')
+  const [keyValue, setKeyValue] = useState('')
+  const [mailgunDomain, setMailgunDomain] = useState('')
+  const [error, setError]     = useState('')
+
+  useEffect(() => {
+    apiFetch('/api/v1/settings/credentials')
+      .then((r) => r.json())
+      .then(({ data }) => { if (Array.isArray(data)) setCreds(data) })
+      .catch(() => {})
+  }, [])
+
+  const handleSave = async () => {
+    if (!keyValue.trim()) { setError('API key is required'); return }
+    setSaving(true); setError('')
+    const meta: Record<string, unknown> = {}
+    if (provider === 'mailgun' && mailgunDomain.trim()) meta.mailgunDomain = mailgunDomain.trim()
+    const res = await apiFetch('/api/v1/settings/credentials', {
+      method: 'POST',
+      body: JSON.stringify({ provider, keyName: keyName.trim() || 'Default', keyValue: keyValue.trim(), meta }),
+    })
+    if (!res.ok) { setError('Failed to save'); setSaving(false); return }
+    const { data } = await res.json()
+    setCreds((prev) => {
+      const filtered = prev.filter((c) => !(c.provider === data.provider && c.keyName === data.keyName))
+      return [...filtered, data]
+    })
+    setAdding(false); setKeyValue(''); setSaving(false)
+  }
+
+  const handleDelete = async (id: string) => {
+    await apiFetch(`/api/v1/settings/credentials/${id}`, { method: 'DELETE' })
+    setCreds((prev) => prev.filter((c) => c.id !== id))
+  }
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-1">
+        <Icons.KeyRound className="h-4 w-4" style={{ color: '#b4b2a9' }} />
+        <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Email Provider Credentials</h2>
+      </div>
+      <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
+        Store your email provider API keys here. Email nodes use these automatically — no key needed in the node config.
+      </p>
+
+      <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: '#fff', border: '1px solid #e8e7e1' }}>
+        {creds.length === 0 && !adding && (
+          <p className="text-[13px]" style={{ color: '#b4b2a9' }}>No credentials saved yet.</p>
+        )}
+        {creds.map((c) => (
+          <div key={c.id} className="flex items-center justify-between rounded-lg px-3 py-2.5" style={{ border: '1px solid #e8e7e1' }}>
+            <div>
+              <p className="text-[13px] font-medium" style={{ color: '#1a1a14' }}>
+                {PROVIDERS.find((p) => p.value === c.provider)?.label ?? c.provider}
+                {c.keyName !== 'Default' && <span className="ml-1.5 text-[11px]" style={{ color: '#b4b2a9' }}>({c.keyName})</span>}
+              </p>
+              {c.meta?.mailgunDomain && (
+                <p className="text-[11px]" style={{ color: '#b4b2a9' }}>Domain: {c.meta.mailgunDomain as string}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>Saved</span>
+              <button onClick={() => handleDelete(c.id)} className="text-muted-foreground hover:text-red-500 transition-colors">
+                <Icons.Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {adding ? (
+          <div className="space-y-3 pt-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-medium mb-1 block" style={{ color: '#b4b2a9' }}>Provider</label>
+                <select value={provider} onChange={(e) => setProvider(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-[13px]" style={{ border: '1px solid #e8e7e1', backgroundColor: '#fafaf8', color: '#1a1a14' }}>
+                  {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium mb-1 block" style={{ color: '#b4b2a9' }}>Label</label>
+                <input value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="Default"
+                  className="w-full rounded-lg px-3 py-2 text-[13px]" style={{ border: '1px solid #e8e7e1', backgroundColor: '#fafaf8', color: '#1a1a14' }} />
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium mb-1 block" style={{ color: '#b4b2a9' }}>API Key</label>
+              <input type="password" value={keyValue} onChange={(e) => setKeyValue(e.target.value)} placeholder="Paste your API key"
+                className="w-full rounded-lg px-3 py-2 text-[13px] font-mono" style={{ border: '1px solid #e8e7e1', backgroundColor: '#fafaf8', color: '#1a1a14' }} />
+            </div>
+            {provider === 'mailgun' && (
+              <div>
+                <label className="text-[11px] font-medium mb-1 block" style={{ color: '#b4b2a9' }}>Mailgun Domain</label>
+                <input value={mailgunDomain} onChange={(e) => setMailgunDomain(e.target.value)} placeholder="mg.yourdomain.com"
+                  className="w-full rounded-lg px-3 py-2 text-[13px]" style={{ border: '1px solid #e8e7e1', backgroundColor: '#fafaf8', color: '#1a1a14' }} />
+              </div>
+            )}
+            {error && <p className="text-[12px]" style={{ color: '#dc2626' }}>{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition-opacity"
+                style={{ backgroundColor: '#1a1a14', opacity: saving ? 0.5 : 1 }}>
+                {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.Check className="h-3 w-3" />}
+                Save
+              </button>
+              <button onClick={() => { setAdding(false); setError('') }}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors" style={{ border: '1px solid #e8e7e1', color: '#b4b2a9' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 text-[12px] font-medium transition-colors pt-1" style={{ color: '#a200ee' }}>
+            <Icons.Plus className="h-3.5 w-3.5" />
+            Add credential
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function IntegrationsSection() {
   const [status, setStatus]   = useState<'loading' | 'connected' | 'disconnected'>('loading')
   const [working, setWorking] = useState(false)
@@ -1430,6 +1568,8 @@ export function SettingsPage() {
         <div style={{ maxWidth: 560 }} className="space-y-10">
 
           {/* ── Integrations ─────────────────────────────────────────────── */}
+          <CredentialsSection />
+
           <IntegrationsSection />
 
           {/* ── Style Templates ──────────────────────────────────────────── */}

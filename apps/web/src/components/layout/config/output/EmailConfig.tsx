@@ -8,18 +8,12 @@ const EMAIL_PROVIDERS = [
   { value: 'mailgun',  label: 'Mailgun' },
 ]
 
-const EMAIL_API_KEY_PLACEHOLDER: Record<string, string> = {
-  resend:   'RESEND_API_KEY',
-  sendgrid: 'SENDGRID_API_KEY',
-  mailgun:  'MAILGUN_API_KEY',
-}
-
 export function EmailConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   const provider = (config.provider as string) ?? 'sendgrid'
   return (
     <>
-      <FieldGroup label="Provider">
-        <Select value={provider} onValueChange={(v) => { onChange('provider', v); onChange('api_key_ref', EMAIL_API_KEY_PLACEHOLDER[v] ?? '') }}>
+      <FieldGroup label="Provider" description="API key is configured in Settings → Email Provider Credentials">
+        <Select value={provider} onValueChange={(v) => onChange('provider', v)}>
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {EMAIL_PROVIDERS.map((p) => (
@@ -27,14 +21,6 @@ export function EmailConfig({ config, onChange }: { config: Record<string, unkno
             ))}
           </SelectContent>
         </Select>
-      </FieldGroup>
-      <FieldGroup label="API Key (env var name)">
-        <Input
-          placeholder={EMAIL_API_KEY_PLACEHOLDER[provider] ?? 'API_KEY'}
-          className="text-xs"
-          value={(config.api_key_ref as string) ?? ''}
-          onChange={(e) => onChange('api_key_ref', e.target.value)}
-        />
       </FieldGroup>
       {provider === 'mailgun' && (
         <FieldGroup label="Mailgun Domain">
