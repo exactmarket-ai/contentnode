@@ -377,12 +377,15 @@ export class WorkflowRunner {
   ) {}
 
   async run(): Promise<void> {
-    // Load outside withAgency so middleware doesn't filter by agencyId from job data.
-    // The job-data agencyId can diverge from the DB record's agencyId in edge cases,
-    // causing findFirst to return null. We use the DB's authoritative agencyId instead.
-    const bootstrap = await prisma.workflowRun.findFirst({
-      where: { id: this.workflowRunId },
-      select: { agencyId: true },
+    // Bootstrap: set RLS session variable and read the run's agencyId in one transaction.
+    // This bypasses Prisma's agency middleware (no AsyncLocalStorage context yet) while
+    // still satisfying PostgreSQL RLS (which requires app.current_agency_id in session).
+    const bootstrap = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_agency_id', ${this.agencyId}, true)`
+      return tx.workflowRun.findFirst({
+        where: { id: this.workflowRunId },
+        select: { agencyId: true },
+      })
     })
     if (!bootstrap) throw new Error(`WorkflowRun "${this.workflowRunId}" not found`)
     return withAgency(bootstrap.agencyId, async () => {
