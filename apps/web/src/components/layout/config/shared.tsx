@@ -136,7 +136,7 @@ export function PMRoutingSection({
   }, [boardId])
 
   const linkColumns = columns.filter((c) => c.type === 'link' || c.type === 'text')
-  const statusColumns = columns.filter((c) => c.type === 'color')
+  const statusColumns = columns.filter((c) => c.type === 'color' || c.type === 'status')
   const selectedStatusColumn = columns.find((c) => c.title === config.delivery_monday_status_column)
   const statusLabels = selectedStatusColumn?.labels ?? []
 

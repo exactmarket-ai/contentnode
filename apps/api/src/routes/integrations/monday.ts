@@ -295,10 +295,10 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 
     const columns = (data.boards?.[0]?.columns ?? []).map((col) => {
       let labels: string[] = []
-      if (col.type === 'color') {
+      if (col.type === 'color' || col.type === 'status') {
         try {
           const settings = JSON.parse(col.settings_str ?? '{}')
-          labels = Object.values(settings.labels ?? {}) as string[]
+          labels = (Object.values(settings.labels ?? {}) as string[]).filter(Boolean)
         } catch { /* ignore */ }
       }
       return { id: col.id, title: col.title, type: col.type, labels }
