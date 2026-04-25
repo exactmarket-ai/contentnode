@@ -1331,15 +1331,15 @@ export class WorkflowRunner {
                 mondayItemId,
               })
               // No per-node Monday column for the fallback — just the status if any
-              if (mondayItemId && mondayBoardId) {
+              if (mondayWriteItemId && mondayWriteBoardId) {
                 const anyStatus = outputNodes
                   .map((n) => ((n.config ?? {}) as Record<string, unknown>).delivery_monday_status as string | undefined)
                   .find((s) => s?.trim())
                 if (anyStatus) {
                   await setMondayStatus({
                     agencyId:    this.agencyId,
-                    boardId:     mondayBoardId,
-                    itemId:      mondayItemId,
+                    boardId:     mondayWriteBoardId,
+                    itemId:      mondayWriteItemId,
                     columnTitle: 'Status',
                     label:       anyStatus,
                   }).catch(() => {})
