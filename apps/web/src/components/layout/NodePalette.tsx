@@ -173,6 +173,194 @@ function ClientIndicator() {
   )
 }
 
+// ─── ProjectIndicator ────────────────────────────────────────────────────────
+
+type MondayItem = { id: string; name: string; column_values?: { id: string; url?: string; text?: string; value?: string; column?: { title: string } }[] }
+
+function parseFolderId(input: string): string {
+  const match = input.match(/\/folder\/(\d+)/)
+  if (match) return match[1]
+  if (/^\d+$/.test(input.trim())) return input.trim()
+  return ''
+}
+
+function getBoxUrlFromCol(cv: { url?: string; text?: string; value?: string }): string {
+  if (cv.url?.includes('box.com')) return cv.url
+  if (cv.text?.includes('box.com')) return cv.text
+  try {
+    const parsed = JSON.parse(cv.value ?? '')
+    if (typeof parsed?.url === 'string' && parsed.url.includes('box.com')) return parsed.url
+  } catch {}
+  return ''
+}
+
+function ProjectIndicator() {
+  const workflow = useWorkflowStore((s) => s.workflow)
+  const setWorkflow = useWorkflowStore((s) => s.setWorkflow)
+  const [mondayItems, setMondayItems] = useState<MondayItem[]>([])
+  const [boardId, setBoardId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [boxUrl, setBoxUrl] = useState('')
+  const [noBoxWarning, setNoBoxWarning] = useState(false)
+
+  // Fetch client's mondayBoardId when client changes
+  useEffect(() => {
+    setBoardId(null)
+    setMondayItems([])
+    if (!workflow.clientId) return
+    apiFetch(`/api/v1/clients/${workflow.clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => {
+        const bid = data?.mondayBoardId ?? null
+        setBoardId(bid)
+        setWorkflow({ clientMondayBoardId: bid })
+      })
+      .catch(() => {})
+  }, [workflow.clientId])
+
+  // Load Monday items when board is known
+  useEffect(() => {
+    setMondayItems([])
+    if (!boardId) return
+    setLoading(true)
+    apiFetch(`/api/v1/integrations/monday/boards/${boardId}/items`)
+      .then((r) => r.json())
+      .then(({ data }) => setMondayItems(data?.items ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [boardId])
+
+  // Sync boxUrl from store on mount/change
+  useEffect(() => {
+    const id = workflow.boxProjectFolderId ?? ''
+    if (!id) { setBoxUrl(''); return }
+    if (/^\d+$/.test(id.trim())) setBoxUrl(`https://app.box.com/folder/${id}`)
+    else if (id.includes('box.com/folder/')) setBoxUrl(id)
+    else setBoxUrl('')
+  }, [workflow.boxProjectFolderId])
+
+  const saveProject = (mondayGroupId: string | null, mondayGroupName: string | null, folderId: string | null) => {
+    setWorkflow({ mondayGroupId, mondayGroupName, boxProjectFolderId: folderId })
+    const wfId = useWorkflowStore.getState().workflow.id
+    if (wfId) {
+      apiFetch(`/api/v1/workflows/${wfId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mondayGroupId, mondayGroupName, boxProjectFolderId: folderId }),
+      }).catch(() => {})
+    }
+  }
+
+  const handleProjectChange = (value: string) => {
+    setNoBoxWarning(false)
+    if (value === '__none__') {
+      setBoxUrl('')
+      saveProject(null, null, null)
+      return
+    }
+    const item = mondayItems.find((i) => i.id === value)
+    const cols = item?.column_values ?? []
+    const clientFolderCol = cols.find((cv) => cv.column?.title?.toLowerCase() === 'client folder - box')
+    const clientFolderUrl = clientFolderCol ? getBoxUrlFromCol(clientFolderCol) : ''
+    const folderUrl = clientFolderUrl?.includes('box.com/folder/')
+      ? clientFolderUrl
+      : cols.map(getBoxUrlFromCol).find((u) => u.includes('box.com/folder/')) || ''
+    const url = folderUrl || clientFolderUrl || ''
+    if (url) {
+      setBoxUrl(url)
+      saveProject(value, item?.name ?? null, parseFolderId(url))
+    } else {
+      setBoxUrl('')
+      setNoBoxWarning(true)
+      saveProject(value, item?.name ?? null, null)
+    }
+  }
+
+  const handleBoxUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setBoxUrl(val)
+    setNoBoxWarning(false)
+    const folderId = parseFolderId(val) || null
+    const wfId = useWorkflowStore.getState().workflow.id
+    setWorkflow({ boxProjectFolderId: folderId })
+    if (wfId) {
+      apiFetch(`/api/v1/workflows/${wfId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ boxProjectFolderId: folderId }),
+      }).catch(() => {})
+    }
+  }
+
+  if (!workflow.clientId) return null
+
+  const parsedId = parseFolderId(boxUrl)
+  const boxValid = boxUrl === '' || parsedId !== ''
+
+  return (
+    <div className="px-3 pt-1 pb-2 space-y-2">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#b4b2a9' }}>Project</p>
+        {!boardId ? (
+          <p className="text-[10px] text-muted-foreground italic">No Monday board on this client.</p>
+        ) : loading ? (
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <Icons.Loader2 className="h-3 w-3 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <Select value={workflow.mondayGroupId ?? '__none__'} onValueChange={handleProjectChange}>
+            <SelectTrigger
+              className="h-8 w-full text-xs font-medium focus:ring-0 border"
+              style={workflow.mondayGroupId
+                ? { backgroundColor: '#f0f7ff', borderColor: '#0ea5e9', color: '#0369a1' }
+                : { backgroundColor: 'transparent', borderColor: 'var(--border)', color: 'var(--muted-foreground)' }
+              }
+            >
+              <Icons.FolderKanban className="h-3 w-3 shrink-0 mr-1" />
+              <SelectValue>{workflow.mondayGroupName ?? 'No project'}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__" className="text-xs text-muted-foreground">— No project —</SelectItem>
+              {mondayItems.map((item) => (
+                <SelectItem key={item.id} value={item.id} className="text-xs">{item.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {/* Box folder URL — shown when a project is selected or manually set */}
+      {(workflow.mondayGroupId || boxUrl) && (
+        <div>
+          <div className="relative">
+            <input
+              type="text"
+              className={`w-full rounded-md border pl-2.5 pr-16 py-1 text-[11px] outline-none focus:ring-1 ${
+                boxValid ? 'border-border focus:ring-ring' : 'border-red-400 focus:ring-red-400'
+              }`}
+              placeholder="https://app.box.com/folder/…"
+              value={boxUrl}
+              onChange={handleBoxUrlChange}
+            />
+            {parsedId && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-600 font-mono">
+                #{parsedId}
+              </span>
+            )}
+          </div>
+          {!boxValid && boxUrl.includes('box.com/file/') && (
+            <p className="text-[10px] text-red-500 mt-0.5">File link — needs a Box <em>folder</em> URL.</p>
+          )}
+          {!boxValid && !boxUrl.includes('box.com/file/') && (
+            <p className="text-[10px] text-red-500 mt-0.5">Paste a Box folder URL or numeric ID.</p>
+          )}
+          {noBoxWarning && (
+            <p className="text-[10px] text-amber-600 mt-0.5">No Box folder on this Monday item — paste one above.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── ClientTemplatesSection ───────────────────────────────────────────────────
 
 function ClientTemplatesSection() {
@@ -261,6 +449,7 @@ function NodesPalette() {
         </div>
       )}
       <ClientIndicator />
+      <ProjectIndicator />
       <ClientTemplatesSection />
 
       <div className="px-3 py-2">
