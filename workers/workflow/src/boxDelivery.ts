@@ -344,7 +344,6 @@ export async function ensureBoxSubfolder(
 ): Promise<string> {
   const token = await getBoxToken(agencyId)
 
-  // Try to create; Box returns 409 with the existing folder in context_info
   const res = await fetch(`${BOX_API_URL}/folders`, {
     method:  'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -358,16 +357,14 @@ export async function ensureBoxSubfolder(
   }
 
   if (res.status === 409) {
-    // Folder already exists — Box returns the existing folder in context_info.conflicts
     const body = await res.json() as {
-      context_info?: { conflicts?: Array<{ id?: string; sequence_id?: string }> }
+      context_info?: { conflicts?: Array<{ id?: string }> }
     }
     const existingId = body.context_info?.conflicts?.[0]?.id
     if (existingId) {
       console.log(`[boxDelivery] subfolder "${name}" already exists → ${existingId}`)
       return existingId
     }
-    // Fallback: search the parent folder's items for a matching name
     const listRes = await fetch(
       `${BOX_API_URL}/folders/${parentFolderId}/items?type=folder&limit=200`,
       { headers: { Authorization: `Bearer ${token}` } },
