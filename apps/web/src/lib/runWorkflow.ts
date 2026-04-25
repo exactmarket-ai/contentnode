@@ -107,6 +107,10 @@ export async function triggerRun(stopAtNodeId?: string, topic?: string): Promise
         ...(stopAtNodeId ? { stopAtNodeId } : {}),
         ...(Object.keys(seedNodeStatuses).length > 0 ? { seedNodeStatuses } : {}),
         ...(topic?.trim() ? { topic: topic.trim() } : {}),
+        // Project routing — wire Box delivery and Monday writeback for manual runs
+        ...(wf.boxProjectFolderId ? { clientFolderBox: `https://app.box.com/folder/${wf.boxProjectFolderId}` } : {}),
+        ...(wf.mondayGroupId ? { mondayItemId: wf.mondayGroupId } : {}),
+        ...(wf.mondayGroupId && wf.clientMondayBoardId ? { mondayBoardId: wf.clientMondayBoardId } : {}),
       }),
     })
 
