@@ -290,6 +290,9 @@ importers:
       croner:
         specifier: ^10.0.1
         version: 10.0.1
+      docx:
+        specifier: ^9.6.1
+        version: 9.6.1
       exceljs:
         specifier: ^4.4.0
         version: 4.4.0

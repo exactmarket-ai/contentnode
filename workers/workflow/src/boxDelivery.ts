@@ -6,9 +6,67 @@
  * runs inside the worker process so it has direct Prisma access.
  */
 
+import { Document, Paragraph, TextRun, HeadingLevel, Packer, AlignmentType, convertInchesToTwip } from 'docx'
 import { prisma } from '@contentnode/database'
 import { encrypt, safeDecrypt } from './lib/crypto.js'
 import { downloadBuffer } from '@contentnode/storage'
+
+// ── DOCX generation ───────────────────────────────────────────────────────────
+function parseInlineMarkdown(text: string): TextRun[] {
+  // Split on **bold** markers — handles the most common AI output pattern
+  const parts = text.split(/(\*\*[^*]+\*\*)/)
+  return parts.map((part) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return new TextRun({ text: part.slice(2, -2), bold: true })
+    }
+    return new TextRun({ text: part })
+  })
+}
+
+export async function textToDocxBuffer(text: string): Promise<Buffer> {
+  const lines = text.split('\n')
+  const children: Paragraph[] = []
+
+  for (const line of lines) {
+    if (line.startsWith('### ')) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun(line.slice(4))] }))
+    } else if (line.startsWith('## ')) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(line.slice(3))] }))
+    } else if (line.startsWith('# ')) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(line.slice(2))] }))
+    } else if (/^[-*] /.test(line)) {
+      children.push(new Paragraph({
+        bullet: { level: 0 },
+        children: parseInlineMarkdown(line.slice(2)),
+      }))
+    } else if (/^\d+\. /.test(line)) {
+      children.push(new Paragraph({
+        numbering: { reference: 'default-numbering', level: 0 },
+        children: parseInlineMarkdown(line.replace(/^\d+\. /, '')),
+      }))
+    } else {
+      children.push(new Paragraph({ children: parseInlineMarkdown(line) }))
+    }
+  }
+
+  const doc = new Document({
+    numbering: {
+      config: [{
+        reference: 'default-numbering',
+        levels: [{
+          level: 0,
+          format: 'decimal',
+          text: '%1.',
+          alignment: AlignmentType.LEFT,
+          style: { paragraph: { indent: { left: convertInchesToTwip(0.5), hanging: convertInchesToTwip(0.25) } } },
+        }],
+      }],
+    },
+    sections: [{ children }],
+  })
+
+  return Buffer.from(await Packer.toBuffer(doc))
+}
 
 const BOX_TOKEN_URL  = 'https://api.box.com/oauth2/token'
 const BOX_API_URL    = 'https://api.box.com/2.0'
@@ -71,8 +129,9 @@ export async function deliverRunToBox(params: {
   const token = await getBoxToken(agencyId)
 
   // 1. Upload file
-  const buf  = Buffer.from(content, 'utf-8')
-  const form = new FormData()
+  const isDocx = (mimeType ?? '').includes('wordprocessingml')
+  const buf    = isDocx ? await textToDocxBuffer(content) : Buffer.from(content, 'utf-8')
+  const form   = new FormData()
   form.append('attributes', JSON.stringify({ name: filename, parent: { id: folderId } }))
   form.append('file', new Blob([buf], { type: mimeType ?? 'text/plain' }), filename)
 
