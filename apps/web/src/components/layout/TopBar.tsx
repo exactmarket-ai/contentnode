@@ -1168,7 +1168,10 @@ function ProjectPickerModal({
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
   const [boxInput, setBoxInput] = useState(() => {
     const id = current.boxProjectFolderId ?? ''
-    return id ? `https://app.box.com/folder/${id}` : ''
+    if (!id) return ''
+    if (id.includes('box.com/folder/')) return id   // already a valid folder URL
+    if (/^\d+$/.test(id.trim())) return `https://app.box.com/folder/${id}`  // bare numeric ID
+    return ''  // file URLs or anything else — clear it
   })
   const [loadingMonday, setLoadingMonday] = useState(false)
 
