@@ -48,6 +48,9 @@ function defaultModelForProvider(provider: string) {
 export async function pollRunUntilTerminal(runId: string) {
   const POLL_INTERVAL_MS = 2000
   const MAX_POLLS = 600 // 20 minutes max
+  const MAX_PENDING_POLLS = 15 // 30s — if still 'pending', worker crashed before updating DB
+
+  let pendingCount = 0
 
   for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
@@ -78,6 +81,19 @@ export async function pollRunUntilTerminal(runId: string) {
     }
     const data = body.data
     console.log('[run] poll', i + 1, '— status:', data.status)
+
+    // If the run is still 'pending' after 30s the worker likely crashed before
+    // updating the DB. Surface a failure so the Run button unlocks immediately.
+    if (data.status === 'pending') {
+      pendingCount++
+      if (pendingCount >= MAX_PENDING_POLLS) {
+        store.setRunError('Run failed to start — the worker may have crashed. Please try again.')
+        store.setRunStatus('failed')
+        return
+      }
+      continue
+    }
+    pendingCount = 0
 
     if (data.detectionState) {
       const history: Record<string, number[]> = {}
