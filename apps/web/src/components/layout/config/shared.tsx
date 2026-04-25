@@ -224,41 +224,42 @@ export function PMRoutingSection({
                 placeholder="e.g. Stage"
                 className="text-xs"
                 value={(config.delivery_monday_status_column as string) ?? ''}
-                onChange={(e) => onChange('delivery_monday_status_column', e.target.value)}
+                onChange={(e) => {
+                  onChange('delivery_monday_status_column', e.target.value)
+                  if (!e.target.value.trim()) onChange('delivery_monday_status', '')
+                }}
               />
             )}
           </FieldGroup>
 
-          {!!(config.delivery_monday_status_column || config.delivery_monday_status) && (
-            <FieldGroup
-              label="Status Label on Delivery"
-              description="Sets the status column to this label when the file lands in Box."
-            >
-              {statusLabels.length > 0 ? (
-                <Select
-                  value={(config.delivery_monday_status as string) || '__none__'}
-                  onValueChange={(v) => onChange('delivery_monday_status', v === '__none__' ? '' : v)}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Select label…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
-                    {statusLabels.map((label) => (
-                      <SelectItem key={label} value={label} className="text-xs">{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  placeholder="e.g. Ready for Review"
-                  className="text-xs"
-                  value={(config.delivery_monday_status as string) ?? ''}
-                  onChange={(e) => onChange('delivery_monday_status', e.target.value)}
-                />
-              )}
-            </FieldGroup>
-          )}
+          <FieldGroup
+            label="Status Label on Delivery"
+            description="Sets the status column to this label when the file lands in Box."
+          >
+            {statusLabels.length > 0 ? (
+              <Select
+                value={(config.delivery_monday_status as string) || '__none__'}
+                onValueChange={(v) => onChange('delivery_monday_status', v === '__none__' ? '' : v)}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select label…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
+                  {statusLabels.map((label) => (
+                    <SelectItem key={label} value={label} className="text-xs">{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                placeholder="e.g. Ready for Review"
+                className="text-xs"
+                value={(config.delivery_monday_status as string) ?? ''}
+                onChange={(e) => onChange('delivery_monday_status', e.target.value)}
+              />
+            )}
+          </FieldGroup>
         </div>
       )}
     </div>
