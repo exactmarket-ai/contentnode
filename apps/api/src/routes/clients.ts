@@ -775,9 +775,20 @@ export async function clientRoutes(app: FastifyInstance) {
     const existing = await prisma.client.findFirst({ where: { id: req.params.id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Client not found' })
 
-    // requireOffline is an admin-only policy setting
-    if (parsed.data.requireOffline !== undefined && !['owner', 'admin'].includes(req.auth.role ?? '')) {
-      return reply.code(403).send({ error: 'Only admins can change the AI policy for a client.' })
+    // requireOffline is an admin-only policy setting.
+    // Fall back to DB role if the Clerk JWT doesn't include the role claim (defaults to 'member').
+    if (parsed.data.requireOffline !== undefined) {
+      let effectiveRole = req.auth.role ?? 'member'
+      if (!['owner', 'admin'].includes(effectiveRole)) {
+        const dbUser = await prisma.user.findFirst({
+          where: { clerkUserId: req.auth.userId, agencyId },
+          select: { role: true },
+        })
+        if (dbUser?.role) effectiveRole = dbUser.role
+      }
+      if (!['owner', 'admin'].includes(effectiveRole)) {
+        return reply.code(403).send({ error: 'Only admins can change the AI policy for a client.' })
+      }
     }
 
     const isArchiving = parsed.data.status === 'archived'

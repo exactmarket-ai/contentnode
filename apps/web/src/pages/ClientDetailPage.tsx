@@ -4713,11 +4713,11 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requireOffline: !client.requireOffline }),
       })
-      if (!res.ok) throw new Error('Failed to update')
       const body = await res.json()
+      if (!res.ok) throw new Error(body?.error ?? 'Failed to update')
       onUpdate({ requireOffline: body.data.requireOffline })
-    } catch {
-      setOfflineToggleError('Failed to update setting.')
+    } catch (err) {
+      setOfflineToggleError((err as Error).message || 'Failed to update setting.')
     } finally {
       setTogglingOffline(false)
     }
