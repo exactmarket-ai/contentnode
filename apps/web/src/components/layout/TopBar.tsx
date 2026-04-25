@@ -1184,7 +1184,11 @@ function ProjectPickerModal({
 
   const autoFillBoxFromItem = (itemId: string) => {
     const item = mondayItems.find((i) => i.id === itemId)
-    const boxCol = item?.column_values?.find((cv) => cv.url?.includes('box.com') || cv.text?.includes('box.com'))
+    // Only match folder URLs — file URLs (written back after delivery) are not valid here
+    const boxCol = item?.column_values?.find((cv) => {
+      const u = cv.url || cv.text || ''
+      return u.includes('box.com/folder/')
+    })
     const url = boxCol?.url || boxCol?.text || ''
     if (url) setBoxInput(url)
   }

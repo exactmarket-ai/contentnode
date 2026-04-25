@@ -1181,6 +1181,18 @@ export class WorkflowRunner {
           }
         }
 
+        // Write the Box project folder URL to Monday once per run so the
+        // Project Routing modal can auto-fill it on future configuration
+        if (mondayItemId && mondayBoardId && boxProjectFolderId) {
+          writeFileUrlToMonday({
+            agencyId:    this.agencyId,
+            boardId:     mondayBoardId,
+            itemId:      mondayItemId,
+            columnTitle: 'Box Project Folder',
+            url:         `https://app.box.com/folder/${boxProjectFolderId}`,
+          }).catch(() => {})
+        }
+
         // Clear per-run column cache so stale data doesn't bleed between jobs
         clearMondayCache()
 
