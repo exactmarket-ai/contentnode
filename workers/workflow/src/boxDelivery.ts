@@ -154,23 +154,40 @@ export async function deliverRunToBox(params: {
 
   const token = await getBoxToken(agencyId)
 
-  // 1. Upload file
+  // 1. Upload file — retry with incremented version suffix on 409 name conflict
   const isDocx = (mimeType ?? '').includes('wordprocessingml')
   const buf    = isDocx ? await textToDocxBuffer(content) : Buffer.from(content, 'utf-8')
-  const form   = new FormData()
-  form.append('attributes', JSON.stringify({ name: filename, parent: { id: folderId } }))
-  form.append('file', new Blob([buf], { type: mimeType ?? 'text/plain' }), filename)
 
-  const uploadRes = await fetch(BOX_UPLOAD_URL, {
-    method:  'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body:    form,
-  })
-  if (!uploadRes.ok) {
-    throw new Error(`Box upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
+  const bumpVersion = (name: string) =>
+    name.replace(/-v(\d+)(\.[^.]+)$/, (_, n, ext) => `-v${parseInt(n) + 1}${ext}`)
+
+  let uploadFilename = filename
+  let fileId: string | undefined
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const form = new FormData()
+    form.append('attributes', JSON.stringify({ name: uploadFilename, parent: { id: folderId } }))
+    form.append('file', new Blob([buf], { type: mimeType ?? 'text/plain' }), uploadFilename)
+    const uploadRes = await fetch(BOX_UPLOAD_URL, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body:    form,
+    })
+    if (uploadRes.status === 409) {
+      const errBody = await uploadRes.json().catch(() => ({}) as Record<string, unknown>) as Record<string, unknown>
+      if (errBody?.code === 'item_name_in_use') {
+        uploadFilename = bumpVersion(uploadFilename)
+        continue
+      }
+      throw new Error(`Box upload failed: 409 ${JSON.stringify(errBody)}`)
+    }
+    if (!uploadRes.ok) {
+      throw new Error(`Box upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
+    }
+    const uploadData = await uploadRes.json() as { entries: Array<{ id: string }> }
+    fileId = uploadData.entries[0].id
+    break
   }
-  const uploadData = await uploadRes.json() as { entries: Array<{ id: string }> }
-  const fileId = uploadData.entries[0].id
+  if (!fileId) throw new Error('Box upload failed: could not resolve a unique filename after 10 attempts')
 
   // 2. Write metadata template (best-effort — lets the webhook route the edit back)
   await fetch(`${BOX_API_URL}/files/${fileId}/metadata/global/properties`, {
@@ -250,21 +267,32 @@ export async function deliverImageToBox(params: {
   if (sniff[0] === 0xff && sniff[1] === 0xd8) mimeType = 'image/jpeg'
   else if (sniff[0] === 0x52 && sniff[1] === 0x49) mimeType = 'image/webp'
 
-  // Upload to Box
-  const form = new FormData()
-  form.append('attributes', JSON.stringify({ name: filename, parent: { id: folderId } }))
-  form.append('file', new Blob([imageBuffer], { type: mimeType }), filename)
+  // Upload to Box — retry with incremented version suffix on 409 name conflict
+  const bumpVersion = (name: string) =>
+    name.replace(/-v(\d+)(\.[^.]+)$/, (_, n, ext) => `-v${parseInt(n) + 1}${ext}`)
 
-  const uploadRes = await fetch(BOX_UPLOAD_URL, {
-    method:  'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body:    form,
-  })
-  if (!uploadRes.ok) {
-    throw new Error(`Box image upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
+  let uploadFilename = filename
+  let fileId: string | undefined
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const form = new FormData()
+    form.append('attributes', JSON.stringify({ name: uploadFilename, parent: { id: folderId } }))
+    form.append('file', new Blob([imageBuffer], { type: mimeType }), uploadFilename)
+    const uploadRes = await fetch(BOX_UPLOAD_URL, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body:    form,
+    })
+    if (uploadRes.status === 409) {
+      const errBody = await uploadRes.json().catch(() => ({}) as Record<string, unknown>) as Record<string, unknown>
+      if (errBody?.code === 'item_name_in_use') { uploadFilename = bumpVersion(uploadFilename); continue }
+      throw new Error(`Box image upload failed: 409 ${JSON.stringify(errBody)}`)
+    }
+    if (!uploadRes.ok) throw new Error(`Box image upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
+    const uploadData = await uploadRes.json() as { entries: Array<{ id: string }> }
+    fileId = uploadData.entries[0].id
+    break
   }
-  const uploadData = await uploadRes.json() as { entries: Array<{ id: string }> }
-  const fileId = uploadData.entries[0].id
+  if (!fileId) throw new Error('Box image upload failed: could not resolve a unique filename after 10 attempts')
 
   // Register FILE.NEW_VERSION webhook
   const webhookBase = (process.env.API_BASE_URL ?? '').replace(/\/$/, '')
