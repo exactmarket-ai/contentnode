@@ -274,31 +274,6 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: data.boards?.[0]?.groups ?? [] })
   })
 
-  // ── GET /boards/:id/items — project items list ────────────────────────────
-  app.get<{ Params: { id: string } }>('/boards/:id/items', async (req, reply) => {
-    const { agencyId } = req.auth
-    const token = await getMondayToken(agencyId)
-    const { id } = req.params
-
-    const data = await mondayGraphQL<{
-      boards: { items_page: { items: { id: string; name: string }[] } }[]
-    }>(token, `
-      query($id: [ID!]) {
-        boards(ids: $id) {
-          items_page(limit: 100) {
-            items {
-              id
-              name
-            }
-          }
-        }
-      }
-    `, { id: [id] })
-
-    const items = data.boards?.[0]?.items_page?.items ?? []
-    return reply.send({ data: items })
-  })
-
   // ── GET /boards/:id/columns-meta — columns with status labels ────────────
   app.get<{ Params: { id: string } }>('/boards/:id/columns-meta', async (req, reply) => {
     const { agencyId } = req.auth

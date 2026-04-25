@@ -1176,7 +1176,7 @@ function ProjectPickerModal({
     setLoadingMonday(true)
     apiFetch(`/api/v1/integrations/monday/boards/${clientMondayBoardId}/items`)
       .then((r) => r.json())
-      .then(({ data }) => { setMondayItems(data ?? []) })
+      .then(({ data }) => { setMondayItems(data?.items ?? []) })
       .catch(() => {})
       .finally(() => setLoadingMonday(false))
   }, [clientMondayBoardId])
