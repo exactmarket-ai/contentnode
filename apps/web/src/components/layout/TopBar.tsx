@@ -1163,7 +1163,7 @@ function ProjectPickerModal({
   onSave,
   onClose,
 }: ProjectPickerModalProps) {
-  type MondayItem = { id: string; name: string; column_values?: { url?: string; text?: string }[] }
+  type MondayItem = { id: string; name: string; column_values?: { url?: string; text?: string; value?: string }[] }
   const [mondayItems, setMondayItems] = useState<MondayItem[]>([])
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
   const [noBoxFolderWarning, setNoBoxFolderWarning] = useState(false)
@@ -1189,14 +1189,25 @@ function ProjectPickerModal({
   const autoFillBoxFromItem = (itemId: string) => {
     setNoBoxFolderWarning(false)
     const item = mondayItems.find((i) => i.id === itemId)
-    // Prefer folder URLs; accept any box.com URL as fallback
-    const folderCol = item?.column_values?.find((cv) =>
-      cv.url?.includes('box.com/folder/') || cv.text?.includes('box.com/folder/')
-    )
-    const anyBoxCol = item?.column_values?.find((cv) =>
-      cv.url?.includes('box.com') || cv.text?.includes('box.com')
-    )
-    const url = folderCol?.url || folderCol?.text || anyBoxCol?.url || anyBoxCol?.text || ''
+
+    // Extract URL from a column value — checks url field, text field, and value JSON
+    const getUrl = (cv: { url?: string; text?: string; value?: string }) => {
+      if (cv.url?.includes('box.com')) return cv.url
+      if (cv.text?.includes('box.com')) return cv.text
+      // Link columns store URL in value as JSON: {"url":"...","text":"..."}
+      try {
+        const parsed = JSON.parse(cv.value ?? '')
+        if (typeof parsed?.url === 'string' && parsed.url.includes('box.com')) return parsed.url
+      } catch {}
+      return ''
+    }
+
+    const cols = item?.column_values ?? []
+    // Prefer folder URLs over file URLs
+    const folderUrl = cols.map(getUrl).find((u) => u.includes('box.com/folder/'))
+    const anyUrl    = cols.map(getUrl).find((u) => u.includes('box.com'))
+    const url = folderUrl || anyUrl || ''
+
     if (url) {
       setBoxInput(url)
     } else {
