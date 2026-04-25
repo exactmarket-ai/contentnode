@@ -1163,7 +1163,7 @@ function ProjectPickerModal({
   onSave,
   onClose,
 }: ProjectPickerModalProps) {
-  const [mondayGroups, setMondayGroups] = useState<{ id: string; title: string }[]>([])
+  const [mondayItems, setMondayItems] = useState<{ id: string; name: string }[]>([])
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
   const [boxInput, setBoxInput] = useState(() => {
     const id = current.boxProjectFolderId ?? ''
@@ -1174,9 +1174,9 @@ function ProjectPickerModal({
   useEffect(() => {
     if (!clientMondayBoardId) return
     setLoadingMonday(true)
-    apiFetch(`/api/v1/integrations/monday/boards/${clientMondayBoardId}/groups`)
+    apiFetch(`/api/v1/integrations/monday/boards/${clientMondayBoardId}/items`)
       .then((r) => r.json())
-      .then(({ data }) => { setMondayGroups(data ?? []) })
+      .then(({ data }) => { setMondayItems(data ?? []) })
       .catch(() => {})
       .finally(() => setLoadingMonday(false))
   }, [clientMondayBoardId])
@@ -1185,10 +1185,10 @@ function ProjectPickerModal({
   const boxValid = boxInput === '' || parsedFolderId !== ''
 
   const handleSave = () => {
-    const group = mondayGroups.find((g) => g.id === selectedMondayGroupId)
+    const item = mondayItems.find((i) => i.id === selectedMondayGroupId)
     onSave({
       mondayGroupId: selectedMondayGroupId || null,
-      mondayGroupName: group?.title || null,
+      mondayGroupName: item?.name || null,
       boxProjectFolderId: parsedFolderId || null,
     })
   }
@@ -1210,34 +1210,34 @@ function ProjectPickerModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          {/* Monday group */}
+          {/* Monday project item */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
               <Icons.LayoutGrid className="h-3 w-3" />
-              Monday Group
+              Monday Project
             </label>
             {!clientMondayBoardId ? (
               <p className="text-xs text-muted-foreground italic">No Monday board connected to this client.</p>
             ) : loadingMonday ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Icons.Loader2 className="h-3 w-3 animate-spin" />Loading groups…
+                <Icons.Loader2 className="h-3 w-3 animate-spin" />Loading projects…
               </div>
-            ) : mondayGroups.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic">No groups found.</p>
+            ) : mondayItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No projects found on this board.</p>
             ) : (
               <Select value={selectedMondayGroupId || '__none__'} onValueChange={(v) => setSelectedMondayGroupId(v === '__none__' ? '' : v)}>
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select group…" />
+                  <SelectValue placeholder="Select project…" />
                 </SelectTrigger>
                 <SelectContent position="popper" sideOffset={4}>
                   <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
-                  {mondayGroups.map((g) => (
-                    <SelectItem key={g.id} value={g.id} className="text-xs">{g.title}</SelectItem>
+                  {mondayItems.map((item) => (
+                    <SelectItem key={item.id} value={item.id} className="text-xs">{item.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             )}
-            <p className="text-[10px] text-muted-foreground">New Monday items from this workflow will be created in this group.</p>
+            <p className="text-[10px] text-muted-foreground">Links this workflow to a Monday project item.</p>
           </div>
 
           {/* Box project folder — paste URL */}
