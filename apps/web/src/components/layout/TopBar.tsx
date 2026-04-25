@@ -48,9 +48,10 @@ function defaultModelForProvider(provider: string) {
 export async function pollRunUntilTerminal(runId: string) {
   const POLL_INTERVAL_MS = 2000
   const MAX_POLLS = 600 // 20 minutes max
-  const MAX_PENDING_POLLS = 15 // 30s — if still 'pending', worker crashed before updating DB
+  const MAX_PENDING_POLLS = 15 // 30s — if still 'pending', try to re-enqueue once
 
   let pendingCount = 0
+  let retryEnqueueAttempted = false
 
   for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
@@ -82,12 +83,28 @@ export async function pollRunUntilTerminal(runId: string) {
     const data = body.data
     console.log('[run] poll', i + 1, '— status:', data.status)
 
-    // If the run is still 'pending' after 30s the worker likely crashed before
-    // updating the DB. Surface a failure so the Run button unlocks immediately.
+    // If the run is still 'pending' after 30s, the job was likely lost in Redis.
+    // Automatically re-enqueue it once before giving up.
     if (data.status === 'pending') {
       pendingCount++
-      if (pendingCount >= MAX_PENDING_POLLS) {
-        store.setRunError('Run failed to start — the worker may have crashed. Please try again.')
+      if (pendingCount >= MAX_PENDING_POLLS && !retryEnqueueAttempted) {
+        retryEnqueueAttempted = true
+        pendingCount = 0
+        console.warn('[run] run stuck in pending — attempting re-enqueue')
+        try {
+          const retryRes = await apiFetch(`/api/v1/runs/${runId}/retry-enqueue`, { method: 'POST' })
+          if (!retryRes.ok) {
+            store.setRunError('Run failed to start — the worker did not pick up the job. Please try again.')
+            store.setRunStatus('failed')
+            return
+          }
+        } catch {
+          store.setRunError('Run failed to start — could not reach the server. Please try again.')
+          store.setRunStatus('failed')
+          return
+        }
+      } else if (pendingCount >= MAX_PENDING_POLLS && retryEnqueueAttempted) {
+        store.setRunError('Run failed to start even after retry — please check the worker logs.')
         store.setRunStatus('failed')
         return
       }

@@ -1,5 +1,16 @@
-import { Queue } from 'bullmq'
-import { getRedis } from './redis.js'
+import { Queue, type ConnectionOptions } from 'bullmq'
+
+// BullMQ needs its own connection (not the shared ioredis instance) so it
+// can manage subscriber connections and retry behavior independently.
+function getBullMQConnection(): ConnectionOptions {
+  const url = process.env.REDIS_URL ?? 'redis://localhost:6379'
+  const parsed = new URL(url)
+  return {
+    host: parsed.hostname,
+    port: parseInt(parsed.port || '6379', 10),
+    ...(parsed.password ? { password: parsed.password } : {}),
+  }
+}
 
 export const QUEUE_WORKFLOW_RUNS = 'workflow-runs'
 export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
@@ -137,7 +148,7 @@ let boxDiffQueue: Queue<BoxDiffJobData> | null = null
 export function getWorkflowRunsQueue(): Queue<WorkflowRunJobData> {
   if (!workflowRunsQueue) {
     workflowRunsQueue = new Queue<WorkflowRunJobData>(QUEUE_WORKFLOW_RUNS, {
-      connection: getRedis(),
+      connection: getBullMQConnection(),
     })
   }
   return workflowRunsQueue
@@ -149,7 +160,7 @@ export function getWorkflowRunsQueue(): Queue<WorkflowRunJobData> {
 export function getPatternDetectionQueue(): Queue<PatternDetectionJobData> {
   if (!patternDetectionQueue) {
     patternDetectionQueue = new Queue<PatternDetectionJobData>(QUEUE_PATTERN_DETECTION, {
-      connection: getRedis(),
+      connection: getBullMQConnection(),
     })
   }
   return patternDetectionQueue
@@ -158,7 +169,7 @@ export function getPatternDetectionQueue(): Queue<PatternDetectionJobData> {
 export function getEditAnalysisQueue(): Queue<EditAnalysisJobData> {
   if (!editAnalysisQueue) {
     editAnalysisQueue = new Queue<EditAnalysisJobData>(QUEUE_EDIT_ANALYSIS, {
-      connection: getRedis(),
+      connection: getBullMQConnection(),
     })
   }
   return editAnalysisQueue
@@ -170,7 +181,7 @@ export function getEditAnalysisQueue(): Queue<EditAnalysisJobData> {
 export function getFrameworkResearchQueue(): Queue<FrameworkResearchJobData> {
   if (!frameworkResearchQueue) {
     frameworkResearchQueue = new Queue<FrameworkResearchJobData>(QUEUE_FRAMEWORK_RESEARCH, {
-      connection: getRedis(),
+      connection: getBullMQConnection(),
     })
   }
   return frameworkResearchQueue
@@ -182,7 +193,7 @@ export function getFrameworkResearchQueue(): Queue<FrameworkResearchJobData> {
 export function getAttachmentProcessQueue(): Queue<AttachmentProcessJobData> {
   if (!attachmentProcessQueue) {
     attachmentProcessQueue = new Queue<AttachmentProcessJobData>(QUEUE_ATTACHMENT_PROCESS, {
-      connection: getRedis(),
+      connection: getBullMQConnection(),
     })
   }
   return attachmentProcessQueue
@@ -191,7 +202,7 @@ export function getAttachmentProcessQueue(): Queue<AttachmentProcessJobData> {
 export function getBrandAttachmentProcessQueue(): Queue<BrandAttachmentProcessJobData> {
   if (!brandAttachmentProcessQueue) {
     brandAttachmentProcessQueue = new Queue<BrandAttachmentProcessJobData>(QUEUE_BRAND_ATTACHMENT_PROCESS, {
-      connection: getRedis(),
+      connection: getBullMQConnection(),
     })
   }
   return brandAttachmentProcessQueue
@@ -199,35 +210,35 @@ export function getBrandAttachmentProcessQueue(): Queue<BrandAttachmentProcessJo
 
 export function getCampaignBrainProcessQueue(): Queue<CampaignBrainProcessJobData> {
   if (!campaignBrainProcessQueue) {
-    campaignBrainProcessQueue = new Queue<CampaignBrainProcessJobData>(QUEUE_CAMPAIGN_BRAIN_PROCESS, { connection: getRedis() })
+    campaignBrainProcessQueue = new Queue<CampaignBrainProcessJobData>(QUEUE_CAMPAIGN_BRAIN_PROCESS, { connection: getBullMQConnection() })
   }
   return campaignBrainProcessQueue
 }
 
 export function getClientBrainProcessQueue(): Queue<ClientBrainProcessJobData> {
   if (!clientBrainProcessQueue) {
-    clientBrainProcessQueue = new Queue<ClientBrainProcessJobData>(QUEUE_CLIENT_BRAIN_PROCESS, { connection: getRedis() })
+    clientBrainProcessQueue = new Queue<ClientBrainProcessJobData>(QUEUE_CLIENT_BRAIN_PROCESS, { connection: getBullMQConnection() })
   }
   return clientBrainProcessQueue
 }
 
 export function getAgencyBrainProcessQueue(): Queue<AgencyBrainProcessJobData> {
   if (!agencyBrainProcessQueue) {
-    agencyBrainProcessQueue = new Queue<AgencyBrainProcessJobData>(QUEUE_AGENCY_BRAIN_PROCESS, { connection: getRedis() })
+    agencyBrainProcessQueue = new Queue<AgencyBrainProcessJobData>(QUEUE_AGENCY_BRAIN_PROCESS, { connection: getBullMQConnection() })
   }
   return agencyBrainProcessQueue
 }
 
 export function getVerticalBrainProcessQueue(): Queue<VerticalBrainProcessJobData> {
   if (!verticalBrainProcessQueue) {
-    verticalBrainProcessQueue = new Queue<VerticalBrainProcessJobData>(QUEUE_VERTICAL_BRAIN_PROCESS, { connection: getRedis() })
+    verticalBrainProcessQueue = new Queue<VerticalBrainProcessJobData>(QUEUE_VERTICAL_BRAIN_PROCESS, { connection: getBullMQConnection() })
   }
   return verticalBrainProcessQueue
 }
 
 export function getClientVerticalBrainProcessQueue(): Queue<ClientVerticalBrainProcessJobData> {
   if (!clientVerticalBrainProcessQueue) {
-    clientVerticalBrainProcessQueue = new Queue<ClientVerticalBrainProcessJobData>(QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS, { connection: getRedis() })
+    clientVerticalBrainProcessQueue = new Queue<ClientVerticalBrainProcessJobData>(QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS, { connection: getBullMQConnection() })
   }
   return clientVerticalBrainProcessQueue
 }
@@ -235,7 +246,7 @@ export function getClientVerticalBrainProcessQueue(): Queue<ClientVerticalBrainP
 let promptSuggestQueue: Queue<PromptSuggestJobData> | null = null
 export function getPromptSuggestQueue(): Queue<PromptSuggestJobData> {
   if (!promptSuggestQueue) {
-    promptSuggestQueue = new Queue<PromptSuggestJobData>(QUEUE_PROMPT_SUGGEST, { connection: getRedis() })
+    promptSuggestQueue = new Queue<PromptSuggestJobData>(QUEUE_PROMPT_SUGGEST, { connection: getBullMQConnection() })
   }
   return promptSuggestQueue
 }
@@ -243,14 +254,14 @@ export function getPromptSuggestQueue(): Queue<PromptSuggestJobData> {
 let scheduledResearchQueue: Queue<ScheduledResearchJobData> | null = null
 export function getScheduledResearchQueue(): Queue<ScheduledResearchJobData> {
   if (!scheduledResearchQueue) {
-    scheduledResearchQueue = new Queue<ScheduledResearchJobData>(QUEUE_SCHEDULED_RESEARCH, { connection: getRedis() })
+    scheduledResearchQueue = new Queue<ScheduledResearchJobData>(QUEUE_SCHEDULED_RESEARCH, { connection: getBullMQConnection() })
   }
   return scheduledResearchQueue
 }
 
 export function getBoxDiffQueue(): Queue<BoxDiffJobData> {
   if (!boxDiffQueue) {
-    boxDiffQueue = new Queue<BoxDiffJobData>(QUEUE_BOX_DIFF, { connection: getRedis() })
+    boxDiffQueue = new Queue<BoxDiffJobData>(QUEUE_BOX_DIFF, { connection: getBullMQConnection() })
   }
   return boxDiffQueue
 }

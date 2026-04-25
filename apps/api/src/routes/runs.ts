@@ -314,11 +314,21 @@ export async function runRoutes(app: FastifyInstance) {
 
     // Enqueue the job — worker picks it up asynchronously
     const queue = getWorkflowRunsQueue()
-    await queue.add(
-      'run-workflow',
-      { workflowRunId: run.id, agencyId, ...(body.stopAtNodeId ? { stopAtNodeId: body.stopAtNodeId } : {}) },
-      { jobId: run.id },
-    )
+    try {
+      await queue.add(
+        'run-workflow',
+        { workflowRunId: run.id, agencyId, ...(body.stopAtNodeId ? { stopAtNodeId: body.stopAtNodeId } : {}) },
+        { jobId: run.id, removeOnComplete: { count: 100 }, removeOnFail: { count: 50 } },
+      )
+    } catch (enqueueErr) {
+      // If we can't add to Redis, fail the run immediately so the frontend doesn't wait.
+      req.log.error({ runId: run.id, err: enqueueErr }, '[runs] queue.add failed — marking run as failed')
+      await prisma.workflowRun.update({
+        where: { id: run.id },
+        data: { status: 'failed', completedAt: new Date(), errorMessage: 'Failed to enqueue run — Redis unavailable. Please retry.' },
+      }).catch(() => {})
+      return reply.code(503).send({ error: 'Queue unavailable — please retry in a moment', runId: run.id })
+    }
 
     await auditService.log(agencyId, {
       actorType: 'user',
@@ -1103,6 +1113,31 @@ export async function runRoutes(app: FastifyInstance) {
     })
 
     return reply.send({ data: { links, reviewStatus: 'sent_to_client' } })
+  })
+
+  // ── POST /:id/retry-enqueue — re-enqueue a stuck pending run ─────────────
+  // Called by the frontend when a run stays in 'pending' for too long without
+  // the worker picking it up (e.g. Redis blip at enqueue time).
+  app.post<{ Params: { id: string } }>('/:id/retry-enqueue', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params
+
+    const run = await prisma.workflowRun.findFirst({ where: { id, agencyId }, select: { id: true, status: true } })
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+    if (run.status !== 'pending') {
+      return reply.code(422).send({ error: `Run is not pending (status: ${run.status})` })
+    }
+
+    const queue = getWorkflowRunsQueue()
+    // Use a fresh job ID so we don't collide with any lingering deduplication entry
+    await queue.add(
+      'run-workflow',
+      { workflowRunId: id, agencyId },
+      { jobId: `${id}-retry-${Date.now()}`, removeOnComplete: { count: 100 }, removeOnFail: { count: 50 } },
+    )
+
+    req.log.info({ runId: id }, '[runs] re-enqueued stuck pending run')
+    return reply.send({ data: { status: 'pending' } })
   })
 
   // ── POST /:id/cancel — request cancellation ───────────────────────────────
