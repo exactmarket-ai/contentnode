@@ -965,7 +965,6 @@ export function TopBar() {
         <ProjectPickerModal
           workflowId={workflow.id}
           clientMondayBoardId={workflow.clientMondayBoardId ?? null}
-          clientBoxFolderId={workflow.clientBoxFolderId ?? null}
           current={{
             mondayGroupId: workflow.mondayGroupId ?? null,
             mondayGroupName: workflow.mondayGroupName ?? null,
@@ -1142,7 +1141,6 @@ function SaveWorkflowDialog({
 interface ProjectPickerModalProps {
   workflowId: string
   clientMondayBoardId: string | null
-  clientBoxFolderId: string | null
   current: {
     mondayGroupId: string | null
     mondayGroupName: string | null
@@ -1152,23 +1150,26 @@ interface ProjectPickerModalProps {
   onClose: () => void
 }
 
+function parseFolderId(input: string): string {
+  const match = input.match(/\/folder\/(\d+)/)
+  if (match) return match[1]
+  if (/^\d+$/.test(input.trim())) return input.trim()
+  return ''
+}
+
 function ProjectPickerModal({
   clientMondayBoardId,
-  clientBoxFolderId,
   current,
   onSave,
   onClose,
 }: ProjectPickerModalProps) {
   const [mondayGroups, setMondayGroups] = useState<{ id: string; title: string }[]>([])
-  const [boxFolders, setBoxFolders] = useState<{ id: string; name: string }[]>([])
   const [selectedMondayGroupId, setSelectedMondayGroupId] = useState(current.mondayGroupId ?? '')
-  const [selectedMondayGroupName, setSelectedMondayGroupName] = useState(current.mondayGroupName ?? '')
-  const [selectedBoxFolderId, setSelectedBoxFolderId] = useState(current.boxProjectFolderId ?? '')
-  // When no client root folder is set, let user pick from the top-level Box root
-  const [selectedClientBoxRootId, setSelectedClientBoxRootId] = useState(clientBoxFolderId ?? '')
+  const [boxInput, setBoxInput] = useState(() => {
+    const id = current.boxProjectFolderId ?? ''
+    return id ? `https://app.box.com/folder/${id}` : ''
+  })
   const [loadingMonday, setLoadingMonday] = useState(false)
-  const [loadingBox, setLoadingBox] = useState(false)
-  const [boxError, setBoxError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!clientMondayBoardId) return
@@ -1180,40 +1181,15 @@ function ProjectPickerModal({
       .finally(() => setLoadingMonday(false))
   }, [clientMondayBoardId])
 
-  // If client root is set, load its subfolders. Otherwise load top-level Box root folders.
-  const boxRootId = selectedClientBoxRootId || clientBoxFolderId || ''
-  useEffect(() => {
-    setLoadingBox(true)
-    setBoxError(null)
-    const url = boxRootId
-      ? `/api/v1/integrations/box/folders/${boxRootId}/subfolders`
-      : `/api/v1/integrations/box/root-subfolders`
-    apiFetch(url)
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e?.error ?? `HTTP ${r.status}`) })
-        return r.json()
-      })
-      .then(({ data }) => { setBoxFolders(data ?? []) })
-      .catch((err: Error) => { setBoxError(err.message ?? 'Failed to load Box folders') })
-      .finally(() => setLoadingBox(false))
-  }, [boxRootId])
+  const parsedFolderId = parseFolderId(boxInput)
+  const boxValid = boxInput === '' || parsedFolderId !== ''
 
   const handleSave = () => {
     const group = mondayGroups.find((g) => g.id === selectedMondayGroupId)
-    // If client had no root folder and user picked one, save it as the client root
-    if (!clientBoxFolderId && selectedClientBoxRootId) {
-      const wf = useWorkflowStore.getState().workflow
-      if (wf.clientId) {
-        apiFetch(`/api/v1/clients/${wf.clientId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ boxFolderId: selectedClientBoxRootId }),
-        }).catch(() => {})
-      }
-    }
     onSave({
       mondayGroupId: selectedMondayGroupId || null,
-      mondayGroupName: (group?.title ?? selectedMondayGroupName) || null,
-      boxProjectFolderId: selectedBoxFolderId || null,
+      mondayGroupName: group?.title || null,
+      boxProjectFolderId: parsedFolderId || null,
     })
   }
 
@@ -1264,53 +1240,36 @@ function ProjectPickerModal({
             <p className="text-[10px] text-muted-foreground">New Monday items from this workflow will be created in this group.</p>
           </div>
 
-          {/* Box project folder */}
+          {/* Box project folder — paste URL */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
               <Icons.Box className="h-3 w-3" />
               Box Project Folder
             </label>
-            {loadingBox ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Icons.Loader2 className="h-3 w-3 animate-spin" />Loading folders…
-              </div>
-            ) : boxError ? (
-              <p className="text-xs text-red-500">{boxError}</p>
-            ) : !clientBoxFolderId ? (
-              <>
-                <p className="text-[10px] text-amber-600">No client root folder set — pick one to link it:</p>
-                <Select value={selectedClientBoxRootId || '__none__'} onValueChange={(v) => { setSelectedClientBoxRootId(v === '__none__' ? '' : v); setSelectedBoxFolderId('') }}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Select client root folder…" />
-                  </SelectTrigger>
-                  <SelectContent position="popper" sideOffset={4}>
-                    <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
-                    {boxFolders.map((f) => (
-                      <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            ) : (
-              <Select value={selectedBoxFolderId || '__none__'} onValueChange={(v) => setSelectedBoxFolderId(v === '__none__' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select project folder…" />
-                </SelectTrigger>
-                <SelectContent position="popper" sideOffset={4}>
-                  <SelectItem value="__none__" className="text-xs text-muted-foreground">— None (use client root) —</SelectItem>
-                  {boxFolders.map((f) => (
-                    <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <p className="text-[10px] text-muted-foreground">Run output folders will be created inside this project folder.</p>
+            <div className="relative">
+              <input
+                type="text"
+                className={`w-full rounded-md border px-3 py-1.5 text-xs outline-none focus:ring-1 ${
+                  boxValid ? 'border-border focus:ring-ring' : 'border-red-400 focus:ring-red-400'
+                }`}
+                placeholder="https://app.box.com/folder/123456789"
+                value={boxInput}
+                onChange={(e) => setBoxInput(e.target.value)}
+              />
+              {parsedFolderId && (
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-600 font-mono">
+                  #{parsedFolderId}
+                </span>
+              )}
+            </div>
+            {!boxValid && <p className="text-[10px] text-red-500">Paste a Box folder URL or numeric ID.</p>}
+            <p className="text-[10px] text-muted-foreground">Paste the Box folder URL. Run output files will be delivered here.</p>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
           <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={handleSave}>
+          <Button size="sm" onClick={handleSave} disabled={!boxValid}>
             <Icons.Check className="mr-1.5 h-3.5 w-3.5" />
             Save
           </Button>
