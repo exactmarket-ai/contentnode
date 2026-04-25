@@ -7,6 +7,8 @@ interface ImageAsset { storageKey?: string; url?: string; filename?: string }
 
 function extractImageAssets(input: unknown): ImageAsset[] {
   if (!input || typeof input !== 'object') return []
+  // Multiple nodes feeding in — collect assets from all of them
+  if (Array.isArray(input)) return input.flatMap((item) => extractImageAssets(item))
   const o = input as Record<string, unknown>
   if (Array.isArray(o.assets)) return o.assets as ImageAsset[]
   if (Array.isArray(o.generatedAssets)) return o.generatedAssets as ImageAsset[]
@@ -52,6 +54,10 @@ async function resolveEmailCredential(agencyId: string, provider: string, apiKey
 function extractText(input: unknown): string {
   if (!input) return ''
   if (typeof input === 'string') return input
+  // Multiple nodes feeding in — recurse and join non-empty parts
+  if (Array.isArray(input)) {
+    return input.map((item) => extractText(item)).filter(Boolean).join('\n\n')
+  }
   const o = input as Record<string, unknown>
   if (typeof o.content === 'string') return o.content
   if (typeof o.text === 'string') return o.text
