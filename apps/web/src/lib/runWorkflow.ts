@@ -111,6 +111,7 @@ export async function triggerRun(stopAtNodeId?: string, topic?: string): Promise
         ...(wf.boxProjectFolderId ? { clientFolderBox: `https://app.box.com/folder/${wf.boxProjectFolderId}` } : {}),
         ...(wf.mondayGroupId ? { mondayItemId: wf.mondayGroupId } : {}),
         ...(wf.mondayGroupId && wf.clientMondayBoardId ? { mondayBoardId: wf.clientMondayBoardId } : {}),
+        ...(wf.mondaySubItemId ? { mondaySubItemId: wf.mondaySubItemId, mondaySubItemBoardId: wf.mondaySubItemBoardId, mondaySubItemName: wf.mondaySubItemName } : {}),
       }),
     })
 

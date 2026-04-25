@@ -1180,11 +1180,17 @@ export class WorkflowRunner {
         const mondayBoardId = (runRecord.mondayBoardId as string | undefined)
           ?? (runInput.mondayBoardId as string | undefined)
           ?? (clientObj?.mondayBoardId as string | undefined) ?? null
+        // Subitem overrides parent item for Monday writeback when selected
+        const mondaySubItemId      = (runInput.mondaySubItemId as string | undefined) ?? null
+        const mondaySubItemBoardId = (runInput.mondaySubItemBoardId as string | undefined) ?? null
+        const mondaySubItemName    = (runInput.mondaySubItemName as string | undefined) ?? null
+        const mondayWriteItemId    = mondaySubItemId ?? mondayItemId
+        const mondayWriteBoardId   = mondaySubItemBoardId ?? mondayBoardId
 
-        // Create a per-run subfolder inside the project folder (name: {topic}-{date})
+        // Create a per-run subfolder inside the project folder (name: {subitem}-{topic}-{date} or {topic}-{date})
         let effectiveRootFolderId = rootFolderId
         if (boxProjectFolderId) {
-          const runFolderName = [slugify(runTopic), dateStr].filter(Boolean).join('-') || dateStr
+          const runFolderName = [slugify(mondaySubItemName ?? ''), slugify(runTopic), dateStr].filter(Boolean).join('-') || dateStr
           try {
             effectiveRootFolderId = await ensureBoxSubfolder(this.agencyId, boxProjectFolderId, runFolderName)
           } catch (err) {
@@ -1220,13 +1226,14 @@ export class WorkflowRunner {
             : effectiveRootFolderId
 
           // Helper: write URL + optional status back to Monday after delivery
+          // Uses subitem if selected, otherwise parent item
           const writeMonday = async (boxUrl: string) => {
-            if (!mondayItemId || !mondayBoardId) return
+            if (!mondayWriteItemId || !mondayWriteBoardId) return
             if (mondayColumn) {
               await writeFileUrlToMonday({
                 agencyId:    this.agencyId,
-                boardId:     mondayBoardId,
-                itemId:      mondayItemId,
+                boardId:     mondayWriteBoardId,
+                itemId:      mondayWriteItemId,
                 columnTitle: mondayColumn,
                 url:         boxUrl,
               }).catch((err) => console.error('[runner] Monday URL writeback failed:', err))
@@ -1234,8 +1241,8 @@ export class WorkflowRunner {
             if (mondayStatus) {
               await setMondayStatus({
                 agencyId:    this.agencyId,
-                boardId:     mondayBoardId,
-                itemId:      mondayItemId,
+                boardId:     mondayWriteBoardId,
+                itemId:      mondayWriteItemId,
                 columnTitle: mondayStatusCol,
                 label:       mondayStatus,
               }).catch((err) => console.error('[runner] Monday status writeback failed:', err))

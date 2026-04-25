@@ -365,6 +365,32 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: data.create_item })
   })
 
+  // ── GET /items/:itemId/subitems — subitems for a specific item ───────────────
+  app.get<{ Params: { itemId: string } }>('/items/:itemId/subitems', async (req, reply) => {
+    const { agencyId } = req.auth
+    const token = await getMondayToken(agencyId)
+    const { itemId } = req.params
+
+    const data = await mondayGraphQL<{
+      items: Array<{
+        subitems: Array<{ id: string; name: string; board: { id: string } }>
+      }>
+    }>(token, `
+      query($ids: [ID!]) {
+        items(ids: $ids) {
+          subitems {
+            id
+            name
+            board { id }
+          }
+        }
+      }
+    `, { ids: [itemId] })
+
+    const subitems = data.items?.[0]?.subitems ?? []
+    return reply.send({ data: subitems })
+  })
+
   // ── PATCH /boards/:boardId/items/:itemId — update a column value ──────────
   app.patch<{ Params: { boardId: string; itemId: string } }>('/boards/:boardId/items/:itemId', async (req, reply) => {
     const { agencyId } = req.auth

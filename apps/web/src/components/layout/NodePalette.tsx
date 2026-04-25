@@ -202,6 +202,8 @@ function ProjectIndicator() {
   const [loading, setLoading] = useState(false)
   const [boxUrl, setBoxUrl] = useState('')
   const [noBoxWarning, setNoBoxWarning] = useState(false)
+  const [subitems, setSubitems] = useState<Array<{ id: string; name: string; boardId: string }>>([])
+  const [subitemsLoading, setSubitemsLoading] = useState(false)
 
   // Fetch client's mondayBoardId when client changes
   useEffect(() => {
@@ -249,6 +251,19 @@ function ProjectIndicator() {
       }).catch(() => {})
     }
   }
+
+  // Load subitems when project changes
+  useEffect(() => {
+    setSubitems([])
+    setWorkflow({ mondaySubItemId: null, mondaySubItemName: null, mondaySubItemBoardId: null })
+    if (!workflow.mondayGroupId) return
+    setSubitemsLoading(true)
+    apiFetch(`/api/v1/integrations/monday/items/${workflow.mondayGroupId}/subitems`)
+      .then((r) => r.json())
+      .then(({ data }) => setSubitems((data ?? []).map((s: { id: string; name: string; board: { id: string } }) => ({ id: s.id, name: s.name, boardId: s.board.id }))))
+      .catch(() => {})
+      .finally(() => setSubitemsLoading(false))
+  }, [workflow.mondayGroupId])
 
   const handleProjectChange = (value: string) => {
     setNoBoxWarning(false)
@@ -326,6 +341,49 @@ function ProjectIndicator() {
           </Select>
         )}
       </div>
+
+      {/* Sub Project — shown when a project is selected and has subitems */}
+      {workflow.mondayGroupId && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#b4b2a9' }}>Sub Project</p>
+          {subitemsLoading ? (
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <Icons.Loader2 className="h-3 w-3 animate-spin" /> Loading…
+            </div>
+          ) : subitems.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground italic">No subitems on this project.</p>
+          ) : (
+            <Select
+              value={workflow.mondaySubItemId ?? '__none__'}
+              onValueChange={(value) => {
+                if (value === '__none__') {
+                  setWorkflow({ mondaySubItemId: null, mondaySubItemName: null, mondaySubItemBoardId: null })
+                  return
+                }
+                const sub = subitems.find((s) => s.id === value)
+                setWorkflow({ mondaySubItemId: value, mondaySubItemName: sub?.name ?? null, mondaySubItemBoardId: sub?.boardId ?? null })
+              }}
+            >
+              <SelectTrigger
+                className="h-8 w-full text-xs font-medium focus:ring-0 border"
+                style={workflow.mondaySubItemId
+                  ? { backgroundColor: '#f0fff4', borderColor: '#22c55e', color: '#15803d' }
+                  : { backgroundColor: 'transparent', borderColor: 'var(--border)', color: 'var(--muted-foreground)' }
+                }
+              >
+                <Icons.GitBranch className="h-3 w-3 shrink-0 mr-1" />
+                <SelectValue>{workflow.mondaySubItemName ?? 'No sub project'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="text-xs text-muted-foreground">— No sub project —</SelectItem>
+                {subitems.map((s) => (
+                  <SelectItem key={s.id} value={s.id} className="text-xs">{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
 
       {/* Box folder URL — shown when a project is selected or manually set */}
       {(workflow.mondayGroupId || boxUrl) && (
