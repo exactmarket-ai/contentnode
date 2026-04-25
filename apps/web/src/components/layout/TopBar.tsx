@@ -1189,16 +1189,26 @@ function ProjectPickerModal({
   const autoFillBoxFromItem = (itemId: string) => {
     setNoBoxFolderWarning(false)
     const item = mondayItems.find((i) => i.id === itemId)
+    const cols = item?.column_values ?? []
 
-    const clientFolderCol = (item?.column_values ?? []).find(
-      (cv) => cv.column?.title?.toLowerCase() === 'client folder - box'
-    )
-
-    // Link columns store URL in value as JSON: {"url":"...","text":"..."}
-    let url = clientFolderCol?.url || ''
-    if (!url && clientFolderCol?.value) {
-      try { url = (JSON.parse(clientFolderCol.value) as { url?: string })?.url ?? '' } catch {}
+    // Extract any box.com URL from a column value (url field, text field, or JSON value)
+    const getBoxUrl = (cv: { url?: string; text?: string; value?: string }) => {
+      if (cv.url?.includes('box.com')) return cv.url
+      if (cv.text?.includes('box.com')) return cv.text
+      try {
+        const parsed = JSON.parse(cv.value ?? '')
+        if (typeof parsed?.url === 'string' && parsed.url.includes('box.com')) return parsed.url
+      } catch {}
+      return ''
     }
+
+    // Prefer: folder URL in "Client Folder - Box" column → any folder URL → any box URL
+    const clientFolderCol = cols.find((cv) => cv.column?.title?.toLowerCase() === 'client folder - box')
+    const clientFolderUrl = clientFolderCol ? getBoxUrl(clientFolderCol) : ''
+    const folderUrl = clientFolderUrl?.includes('box.com/folder/')
+      ? clientFolderUrl
+      : cols.map(getBoxUrl).find((u) => u.includes('box.com/folder/')) || ''
+    const url = folderUrl || clientFolderUrl || ''
 
     if (url) {
       setBoxInput(url)
@@ -1297,8 +1307,13 @@ function ProjectPickerModal({
                 </span>
               )}
             </div>
-            {!boxValid && <p className="text-[10px] text-red-500">Paste a Box folder URL or numeric ID.</p>}
-            {noBoxFolderWarning && <p className="text-[10px] text-amber-600">No Box folder found on this Monday item. Add a Box folder link to the item in Monday and reselect.</p>}
+            {!boxValid && boxInput.includes('box.com/file/') && (
+              <p className="text-[10px] text-red-500">Monday&apos;s &quot;Client Folder - Box&quot; column has a file link, not a folder link. Update it in Monday with a Box <em>folder</em> URL.</p>
+            )}
+            {!boxValid && !boxInput.includes('box.com/file/') && (
+              <p className="text-[10px] text-red-500">Paste a Box folder URL or numeric ID.</p>
+            )}
+            {noBoxFolderWarning && <p className="text-[10px] text-amber-600">No Box folder found on this Monday item. Add a Box folder link to the &quot;Client Folder - Box&quot; column in Monday and reselect.</p>}
             <p className="text-[10px] text-muted-foreground">Pulled from Monday. Run output files will be delivered here.</p>
           </div>
         </div>
