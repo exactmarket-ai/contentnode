@@ -73,6 +73,32 @@ const BOX_API_URL    = 'https://api.box.com/2.0'
 const BOX_UPLOAD_URL = 'https://upload.box.com/api/2.0/files/content'
 
 // ── Token management ──────────────────────────────────────────────────────────
+async function refreshBoxToken(agencyId: string, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number } | null> {
+  const res = await fetch(BOX_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type:    'refresh_token',
+      client_id:     process.env.BOX_CLIENT_ID     ?? '',
+      client_secret: process.env.BOX_CLIENT_SECRET ?? '',
+      refresh_token: refreshToken,
+    }),
+  })
+  if (!res.ok) return null
+  return res.json() as Promise<{ access_token: string; refresh_token: string; expires_in: number }>
+}
+
+async function storeBoxTokens(agencyId: string, data: { access_token: string; refresh_token: string; expires_in: number }) {
+  await prisma.integration.update({
+    where: { agencyId_provider: { agencyId, provider: 'box' } },
+    data: {
+      accessToken:  encrypt(data.access_token),
+      refreshToken: encrypt(data.refresh_token),
+      expiresAt:    new Date(Date.now() + data.expires_in * 1000),
+    },
+  })
+}
+
 async function getBoxToken(agencyId: string): Promise<string> {
   const integration = await prisma.integration.findUnique({
     where: { agencyId_provider: { agencyId, provider: 'box' } },
@@ -84,31 +110,31 @@ async function getBoxToken(agencyId: string): Promise<string> {
   }
 
   const storedRefresh = safeDecrypt(integration.refreshToken) ?? integration.refreshToken
-  if (!storedRefresh) throw new Error('No Box refresh token — please reconnect')
+  if (!storedRefresh) throw new Error('No Box refresh token — please reconnect Box in Settings')
 
-  const res = await fetch(BOX_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type:    'refresh_token',
-      client_id:     process.env.BOX_CLIENT_ID     ?? '',
-      client_secret: process.env.BOX_CLIENT_SECRET ?? '',
-      refresh_token: storedRefresh,
-    }),
-  })
-  if (!res.ok) throw new Error(`Box token refresh failed: ${res.status}`)
+  let data = await refreshBoxToken(agencyId, storedRefresh)
 
-  const data = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
+  if (!data) {
+    // 400 from Box often means a concurrent worker already rotated this refresh token.
+    // Re-read the DB and try the newer token that the other worker stored.
+    const fresh = await prisma.integration.findUnique({
+      where: { agencyId_provider: { agencyId, provider: 'box' } },
+    })
+    const freshRefresh = fresh ? (safeDecrypt(fresh.refreshToken) ?? fresh.refreshToken) : null
+    if (freshRefresh && freshRefresh !== storedRefresh) {
+      // Another process already refreshed — if their access token is still valid, use it
+      if (fresh!.expiresAt && fresh!.expiresAt.getTime() > Date.now() + 5 * 60 * 1000) {
+        return safeDecrypt(fresh!.accessToken) ?? fresh!.accessToken
+      }
+      data = await refreshBoxToken(agencyId, freshRefresh)
+    }
+  }
 
-  await prisma.integration.update({
-    where: { agencyId_provider: { agencyId, provider: 'box' } },
-    data: {
-      accessToken:  encrypt(data.access_token),
-      refreshToken: encrypt(data.refresh_token),
-      expiresAt:    new Date(Date.now() + data.expires_in * 1000),
-    },
-  })
+  if (!data) {
+    throw new Error('Box token refresh failed — please reconnect Box in Settings')
+  }
 
+  await storeBoxTokens(agencyId, data)
   return data.access_token
 }
 
