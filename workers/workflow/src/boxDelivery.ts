@@ -84,7 +84,11 @@ async function refreshBoxToken(agencyId: string, refreshToken: string): Promise<
       refresh_token: refreshToken,
     }),
   })
-  if (!res.ok) return null
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`[boxDelivery] token refresh failed: HTTP ${res.status} — ${body}`)
+    return null
+  }
   return res.json() as Promise<{ access_token: string; refresh_token: string; expires_in: number }>
 }
 
@@ -108,6 +112,7 @@ async function getBoxToken(agencyId: string): Promise<string> {
   if (integration.expiresAt && integration.expiresAt.getTime() > Date.now() + 5 * 60 * 1000) {
     return safeDecrypt(integration.accessToken) ?? integration.accessToken
   }
+  console.log(`[boxDelivery] access token expired or missing expiresAt (${integration.expiresAt?.toISOString() ?? 'null'}) — refreshing`)
 
   const storedRefresh = safeDecrypt(integration.refreshToken) ?? integration.refreshToken
   if (!storedRefresh) throw new Error('No Box refresh token — please reconnect Box in Settings')
