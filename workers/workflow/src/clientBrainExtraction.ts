@@ -392,7 +392,7 @@ export async function processClientBrainAttachment(job: { data: ClientBrainProce
     try {
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Client Brain for a marketing agency.
 
 Content source: ${label}
@@ -470,7 +470,7 @@ export async function processAgencyBrainAttachment(job: { data: AgencyBrainProce
     try {
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to an Agency Brain for a marketing agency.
 
 Content source: ${label}
@@ -544,7 +544,7 @@ export async function processVerticalBrainAttachment(job: { data: VerticalBrainP
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
       const vertical = await prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { name: true } })
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Vertical Brain for the "${vertical?.name ?? verticalId}" industry vertical at a marketing agency.
 
 Content source: ${label}
@@ -621,7 +621,7 @@ export async function processClientVerticalBrainAttachment(job: { data: ClientVe
         prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { name: true } }),
       ])
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Client × Vertical Brain for "${client?.name ?? clientId}" in the "${vertical?.name ?? verticalId}" vertical at a marketing agency.
 
 Content source: ${label}

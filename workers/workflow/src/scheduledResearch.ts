@@ -21,9 +21,9 @@ import {
 } from './clientBrainExtraction.js'
 import type { NodeExecutionContext } from './executors/base.js'
 
-const HAIKU: ModelConfig = {
+const SONNET: ModelConfig = {
   provider: 'anthropic',
-  model: 'claude-haiku-4-5-20251001',
+  model: 'claude-sonnet-4-6',
   api_key_ref: 'ANTHROPIC_API_KEY',
   temperature: 0.2,
   max_tokens: 512,
@@ -412,7 +412,7 @@ async function runResearch(
 
 async function generateChangeSummary(prev: string, next: string): Promise<string> {
   const res = await callModel(
-    HAIKU,
+    SONNET,
     `Compare these two research outputs. Write 1-2 sentences summarising what is NEW or MEANINGFULLY DIFFERENT in the updated version. Focus on substance, not formatting.\n\nPREVIOUS:\n${prev.slice(0, 2000)}\n\nUPDATED:\n${next.slice(0, 2000)}\n\nChange summary:`,
   )
   return ((res as { text?: string; content?: string }).text ?? (res as { text?: string; content?: string }).content ?? '').trim()

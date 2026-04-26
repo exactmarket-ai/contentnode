@@ -546,7 +546,7 @@ Rules:
 - If a value cannot be determined from context, make a reasonable inference from the industry and ICP`
 
       const result = await callModel(
-        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.3 },
+        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.3 },
         prompt,
       )
 

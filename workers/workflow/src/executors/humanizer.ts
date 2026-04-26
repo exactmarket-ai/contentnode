@@ -341,6 +341,40 @@ async function saveHumanizerExample(
 // Claude few-shot humanizer
 // ─────────────────────────────────────────────────────────────────────────────
 
+async function buildPersonalizationBlock(agencyId: string, workflowRunId: string): Promise<string> {
+  const run = await withAgency(agencyId, () =>
+    prisma.workflowRun.findUnique({
+      where: { id: workflowRunId },
+      select: { reviewerIds: true },
+    })
+  )
+  if (!run) return ''
+
+  const reviewerIds = run.reviewerIds as string[]
+  const stakeholderId = reviewerIds[0]
+  if (!stakeholderId) return ''
+
+  const profile = await withAgency(agencyId, () =>
+    prisma.stakeholderPreferenceProfile.findUnique({
+      where: { stakeholderId },
+      select: { toneSignals: true, structureSignals: true, rejectPatterns: true, revisionCount: true },
+    })
+  )
+  if (!profile || (profile.revisionCount ?? 0) < 1) return ''
+
+  const toneSignals      = profile.toneSignals      as string[]
+  const structureSignals = profile.structureSignals as string[]
+  const rejectPatterns   = profile.rejectPatterns   as string[]
+  if (!toneSignals.length && !structureSignals.length && !rejectPatterns.length) return ''
+
+  const lines = [`PERSONALIZATION — learned from ${profile.revisionCount} real edits by this stakeholder:`]
+  if (toneSignals.length)      lines.push(`Tone preferences: ${toneSignals.join('; ')}`)
+  if (structureSignals.length) lines.push(`Structure preferences: ${structureSignals.join('; ')}`)
+  if (rejectPatterns.length)   lines.push(`Always avoid — they consistently remove these: ${rejectPatterns.join('; ')}`)
+
+  return lines.join('\n')
+}
+
 async function buildFewShotExamples(agencyId: string): Promise<string> {
   // Pull up to 5 best examples: lowest detectionScoreAfter, or approved examples first
   const examples = await withAgency(agencyId, () =>
@@ -371,12 +405,16 @@ async function buildFewShotExamples(agencyId: string): Promise<string> {
   return lines.join('\n\n')
 }
 
-function buildClaudeHumanizerPrompt(content: string, fewShotBlock: string): string {
+function buildClaudeHumanizerPrompt(content: string, fewShotBlock: string, personalizationBlock?: string): string {
   const examplesSection = fewShotBlock
     ? `\nHere are examples of AI-written content rewritten to sound human. Study the patterns — shorter word count, broken rhythm, specific detail, opinion, contractions:\n\n${fewShotBlock}\n\n--- END EXAMPLES ---\n`
     : ''
 
-  return `You are rewriting AI-generated content to sound like it was written by a real human. Your goal: preserve the meaning and word count (within 10%), but break every pattern AI detectors look for.${examplesSection}
+  const personalizationSection = personalizationBlock
+    ? `\n${personalizationBlock}\n`
+    : ''
+
+  return `You are rewriting AI-generated content to sound like it was written by a real human. Your goal: preserve the meaning and word count (within 10%), but break every pattern AI detectors look for.${examplesSection}${personalizationSection}
 
 RULES — follow all of these:
 - Keep word count within 10% of the original. Do NOT pad with extra content.
@@ -466,9 +504,11 @@ export class HumanizerNodeExecutor extends NodeExecutor {
     } else if (service === 'humanizeai') {
       humanized = await processInChunks(content, (chunk) => runHumanizeAI(chunk))
     } else if (service === 'cnHumanizer') {
-      // New few-shot Claude humanizer — no detection loop, no padding
-      const fewShotBlock = await buildFewShotExamples(ctx.agencyId)
-      const prompt = buildClaudeHumanizerPrompt(content, fewShotBlock)
+      const [fewShotBlock, personalizationBlock] = await Promise.all([
+        buildFewShotExamples(ctx.agencyId),
+        buildPersonalizationBlock(ctx.agencyId, ctx.workflowRunId),
+      ])
+      const prompt = buildClaudeHumanizerPrompt(content, fewShotBlock, personalizationBlock || undefined)
       const modelCfg = config.model_config as Record<string, unknown> | null
       const modelConfig: ModelConfig = {
         provider: ((modelCfg?.provider as string) ?? 'anthropic') as 'anthropic' | 'ollama',
@@ -476,7 +516,7 @@ export class HumanizerNodeExecutor extends NodeExecutor {
         api_key_ref: 'ANTHROPIC_API_KEY',
         temperature: (modelCfg?.temperature as number) ?? 0.9,
       }
-      console.log(`[humanizer] cnHumanizer: ${fewShotBlock ? 'using few-shot examples' : 'no examples yet — using static prompt'}`)
+      console.log(`[humanizer] cnHumanizer: ${fewShotBlock ? 'few-shot examples' : 'no examples'}, ${personalizationBlock ? 'stakeholder profile injected' : 'no stakeholder profile'}`)
       const result = await callModel(modelConfig, prompt)
       humanized = result.text
       tokensUsed = result.tokens_used

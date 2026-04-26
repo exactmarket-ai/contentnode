@@ -233,7 +233,7 @@ export async function processCampaignBrainAttachment(job: { data: CampaignBrainP
     try {
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Campaign Brain.
 
 Content source: ${label}

@@ -741,7 +741,7 @@ Return only the prompt instruction text, nothing else.`
 
   try {
     const result = await callModel(
-      { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY' },
+      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
       prompt,
     )
     const instruction = result.trim()

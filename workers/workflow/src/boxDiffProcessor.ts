@@ -6,7 +6,8 @@
  * 2. Updates HumanizerSignal with the diffSummary
  * 3. Creates a BrainAttachment on the client tagged to the stakeholder
  * 4. Updates or creates the StakeholderPreferenceProfile
- * 5. Updates Monday item with "Revised ✓" status + comment
+ * 5. Generates Insights from the profile once enough signal accumulates
+ * 6. Updates Monday item with "Revised ✓" status + comment
  */
 
 import { prisma, withAgency } from '@contentnode/database'
@@ -61,6 +62,95 @@ async function updateMondayRevised(agencyId: string, mondayItemId: string) {
   }).catch(() => {}) // non-fatal
 }
 
+// ── Insight generation from preference profile ────────────────────────────────
+// Called after each profile upsert once revisionCount >= 3.
+// Creates or updates Insight records that surface in the canvas sidebar and
+// the Insights tab on ClientDetailPage.
+async function generateInsightsFromProfile(
+  agencyId: string,
+  clientId: string,
+  stakeholderId: string,
+  revisionCount: number,
+  toneSignals: string[],
+  structureSignals: string[],
+  rejectPatterns: string[],
+): Promise<void> {
+  if (revisionCount < 3) return
+  if (!toneSignals.length && !structureSignals.length && !rejectPatterns.length) return
+
+  const stakeholder = await prisma.stakeholder.findUnique({
+    where: { id: stakeholderId },
+    select: { name: true },
+  })
+  const name = stakeholder?.name ?? 'This stakeholder'
+  const confidence = Math.min(0.4 + revisionCount * 0.1, 0.95)
+
+  const candidates: Array<{ type: string; title: string; body: string; key: string }> = []
+
+  for (const pattern of rejectPatterns) {
+    candidates.push({
+      type: 'forbidden_term',
+      title: `${name} removes: ${pattern}`,
+      body: `Detected across ${revisionCount} Box revisions. Avoid this pattern when writing for ${name} — they remove it every time.`,
+      key: pattern.slice(0, 40).toLowerCase(),
+    })
+  }
+  for (const signal of toneSignals) {
+    candidates.push({
+      type: 'tone',
+      title: `${name} tone: ${signal}`,
+      body: `Observed in ${revisionCount} Box revisions. Apply this tone preference when writing for ${name}.`,
+      key: signal.slice(0, 40).toLowerCase(),
+    })
+  }
+  for (const signal of structureSignals) {
+    candidates.push({
+      type: 'structure',
+      title: `${name} structure: ${signal}`,
+      body: `Observed in ${revisionCount} Box revisions. Apply this structure preference when writing for ${name}.`,
+      key: signal.slice(0, 40).toLowerCase(),
+    })
+  }
+
+  for (const candidate of candidates) {
+    const existing = await prisma.insight.findFirst({
+      where: {
+        agencyId,
+        clientId,
+        type: candidate.type,
+        status: { in: ['pending', 'applied'] },
+        title: { contains: candidate.key, mode: 'insensitive' },
+      },
+      select: { id: true },
+    })
+
+    if (existing) {
+      await prisma.insight.update({
+        where: { id: existing.id },
+        data: { instanceCount: revisionCount, confidence, updatedAt: new Date() },
+      })
+    } else {
+      await prisma.insight.create({
+        data: {
+          agencyId,
+          clientId,
+          type: candidate.type,
+          title: candidate.title,
+          body: candidate.body,
+          confidence,
+          status: 'pending',
+          instanceCount: revisionCount,
+          stakeholderIds: [stakeholderId],
+          isCollective: false,
+          evidenceQuotes: [],
+          suggestedNodeType: 'logic:humanizer',
+          suggestedConfigChange: { signal: candidate.key, stakeholderId },
+        },
+      })
+    }
+  }
+}
+
 // ── Main processor ────────────────────────────────────────────────────────────
 async function processBoxDiff(job: Job<BoxDiffJobData>) {
   const {
@@ -83,12 +173,12 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
     const raw = await callModel(
       {
         provider:    'anthropic',
-        model:       'claude-haiku-4-5-20251001',
+        model:       'claude-sonnet-4-6',
         api_key_ref: 'ANTHROPIC_API_KEY',
       },
       DIFF_EXTRACTION_PROMPT(originalText, editedText),
     )
-    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+    const jsonMatch = raw.text.match(/\{[\s\S]*\}/)
     if (jsonMatch) diffResult = JSON.parse(jsonMatch[0])
   } catch (err) {
     console.error('[boxDiff] Claude style extraction failed:', err)
@@ -107,28 +197,26 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
     // 3. Store as BrainAttachment on the client so it informs future runs
     if (diffResult.confidence > 0.2) {
       const brainContent = [
-        `## Style signals from Box revision${stakeholderId ? ' (stakeholder-specific)' : ''}`,
+        `## Style signals from Box revision${stakeholderId ? ` (stakeholder ${stakeholderId})` : ''}`,
+        stakeholderId ? `Attributed to: ${attributedTo}${editorEmail ? ` <${editorEmail}>` : ''}` : '',
         '',
         diffResult.summary,
         '',
-        diffResult.toneSignals.length    ? `**Tone:** ${diffResult.toneSignals.join('; ')}` : '',
+        diffResult.toneSignals.length      ? `**Tone:** ${diffResult.toneSignals.join('; ')}` : '',
         diffResult.structureSignals.length ? `**Structure:** ${diffResult.structureSignals.join('; ')}` : '',
-        diffResult.rejectPatterns.length  ? `**Removes:** ${diffResult.rejectPatterns.join('; ')}` : '',
+        diffResult.rejectPatterns.length   ? `**Removes:** ${diffResult.rejectPatterns.join('; ')}` : '',
       ].filter(Boolean).join('\n')
 
-      await prisma.brainAttachment.create({
+      await prisma.clientBrainAttachment.create({
         data: {
           agencyId,
           clientId,
-          source:           'box_revision',
-          filename:         `box-revision-${boxFileId}.md`,
-          mimeType:         'text/markdown',
-          summaryStatus:    'ready',
-          summary:          brainContent,
-          // Tag with stakeholderId/editorEmail for preference queries and retroactive linking
-          metadata: stakeholderId
-            ? { stakeholderId, runId, attributedTo, editorEmail }
-            : { runId, attributedTo, editorEmail },
+          source:        'box_revision',
+          filename:      `box-revision-${boxFileId}.md`,
+          mimeType:      'text/markdown',
+          summaryStatus: 'ready',
+          summary:       brainContent,
+          uploadMethod:  'note',
         },
       })
     }
@@ -144,16 +232,21 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
         const merge = (arr: string[], incoming: string[]) =>
           Array.from(new Set([...arr, ...incoming])).slice(0, 50)
 
+        const merged = {
+          toneSignals:      merge(existing.toneSignals      as string[], diffResult.toneSignals),
+          structureSignals: merge(existing.structureSignals as string[], diffResult.structureSignals),
+          rejectPatterns:   merge(existing.rejectPatterns   as string[], diffResult.rejectPatterns),
+        }
         await prisma.stakeholderPreferenceProfile.update({
           where: { stakeholderId },
           data: {
-            toneSignals:     merge(existing.toneSignals     as string[], diffResult.toneSignals),
-            structureSignals: merge(existing.structureSignals as string[], diffResult.structureSignals),
-            rejectPatterns:   merge(existing.rejectPatterns   as string[], diffResult.rejectPatterns),
-            revisionCount:   { increment: 1 },
-            lastSignalAt:    new Date(),
+            ...merged,
+            revisionCount: { increment: 1 },
+            lastSignalAt:  new Date(),
           },
         })
+        const newRevisionCount = (existing.revisionCount ?? 0) + 1
+        await generateInsightsFromProfile(agencyId, clientId, stakeholderId, newRevisionCount, merged.toneSignals, merged.structureSignals, merged.rejectPatterns)
       } else {
         await prisma.stakeholderPreferenceProfile.create({
           data: {

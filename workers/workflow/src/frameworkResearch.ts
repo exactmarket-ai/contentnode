@@ -177,7 +177,7 @@ async function summarise(rawText: string, sourceLabel: string, clientName: strin
   const result = await callModel(
     {
       provider: 'anthropic',
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       api_key_ref: 'ANTHROPIC_API_KEY',
       max_tokens: 1200,
       temperature: 0.2,
