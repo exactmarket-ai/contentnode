@@ -1,5 +1,6 @@
 FROM --platform=linux/amd64 node:20-alpine
 
+# bust Railway cache 2026-04-25
 RUN apk upgrade --no-cache && apk add --no-cache openssl ffmpeg font-dejavu
 RUN corepack enable pnpm
 
