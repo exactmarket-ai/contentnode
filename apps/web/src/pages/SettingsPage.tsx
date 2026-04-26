@@ -1010,14 +1010,23 @@ function DocTemplateSection() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 // ── Monday integration card ────────────────────────────────────────────────────
+const MONDAY_EVENTS: { value: string; label: string }[] = [
+  { value: 'change_status_column_value', label: 'Status column changed' },
+  { value: 'change_column_value',        label: 'Any column changed' },
+  { value: 'create_item',               label: 'Item created' },
+  { value: 'create_update',             label: 'Update posted' },
+  { value: 'item_archived',             label: 'Item archived' },
+]
+
 function MondayCard() {
-  const [status,   setStatus]   = useState<'loading' | 'connected' | 'disconnected'>('loading')
-  const [working,  setWorking]  = useState(false)
-  const [boards,   setBoards]   = useState<{ id: string; name: string }[]>([])
-  const [boardId,  setBoardId]  = useState('')
-  const [webhooks, setWebhooks] = useState<{ id: string; event: string }[]>([])
-  const [subbing,  setSubbing]  = useState(false)
-  const [subMsg,   setSubMsg]   = useState<string | null>(null)
+  const [status,    setStatus]    = useState<'loading' | 'connected' | 'disconnected'>('loading')
+  const [working,   setWorking]   = useState(false)
+  const [boards,    setBoards]    = useState<{ id: string; name: string }[]>([])
+  const [boardId,   setBoardId]   = useState('')
+  const [webhooks,  setWebhooks]  = useState<{ id: string; event: string }[]>([])
+  const [subbing,   setSubbing]   = useState(false)
+  const [subMsg,    setSubMsg]    = useState<string | null>(null)
+  const [subEvent,  setSubEvent]  = useState('change_status_column_value')
 
   useEffect(() => {
     apiFetch('/api/v1/integrations/monday/status')
@@ -1080,7 +1089,7 @@ function MondayCard() {
       await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ events: ['create_item'] }),
+        body: JSON.stringify({ events: [subEvent] }),
       })
       const res = await apiFetch(`/api/v1/integrations/monday/boards/${boardId}/webhooks`)
       const { data } = await res.json()
@@ -1143,33 +1152,56 @@ function MondayCard() {
       {status === 'connected' && boards.length > 0 && (
         <div className="mt-3 border-t border-border pt-3 flex flex-col gap-2">
           <p className="text-[11px] font-medium text-muted-foreground">Board webhook subscriptions</p>
+
+          {/* Board selector */}
+          <select
+            value={boardId}
+            onChange={(e) => { setBoardId(e.target.value); localStorage.setItem('monday_board_id', e.target.value) }}
+            className="h-7 w-full rounded border border-border bg-muted/20 px-2 text-xs outline-none"
+          >
+            {boards.map(b => <option key={b.id} value={b.id}>{b.name} ({b.id})</option>)}
+          </select>
+
+          {/* Event selector + subscribe button */}
           <div className="flex items-center gap-2">
             <select
-              value={boardId}
-              onChange={(e) => { setBoardId(e.target.value); localStorage.setItem('monday_board_id', e.target.value) }}
+              value={subEvent}
+              onChange={(e) => setSubEvent(e.target.value)}
               className="flex-1 h-7 rounded border border-border bg-muted/20 px-2 text-xs outline-none"
             >
-              {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {MONDAY_EVENTS.map(ev => <option key={ev.value} value={ev.value}>{ev.label}</option>)}
             </select>
             <button
               onClick={handleSubscribe}
               disabled={subbing || !boardId}
-              className="rounded px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+              className="rounded px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50 whitespace-nowrap"
               style={{ backgroundColor: '#a200ee' }}
             >
-              {subbing ? 'Subscribing…' : 'Subscribe'}
+              {subbing ? 'Subscribing…' : '+ Subscribe'}
             </button>
           </div>
+
           {subMsg && <p className="text-[11px] text-green-600">{subMsg}</p>}
+
+          {/* Active subscriptions */}
           {webhooks.length > 0 && (
             <div className="flex flex-col gap-1">
-              {webhooks.map(w => (
-                <div key={w.id} className="flex items-center justify-between rounded bg-muted/20 px-2 py-1">
-                  <span className="text-[11px] text-muted-foreground">{w.event}</span>
-                  <button onClick={() => handleUnsubscribe(w.id)} className="text-[10px] text-red-500 hover:text-red-700">Remove</button>
-                </div>
-              ))}
+              {webhooks.map(w => {
+                const label = MONDAY_EVENTS.find(ev => ev.value === w.event)?.label ?? w.event
+                return (
+                  <div key={w.id} className="flex items-center justify-between rounded bg-muted/20 px-2 py-1.5">
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-medium" style={{ color: '#1a1a14' }}>{label}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono">{w.event}</span>
+                    </div>
+                    <button onClick={() => handleUnsubscribe(w.id)} className="text-[10px] text-red-500 hover:text-red-700">Remove</button>
+                  </div>
+                )
+              })}
             </div>
+          )}
+          {webhooks.length === 0 && (
+            <p className="text-[11px] text-muted-foreground italic">No active subscriptions on this board</p>
           )}
         </div>
       )}

@@ -69,6 +69,7 @@ model Agency {
   leadershipMembers              LeadershipMember[]
   notifications                  Notification[]
   integrations                   Integration[]
+  mondayWebhooks                 MondayWebhook[]
   skillSessionTemplates          SkillSessionTemplate[]
   frameworkRevisions             FrameworkRevision[]
   boxFileTrackings               BoxFileTracking[]
@@ -2139,6 +2140,24 @@ model Integration {
 
   @@unique([agencyId, provider])
   @@map("integrations")
+}
+
+// ─────────────────────────────────────────────
+// MondayWebhook — persisted record of a webhook registered on a Monday board.
+// Allows listing/deleting subscriptions without round-tripping Monday's API.
+// ─────────────────────────────────────────────
+model MondayWebhook {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  boardId    String   @map("board_id")      // Monday board ID the subscription targets
+  webhookId  String   @unique @map("webhook_id")  // Monday's returned webhook ID
+  event      String                          // e.g. change_status_column_value
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, boardId])
+  @@map("monday_webhooks")
 }
 
 // ─────────────────────────────────────────────

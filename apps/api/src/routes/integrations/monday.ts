@@ -410,24 +410,20 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     return reply.send({ data: data.change_column_value })
   })
 
-  // ── GET /webhooks — list active board webhooks ────────────────────────────
+  // ── GET /webhooks — list persisted board webhook subscriptions ───────────
   app.get<{ Params: { boardId: string } }>('/boards/:boardId/webhooks', async (req, reply) => {
     const { agencyId } = req.auth
-    const token = await getMondayToken(agencyId)
     const { boardId } = req.params
 
-    const data = await mondayGraphQL<{ webhooks: { id: string; board_id: string; event: string; config: string }[] }>(token, `
-      query($boardId: ID!) {
-        webhooks(board_id: $boardId) {
-          id
-          board_id
-          event
-          config
-        }
-      }
-    `, { boardId })
+    const rows = await withAgency(agencyId, () =>
+      prisma.mondayWebhook.findMany({
+        where: { agencyId, boardId },
+        orderBy: { createdAt: 'asc' },
+        select: { webhookId: true, event: true, createdAt: true },
+      })
+    )
 
-    return reply.send({ data: data.webhooks ?? [] })
+    return reply.send({ data: rows.map(r => ({ id: r.webhookId, event: r.event })) })
   })
 
   // ── POST /boards/:boardId/webhooks — subscribe to board events ────────────
@@ -460,6 +456,14 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
             }
           `, { boardId: targetBoardId, url: webhookUrl, event })
           results.push(data.create_webhook)
+          // Persist so we can list/delete without hitting Monday's API
+          await withAgency(agencyId, () =>
+            prisma.mondayWebhook.upsert({
+              where: { webhookId: data.create_webhook.id },
+              create: { agencyId, boardId: targetBoardId, webhookId: data.create_webhook.id, event },
+              update: {},
+            })
+          )
         } catch (err) {
           app.log.warn({ err, targetBoardId, event }, '[monday-webhooks] failed to register webhook (non-fatal)')
         }
@@ -507,15 +511,27 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     const token = await getMondayToken(agencyId)
     const { webhookId } = req.params
 
-    const data = await mondayGraphQL<{ delete_webhook: { id: string } }>(token, `
-      mutation($id: ID!) {
-        delete_webhook(id: $id) {
-          id
+    // Remove from Monday (non-fatal if already gone)
+    let mondayId = webhookId
+    try {
+      const data = await mondayGraphQL<{ delete_webhook: { id: string } }>(token, `
+        mutation($id: ID!) {
+          delete_webhook(id: $id) {
+            id
+          }
         }
-      }
-    `, { id: webhookId })
+      `, { id: webhookId })
+      mondayId = data.delete_webhook?.id ?? webhookId
+    } catch (err) {
+      app.log.warn({ err, webhookId }, '[monday-webhooks] Monday delete failed — removing from DB anyway')
+    }
 
-    return reply.send({ data: data.delete_webhook })
+    // Remove from DB
+    await withAgency(agencyId, () =>
+      prisma.mondayWebhook.deleteMany({ where: { agencyId, webhookId } })
+    )
+
+    return reply.send({ data: { id: mondayId } })
   })
 
   // ── POST /webhook — receive Monday events (no Clerk auth — called by Monday) ─
