@@ -54,6 +54,7 @@ import {
   type ScheduledResearchJobData,
 } from './queues.js'
 import { startBoxDiffWorker } from './boxDiffProcessor.js'
+import { startPMAgentWorker } from './pmAgent.js'
 import { withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -373,7 +374,8 @@ const scheduledResearchWorker = createWorker<ScheduledResearchJobData>(
 )
 
 // ── box-diff ──────────────────────────────────────────────────────────────
-const boxDiffWorker = startBoxDiffWorker()
+const boxDiffWorker  = startBoxDiffWorker()
+const pmAgentWorker  = startPMAgentWorker()
 
 // ── file-cleanup — runs once per day ─────────────────────────────────────────
 const QUEUE_FILE_CLEANUP = 'file-cleanup'

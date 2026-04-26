@@ -47,6 +47,7 @@ import { WrikeSourceExecutor } from './executors/wrikeSource.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
+import { enqueuePMAgentJob } from './pmAgent.js'
 import { deliverRunToBox, deliverImageToBox, ensureBoxSubfolder } from './boxDelivery.js'
 import { writeFileUrlToMonday, setMondayStatus, clearMondayCache } from './mondayWriteback.js'
 
@@ -1135,11 +1136,27 @@ export class WorkflowRunner {
       })
     }
 
+    // Dispatch to PM agent for routing, pattern detection, and delivery decisions (non-blocking)
+    enqueuePMAgentJob({
+      agencyId:      this.agencyId,
+      workflowRunId: this.workflowRunId,
+      workflowId:    workflow.id,
+      triggerType:   run.triggerType ?? null,
+      triggeredBy:   run.triggeredBy ?? null,
+      completedAt:   new Date().toISOString(),
+    }).catch((err) => {
+      console.error('[runner] PM agent enqueue failed:', err)
+    })
+
     // Deliver output to Box if a folder is configured — either on the run record
     // (clientFolderBox, set by webhook or frontend) or on the workflow itself
     // (boxProjectFolderId, set via Project Routing). Workflow-level config is the
     // fallback so delivery works even when clientFolderBox wasn't passed at run time.
-    if (finalStatus === 'completed' && workflow.clientId) {
+    // Manual runs are held until the user clicks "Mark as sent" — only auto-triggered
+    // runs (scheduled, webhook, campaign, api, program) deliver to Box immediately.
+    const AUTO_DELIVER = new Set(['scheduled', 'monday_webhook', 'campaign', 'api', 'program'])
+    const isAutoDelivered = AUTO_DELIVER.has(run.triggerType ?? '')
+    if (finalStatus === 'completed' && workflow.clientId && isAutoDelivered) {
       const runRecord  = run as unknown as Record<string, unknown>
       const wfRecord   = workflow as unknown as Record<string, unknown>
       const clientObj  = wfRecord.client as Record<string, unknown> | undefined

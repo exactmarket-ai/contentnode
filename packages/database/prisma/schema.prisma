@@ -39,6 +39,8 @@ model Agency {
   promptTemplates    PromptTemplate[]
   clientProfiles     ClientProfile[]
   companyProfiles    CompanyProfile[]
+  pmAgentMemory      PMAgentMemory[]
+  pmAgentNotifications PMAgentNotification[]
   divisions          Division[]
   jobs               Job[]
   clientDemandGen      ClientDemandGen[]
@@ -719,6 +721,11 @@ model WorkflowRun {
   mondayBoardId       String?   @map("monday_board_id")
   topic               String?
 
+  // Delivery lifecycle — set by PM agent or manual "mark as delivered"
+  deliveredAt         DateTime? @map("delivered_at")
+  deliveryBoxFileId   String?   @map("delivery_box_file_id")  // Box file ID of the authoritative delivered version
+  isArchived          Boolean   @default(false) @map("is_archived") // true = iteration run, hidden from Reviews by default
+
   workflow          Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   program           Program?              @relation(fields: [programId], references: [id], onDelete: SetNull)
@@ -1250,6 +1257,93 @@ model CompanyProfile {
 
   @@index([agencyId])
   @@map("company_profiles")
+}
+
+// ─────────────────────────────────────────────
+// PMAgentMemory — persistent brain for the ContentNode PM agent
+// Stores learned routing rules, answered questions, capacity patterns,
+// and assignment preferences. Never deleted — confidence updates in place.
+// ─────────────────────────────────────────────
+model PMAgentMemory {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+
+  // category: routing_rule | capacity_pattern | assignment_preference | answered_question | behavior_observation
+  category   String
+  // key: human-readable identifier e.g. "rapid_manual_runs_workflow_xyz" or "assignee_john_content_type_blog"
+  key        String
+
+  // value: the learned fact / rule / preference as structured JSON
+  value      Json
+
+  // confidence 0.0-1.0 — increases as pattern repeats
+  confidence Float    @default(0.5)
+
+  // How many times this pattern has been observed
+  observedCount Int   @default(1) @map("observed_count")
+
+  // If this came from a user answering a PM question — what was asked and answered
+  questionAsked  String? @map("question_asked")
+  userAnswer     String? @map("user_answer")
+
+  // Scope — some memories are workflow-specific, some are global
+  workflowId String? @map("workflow_id")
+  userId     String? @map("user_id")       // which user triggered the pattern
+  clientId   String? @map("client_id")
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, category, key])
+  @@index([agencyId])
+  @@index([agencyId, category])
+  @@index([agencyId, workflowId])
+  @@map("pm_agent_memory")
+}
+
+// ─────────────────────────────────────────────
+// PMAgentNotification — a question or observation surfaced by the PM agent
+// to a human. Answered notifications feed PMAgentMemory.
+// ─────────────────────────────────────────────
+model PMAgentNotification {
+  id          String   @id @default(cuid())
+  agencyId    String   @map("agency_id")
+
+  // type: question | observation | alert
+  type        String   @default("question")
+
+  // Pattern that triggered this
+  patternKey  String   @map("pattern_key")  // e.g. "rapid_manual_runs"
+  title       String
+  body        String   @db.Text
+
+  // Context for rendering actions
+  context     Json     @default("{}")
+
+  // Actions offered to the user: [{ label, value, memoryValue }]
+  actions     Json     @default("[]")
+
+  // Status: pending | answered | dismissed | auto_resolved
+  status      String   @default("pending")
+  answeredAt  DateTime? @map("answered_at")
+  answeredBy  String?   @map("answered_by")  // userId
+  chosenAction String?  @map("chosen_action")
+  alwaysApply  Boolean  @default(false) @map("always_apply") // "always do this" was chosen
+
+  // Linked to a specific run if relevant
+  workflowRunId String? @map("workflow_run_id")
+  workflowId    String? @map("workflow_id")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([agencyId, status])
+  @@index([agencyId, workflowId])
+  @@map("pm_agent_notifications")
 }
 
 // ─────────────────────────────────────────────

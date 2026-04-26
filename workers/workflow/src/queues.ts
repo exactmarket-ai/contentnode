@@ -26,6 +26,7 @@ export const QUEUE_PROMPT_SUGGEST                 = `${_p}prompt-suggestion`
 export const QUEUE_SCHEDULED_RESEARCH             = `${_p}scheduled-research`
 export const QUEUE_RESEARCH_CHECKER               = `${_p}research-checker`
 export const QUEUE_BOX_DIFF                       = `${_p}box-diff`
+export const QUEUE_PM_AGENT                       = `${_p}pm-agent`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -148,6 +149,15 @@ export interface BoxDiffJobData {
   attributedTo:   string   // 'stakeholder' | 'employee' | 'unknown_external'
   editorEmail:    string | null
   filename:       string
+}
+
+export interface PMAgentJobData {
+  agencyId:      string
+  workflowRunId: string
+  workflowId:    string
+  triggerType:   string | null  // manual | scheduled | monday_webhook | campaign | etc.
+  triggeredBy:   string | null  // userId who triggered (for manual runs)
+  completedAt:   string         // ISO timestamp
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

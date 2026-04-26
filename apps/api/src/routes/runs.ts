@@ -659,6 +659,7 @@ export async function runRoutes(app: FastifyInstance) {
       offset?: string
       divisionId?: string
       jobId?: string
+      isArchived?: string  // 'true' | 'false' | undefined (undefined = no filter)
     }
 
     const statusFilter = query.status && query.status !== 'all' ? query.status : undefined
@@ -674,6 +675,8 @@ export async function runRoutes(app: FastifyInstance) {
     if (query.clientId) where.workflow = { clientId: query.clientId }
     if (query.divisionId) where.divisionId = query.divisionId
     if (query.jobId) where.jobId = query.jobId
+    if (query.isArchived === 'true') where.isArchived = true
+    else if (query.isArchived === 'false') where.isArchived = false
 
     const runs = await prisma.workflowRun.findMany({
       where,
@@ -706,6 +709,8 @@ export async function runRoutes(app: FastifyInstance) {
         internalNotes: true,
         dueDate: true,
         input: true,
+        isArchived: true,
+        deliveredAt: true,
         assignee: { select: { id: true, name: true, avatarStorageKey: true } },
         division: { select: { id: true, name: true } },
         job: { select: { id: true, name: true, budgetCents: true } },
@@ -799,6 +804,8 @@ export async function runRoutes(app: FastifyInstance) {
         assignee: r.assignee ?? null,
         internalNotes: r.internalNotes ?? null,
         dueDate: r.dueDate ?? null,
+        isArchived: r.isArchived,
+        deliveredAt: r.deliveredAt ?? null,
         triggeredByUser,
       }
     })
@@ -1184,6 +1191,44 @@ export async function runRoutes(app: FastifyInstance) {
     })
 
     return reply.code(202).send({ data: { id, status: 'cancelled' } })
+  })
+
+  // ── POST /:id/deliver — manually mark a run as delivered to client ────────
+  // Archives all prior runs for the same workflow. Triggers Box upload if a
+  // folder is configured (reuses same delivery path as auto-triggered runs).
+  app.post<{ Params: { id: string } }>('/:id/deliver', async (req, reply) => {
+    const { agencyId, userId } = req.auth
+    const { id } = req.params
+
+    const run = await prisma.workflowRun.findFirst({
+      where: { id, agencyId },
+      select: { id: true, status: true, workflowId: true, deliveredAt: true },
+    })
+
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+    if (run.status !== 'completed') return reply.code(422).send({ error: 'Only completed runs can be marked as delivered' })
+
+    await prisma.workflowRun.update({
+      where: { id },
+      data:  { deliveredAt: new Date(), isArchived: false },
+    })
+
+    // Archive all other non-delivered runs for this workflow
+    await prisma.workflowRun.updateMany({
+      where: { agencyId, workflowId: run.workflowId, id: { not: id }, deliveredAt: null, isArchived: false },
+      data:  { isArchived: true },
+    })
+
+    await auditService.log(agencyId, {
+      actorType:    'user',
+      actorId:      userId,
+      action:       'workflow.run.delivered',
+      resourceType: 'WorkflowRun',
+      resourceId:   id,
+      metadata:     { workflowId: run.workflowId },
+    })
+
+    return reply.code(200).send({ data: { id, deliveredAt: new Date() } })
   })
 
   // ── GET /:id/comments ─────────────────────────────────────────────────────

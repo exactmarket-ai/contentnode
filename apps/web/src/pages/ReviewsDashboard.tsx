@@ -19,6 +19,9 @@ interface ReviewRun {
   assigneeId: string | null
   assignee: { id: string; name: string | null; avatarStorageKey: string | null } | null
   triggeredByUser: { name: string | null; email: string } | null
+  isArchived: boolean
+  deliveredAt: string | null
+  triggerType: string | null
 }
 
 interface TeamMember {
@@ -400,10 +403,14 @@ export function ReviewsDashboard() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
+  const [deliveringId, setDeliveringId] = useState<string | null>(null)
 
-  useEffect(() => {
+  function loadRuns(archived: boolean) {
+    setLoading(true)
+    const archivedParam = archived ? '' : '&isArchived=false'
     Promise.all([
-      apiFetch('/api/v1/runs?status=completed&limit=200').then((r) => r.json()),
+      apiFetch(`/api/v1/runs?status=completed&limit=200${archivedParam}`).then((r) => r.json()),
       apiFetch('/api/v1/team').then((r) => r.json()),
     ])
       .then(([runsRes, teamRes]) => {
@@ -412,7 +419,25 @@ export function ReviewsDashboard() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { loadRuns(showArchived) }, [showArchived])
+
+  async function markAsDelivered(e: React.MouseEvent, runId: string) {
+    e.stopPropagation()
+    setDeliveringId(runId)
+    try {
+      const res = await apiFetch(`/api/v1/runs/${runId}/deliver`, { method: 'POST' })
+      if (res.ok) {
+        const now = new Date().toISOString()
+        setRuns((prev) => prev.map((r) =>
+          r.id === runId ? { ...r, deliveredAt: now } : r.id !== runId && !r.deliveredAt ? { ...r, isArchived: true } : r
+        ))
+      }
+    } finally {
+      setDeliveringId(null)
+    }
+  }
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -425,6 +450,7 @@ export function ReviewsDashboard() {
 
   const filtered = runs
     .filter((r) => {
+      if (!showArchived && r.isArchived) return false
       if (filter !== 'all' && r.reviewStatus !== filter) return false
       if (search) {
         const q = search.toLowerCase()
@@ -499,16 +525,30 @@ export function ReviewsDashboard() {
         <div className="flex items-center gap-3">
           <Icons.ClipboardEdit className="h-4 w-4 text-muted-foreground" />
           <h1 className="text-sm font-semibold">Reviews</h1>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{runs.length}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{filtered.length}</span>
         </div>
-        <div className="relative">
-          <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="h-8 w-48 rounded-md border border-border bg-background pl-8 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors border',
+              showArchived
+                ? 'border-slate-400 bg-slate-100 text-slate-700'
+                : 'border-border bg-transparent text-muted-foreground hover:bg-accent/60',
+            )}
+          >
+            <Icons.Archive className="h-3.5 w-3.5" />
+            {showArchived ? 'Hide archived' : 'Show archived'}
+          </button>
+          <div className="relative">
+            <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search…"
+              className="h-8 w-48 rounded-md border border-border bg-background pl-8 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
         </div>
       </header>
 
@@ -594,6 +634,7 @@ export function ReviewsDashboard() {
                     <SortableHeader label="Assigned to" sortKey="assignee"     current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Status"      sortKey="reviewStatus" current={sortKey} dir={sortDir} onSort={handleSort} />
                     <SortableHeader label="Due date"    sortKey="dueDate"      current={sortKey} dir={sortDir} onSort={handleSort} />
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Delivery</th>
                     <th className="px-4 py-2.5" />
                   </tr>
                 </thead>
@@ -610,7 +651,9 @@ export function ReviewsDashboard() {
                         onClick={() => navigate(`/review/${r.id}`)}
                         className={cn(
                           'cursor-pointer transition-colors',
-                          isSelected ? 'bg-blue-50/60 hover:bg-blue-50/80' : 'hover:bg-accent/30',
+                          isSelected ? 'bg-blue-50/60 hover:bg-blue-50/80'
+                            : r.isArchived ? 'opacity-50 hover:opacity-70 hover:bg-accent/20'
+                            : 'hover:bg-accent/30',
                         )}
                       >
                         <td className="w-10 px-3 py-2.5" onClick={(e) => toggleRow(r.id, e)}>
@@ -659,6 +702,32 @@ export function ReviewsDashboard() {
                             dueDate={r.dueDate}
                             onUpdated={(date) => updateRun(r.id, { dueDate: date })}
                           />
+                        </td>
+                        <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          {r.deliveredAt ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                              <Icons.CheckCircle2 className="h-3 w-3" />
+                              Sent
+                            </span>
+                          ) : r.isArchived ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 text-[11px] text-slate-500">
+                              <Icons.Archive className="h-3 w-3" />
+                              Archived
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => markAsDelivered(e, r.id)}
+                              disabled={deliveringId === r.id}
+                              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
+                            >
+                              {deliveringId === r.id ? (
+                                <Icons.Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Icons.Send className="h-3 w-3" />
+                              )}
+                              Mark as sent
+                            </button>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <Icons.ChevronRight className="h-3.5 w-3.5 inline text-muted-foreground/50" />
