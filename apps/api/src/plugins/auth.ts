@@ -54,9 +54,8 @@ async function authPluginFn(app: FastifyInstance) {
     if (req.url.startsWith('/api/v1/integrations/monday/callback')) return
     // Generated files are public static assets — no auth required
     if (req.url.startsWith('/files/generated/')) return
-    // Wrike OAuth endpoints — callback and debug are public (called by Wrike's servers)
+    // Wrike OAuth callback is a redirect from Wrike's servers — no Clerk auth
     if (req.url.startsWith('/api/v1/integrations/wrike/callback')) return
-    if (req.url.startsWith('/api/v1/integrations/wrike/debug')) return
     // Invite token validation is public — no Clerk auth needed to peek at invite details
     if (req.method === 'GET' && req.url.startsWith('/api/v1/team/accept-invite/')) return
     // Accept-invite POST only needs the Clerk user ID — no agency resolution yet

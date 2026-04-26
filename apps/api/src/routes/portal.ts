@@ -137,7 +137,7 @@ export async function portalRoutes(app: FastifyInstance) {
   })
 
   // ── GET /portal/auth/verify ─────────────────────────────────────────────
-  app.get('/auth/verify', async (req, reply) => {
+  app.get('/auth/verify', { config: { rateLimit: { max: 30, timeWindow: '15 minutes' } } }, async (req, reply) => {
     const token  = extractToken(req as Parameters<typeof extractToken>[0])
     const access = await resolveAccessToken(token)
 

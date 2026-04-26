@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { prisma, withAgency, type Prisma } from '@contentnode/database'
 import { requireRole } from '../../plugins/auth.js'
@@ -442,18 +443,20 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return `${apiBase}/api/v1/integrations/monday/webhook`
     })()
 
-    const eventList = events ?? ['change_column_value']
+    const ALLOWED_EVENTS = new Set(['change_column_value', 'create_item', 'create_update', 'change_status_column_value', 'item_deleted', 'item_archived'])
+    const eventList = (events ?? ['change_column_value']).filter((e: string) => ALLOWED_EVENTS.has(e))
+    if (eventList.length === 0) return reply.code(400).send({ error: 'No valid events specified' })
     const results = []
 
     for (const event of eventList) {
       const data = await mondayGraphQL<{ create_webhook: { id: string; board_id: string } }>(token, `
-        mutation($boardId: ID!, $url: String!) {
-          create_webhook(board_id: $boardId, url: $url, event: ${event}) {
+        mutation($boardId: ID!, $url: String!, $event: WebhookEventType!) {
+          create_webhook(board_id: $boardId, url: $url, event: $event) {
             id
             board_id
           }
         }
-      `, { boardId, url: webhookUrl })
+      `, { boardId, url: webhookUrl, event })
       results.push(data.create_webhook)
     }
 
@@ -489,13 +492,18 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return reply.send({ challenge: body.challenge })
     }
 
-    // Validate signing secret if configured — if not set, accept all (dev/staging)
+    // Validate signing secret if configured
     const signingSecret = process.env.MONDAY_SIGNING_SECRET
     if (signingSecret) {
       const auth = ((req.headers.authorization as string) ?? '').replace(/^Bearer\s+/i, '').trim()
-      if (auth !== signingSecret) {
+      const provided = Buffer.from(auth)
+      const expected = Buffer.from(signingSecret)
+      const valid = provided.length === expected.length && timingSafeEqual(provided, expected)
+      if (!valid) {
         return reply.code(401).send({ error: 'Invalid webhook signature' })
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      return reply.code(401).send({ error: 'Webhook signature required in production' })
     }
 
     const event = body.event as MondayWebhookEvent | undefined

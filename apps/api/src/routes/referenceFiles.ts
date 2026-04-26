@@ -25,7 +25,13 @@ export async function referenceFileRoutes(app: FastifyInstance) {
     const storageKey = `generated/${filename}`
 
     const chunks: Buffer[] = []
-    for await (const chunk of data.file) chunks.push(Buffer.from(chunk))
+    let totalBytes = 0
+    for await (const chunk of data.file) {
+      const buf = Buffer.from(chunk)
+      totalBytes += buf.byteLength
+      if (totalBytes > 25 * 1024 * 1024) return reply.code(400).send({ error: 'File must be under 25 MB' })
+      chunks.push(buf)
+    }
     const buffer = Buffer.concat(chunks)
 
     await uploadBuffer(storageKey, buffer, data.mimetype || 'application/octet-stream')

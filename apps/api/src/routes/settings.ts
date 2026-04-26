@@ -248,7 +248,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
   // ── GET /credentials/resolve/:provider — return decrypted key for worker use ─
   // Internal-only: called by worker via service-to-service auth (agencyId from token)
-  app.get<{ Params: { provider: string } }>('/credentials/resolve/:provider', async (req, reply) => {
+  app.get<{ Params: { provider: string } }>('/credentials/resolve/:provider', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
     const cred = await prisma.agencyCredential.findFirst({
       where: { agencyId, provider: req.params.provider },

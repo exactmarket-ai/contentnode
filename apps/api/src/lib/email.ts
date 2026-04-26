@@ -152,7 +152,9 @@ export async function sendMentionEmail(params: MentionEmailParams): Promise<void
   }
 
   const recipientLabel = to.name ?? to.email
-  const preview = commentBody.length > 200 ? commentBody.slice(0, 200) + '…' : commentBody
+  const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  const raw = commentBody.length > 200 ? commentBody.slice(0, 200) + '…' : commentBody
+  const preview = escapeHtml(raw)
 
   try {
     await sgMail.send({

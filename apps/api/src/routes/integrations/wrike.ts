@@ -57,11 +57,6 @@ async function refreshWrikeToken(agencyId: string): Promise<{ accessToken: strin
 
 export async function wrikeIntegrationRoutes(app: FastifyInstance) {
 
-  // ── GET /debug — show computed redirect URI (public, remove after testing) ─
-  app.get('/debug', async (_req, reply) => {
-    return reply.send({ redirectUri: redirectUri(), clientIdSet: !!wrikeClientId(), secretSet: !!wrikeClientSecret() })
-  })
-
   // ── GET /connect — return OAuth redirect URL ─────────────────────────────
   app.get('/connect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth

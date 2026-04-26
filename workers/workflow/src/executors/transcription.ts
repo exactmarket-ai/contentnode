@@ -351,7 +351,9 @@ export class TranscriptionNodeExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const provider = (config.provider as string) ?? 'local'
     const apiKeyRef = (config.api_key_ref as string) ?? ''
-    const openaiModel = (config.openai_model as string) ?? 'gpt-4o-transcribe'
+    const ALLOWED_OPENAI_MODELS = new Set(['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'])
+    const rawOpenaiModel = (config.openai_model as string) ?? 'gpt-4o-transcribe'
+    const openaiModel = ALLOWED_OPENAI_MODELS.has(rawOpenaiModel) ? rawOpenaiModel : 'gpt-4o-transcribe'
     const enableDiarization = (config.enable_diarization as boolean) ?? true
     const maxSpeakers = (config.max_speakers as number | null) ?? null
     const targetNodeIds = (config.target_node_ids as string[]) ?? []

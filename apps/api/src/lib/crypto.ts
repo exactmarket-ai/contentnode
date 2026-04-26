@@ -33,8 +33,11 @@ export function decrypt(ciphertext: string): string {
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8')
 }
 
-// Safe decrypt — returns null if value is missing or not yet encrypted (migration helper)
+// Safe decrypt — returns null if value is missing or cannot be decrypted
 export function safeDecrypt(value: string | null | undefined): string | null {
   if (!value) return null
-  try { return decrypt(value) } catch { return value }
+  try { return decrypt(value) } catch {
+    console.warn('[crypto] safeDecrypt: decryption failed — credential may be corrupted or not yet encrypted')
+    return null
+  }
 }
