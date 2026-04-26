@@ -446,18 +446,56 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     const ALLOWED_EVENTS = new Set(['change_column_value', 'create_item', 'create_update', 'change_status_column_value', 'item_deleted', 'item_archived'])
     const eventList = (events ?? ['change_column_value']).filter((e: string) => ALLOWED_EVENTS.has(e))
     if (eventList.length === 0) return reply.code(400).send({ error: 'No valid events specified' })
-    const results = []
+    const results: { id: string; board_id: string }[] = []
 
-    for (const event of eventList) {
-      const data = await mondayGraphQL<{ create_webhook: { id: string; board_id: string } }>(token, `
-        mutation($boardId: ID!, $url: String!, $event: WebhookEventType!) {
-          create_webhook(board_id: $boardId, url: $url, event: $event) {
-            id
-            board_id
+    const registerOnBoard = async (targetBoardId: string) => {
+      for (const event of eventList) {
+        try {
+          const data = await mondayGraphQL<{ create_webhook: { id: string; board_id: string } }>(token, `
+            mutation($boardId: ID!, $url: String!, $event: WebhookEventType!) {
+              create_webhook(board_id: $boardId, url: $url, event: $event) {
+                id
+                board_id
+              }
+            }
+          `, { boardId: targetBoardId, url: webhookUrl, event })
+          results.push(data.create_webhook)
+        } catch (err) {
+          app.log.warn({ err, targetBoardId, event }, '[monday-webhooks] failed to register webhook (non-fatal)')
+        }
+      }
+    }
+
+    // Register on parent board
+    await registerOnBoard(boardId)
+
+    // Discover and register on the subitem board — subitems live on a separate
+    // internal Monday board and their events (e.g. change_status_column_value)
+    // fire from that board's ID, not the parent board ID.
+    try {
+      const subItemData = await mondayGraphQL<{
+        boards: Array<{
+          items_page: {
+            items: Array<{ subitems: Array<{ board: { id: string } }> }>
+          }
+        }>
+      }>(token, `
+        query($boardId: [ID!]) {
+          boards(ids: $boardId) {
+            items_page(limit: 1) {
+              items { subitems { board { id } } }
+            }
           }
         }
-      `, { boardId, url: webhookUrl, event })
-      results.push(data.create_webhook)
+      `, { boardId })
+
+      const subItemBoardId = subItemData.boards?.[0]?.items_page?.items?.[0]?.subitems?.[0]?.board?.id
+      if (subItemBoardId && subItemBoardId !== boardId) {
+        app.log.info({ subItemBoardId }, '[monday-webhooks] registering on subitem board')
+        await registerOnBoard(subItemBoardId)
+      }
+    } catch (err) {
+      app.log.warn({ err }, '[monday-webhooks] subitem board discovery failed (non-fatal)')
     }
 
     return reply.send({ data: results })
@@ -709,12 +747,46 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       if (phase) {
         const itemId = String(event.pulseId)
 
-        // Look up BoxFileTracking for this Monday item to get the run + folder
-        const tracking = await prisma.boxFileTracking.findFirst({
+        // Look up BoxFileTracking for this Monday item to get the run + folder.
+        // Subitems fire from their own board with pulseId = subitem ID. If the
+        // run was linked to the parent item ID instead, fall back to WorkflowRun.
+        let tracking = await prisma.boxFileTracking.findFirst({
           where:  { mondayItemId: itemId },
           select: { agencyId: true, clientId: true, runId: true, boxFolderId: true },
-          orderBy: { createdAt: 'desc' }, // latest delivery if multiple
+          orderBy: { createdAt: 'desc' },
         })
+
+        if (!tracking) {
+          // Subitem fallback: the event's pulseId is the subitem ID, but the run
+          // may have been stored against the parent item ID. Fetch the subitem's
+          // parent item from Monday and retry the lookup.
+          try {
+            const agencyId = (await prisma.integration.findFirst({ where: { provider: 'monday' }, select: { agencyId: true } }))?.agencyId
+                          ?? await getDefaultAgencyId()
+            if (agencyId) {
+              const token2 = await getMondayToken(agencyId)
+              const parentData = await mondayGraphQL<{
+                items: Array<{ parent_item: { id: string } | null }>
+              }>(token2, `
+                query($ids: [ID!]) {
+                  items(ids: $ids) { parent_item { id } }
+                }
+              `, { ids: [itemId] })
+
+              const parentItemId = parentData.items?.[0]?.parent_item?.id
+              if (parentItemId) {
+                dbg(`subitem ${itemId} → parent item ${parentItemId}`)
+                tracking = await prisma.boxFileTracking.findFirst({
+                  where:  { mondayItemId: parentItemId },
+                  select: { agencyId: true, clientId: true, runId: true, boxFolderId: true },
+                  orderBy: { createdAt: 'desc' },
+                })
+              }
+            }
+          } catch (err) {
+            app.log.warn({ err, itemId }, '[monday-webhook] subitem parent lookup failed')
+          }
+        }
 
         if (tracking) {
           await getBoxVersionScanQueue().add('scan', {
@@ -731,7 +803,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
           app.log.info({ itemId, phase, runId: tracking.runId }, '[monday-webhook] box version scan enqueued')
           dbg(`box-version-scan enqueued for itemId=${itemId} phase=${phase}`)
         } else {
-          app.log.info({ itemId }, '[monday-webhook] no BoxFileTracking for item — status change ignored')
+          app.log.info({ itemId }, '[monday-webhook] no BoxFileTracking for item or its parent — status change ignored')
           dbg(`no tracking record for itemId=${itemId}`)
         }
       }
