@@ -22,14 +22,6 @@ import {
 import type { NodeExecutionContext } from './executors/base.js'
 
 const SONNET: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-6',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.2,
-  max_tokens: 512,
-}
-
-const SONNET: ModelConfig = {
   provider:    'anthropic',
   model:       'claude-sonnet-4-6',
   api_key_ref: 'ANTHROPIC_API_KEY',
