@@ -1143,6 +1143,7 @@ export class WorkflowRunner {
       workflowId:    workflow.id,
       triggerType:   run.triggerType ?? null,
       triggeredBy:   run.triggeredBy ?? null,
+      topic:         (run as unknown as Record<string, unknown>).topic as string | null ?? null,
       completedAt:   new Date().toISOString(),
     }).catch((err) => {
       console.error('[runner] PM agent enqueue failed:', err)

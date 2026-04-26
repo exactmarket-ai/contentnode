@@ -2,10 +2,10 @@
  * pmAgent — ContentNode's AI project manager
  *
  * Fires after every WorkflowRun completes. Reasons over objective signals
- * (detection scores, retry counts, run frequency, trigger type) to make
- * routing decisions and detect behavioral patterns.
+ * (topic collisions, trigger type, retry counts) to make routing decisions
+ * and detect behavioral patterns.
  *
- * Phase 1: run archiving, auto-delivery for non-manual triggers, rapid-run detection
+ * Phase 1: run archiving, auto-delivery for non-manual triggers, same-topic re-run detection
  * Phase 2: PM inbox notifications
  * Phase 3: workload awareness + assignment learning
  *
@@ -31,24 +31,27 @@ export function enqueuePMAgentJob(data: PMAgentJobData) {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// Runs of same workflow within this window = rapid-run pattern (testing)
-const RAPID_RUN_WINDOW_MS  = 60 * 60 * 1000  // 1 hour
-const RAPID_RUN_THRESHOLD  = 5               // 5+ runs = flag for investigation
-
 // Trigger types that auto-deliver without human "mark as sent"
 const AUTO_DELIVER_TRIGGERS = new Set(['scheduled', 'monday_webhook', 'campaign', 'api', 'program'])
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function getRecentRunsForWorkflow(
+async function getPriorRunsWithSameTopic(
   agencyId: string,
   workflowId: string,
-  windowMs: number,
-): Promise<{ id: string; triggerType: string | null; triggeredBy: string | null; createdAt: Date; isArchived: boolean }[]> {
-  const since = new Date(Date.now() - windowMs)
-  return prisma.workflowRun.findMany({
-    where: { agencyId, workflowId, createdAt: { gte: since }, status: { in: ['completed', 'failed'] } },
-    select: { id: true, triggerType: true, triggeredBy: true, createdAt: true, isArchived: true },
+  topic: string,
+  excludeRunId: string,
+): Promise<{ id: string; triggerType: string | null; triggeredBy: string | null; createdAt: Date; isArchived: boolean; deliveredAt: Date | null }[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (prisma.workflowRun as any).findMany({
+    where: {
+      agencyId,
+      workflowId,
+      topic,
+      id:     { not: excludeRunId },
+      status: { in: ['completed', 'failed'] },
+    },
+    select: { id: true, triggerType: true, triggeredBy: true, createdAt: true, isArchived: true, deliveredAt: true },
     orderBy: { createdAt: 'desc' },
   })
 }
@@ -153,64 +156,118 @@ async function createNotification(agencyId: string, opts: {
 
 // ── Pattern detectors ─────────────────────────────────────────────────────────
 
-async function detectRapidRuns(
+async function detectSameTopicRerun(
   agencyId: string,
   workflowId: string,
   workflowRunId: string,
+  topic: string | null,
   triggeredBy: string | null,
 ) {
-  const recentRuns = await getRecentRunsForWorkflow(agencyId, workflowId, RAPID_RUN_WINDOW_MS)
-  const manualRuns = recentRuns.filter((r) => !AUTO_DELIVER_TRIGGERS.has(r.triggerType ?? '') && !r.isArchived)
+  // No topic = no collision possible
+  if (!topic?.trim()) return
 
-  if (manualRuns.length < RAPID_RUN_THRESHOLD) return
+  const priorRuns = await getPriorRunsWithSameTopic(agencyId, workflowId, topic, workflowRunId)
+  // Filter to manual (non-auto-delivered) prior runs only
+  const manualPrior = priorRuns.filter((r) => !AUTO_DELIVER_TRIGGERS.has(r.triggerType ?? ''))
 
-  // Check if we already have a memory entry saying "always archive rapid runs"
-  const existing = await getMemory(agencyId, 'behavior_observation', `rapid_runs_workflow_${workflowId}`)
+  if (manualPrior.length === 0) return
+
+  const memoryKey = `same_topic_rerun_workflow_${workflowId}`
+
+  // Check if the user already said "always archive on re-run"
+  const existing = await getMemory(agencyId, 'behavior_observation', memoryKey)
   if (existing?.userAnswer === 'always_archive') {
-    // User already told us — archive silently
     await archivePriorRuns(agencyId, workflowId, workflowRunId)
     return
   }
 
-  // Surface a notification asking what to do
-  const runIds = manualRuns.map((r) => r.id)
+  const runIds    = manualPrior.map((r) => r.id)
+  const prevCount = manualPrior.length
+
   await createNotification(agencyId, {
-    patternKey:    'rapid_manual_runs',
-    title:         `${manualRuns.length} runs in the last hour — were you testing?`,
-    body:          `I noticed you ran this workflow ${manualRuns.length} times in the past hour. Should I archive the earlier runs and keep your Reviews clean?`,
-    context:       { workflowId, runIds, runCount: manualRuns.length },
+    patternKey: 'same_topic_rerun',
+    title:      `Re-run detected for "${topic}"`,
+    body:       prevCount === 1
+      ? `There's already a completed run for "${topic}". Should I archive the earlier one and keep Reviews clean?`
+      : `There are ${prevCount} earlier runs for "${topic}". Should I archive them and keep only this latest one?`,
+    context: { workflowId, topic, runIds, priorCount: prevCount },
     actions: [
-      { label: 'Archive earlier runs',        value: 'archive',        alwaysApply: false },
-      { label: 'Always archive when testing', value: 'always_archive', alwaysApply: true  },
-      { label: 'Keep all runs',               value: 'keep',           alwaysApply: false },
+      { label: 'Archive earlier runs',           value: 'archive',        alwaysApply: false },
+      { label: 'Always archive on re-run',       value: 'always_archive', alwaysApply: true  },
+      { label: 'Keep all runs',                  value: 'keep',           alwaysApply: false },
     ],
     workflowRunId,
     workflowId,
   })
 
-  // Record the observation in memory regardless of answer
-  await upsertMemory(agencyId, 'behavior_observation', `rapid_runs_workflow_${workflowId}`, {
+  // Optionally collect why the re-run was needed — stored separately so we can
+  // learn from it even if the user never answers the archiving question.
+  // This creates a second notification card for the "why" question.
+  await createWhyRerunQuestion(agencyId, {
+    workflowId,
+    workflowRunId,
+    topic,
+    triggeredBy,
+    memoryKey,
+  })
+
+  await upsertMemory(agencyId, 'behavior_observation', memoryKey, {
     workflowId,
     lastObservedAt: new Date().toISOString(),
-    runCount:       manualRuns.length,
+    lastTopic:      topic,
+    rerunCount:     prevCount,
   }, { workflowId, userId: triggeredBy ?? undefined })
+}
+
+async function createWhyRerunQuestion(
+  agencyId: string,
+  opts: {
+    workflowId:    string
+    workflowRunId: string
+    topic:         string
+    triggeredBy:   string | null
+    memoryKey:     string
+  },
+) {
+  // Avoid duplicate "why" questions for the same workflow
+  if (await pendingNotificationExists(agencyId, 'same_topic_rerun_why', opts.workflowId)) return
+
+  await prisma.pMAgentNotification.create({
+    data: {
+      agencyId,
+      patternKey: 'same_topic_rerun_why',
+      title:      `Why did you re-run "${opts.topic}"? (optional)`,
+      body:       'Your answer helps me learn when re-runs are quality issues vs. intentional variations, so I can route them smarter over time.',
+      context:    { workflowId: opts.workflowId, topic: opts.topic, memoryKey: whyKey } as never,
+      actions:    [
+        { label: 'Output needed improvement',  value: 'quality_issue',  alwaysApply: false },
+        { label: 'Adjusted the prompt',        value: 'prompt_change',  alwaysApply: false },
+        { label: 'Wanted a variation',         value: 'variation',      alwaysApply: false },
+        { label: 'Testing / experimenting',    value: 'testing',        alwaysApply: false },
+        { label: 'Skip — don\'t ask again',    value: 'skip',           alwaysApply: true  },
+      ] as never,
+      workflowRunId: opts.workflowRunId,
+      workflowId:    opts.workflowId,
+    },
+  })
+  console.log(`[pmAgent] why-rerun question created for workflow ${opts.workflowId} topic "${opts.topic}"`)
 }
 
 // ── Main processor ────────────────────────────────────────────────────────────
 
 async function processPMAgentJob(job: Job<PMAgentJobData>) {
-  const { agencyId, workflowRunId, workflowId, triggerType, triggeredBy } = job.data
+  const { agencyId, workflowRunId, workflowId, triggerType, triggeredBy, topic } = job.data
 
   const isAutoTrigger = AUTO_DELIVER_TRIGGERS.has(triggerType ?? '')
 
   await withAgency(agencyId, async () => {
     if (isAutoTrigger) {
-      // Auto-triggered runs deliver immediately and archive older ones
+      // Auto-triggered runs deliver immediately and archive same-topic older ones
       await markDelivered(agencyId, workflowRunId)
       await archivePriorRuns(agencyId, workflowId, workflowRunId)
     } else {
-      // Manual run — detect rapid-run pattern, surface notification if needed
-      await detectRapidRuns(agencyId, workflowId, workflowRunId, triggeredBy)
+      // Manual run — detect same-topic re-runs, surface notification + optional why question
+      await detectSameTopicRerun(agencyId, workflowId, workflowRunId, topic ?? null, triggeredBy)
     }
   })
 

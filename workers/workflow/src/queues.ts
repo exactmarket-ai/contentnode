@@ -157,6 +157,7 @@ export interface PMAgentJobData {
   workflowId:    string
   triggerType:   string | null  // manual | scheduled | monday_webhook | campaign | etc.
   triggeredBy:   string | null  // userId who triggered (for manual runs)
+  topic:         string | null  // Start Run Topic — used to detect same-topic re-runs
   completedAt:   string         // ISO timestamp
 }
 
