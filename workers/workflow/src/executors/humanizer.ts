@@ -341,6 +341,31 @@ async function saveHumanizerExample(
 // Claude few-shot humanizer
 // ─────────────────────────────────────────────────────────────────────────────
 
+// WeightedSignal — matches the shape stored by boxDiffProcessor
+interface WeightedSignal {
+  signal: string
+  confidence: number
+  observedCount: number
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
+// Only inject signals above this confidence — keeps the personalisation block
+// selective rather than dumping every ever-observed signal into the prompt.
+const MIN_INJECT_CONFIDENCE = 0.4
+const MAX_INJECT_PER_CAT    = 12
+
+function topSignals(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  // Support both legacy string[] (pre-migration) and WeightedSignal[]
+  if (typeof raw[0] === 'string') return raw as string[]
+  return (raw as WeightedSignal[])
+    .filter((s) => s.confidence >= MIN_INJECT_CONFIDENCE)
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, MAX_INJECT_PER_CAT)
+    .map((s) => s.signal)
+}
+
 async function buildPersonalizationBlock(agencyId: string, workflowRunId: string): Promise<string> {
   const run = await withAgency(agencyId, () =>
     prisma.workflowRun.findUnique({
@@ -362,15 +387,15 @@ async function buildPersonalizationBlock(agencyId: string, workflowRunId: string
   )
   if (!profile || (profile.revisionCount ?? 0) < 1) return ''
 
-  const toneSignals      = profile.toneSignals      as string[]
-  const structureSignals = profile.structureSignals as string[]
-  const rejectPatterns   = profile.rejectPatterns   as string[]
-  if (!toneSignals.length && !structureSignals.length && !rejectPatterns.length) return ''
+  const tone      = topSignals(profile.toneSignals)
+  const structure = topSignals(profile.structureSignals)
+  const reject    = topSignals(profile.rejectPatterns)
+  if (!tone.length && !structure.length && !reject.length) return ''
 
   const lines = [`PERSONALIZATION — learned from ${profile.revisionCount} real edits by this stakeholder:`]
-  if (toneSignals.length)      lines.push(`Tone preferences: ${toneSignals.join('; ')}`)
-  if (structureSignals.length) lines.push(`Structure preferences: ${structureSignals.join('; ')}`)
-  if (rejectPatterns.length)   lines.push(`Always avoid — they consistently remove these: ${rejectPatterns.join('; ')}`)
+  if (tone.length)      lines.push(`Tone preferences: ${tone.join('; ')}`)
+  if (structure.length) lines.push(`Structure preferences: ${structure.join('; ')}`)
+  if (reject.length)    lines.push(`Always avoid — they consistently remove these: ${reject.join('; ')}`)
 
   return lines.join('\n')
 }

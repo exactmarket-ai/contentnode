@@ -2264,12 +2264,14 @@ model StakeholderPreferenceProfile {
   stakeholderId   String   @unique @map("stakeholder_id")
   agencyId        String   @map("agency_id")
   // Derived from HumanizerSignal diffs — updated after each processed revision
-  toneSignals     Json     @default("[]") @map("tone_signals")       // [{ signal, confidence, exampleCount }]
-  structureSignals Json    @default("[]") @map("structure_signals")  // e.g. prefers bullets, short paragraphs
-  rejectPatterns  Json     @default("[]") @map("reject_patterns")    // things they consistently remove
+  // Each array is WeightedSignal[]: { signal, confidence, observedCount, firstSeenAt, lastSeenAt }
+  toneSignals     Json     @default("[]") @map("tone_signals")
+  structureSignals Json    @default("[]") @map("structure_signals")
+  rejectPatterns  Json     @default("[]") @map("reject_patterns")
   approvalRate    Float?   @map("approval_rate")                     // % of runs approved without revision
   revisionCount   Int      @default(0) @map("revision_count")        // total edit pairs processed
   lastSignalAt    DateTime? @map("last_signal_at")                   // when the profile was last updated
+  lastDecayAt     DateTime? @map("last_decay_at")                    // when confidence decay was last applied
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

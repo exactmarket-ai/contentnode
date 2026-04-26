@@ -5,7 +5,8 @@
  * 1. Runs Claude to extract style signals from the diff
  * 2. Updates HumanizerSignal with the diffSummary
  * 3. Creates a BrainAttachment on the client tagged to the stakeholder
- * 4. Updates or creates the StakeholderPreferenceProfile
+ * 4. Applies lazy confidence decay to stale signals, then merges new signals
+ *    into the StakeholderPreferenceProfile using weighted scoring
  * 5. Generates Insights from the profile once enough signal accumulates
  * 6. Updates Monday item with "Revised ✓" status + comment
  */
@@ -14,6 +15,27 @@ import { prisma, withAgency } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { QUEUE_BOX_DIFF, type BoxDiffJobData, getConnection } from './queues.js'
 import { Worker, type Job } from 'bullmq'
+
+// ── WeightedSignal type ────────────────────────────────────────────────────────
+// Stored as JSON in the three signal arrays on StakeholderPreferenceProfile.
+
+interface WeightedSignal {
+  signal:       string
+  confidence:   number  // 0.0–1.0; signals below MIN_INJECT_CONFIDENCE are skipped at generation time
+  observedCount: number // how many diffs confirmed this signal
+  firstSeenAt:  string  // ISO timestamp
+  lastSeenAt:   string  // ISO timestamp — used for decay calculation
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const INITIAL_CONFIDENCE   = 0.55  // new unconfirmed signal starts here
+const CONFIRM_BOOST        = 0.08  // each re-observation raises confidence by this
+const MAX_CONFIDENCE       = 0.95
+const DECAY_HALF_LIFE_DAYS = 60    // confidence halves every 60 days of inactivity
+const DECAY_FLOOR          = 0.05  // signals below this are pruned
+const DECAY_RUN_INTERVAL_DAYS = 7  // only run decay once per 7 days per profile
+const MAX_SIGNALS_PER_CAT  = 50    // hard cap per category
 
 const DIFF_EXTRACTION_PROMPT = (original: string, edited: string) => `
 You are analyzing the difference between an AI-generated piece of content and a human-edited version to extract the editor's style preferences.
@@ -40,7 +62,71 @@ Analyze the changes and extract the editor's style signals. Return ONLY a JSON o
 If the texts are too similar to extract meaningful signals, return confidence: 0 and empty arrays.
 `.trim()
 
-// ── Monday GraphQL helper (light — no auth plugin here) ───────────────────────
+// ── Signal helpers ────────────────────────────────────────────────────────────
+
+function normalise(s: string) {
+  return s.toLowerCase().trim()
+}
+
+function findMatch(existing: WeightedSignal[], incoming: string): WeightedSignal | undefined {
+  const norm = normalise(incoming)
+  return existing.find((e) => normalise(e.signal) === norm)
+}
+
+function applyDecay(signals: WeightedSignal[], now: Date): WeightedSignal[] {
+  return signals
+    .map((s) => {
+      const daysSince = (now.getTime() - new Date(s.lastSeenAt).getTime()) / (1000 * 60 * 60 * 24)
+      if (daysSince < 30) return s  // no decay for recently-seen signals
+      const decayed = s.confidence * Math.pow(0.5, daysSince / DECAY_HALF_LIFE_DAYS)
+      return { ...s, confidence: Math.round(decayed * 1000) / 1000 }
+    })
+    .filter((s) => s.confidence >= DECAY_FLOOR)
+}
+
+function mergeSignals(
+  existing: WeightedSignal[],
+  incoming: string[],
+  baseConfidence: number,
+  now: Date,
+): WeightedSignal[] {
+  const nowIso = now.toISOString()
+  const result = [...existing]
+
+  for (const raw of incoming) {
+    if (!raw?.trim()) continue
+    const match = findMatch(result, raw)
+    if (match) {
+      // Existing signal confirmed — boost confidence
+      match.observedCount += 1
+      match.confidence = Math.min(match.confidence + CONFIRM_BOOST, MAX_CONFIDENCE)
+      match.lastSeenAt  = nowIso
+    } else {
+      // New signal — start at discounted confidence (unconfirmed)
+      result.push({
+        signal:        raw.trim(),
+        confidence:    Math.min(baseConfidence * INITIAL_CONFIDENCE, MAX_CONFIDENCE),
+        observedCount: 1,
+        firstSeenAt:   nowIso,
+        lastSeenAt:    nowIso,
+      })
+    }
+  }
+
+  // Sort by confidence desc, cap at max
+  return result
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, MAX_SIGNALS_PER_CAT)
+}
+
+function shouldRunDecay(lastDecayAt: Date | null, now: Date): boolean {
+  if (!lastDecayAt) return true
+  const daysSince = (now.getTime() - lastDecayAt.getTime()) / (1000 * 60 * 60 * 24)
+  return daysSince >= DECAY_RUN_INTERVAL_DAYS
+}
+
+// ── Monday GraphQL helper ─────────────────────────────────────────────────────
+
 async function updateMondayRevised(agencyId: string, mondayItemId: string) {
   const { prisma: db } = await import('@contentnode/database')
   const integration = await db.integration.findUnique({
@@ -59,56 +145,57 @@ async function updateMondayRevised(agencyId: string, mondayItemId: string) {
     body: JSON.stringify({
       query: `mutation { create_update(item_id: ${mondayItemId}, body: "${comment.replace(/"/g, '\\"')}") { id } }`,
     }),
-  }).catch(() => {}) // non-fatal
+  }).catch(() => {})
 }
 
-// ── Insight generation from preference profile ────────────────────────────────
+// ── Insight generation ────────────────────────────────────────────────────────
 // Called after each profile upsert once revisionCount >= 3.
-// Creates or updates Insight records that surface in the canvas sidebar and
-// the Insights tab on ClientDetailPage.
+// Only generates insights from signals with sufficient confidence.
+
+const MIN_INSIGHT_CONFIDENCE = 0.5
+
 async function generateInsightsFromProfile(
   agencyId: string,
   clientId: string,
   stakeholderId: string,
   revisionCount: number,
-  toneSignals: string[],
-  structureSignals: string[],
-  rejectPatterns: string[],
+  toneSignals: WeightedSignal[],
+  structureSignals: WeightedSignal[],
+  rejectPatterns: WeightedSignal[],
 ): Promise<void> {
   if (revisionCount < 3) return
-  if (!toneSignals.length && !structureSignals.length && !rejectPatterns.length) return
 
   const stakeholder = await prisma.stakeholder.findUnique({
     where: { id: stakeholderId },
     select: { name: true },
   })
-  const name = stakeholder?.name ?? 'This stakeholder'
+  const name       = stakeholder?.name ?? 'This stakeholder'
   const confidence = Math.min(0.4 + revisionCount * 0.1, 0.95)
 
   const candidates: Array<{ type: string; title: string; body: string; key: string }> = []
 
-  for (const pattern of rejectPatterns) {
+  for (const s of rejectPatterns.filter((x) => x.confidence >= MIN_INSIGHT_CONFIDENCE)) {
     candidates.push({
-      type: 'forbidden_term',
-      title: `${name} removes: ${pattern}`,
-      body: `Detected across ${revisionCount} Box revisions. Avoid this pattern when writing for ${name} — they remove it every time.`,
-      key: pattern.slice(0, 40).toLowerCase(),
+      type:  'forbidden_term',
+      title: `${name} removes: ${s.signal}`,
+      body:  `Detected across ${s.observedCount} Box revision${s.observedCount !== 1 ? 's' : ''} (confidence ${Math.round(s.confidence * 100)}%). Avoid this pattern when writing for ${name}.`,
+      key:   s.signal.slice(0, 40).toLowerCase(),
     })
   }
-  for (const signal of toneSignals) {
+  for (const s of toneSignals.filter((x) => x.confidence >= MIN_INSIGHT_CONFIDENCE)) {
     candidates.push({
-      type: 'tone',
-      title: `${name} tone: ${signal}`,
-      body: `Observed in ${revisionCount} Box revisions. Apply this tone preference when writing for ${name}.`,
-      key: signal.slice(0, 40).toLowerCase(),
+      type:  'tone',
+      title: `${name} tone: ${s.signal}`,
+      body:  `Observed in ${s.observedCount} Box revision${s.observedCount !== 1 ? 's' : ''} (confidence ${Math.round(s.confidence * 100)}%). Apply this tone preference when writing for ${name}.`,
+      key:   s.signal.slice(0, 40).toLowerCase(),
     })
   }
-  for (const signal of structureSignals) {
+  for (const s of structureSignals.filter((x) => x.confidence >= MIN_INSIGHT_CONFIDENCE)) {
     candidates.push({
-      type: 'structure',
-      title: `${name} structure: ${signal}`,
-      body: `Observed in ${revisionCount} Box revisions. Apply this structure preference when writing for ${name}.`,
-      key: signal.slice(0, 40).toLowerCase(),
+      type:  'structure',
+      title: `${name} structure: ${s.signal}`,
+      body:  `Observed in ${s.observedCount} Box revision${s.observedCount !== 1 ? 's' : ''} (confidence ${Math.round(s.confidence * 100)}%). Apply this structure preference when writing for ${name}.`,
+      key:   s.signal.slice(0, 40).toLowerCase(),
     })
   }
 
@@ -117,9 +204,9 @@ async function generateInsightsFromProfile(
       where: {
         agencyId,
         clientId,
-        type: candidate.type,
+        type:   candidate.type,
         status: { in: ['pending', 'applied'] },
-        title: { contains: candidate.key, mode: 'insensitive' },
+        title:  { contains: candidate.key, mode: 'insensitive' },
       },
       select: { id: true },
     })
@@ -127,21 +214,21 @@ async function generateInsightsFromProfile(
     if (existing) {
       await prisma.insight.update({
         where: { id: existing.id },
-        data: { instanceCount: revisionCount, confidence, updatedAt: new Date() },
+        data:  { instanceCount: revisionCount, confidence, updatedAt: new Date() },
       })
     } else {
       await prisma.insight.create({
         data: {
           agencyId,
           clientId,
-          type: candidate.type,
-          title: candidate.title,
-          body: candidate.body,
+          type:          candidate.type,
+          title:         candidate.title,
+          body:          candidate.body,
           confidence,
-          status: 'pending',
+          status:        'pending',
           instanceCount: revisionCount,
           stakeholderIds: [stakeholderId],
-          isCollective: false,
+          isCollective:  false,
           evidenceQuotes: [],
           suggestedNodeType: 'logic:humanizer',
           suggestedConfigChange: { signal: candidate.key, stakeholderId },
@@ -152,6 +239,7 @@ async function generateInsightsFromProfile(
 }
 
 // ── Main processor ────────────────────────────────────────────────────────────
+
 async function processBoxDiff(job: Job<BoxDiffJobData>) {
   const {
     agencyId, clientId, runId, stakeholderId,
@@ -171,18 +259,13 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
 
   try {
     const raw = await callModel(
-      {
-        provider:    'anthropic',
-        model:       'claude-sonnet-4-6',
-        api_key_ref: 'ANTHROPIC_API_KEY',
-      },
+      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
       DIFF_EXTRACTION_PROMPT(originalText, editedText),
     )
     const jsonMatch = raw.text.match(/\{[\s\S]*\}/)
     if (jsonMatch) diffResult = JSON.parse(jsonMatch[0])
   } catch (err) {
     console.error('[boxDiff] Claude style extraction failed:', err)
-    // Continue — we still store the signal, just without the summary
   }
 
   await withAgency(agencyId, async () => {
@@ -194,7 +277,7 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
       })
     }
 
-    // 3. Store as BrainAttachment on the client so it informs future runs
+    // 3. Store as BrainAttachment (confidence filter: skip low-signal diffs)
     if (diffResult.confidence > 0.2) {
       const brainContent = [
         `## Style signals from Box revision${stakeholderId ? ` (stakeholder ${stakeholderId})` : ''}`,
@@ -221,49 +304,76 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
       })
     }
 
-    // 4. Update or create StakeholderPreferenceProfile
+    // 4. Update or create StakeholderPreferenceProfile with weighted signals
     if (stakeholderId && diffResult.confidence > 0.2) {
+      const now      = new Date()
       const existing = await prisma.stakeholderPreferenceProfile.findUnique({
         where: { stakeholderId },
       })
 
       if (existing) {
-        // Merge new signals into existing arrays (append, deduplicate)
-        const merge = (arr: string[], incoming: string[]) =>
-          Array.from(new Set([...arr, ...incoming])).slice(0, 50)
+        // Lazy decay: apply only if due
+        let tone      = existing.toneSignals      as unknown as WeightedSignal[]
+        let structure = existing.structureSignals as unknown as WeightedSignal[]
+        let reject    = existing.rejectPatterns   as unknown as WeightedSignal[]
+
+        if (shouldRunDecay(existing.lastDecayAt, now)) {
+          tone      = applyDecay(tone, now)
+          structure = applyDecay(structure, now)
+          reject    = applyDecay(reject, now)
+        }
 
         const merged = {
-          toneSignals:      merge(existing.toneSignals      as string[], diffResult.toneSignals),
-          structureSignals: merge(existing.structureSignals as string[], diffResult.structureSignals),
-          rejectPatterns:   merge(existing.rejectPatterns   as string[], diffResult.rejectPatterns),
+          toneSignals:      mergeSignals(tone,      diffResult.toneSignals,      diffResult.confidence, now),
+          structureSignals: mergeSignals(structure,  diffResult.structureSignals, diffResult.confidence, now),
+          rejectPatterns:   mergeSignals(reject,     diffResult.rejectPatterns,   diffResult.confidence, now),
         }
+
         await prisma.stakeholderPreferenceProfile.update({
           where: { stakeholderId },
-          data: {
-            ...merged,
-            revisionCount: { increment: 1 },
-            lastSignalAt:  new Date(),
+          data:  {
+            toneSignals:      merged.toneSignals      as never,
+            structureSignals: merged.structureSignals as never,
+            rejectPatterns:   merged.rejectPatterns   as never,
+            revisionCount:    { increment: 1 },
+            lastSignalAt:     now,
+            ...(shouldRunDecay(existing.lastDecayAt, now) ? { lastDecayAt: now } : {}),
           },
         })
-        const newRevisionCount = (existing.revisionCount ?? 0) + 1
-        await generateInsightsFromProfile(agencyId, clientId, stakeholderId, newRevisionCount, merged.toneSignals, merged.structureSignals, merged.rejectPatterns)
+
+        const newCount = (existing.revisionCount ?? 0) + 1
+        await generateInsightsFromProfile(
+          agencyId, clientId, stakeholderId, newCount,
+          merged.toneSignals, merged.structureSignals, merged.rejectPatterns,
+        )
       } else {
+        const nowIso = now.toISOString()
+        const toWeighted = (signals: string[]): WeightedSignal[] =>
+          signals.filter(Boolean).map((s) => ({
+            signal:        s.trim(),
+            confidence:    diffResult.confidence * INITIAL_CONFIDENCE,
+            observedCount: 1,
+            firstSeenAt:   nowIso,
+            lastSeenAt:    nowIso,
+          }))
+
         await prisma.stakeholderPreferenceProfile.create({
           data: {
             stakeholderId,
             agencyId,
-            toneSignals:      diffResult.toneSignals,
-            structureSignals: diffResult.structureSignals,
-            rejectPatterns:   diffResult.rejectPatterns,
+            toneSignals:      toWeighted(diffResult.toneSignals)      as never,
+            structureSignals: toWeighted(diffResult.structureSignals) as never,
+            rejectPatterns:   toWeighted(diffResult.rejectPatterns)   as never,
             revisionCount:    1,
-            lastSignalAt:     new Date(),
+            lastSignalAt:     now,
+            lastDecayAt:      now,
           },
         })
       }
     }
   })
 
-  // 5. Update Monday item — outside withAgency (no tenant data accessed)
+  // 5. Update Monday item — outside withAgency (no tenant data)
   if (mondayItemId) {
     await updateMondayRevised(agencyId, mondayItemId)
   }
@@ -272,6 +382,7 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
 }
 
 // ── Worker registration ───────────────────────────────────────────────────────
+
 export function startBoxDiffWorker() {
   const worker = new Worker<BoxDiffJobData>(
     QUEUE_BOX_DIFF,
