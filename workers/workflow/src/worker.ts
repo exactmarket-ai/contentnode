@@ -55,6 +55,8 @@ import {
 } from './queues.js'
 import { startBoxDiffWorker } from './boxDiffProcessor.js'
 import { startPMAgentWorker } from './pmAgent.js'
+import { startBrainCollapseWorker } from './brainCollapseProcessor.js'
+import { startPrincipleInferenceWorker } from './principleInference.js'
 import { withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -373,9 +375,11 @@ const scheduledResearchWorker = createWorker<ScheduledResearchJobData>(
   3
 )
 
-// ── box-diff ──────────────────────────────────────────────────────────────
-const boxDiffWorker  = startBoxDiffWorker()
-const pmAgentWorker  = startPMAgentWorker()
+// ── box-diff / pm-agent / brain-collapse / principle-inference ────────────
+const boxDiffWorker             = startBoxDiffWorker()
+const pmAgentWorker             = startPMAgentWorker()
+const brainCollapseWorker       = startBrainCollapseWorker()
+const principleInferenceWorker  = startPrincipleInferenceWorker()
 
 // ── file-cleanup — runs once per day ─────────────────────────────────────────
 const QUEUE_FILE_CLEANUP = 'file-cleanup'
@@ -416,6 +420,8 @@ async function shutdown() {
     researchCheckerWorker.close(),
     scheduledResearchWorker.close(),
     boxDiffWorker.close(),
+    brainCollapseWorker.close(),
+    principleInferenceWorker.close(),
     fileCleanupWorker.close(),
   ])
   process.exit(0)

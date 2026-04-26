@@ -1,4 +1,4 @@
-import { callModel, type ModelConfig } from '@contentnode/ai'
+import { callModel, embedText, type ModelConfig } from '@contentnode/ai'
 import { prisma, withAgency, usageEventService } from '@contentnode/database'
 import type { Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
@@ -348,6 +348,7 @@ interface WeightedSignal {
   observedCount: number
   firstSeenAt: string
   lastSeenAt: string
+  docTypes?: string[]  // doc types this signal was observed on; empty/absent = universal
 }
 
 // Only inject signals above this confidence — keeps the personalisation block
@@ -355,28 +356,66 @@ interface WeightedSignal {
 const MIN_INJECT_CONFIDENCE = 0.4
 const MAX_INJECT_PER_CAT    = 12
 
-function topSignals(raw: unknown): string[] {
+// docType-aware signal selection:
+// - Signals matching the current doc type rank highest
+// - Universal signals (empty docTypes) rank second
+// - Signals with docTypes that don't include the current type are excluded
+function topSignals(raw: unknown, docType?: string | null): string[] {
   if (!Array.isArray(raw) || raw.length === 0) return []
-  // Support both legacy string[] (pre-migration) and WeightedSignal[]
+  // Support legacy string[] (pre-migration)
   if (typeof raw[0] === 'string') return raw as string[]
+
   return (raw as WeightedSignal[])
-    .filter((s) => s.confidence >= MIN_INJECT_CONFIDENCE)
-    .sort((a, b) => b.confidence - a.confidence)
+    .filter((s) => {
+      if (s.confidence < MIN_INJECT_CONFIDENCE) return false
+      // If no docType context, include all signals
+      if (!docType) return true
+      // Universal signals (no docType restriction)
+      if (!s.docTypes || s.docTypes.length === 0) return true
+      // Include signals observed on this doc type
+      return s.docTypes.includes(docType)
+    })
+    .sort((a, b) => {
+      // Exact doc type match floats to top within same confidence tier
+      const aMatch = docType && a.docTypes?.includes(docType) ? 0.1 : 0
+      const bMatch = docType && b.docTypes?.includes(docType) ? 0.1 : 0
+      return (b.confidence + bMatch) - (a.confidence + aMatch)
+    })
     .slice(0, MAX_INJECT_PER_CAT)
     .map((s) => s.signal)
 }
 
-async function buildPersonalizationBlock(agencyId: string, workflowRunId: string): Promise<string> {
+// Returns { stakeholderId, docType } from the run — both may be null
+async function getRunContext(agencyId: string, workflowRunId: string): Promise<{ stakeholderId: string | null; docType: string | null }> {
   const run = await withAgency(agencyId, () =>
     prisma.workflowRun.findUnique({
       where: { id: workflowRunId },
-      select: { reviewerIds: true },
+      select: {
+        reviewerIds: true,
+        workflow:    { select: { nodes: true } },
+      },
     })
   )
-  if (!run) return ''
+  if (!run) return { stakeholderId: null, docType: null }
 
-  const reviewerIds = run.reviewerIds as string[]
-  const stakeholderId = reviewerIds[0]
+  const reviewerIds  = run.reviewerIds as string[]
+  const stakeholderId = reviewerIds[0] ?? null
+
+  // Infer doc type from the connected content-output node's output_type config
+  type NodeShape = { type?: string; subtype?: string; config?: Record<string, unknown> }
+  const nodes = (run.workflow?.nodes as unknown as NodeShape[]) ?? []
+  const outputNode = nodes.find((n) => n.type === 'output' && n.subtype === 'content-output')
+  const rawType = outputNode?.config?.output_type as string | undefined
+  // Normalise: "Blog Post" → "blog", "Email" → "email", etc.
+  const docType = rawType
+    ? rawType.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_').split('_post')[0]
+    : null
+
+  return { stakeholderId, docType }
+}
+
+async function buildPersonalizationBlock(agencyId: string, workflowRunId: string): Promise<string> {
+  const { stakeholderId, docType } = await getRunContext(agencyId, workflowRunId)
   if (!stakeholderId) return ''
 
   const profile = await withAgency(agencyId, () =>
@@ -387,17 +426,78 @@ async function buildPersonalizationBlock(agencyId: string, workflowRunId: string
   )
   if (!profile || (profile.revisionCount ?? 0) < 1) return ''
 
-  const tone      = topSignals(profile.toneSignals)
-  const structure = topSignals(profile.structureSignals)
-  const reject    = topSignals(profile.rejectPatterns)
+  const tone      = topSignals(profile.toneSignals,      docType)
+  const structure = topSignals(profile.structureSignals, docType)
+  const reject    = topSignals(profile.rejectPatterns,   docType)
   if (!tone.length && !structure.length && !reject.length) return ''
 
-  const lines = [`PERSONALIZATION — learned from ${profile.revisionCount} real edits by this stakeholder:`]
+  const docNote = docType ? ` (filtered for ${docType} content)` : ''
+  const lines = [`PERSONALIZATION — learned from ${profile.revisionCount} real edits by this stakeholder${docNote}:`]
   if (tone.length)      lines.push(`Tone preferences: ${tone.join('; ')}`)
   if (structure.length) lines.push(`Structure preferences: ${structure.join('; ')}`)
   if (reject.length)    lines.push(`Always avoid — they consistently remove these: ${reject.join('; ')}`)
 
   return lines.join('\n')
+}
+
+// ── Stakeholder-specific few-shot retrieval from HumanizerSignal ────────────
+// Uses pgvector cosine similarity to find the most structurally similar
+// before/after pairs this stakeholder has edited. Falls back to recency sort
+// if embeddings aren't computed yet or OPENAI_API_KEY is missing.
+
+async function buildStakeholderFewShotExamples(
+  agencyId:       string,
+  stakeholderId:  string,
+  contentToMatch: string,
+): Promise<string> {
+  // Try vector similarity first
+  try {
+    const embedding = await embedText(contentToMatch.slice(0, 3000))
+    const vec = `[${embedding.join(',')}]`
+
+    type SignalRow = { original_text: string; edited_text: string }
+    const signals = await withAgency(agencyId, () =>
+      prisma.$queryRaw<SignalRow[]>`
+        SELECT "original_text", "edited_text"
+        FROM "humanizer_signals"
+        WHERE "agency_id" = ${agencyId}
+          AND "stakeholder_id" = ${stakeholderId}
+          AND "embedding" IS NOT NULL
+          AND LENGTH("original_text") > 50
+          AND "original_text" != '[original not available]'
+        ORDER BY "embedding" <=> ${vec}::vector
+        LIMIT 4
+      `
+    )
+
+    if (signals.length > 0) {
+      return signals.map((s, i) =>
+        `--- EXAMPLE ${i + 1}: how this stakeholder rewrites AI content ---\n[ORIGINAL]\n${s.original_text.slice(0, 700)}\n\n[REVISED BY STAKEHOLDER]\n${s.edited_text.slice(0, 700)}`
+      ).join('\n\n')
+    }
+  } catch {
+    // OPENAI_API_KEY not set or embeddings not computed yet — fall through
+  }
+
+  // Fallback: most recent signals by recency
+  const recent = await withAgency(agencyId, () =>
+    prisma.humanizerSignal.findMany({
+      where: {
+        agencyId,
+        stakeholderId,
+        editedText:   { not: '' },
+        originalText: { not: '[original not available]' },
+      },
+      orderBy: { createdAt: 'desc' },
+      take:    3,
+      select:  { originalText: true, editedText: true },
+    })
+  )
+
+  if (!recent.length) return ''
+  return recent.map((s, i) =>
+    `--- EXAMPLE ${i + 1}: how this stakeholder rewrites AI content ---\n[ORIGINAL]\n${s.originalText.slice(0, 700)}\n\n[REVISED BY STAKEHOLDER]\n${s.editedText.slice(0, 700)}`
+  ).join('\n\n')
 }
 
 async function buildFewShotExamples(agencyId: string): Promise<string> {
@@ -529,8 +629,11 @@ export class HumanizerNodeExecutor extends NodeExecutor {
     } else if (service === 'humanizeai') {
       humanized = await processInChunks(content, (chunk) => runHumanizeAI(chunk))
     } else if (service === 'cnHumanizer') {
+      const { stakeholderId } = await getRunContext(ctx.agencyId, ctx.workflowRunId)
       const [fewShotBlock, personalizationBlock] = await Promise.all([
-        buildFewShotExamples(ctx.agencyId),
+        stakeholderId
+          ? buildStakeholderFewShotExamples(ctx.agencyId, stakeholderId, content)
+          : buildFewShotExamples(ctx.agencyId),
         buildPersonalizationBlock(ctx.agencyId, ctx.workflowRunId),
       ])
       const prompt = buildClaudeHumanizerPrompt(content, fewShotBlock, personalizationBlock || undefined)

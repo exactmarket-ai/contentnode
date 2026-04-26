@@ -27,6 +27,8 @@ export const QUEUE_SCHEDULED_RESEARCH             = `${_p}scheduled-research`
 export const QUEUE_RESEARCH_CHECKER               = `${_p}research-checker`
 export const QUEUE_BOX_DIFF                       = `${_p}box-diff`
 export const QUEUE_PM_AGENT                       = `${_p}pm-agent`
+export const QUEUE_BRAIN_COLLAPSE                 = `${_p}brain-collapse`
+export const QUEUE_PRINCIPLE_INFERENCE            = `${_p}principle-inference`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -149,6 +151,17 @@ export interface BoxDiffJobData {
   attributedTo:   string   // 'stakeholder' | 'employee' | 'unknown_external'
   editorEmail:    string | null
   filename:       string
+  documentType:   string | null  // inferred from filename: blog | email | social | ad_copy | landing_page | executive_brief | video_script
+}
+
+export interface BrainCollapseJobData {
+  agencyId: string
+  clientId: string
+}
+
+export interface PrincipleInferenceJobData {
+  agencyId:      string
+  stakeholderId: string
 }
 
 export interface PMAgentJobData {

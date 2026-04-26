@@ -2,19 +2,25 @@
  * boxDiffProcessor — processes Box FILE.NEW_VERSION diffs
  *
  * For each before/after edit pair:
- * 1. Runs Claude to extract style signals from the diff
+ * 1. Runs Claude to extract STYLISTIC signals from the diff (factual corrections excluded)
  * 2. Updates HumanizerSignal with the diffSummary
  * 3. Creates a BrainAttachment on the client tagged to the stakeholder
  * 4. Applies lazy confidence decay to stale signals, then merges new signals
  *    into the StakeholderPreferenceProfile using weighted scoring
  * 5. Generates Insights from the profile once enough signal accumulates
- * 6. Updates Monday item with "Revised ✓" status + comment
+ * 6. Triggers principle inference when revisionCount hits a multiple of 5
+ * 7. Computes pgvector embedding on HumanizerSignal for few-shot retrieval
+ * 8. Triggers brain collapse when box_revision attachment count >= threshold
+ * 9. Updates Monday item with "Revised ✓" status + comment
  */
 
 import { prisma, withAgency } from '@contentnode/database'
-import { callModel } from '@contentnode/ai'
-import { QUEUE_BOX_DIFF, type BoxDiffJobData, getConnection } from './queues.js'
-import { Worker, type Job } from 'bullmq'
+import { callModel, embedText } from '@contentnode/ai'
+import { QUEUE_BOX_DIFF, QUEUE_BRAIN_COLLAPSE, QUEUE_PRINCIPLE_INFERENCE, type BoxDiffJobData, type BrainCollapseJobData, type PrincipleInferenceJobData, getConnection } from './queues.js'
+import { Worker, Queue, type Job } from 'bullmq'
+
+const brainCollapseQueue      = new Queue<BrainCollapseJobData>(QUEUE_BRAIN_COLLAPSE,      { connection: getConnection() })
+const principleInferenceQueue = new Queue<PrincipleInferenceJobData>(QUEUE_PRINCIPLE_INFERENCE, { connection: getConnection() })
 
 // ── WeightedSignal type ────────────────────────────────────────────────────────
 // Stored as JSON in the three signal arrays on StakeholderPreferenceProfile.
@@ -25,6 +31,7 @@ interface WeightedSignal {
   observedCount: number // how many diffs confirmed this signal
   firstSeenAt:  string  // ISO timestamp
   lastSeenAt:   string  // ISO timestamp — used for decay calculation
+  docTypes:     string[] // document types this signal was observed on; empty = observed universally
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -37,8 +44,16 @@ const DECAY_FLOOR          = 0.05  // signals below this are pruned
 const DECAY_RUN_INTERVAL_DAYS = 7  // only run decay once per 7 days per profile
 const MAX_SIGNALS_PER_CAT  = 50    // hard cap per category
 
+const BRAIN_COLLAPSE_THRESHOLD = 10  // min box_revision attachments before triggering synthesis
+
 const DIFF_EXTRACTION_PROMPT = (original: string, edited: string) => `
-You are analyzing the difference between an AI-generated piece of content and a human-edited version to extract the editor's style preferences.
+You are analyzing the difference between an AI-generated piece of content and a human-edited version to extract the editor's STYLISTIC preferences.
+
+First, mentally classify each edit as one of:
+- STYLISTIC: word choice, tone, sentence rhythm, phrasing, removing or adding language patterns, structural reorganisation for clarity
+- FACTUAL: correcting numbers, names, dates, product details, company claims, legal/compliance language, or any change that fixes incorrect information
+
+Only report signals from STYLISTIC edits. Ignore FACTUAL corrections entirely — they reveal nothing about the editor's writing preferences, and including them produces false signals (e.g. a corrected revenue figure mis-classified as "prefers specific numbers over approximations").
 
 AI-GENERATED ORIGINAL:
 ---
@@ -50,16 +65,20 @@ HUMAN-EDITED VERSION:
 ${edited.slice(0, 4000)}
 ---
 
-Analyze the changes and extract the editor's style signals. Return ONLY a JSON object with this exact structure:
+Return ONLY a JSON object with this exact structure:
 {
-  "summary": "2-3 sentence plain-English description of what this person changed and why",
-  "toneSignals": ["list of tone-related patterns, e.g. 'prefers direct over passive voice'"],
-  "structureSignals": ["list of structural preferences, e.g. 'breaks long paragraphs into shorter ones'"],
-  "rejectPatterns": ["things they consistently removed, e.g. 'removes superlatives', 'removes pricing language'"],
+  "summary": "2-3 sentence plain-English description of the stylistic changes only (do not mention factual corrections)",
+  "toneSignals": ["tone-related stylistic patterns only"],
+  "structureSignals": ["structural stylistic preferences only"],
+  "rejectPatterns": ["language patterns removed for stylistic reasons — not factual corrections"],
+  "hasFactualCorrections": false,
   "confidence": 0.7
 }
 
-If the texts are too similar to extract meaningful signals, return confidence: 0 and empty arrays.
+Rules:
+- If the edits are primarily factual corrections with little stylistic signal, return confidence: 0 and empty arrays (but still set hasFactualCorrections: true).
+- If the texts are too similar to extract meaningful signals, return confidence: 0 and empty arrays.
+- hasFactualCorrections is always a boolean — never omit it.
 `.trim()
 
 // ── Signal helpers ────────────────────────────────────────────────────────────
@@ -89,6 +108,7 @@ function mergeSignals(
   incoming: string[],
   baseConfidence: number,
   now: Date,
+  docType: string | null,
 ): WeightedSignal[] {
   const nowIso = now.toISOString()
   const result = [...existing]
@@ -97,10 +117,11 @@ function mergeSignals(
     if (!raw?.trim()) continue
     const match = findMatch(result, raw)
     if (match) {
-      // Existing signal confirmed — boost confidence
+      // Existing signal confirmed — boost confidence and accumulate docType
       match.observedCount += 1
       match.confidence = Math.min(match.confidence + CONFIRM_BOOST, MAX_CONFIDENCE)
       match.lastSeenAt  = nowIso
+      if (docType && !match.docTypes.includes(docType)) match.docTypes.push(docType)
     } else {
       // New signal — start at discounted confidence (unconfirmed)
       result.push({
@@ -109,6 +130,7 @@ function mergeSignals(
         observedCount: 1,
         firstSeenAt:   nowIso,
         lastSeenAt:    nowIso,
+        docTypes:      docType ? [docType] : [],
       })
     }
   }
@@ -246,6 +268,7 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
     boxFileId, mondayItemId,
     originalText, editedText,
     attributedTo, editorEmail,
+    documentType,
   } = job.data
 
   // 1. Extract style signals via Claude
@@ -254,8 +277,9 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
     toneSignals: string[]
     structureSignals: string[]
     rejectPatterns: string[]
+    hasFactualCorrections: boolean
     confidence: number
-  } = { summary: '', toneSignals: [], structureSignals: [], rejectPatterns: [], confidence: 0 }
+  } = { summary: '', toneSignals: [], structureSignals: [], rejectPatterns: [], hasFactualCorrections: false, confidence: 0 }
 
   try {
     const raw = await callModel(
@@ -324,9 +348,9 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
         }
 
         const merged = {
-          toneSignals:      mergeSignals(tone,      diffResult.toneSignals,      diffResult.confidence, now),
-          structureSignals: mergeSignals(structure,  diffResult.structureSignals, diffResult.confidence, now),
-          rejectPatterns:   mergeSignals(reject,     diffResult.rejectPatterns,   diffResult.confidence, now),
+          toneSignals:      mergeSignals(tone,      diffResult.toneSignals,      diffResult.confidence, now, documentType ?? null),
+          structureSignals: mergeSignals(structure,  diffResult.structureSignals, diffResult.confidence, now, documentType ?? null),
+          rejectPatterns:   mergeSignals(reject,     diffResult.rejectPatterns,   diffResult.confidence, now, documentType ?? null),
         }
 
         await prisma.stakeholderPreferenceProfile.update({
@@ -346,6 +370,20 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
           agencyId, clientId, stakeholderId, newCount,
           merged.toneSignals, merged.structureSignals, merged.rejectPatterns,
         )
+
+        // Trigger principle inference every 5 revisions.
+        // jobId deduplicates concurrent enqueues for the same stakeholder.
+        if (newCount >= 5 && newCount % 5 === 0) {
+          await principleInferenceQueue.add(
+            'infer',
+            { agencyId, stakeholderId },
+            {
+              jobId:             `principle-${stakeholderId}-r${newCount}`,
+              removeOnComplete:  { count: 5 },
+              removeOnFail:      { count: 10 },
+            },
+          )
+        }
       } else {
         const nowIso = now.toISOString()
         const toWeighted = (signals: string[]): WeightedSignal[] =>
@@ -355,6 +393,7 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
             observedCount: 1,
             firstSeenAt:   nowIso,
             lastSeenAt:    nowIso,
+            docTypes:      documentType ? [documentType] : [],
           }))
 
         await prisma.stakeholderPreferenceProfile.create({
@@ -376,6 +415,44 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
   // 5. Update Monday item — outside withAgency (no tenant data)
   if (mondayItemId) {
     await updateMondayRevised(agencyId, mondayItemId)
+  }
+
+  // 6. Compute embedding on the HumanizerSignal for few-shot retrieval
+  if (originalText && originalText !== '[original not available]') {
+    try {
+      const embedding = await embedText(originalText.slice(0, 3000))
+      const vec = `[${embedding.join(',')}]`
+      await withAgency(agencyId, () =>
+        prisma.$executeRaw`
+          UPDATE "humanizer_signals"
+          SET "embedding" = ${vec}::vector
+          WHERE "box_file_id" = ${boxFileId}
+            AND "agency_id" = ${agencyId}
+            AND "embedding" IS NULL
+        `
+      )
+    } catch (err) {
+      // Non-fatal — embeddings are best-effort; few-shot retrieval falls back to recency
+      console.warn('[boxDiff] embedding computation skipped:', (err as Error).message)
+    }
+  }
+
+  // 7. Trigger brain collapse if box_revision attachment count crosses threshold
+  try {
+    const count = await withAgency(agencyId, () =>
+      prisma.clientBrainAttachment.count({
+        where: { agencyId, clientId, source: 'box_revision', summaryStatus: 'ready' },
+      })
+    )
+    if (count >= BRAIN_COLLAPSE_THRESHOLD) {
+      await brainCollapseQueue.add(
+        `collapse-${clientId}`,
+        { agencyId, clientId },
+        { jobId: `brain-collapse-${clientId}`, removeOnComplete: { count: 5 } },
+      )
+    }
+  } catch (err) {
+    console.warn('[boxDiff] brain collapse trigger failed:', (err as Error).message)
   }
 
   console.log(`[boxDiff] processed ${boxFileId} — confidence ${diffResult.confidence}`)
