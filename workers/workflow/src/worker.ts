@@ -18,6 +18,8 @@ import {
   QUEUE_VERTICAL_BRAIN_PROCESS,
   QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS,
   QUEUE_PROMPT_SUGGEST,
+  QUEUE_BOX_VERSION_SCAN,
+  type BoxVersionScanJobData,
   type WorkflowRunJobData,
   type NodeExecutionJobData,
   type TranscriptionJobData,
@@ -58,7 +60,7 @@ import { startPMAgentWorker } from './pmAgent.js'
 import { startBrainCollapseWorker } from './brainCollapseProcessor.js'
 import { startPrincipleInferenceWorker } from './principleInference.js'
 import { startBoxVersionScanWorker } from './boxVersionScanner.js'
-import { withAgency } from '@contentnode/database'
+import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
 console.log('[worker] env check:',
@@ -398,9 +400,7 @@ await boxVersionSweepQueue.add(
     removeOnFail: { count: 3 },
   }
 )
-const { QUEUE_BOX_VERSION_SCAN: BOX_SCAN_Q } = await import('./queues.js')
-const { Queue: BullQueue } = await import('bullmq')
-const _inlineScanQueue = new BullQueue(BOX_SCAN_Q, { connection: getConnection() })
+const _inlineScanQueue = createQueue<BoxVersionScanJobData>(QUEUE_BOX_VERSION_SCAN)
 const boxVersionSweepWorker = createWorker(
   QUEUE_BOX_VERSION_SWEEP,
   async () => {
