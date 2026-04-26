@@ -192,6 +192,22 @@ async function callOllama(config: ModelConfig, prompt: string): Promise<ModelRes
  * API keys are read from environment variables named by `config.api_key_ref`.
  * Keys are never written to logs or included in thrown error messages.
  */
+/**
+ * Compute a text embedding using OpenAI's text-embedding-3-small (1536 dims).
+ * Throws if OPENAI_API_KEY (or the specified ref) is not set.
+ * Callers should catch and fall back gracefully when used for optional enrichment.
+ */
+export async function embedText(text: string, apiKeyRef = 'OPENAI_API_KEY'): Promise<number[]> {
+  const key = process.env[apiKeyRef]
+  if (!key) throw new Error(`embedText: ${apiKeyRef} is not set`)
+  const openai = new OpenAI({ apiKey: key })
+  const resp = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: text.slice(0, 8000),  // ~2000 tokens — well within the 8191 token limit
+  })
+  return resp.data[0].embedding
+}
+
 export async function callModel(config: ModelConfig, prompt: string, images?: ImageInput[]): Promise<ModelResult> {
   switch (config.provider) {
     case 'anthropic':

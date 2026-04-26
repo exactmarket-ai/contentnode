@@ -57,6 +57,7 @@ import { startBoxDiffWorker } from './boxDiffProcessor.js'
 import { startPMAgentWorker } from './pmAgent.js'
 import { startBrainCollapseWorker } from './brainCollapseProcessor.js'
 import { startPrincipleInferenceWorker } from './principleInference.js'
+import { startBoxVersionScanWorker } from './boxVersionScanner.js'
 import { withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -380,6 +381,60 @@ const boxDiffWorker             = startBoxDiffWorker()
 const pmAgentWorker             = startPMAgentWorker()
 const brainCollapseWorker       = startBrainCollapseWorker()
 const principleInferenceWorker  = startPrincipleInferenceWorker()
+const boxVersionScanWorker      = startBoxVersionScanWorker()
+
+// ── box version sweep — passive safety net, runs every 2 hours ───────────────
+// Catches Box versions that arrived without a Monday status change event
+// (network blips, direct Box uploads, etc.).
+const QUEUE_BOX_VERSION_SWEEP = 'box-version-sweep'
+const boxVersionSweepQueue = createQueue(QUEUE_BOX_VERSION_SWEEP)
+await boxVersionSweepQueue.add(
+  'sweep',
+  {},
+  {
+    jobId: 'box-version-sweep-singleton',
+    repeat: { every: 2 * 60 * 60_000 }, // every 2 hours
+    removeOnComplete: { count: 3 },
+    removeOnFail: { count: 3 },
+  }
+)
+const { QUEUE_BOX_VERSION_SCAN: BOX_SCAN_Q } = await import('./queues.js')
+const { Queue: BullQueue } = await import('bullmq')
+const _inlineScanQueue = new BullQueue(BOX_SCAN_Q, { connection: getConnection() })
+const boxVersionSweepWorker = createWorker(
+  QUEUE_BOX_VERSION_SWEEP,
+  async () => {
+    // Find BoxFileTracking records that have received a new version in the past 48h
+    // but whose run's deliveredContentHash hasn't been updated (missed event)
+    const cutoff = new Date(Date.now() - 48 * 60 * 60_000)
+    const stale  = await prisma.boxFileTracking.findMany({
+      where: {
+        lastVersionAt:  { gte: cutoff },
+        revisionCount:  { gt: 0 },
+        run: { deliveredContentHash: null },
+      },
+      select: { agencyId: true, clientId: true, runId: true, boxFolderId: true, mondayItemId: true },
+      take: 50,
+    })
+
+    let enqueued = 0
+    for (const t of stale) {
+      const jobId = `box-version-scan-${t.mondayItemId ?? t.runId}-client_review-passive`
+      await _inlineScanQueue.add('scan', {
+        agencyId:    t.agencyId,
+        clientId:    t.clientId,
+        runId:       t.runId,
+        boxFolderId: t.boxFolderId,
+        mondayItemId: t.mondayItemId,
+        phase: 'client_review' as const,
+      }, { jobId })
+      enqueued++
+    }
+
+    if (enqueued > 0) console.log(`[boxVersionSweep] enqueued ${enqueued} passive scan(s)`)
+  },
+  1,
+)
 
 // ── file-cleanup — runs once per day ─────────────────────────────────────────
 const QUEUE_FILE_CLEANUP = 'file-cleanup'
@@ -422,6 +477,8 @@ async function shutdown() {
     boxDiffWorker.close(),
     brainCollapseWorker.close(),
     principleInferenceWorker.close(),
+    boxVersionScanWorker.close(),
+    boxVersionSweepWorker.close(),
     fileCleanupWorker.close(),
   ])
   process.exit(0)

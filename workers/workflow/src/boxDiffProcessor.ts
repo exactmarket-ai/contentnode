@@ -46,7 +46,7 @@ const MAX_SIGNALS_PER_CAT  = 50    // hard cap per category
 
 const BRAIN_COLLAPSE_THRESHOLD = 10  // min box_revision attachments before triggering synthesis
 
-const DIFF_EXTRACTION_PROMPT = (original: string, edited: string) => `
+export const DIFF_EXTRACTION_PROMPT = (original: string, edited: string) => `
 You are analyzing the difference between an AI-generated piece of content and a human-edited version to extract the editor's STYLISTIC preferences.
 
 First, mentally classify each edit as one of:

@@ -103,7 +103,7 @@ async function storeBoxTokens(agencyId: string, data: { access_token: string; re
   })
 }
 
-async function getBoxToken(agencyId: string): Promise<string> {
+export async function getBoxToken(agencyId: string): Promise<string> {
   const integration = await prisma.integration.findUnique({
     where: { agencyId_provider: { agencyId, provider: 'box' } },
   })

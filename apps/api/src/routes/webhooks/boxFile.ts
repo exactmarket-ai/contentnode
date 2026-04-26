@@ -16,6 +16,19 @@ import { getBoxDiffQueue } from '../../lib/queues.js'
 
 const BOX_API_URL = 'https://api.box.com/2.0'
 
+// Infer document type from ContentNode filename convention: {client}-{project}-{topic}-{title}-{date}-v{n}.ext
+function inferDocType(filename: string): string | null {
+  const lower = filename.toLowerCase()
+  if (/\bblog\b/.test(lower))                                    return 'blog'
+  if (/\b(email|newsletter|nurture)\b/.test(lower))             return 'email'
+  if (/\b(linkedin|twitter|instagram|social|tiktok)\b/.test(lower)) return 'social'
+  if (/\b(ad[-_]?copy|adcopy|advertisement|ppc|banner)\b/.test(lower)) return 'ad_copy'
+  if (/\b(landing[-_]?page|lp[-_])\b/.test(lower))             return 'landing_page'
+  if (/\b(executive|brief|whitepaper|white[-_]?paper|report)\b/.test(lower)) return 'executive_brief'
+  if (/\b(video[-_]?script|vsl|script)\b/.test(lower))         return 'video_script'
+  return null
+}
+
 // Box sends two HMAC-SHA256 signatures (primary + secondary key rotation).
 // We accept if either matches.
 function verifyBoxSignature(
@@ -163,6 +176,7 @@ export async function boxFileWebhookRoutes(app: FastifyInstance) {
         ''
 
       // ── Create HumanizerSignal record ───────────────────────────────────────
+      const docType = inferDocType(filename)
       await prisma.humanizerSignal.create({
         data: {
           agencyId,
@@ -175,7 +189,8 @@ export async function boxFileWebhookRoutes(app: FastifyInstance) {
           attributedTo,
           editorEmail:    editorEmail ?? null,
           boxFileId,
-        },
+          documentType:   docType,
+        } as Parameters<typeof prisma.humanizerSignal.create>[0]['data'],
       })
 
       // ── Update BoxFileTracking ──────────────────────────────────────────────
@@ -198,6 +213,7 @@ export async function boxFileWebhookRoutes(app: FastifyInstance) {
           attributedTo,
           editorEmail:  editorEmail ?? null,
           filename,
+          documentType: docType,
         })
       } catch (err) {
         req.log.error({ err }, 'Failed to enqueue box diff job — signal saved, diff will not run')

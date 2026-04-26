@@ -4,7 +4,7 @@ import { prisma, withAgency, type Prisma } from '@contentnode/database'
 import { requireRole } from '../../plugins/auth.js'
 import { encrypt, safeDecrypt } from '../../lib/crypto.js'
 import { createBoxFolder } from './box.js'
-import { getWorkflowRunsQueue } from '../../lib/queues.js'
+import { getWorkflowRunsQueue, getBoxVersionScanQueue } from '../../lib/queues.js'
 
 const MONDAY_AUTH_URL  = 'https://auth.monday.com/oauth2/authorize'
 const MONDAY_TOKEN_URL = 'https://auth.monday.com/oauth2/token'
@@ -695,8 +695,61 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       }
     }
 
+    // ── Box version scan: fires on stage/status column changes ────────────────
+    const isStatusChange = event.type === 'change_status_column_value' && event.pulseId
+
+    if (isStatusChange) {
+      // Extract the new status label text from the event value payload
+      const labelText = ((event.value as Record<string, unknown> | undefined)?.label as Record<string, unknown> | undefined)?.text
+      const newStatus = (typeof labelText === 'string' ? labelText : '').trim().toLowerCase()
+
+      const phase = classifyMondayStatus(newStatus)
+      dbg(`status change: label="${labelText}" phase=${phase ?? 'ignored'}`)
+
+      if (phase) {
+        const itemId = String(event.pulseId)
+
+        // Look up BoxFileTracking for this Monday item to get the run + folder
+        const tracking = await prisma.boxFileTracking.findFirst({
+          where:  { mondayItemId: itemId },
+          select: { agencyId: true, clientId: true, runId: true, boxFolderId: true },
+          orderBy: { createdAt: 'desc' }, // latest delivery if multiple
+        })
+
+        if (tracking) {
+          await getBoxVersionScanQueue().add('scan', {
+            agencyId:    tracking.agencyId,
+            clientId:    tracking.clientId,
+            runId:       tracking.runId,
+            boxFolderId: tracking.boxFolderId,
+            mondayItemId: itemId,
+            phase,
+          }, {
+            // Dedup: one scan per item per phase per hour
+            jobId: `box-version-scan-${itemId}-${phase}-${Math.floor(Date.now() / 3_600_000)}`,
+          })
+          app.log.info({ itemId, phase, runId: tracking.runId }, '[monday-webhook] box version scan enqueued')
+          dbg(`box-version-scan enqueued for itemId=${itemId} phase=${phase}`)
+        } else {
+          app.log.info({ itemId }, '[monday-webhook] no BoxFileTracking for item — status change ignored')
+          dbg(`no tracking record for itemId=${itemId}`)
+        }
+      }
+    }
+
     return reply.send({ ok: true, debug: debugLog })
   })
+}
+
+// ── Status classification ─────────────────────────────────────────────────────
+
+function classifyMondayStatus(status: string): 'client_review' | 'client_final' | null {
+  const CLIENT_REVIEW_TERMS = ['client review', 'in review', 'under review', 'review', 'sent to client', 'awaiting review']
+  const CLIENT_FINAL_TERMS  = ['final', 'approved', 'complete', 'done', 'sign off', 'signed off', 'client approved', 'closed']
+
+  if (CLIENT_REVIEW_TERMS.some(t => status.includes(t))) return 'client_review'
+  if (CLIENT_FINAL_TERMS.some(t => status.includes(t)))  return 'client_final'
+  return null
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

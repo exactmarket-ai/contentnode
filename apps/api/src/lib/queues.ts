@@ -25,7 +25,8 @@ export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
 export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
-export const QUEUE_BOX_DIFF = 'box-diff'
+export const QUEUE_BOX_DIFF          = 'box-diff'
+export const QUEUE_BOX_VERSION_SCAN  = 'box-version-scan'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -126,6 +127,15 @@ export interface BoxDiffJobData {
   attributedTo:   string   // 'stakeholder' | 'employee' | 'unknown_external'
   editorEmail:    string | null
   filename:       string
+}
+
+export interface BoxVersionScanJobData {
+  agencyId:     string
+  clientId:     string
+  runId:        string
+  boxFolderId:  string
+  mondayItemId: string | null
+  phase:        'client_review' | 'client_final'  // which Monday status triggered this scan
 }
 
 let workflowRunsQueue: Queue<WorkflowRunJobData> | null = null
@@ -264,4 +274,12 @@ export function getBoxDiffQueue(): Queue<BoxDiffJobData> {
     boxDiffQueue = new Queue<BoxDiffJobData>(QUEUE_BOX_DIFF, { connection: getBullMQConnection() })
   }
   return boxDiffQueue
+}
+
+let boxVersionScanQueue: Queue<BoxVersionScanJobData> | null = null
+export function getBoxVersionScanQueue(): Queue<BoxVersionScanJobData> {
+  if (!boxVersionScanQueue) {
+    boxVersionScanQueue = new Queue<BoxVersionScanJobData>(QUEUE_BOX_VERSION_SCAN, { connection: getBullMQConnection() })
+  }
+  return boxVersionScanQueue
 }

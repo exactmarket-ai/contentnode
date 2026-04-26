@@ -1,2 +1,2 @@
-export { callModel } from './provider.js'
+export { callModel, embedText } from './provider.js'
 export type { ModelConfig, ModelResult, ImageInput } from './provider.js'

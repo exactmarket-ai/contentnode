@@ -29,6 +29,7 @@ export const QUEUE_BOX_DIFF                       = `${_p}box-diff`
 export const QUEUE_PM_AGENT                       = `${_p}pm-agent`
 export const QUEUE_BRAIN_COLLAPSE                 = `${_p}brain-collapse`
 export const QUEUE_PRINCIPLE_INFERENCE            = `${_p}principle-inference`
+export const QUEUE_BOX_VERSION_SCAN               = `${_p}box-version-scan`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types
@@ -162,6 +163,15 @@ export interface BrainCollapseJobData {
 export interface PrincipleInferenceJobData {
   agencyId:      string
   stakeholderId: string
+}
+
+export interface BoxVersionScanJobData {
+  agencyId:     string
+  clientId:     string
+  runId:        string
+  boxFolderId:  string
+  mondayItemId: string | null
+  phase:        'client_review' | 'client_final'
 }
 
 export interface PMAgentJobData {
