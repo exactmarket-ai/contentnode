@@ -34,32 +34,87 @@ interface BoxFileItem {
   sequenceId:   string  // Box file version counter — higher = newer
 }
 
+// Levenshtein distance — used for fuzzy "final" detection
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)])
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    }
+  }
+  return dp[m][n]
+}
+
+// Returns true if any word in the filename is within edit distance 2 of "final"
+// but is not an exact match (that's handled separately for the +3 tier)
+function fuzzyFinal(lower: string): boolean {
+  const words = lower.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 3)
+  return words.some(w => w !== 'final' && levenshtein(w, 'final') <= 2)
+}
+
+// Extract the highest explicit version number from a filename.
+// Handles: v1 v2 v3, _1 _2 _3, -1 -2 -3, date patterns (0425, 04-25, 04_25)
+function extractVersionScore(lower: string): number {
+  // Named version: v3 → version number 3
+  const namedMatch = lower.match(/[v_-](\d{1,2})\b/)
+  if (namedMatch) return parseInt(namedMatch[1], 10)
+
+  // Date-style version: 0425, 04-25, 04_25 (MMDD) — treat as ordinal via month*31+day
+  const dateMatch = lower.match(/\b(\d{2})[-_]?(\d{2})\b/)
+  if (dateMatch) {
+    const month = parseInt(dateMatch[1], 10)
+    const day   = parseInt(dateMatch[2], 10)
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return month * 31 + day  // ordinal for tiebreaking; capped below
+    }
+  }
+  return 0
+}
+
+interface ScoreBreakdown {
+  total:         number
+  exactFinal:    boolean
+  fuzzyFinal:    boolean
+  versionPoints: number
+  versionNumber: number
+  draftPenalty:  boolean
+  isOriginal:    boolean
+}
+
 /**
  * Score a Box file for "winner" selection.
- * Returns -Infinity for the original ContentNode-delivered file so it is
- * never selected as the editorial winner.
+ * Returns score = -Infinity for the original ContentNode-delivered file.
+ * Returns a breakdown object for audit logging.
  */
-function scoreBoxFile(file: BoxFileItem, originalFileId: string | null): number {
-  if (originalFileId && file.id === originalFileId) return -Infinity
+function scoreBoxFile(
+  file: BoxFileItem,
+  originalFileId: string | null,
+): { score: number; breakdown: ScoreBreakdown } {
+  if (originalFileId && file.id === originalFileId) {
+    return { score: -Infinity, breakdown: { total: -Infinity, exactFinal: false, fuzzyFinal: false, versionPoints: 0, versionNumber: 0, draftPenalty: false, isOriginal: true } }
+  }
 
-  let score = 0
   const lower = file.name.toLowerCase()
+  let score = 0
 
-  // Exact-word "final" — strongest intent signal
-  if (/\bfinal\b/.test(lower)) score += 3
+  const exactFinalMatch  = /\bfinal\b/.test(lower)
+  const fuzzyFinalMatch  = !exactFinalMatch && fuzzyFinal(lower)
+  const versionNum       = extractVersionScore(lower)
+  // Cap version contribution at +4 to keep scoring sensible; each version level adds 0.5
+  const versionPoints    = versionNum > 0 ? Math.min(2 + versionNum * 0.5, 4) : 0
+  const draftPenalty     = /\bdraft\b/.test(lower)
 
-  // Fuzzy final synonyms
-  if (/\b(fnl|approved|complete|sign[-_]?off|signed[-_]?off)\b/.test(lower)) score += 2
+  if (exactFinalMatch) score += 3
+  if (fuzzyFinalMatch) score += 2
+  if (versionNum > 0)  score += versionPoints
+  if (draftPenalty)    score -= 2
 
-  // Explicit version suffix — v2, v3, etc. (higher version = slightly preferred)
-  const vMatch = lower.match(/\bv(\d+)\b/)
-  if (vMatch) score += 2 + Math.min(parseInt(vMatch[1], 10), 9) * 0.1
-
-  // Penalty signals
-  if (/\bdraft\b/.test(lower))                          score -= 2
-  if (/\bwip\b|\bwork[-_]in[-_]progress\b/.test(lower)) score -= 1
-
-  return score
+  const breakdown: ScoreBreakdown = { total: score, exactFinal: exactFinalMatch, fuzzyFinal: fuzzyFinalMatch, versionPoints, versionNumber: versionNum, draftPenalty, isOriginal: false }
+  return { score, breakdown }
 }
 
 // ── Box API helpers ───────────────────────────────────────────────────────────
@@ -206,14 +261,14 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       return
     }
 
-    // 3. Score and rank files — sort by score desc, then by sequenceId desc (recency) as tiebreaker
+    // 3. Score and rank files — sort by score desc, then by modifiedAt desc (recency) as tiebreaker
     const scored = files
-      .map(f => ({ file: f, score: scoreBoxFile(f, originalFileId) }))
+      .map(f => { const { score, breakdown } = scoreBoxFile(f, originalFileId); return { file: f, score, breakdown } })
       .filter(f => f.score !== -Infinity)
       .sort((a, b) =>
         b.score !== a.score
           ? b.score - a.score
-          : parseInt(b.file.sequenceId, 10) - parseInt(a.file.sequenceId, 10),
+          : b.file.modifiedAt.getTime() - a.file.modifiedAt.getTime(),
       )
 
     if (scored.length === 0) {
@@ -221,13 +276,14 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       return
     }
 
-    const winner   = scored[0].file
-    const losers   = scored.slice(1).map(s => s.file)
-    const topScore = scored[0].score
+    const winner    = scored[0].file
+    const winnerBD  = scored[0].breakdown
+    const losers    = scored.slice(1).map(s => s.file)
+    const topScore  = scored[0].score
 
     console.log(
       `[boxVersionScanner] folder ${boxFolderId}: winner="${winner.name}" score=${topScore} ` +
-      `phase=${phase} losers=${losers.length}`,
+      `breakdown=${JSON.stringify(winnerBD)} phase=${phase} losers=${losers.length}`,
     )
 
     // 4. Download winner text
@@ -340,16 +396,17 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       resourceId:   runId,
       metadata: {
         phase,
-        winnerId:          winner.id,
-        winnerName:        winner.name,
-        winnerScore:       topScore,
-        totalFiles:        files.length,
-        archivedFiles:     losers.length,
-        toneSignalCount:   primaryDiff.toneSignals.length,
+        winnerId:             winner.id,
+        winnerName:           winner.name,
+        winnerScore:          topScore,
+        winnerScoreBreakdown: winnerBD,
+        totalFiles:           files.length,
+        archivedFiles:        losers.length,
+        toneSignalCount:      primaryDiff.toneSignals.length,
         structureSignalCount: primaryDiff.structureSignals.length,
         hasFactualCorrections: primaryDiff.hasFactualCorrections,
         mondayItemId,
-        scannedAt:         scanStartedAt.toISOString(),
+        scannedAt:            scanStartedAt.toISOString(),
       },
     })
 

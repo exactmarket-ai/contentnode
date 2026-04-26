@@ -747,64 +747,71 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       if (phase) {
         const itemId = String(event.pulseId)
 
-        // Look up BoxFileTracking for this Monday item to get the run + folder.
-        // Subitems fire from their own board with pulseId = subitem ID. If the
-        // run was linked to the parent item ID instead, fall back to WorkflowRun.
-        let tracking = await prisma.boxFileTracking.findFirst({
-          where:  { mondayItemId: itemId },
-          select: { agencyId: true, clientId: true, runId: true, boxFolderId: true },
-          orderBy: { createdAt: 'desc' },
-        })
+        // Primary lookup: WorkflowRun.mondayItemId — this is the authoritative link
+        // between a Monday item and a ContentNode run/folder.
+        // Also try mondaySubItemId (stored in run.input) for subitem events.
+        const agencyIdForScan = (await prisma.integration.findFirst({ where: { provider: 'monday' }, select: { agencyId: true } }))?.agencyId
+                             ?? await getDefaultAgencyId()
 
-        if (!tracking) {
-          // Subitem fallback: the event's pulseId is the subitem ID, but the run
-          // may have been stored against the parent item ID. Fetch the subitem's
-          // parent item from Monday and retry the lookup.
-          try {
-            const agencyId = (await prisma.integration.findFirst({ where: { provider: 'monday' }, select: { agencyId: true } }))?.agencyId
-                          ?? await getDefaultAgencyId()
-            if (agencyId) {
-              const token2 = await getMondayToken(agencyId)
-              const parentData = await mondayGraphQL<{
-                items: Array<{ parent_item: { id: string } | null }>
-              }>(token2, `
-                query($ids: [ID!]) {
-                  items(ids: $ids) { parent_item { id } }
-                }
-              `, { ids: [itemId] })
+        let scanPayload: { agencyId: string; clientId: string; runId: string; boxFolderId: string } | null = null
 
+        if (agencyIdForScan) {
+          // Try direct mondayItemId match first
+          let run = await prisma.workflowRun.findFirst({
+            where:   { agencyId: agencyIdForScan, mondayItemId: itemId },
+            orderBy: { createdAt: 'desc' },
+            select:  { id: true, agencyId: true, workflow: { select: { clientId: true } }, clientFolderBox: true, deliveredBoxFolderId: true },
+          })
+
+          // Subitem fallback: pulseId is the subitem ID, parent item ID may be on the run
+          if (!run) {
+            try {
+              const token2 = await getMondayToken(agencyIdForScan)
+              const parentData = await mondayGraphQL<{ items: Array<{ parent_item: { id: string } | null }> }>(
+                token2, `query($ids: [ID!]) { items(ids: $ids) { parent_item { id } } }`, { ids: [itemId] }
+              )
               const parentItemId = parentData.items?.[0]?.parent_item?.id
               if (parentItemId) {
-                dbg(`subitem ${itemId} → parent item ${parentItemId}`)
-                tracking = await prisma.boxFileTracking.findFirst({
-                  where:  { mondayItemId: parentItemId },
-                  select: { agencyId: true, clientId: true, runId: true, boxFolderId: true },
+                dbg(`subitem ${itemId} → parent ${parentItemId}`)
+                run = await prisma.workflowRun.findFirst({
+                  where:   { agencyId: agencyIdForScan, mondayItemId: parentItemId },
                   orderBy: { createdAt: 'desc' },
+                  select:  { id: true, agencyId: true, workflow: { select: { clientId: true } }, clientFolderBox: true, deliveredBoxFolderId: true },
                 })
               }
+            } catch (err) {
+              app.log.warn({ err, itemId }, '[monday-webhook] subitem parent lookup failed')
             }
-          } catch (err) {
-            app.log.warn({ err, itemId }, '[monday-webhook] subitem parent lookup failed')
+          }
+
+          if (run) {
+            const boxFolderId =
+              run.deliveredBoxFolderId
+              ?? (run.clientFolderBox ?? '').match(/\/folder\/(\d+)/)?.[1]
+              ?? null
+
+            if (boxFolderId && run.workflow?.clientId) {
+              scanPayload = { agencyId: run.agencyId, clientId: run.workflow.clientId, runId: run.id, boxFolderId }
+              dbg(`WorkflowRun match: runId=${run.id} folderId=${boxFolderId}`)
+            } else {
+              dbg(`WorkflowRun found but no Box folder: runId=${run.id} clientFolderBox=${run.clientFolderBox}`)
+            }
           }
         }
 
-        if (tracking) {
+        if (scanPayload) {
           await getBoxVersionScanQueue().add('scan', {
-            agencyId:    tracking.agencyId,
-            clientId:    tracking.clientId,
-            runId:       tracking.runId,
-            boxFolderId: tracking.boxFolderId,
+            ...scanPayload,
             mondayItemId: itemId,
             phase,
           }, {
-            // Dedup: one scan per item per phase per hour
             jobId: `box-version-scan-${itemId}-${phase}-${Math.floor(Date.now() / 3_600_000)}`,
           })
-          app.log.info({ itemId, phase, runId: tracking.runId }, '[monday-webhook] box version scan enqueued')
+          app.log.info({ itemId, phase, runId: scanPayload.runId }, '[monday-webhook] box version scan enqueued')
           dbg(`box-version-scan enqueued for itemId=${itemId} phase=${phase}`)
         } else {
-          app.log.info({ itemId }, '[monday-webhook] no BoxFileTracking for item or its parent — status change ignored')
-          dbg(`no tracking record for itemId=${itemId}`)
+          app.log.info({ itemId }, '[monday-webhook] no Box folder found for Monday item — status change ignored')
+          dbg(`no folder resolved for itemId=${itemId}`)
         }
       }
     }
