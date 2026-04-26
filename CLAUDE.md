@@ -314,6 +314,19 @@ Full spec is in docs/contentnode-spec-v4.md
     Actions: Run All (fires parallel), Generate Brief (Claude), View Outputs (bundle), Delete
     Empty state with first-campaign CTA
 
+## Workflow rules — always follow these, every session
+1. **Never push to main/production directly.** Always push to `staging` branch:
+   `git push origin main:staging`. Only push to `main` when explicitly told to.
+2. **Hold commits until asked.** Batch related fixes into one commit. Do not commit
+   after every change — wait for the user to say push or commit.
+3. **Staging first, always.** Verify on staging before touching production.
+   If staging works and prod doesn't, it's a data/config problem — do not change code.
+4. **Brain intelligence uses Sonnet, never Haiku.** Any AI call that feeds
+   StakeholderPreferenceProfile, BrainAttachment, Insight generation, pattern detection,
+   or style signal extraction must use `claude-sonnet-4-6`. Haiku is only for fast,
+   low-stakes tasks (prompt suggestions, short labels).
+5. **Do not touch working code to fix a data problem.** Diagnose first, ask if unsure.
+
 ## Current session
 - MVP running in production on Railway (API + worker) + Vercel (web).
 - Security audit completed 2026-04-12. Two findings: Docker root user, axios CVE in sendgrid.
