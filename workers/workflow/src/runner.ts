@@ -1149,15 +1149,11 @@ export class WorkflowRunner {
       console.error('[runner] PM agent enqueue failed:', err)
     })
 
-    // Deliver output to Box if a folder is configured — either on the run record
-    // (clientFolderBox, set by webhook or frontend) or on the workflow itself
-    // (boxProjectFolderId, set via Project Routing). Workflow-level config is the
-    // fallback so delivery works even when clientFolderBox wasn't passed at run time.
-    // Manual runs are held until the user clicks "Mark as sent" — only auto-triggered
-    // runs (scheduled, webhook, campaign, api, program) deliver to Box immediately.
-    const AUTO_DELIVER = new Set(['scheduled', 'monday_webhook', 'campaign', 'api', 'program'])
-    const isAutoDelivered = AUTO_DELIVER.has(run.triggerType ?? '')
-    if (finalStatus === 'completed' && workflow.clientId && isAutoDelivered) {
+    // Deliver output to Box whenever a folder is configured — either on the run
+    // (clientFolderBox, set by Monday webhook or frontend) or on the workflow
+    // (boxProjectFolderId, set via Project Routing). Any trigger type delivers;
+    // the rootFolderId check below is the only gate.
+    if (finalStatus === 'completed' && workflow.clientId) {
       const runRecord  = run as unknown as Record<string, unknown>
       const wfRecord   = workflow as unknown as Record<string, unknown>
       const clientObj  = wfRecord.client as Record<string, unknown> | undefined
@@ -1169,8 +1165,26 @@ export class WorkflowRunner {
       const folderIdFromRun = (run.clientFolderBox ?? '')
         .match(/\/folder\/(\d+)/)?.[1] ?? null
 
-      // Use run-level override if present, otherwise fall back to workflow project folder
-      const rootFolderId = folderIdFromRun ?? boxProjectFolderId
+      // Fallback: if no folder on the run, look for an existing BoxFileTracking
+      // record for the same Monday item — covers manual runs where the Monday
+      // webhook already created a folder for this item on a prior run.
+      let folderFromTracking: string | null = null
+      if (!folderIdFromRun && !boxProjectFolderId) {
+        const effectiveMonday = (runRecord.mondayItemId as string | undefined)
+          ?? (runInput.mondaySubItemId as string | undefined)
+          ?? (runInput.mondayItemId as string | undefined)
+        if (effectiveMonday) {
+          const prior = await prisma.boxFileTracking.findFirst({
+            where:   { agencyId: this.agencyId, mondayItemId: effectiveMonday },
+            orderBy: { createdAt: 'desc' },
+            select:  { boxFolderId: true },
+          })
+          folderFromTracking = prior?.boxFolderId ?? null
+        }
+      }
+
+      // Use run-level override → workflow project folder → prior tracking folder
+      const rootFolderId = folderIdFromRun ?? boxProjectFolderId ?? folderFromTracking
 
       if (rootFolderId) {
         const reviewerIds = (run.reviewerIds as string[]) ?? []
