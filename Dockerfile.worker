@@ -14,7 +14,7 @@ COPY packages/storage/package.json packages/storage/
 COPY packages/shared/package.json packages/shared/
 COPY workers/workflow/package.json workers/workflow/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 COPY packages/ packages/
 COPY workers/workflow/ workers/workflow/
