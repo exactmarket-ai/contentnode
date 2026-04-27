@@ -766,12 +766,15 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         typeof (((event.value as Record<string, unknown> | undefined)?.label) as Record<string, unknown> | undefined)?.text === 'string')
     ) && event.pulseId
 
+    app.log.info({ isStatusChange: !!isStatusChange, eventType: event.type, pulseId: event.pulseId }, '[monday-webhook] isStatusChange evaluated')
+
     if (isStatusChange) {
       // Extract the new status label text from the event value payload
       const labelText = ((event.value as Record<string, unknown> | undefined)?.label as Record<string, unknown> | undefined)?.text
       const newStatus = (typeof labelText === 'string' ? labelText : '').trim().toLowerCase()
 
       const phase = classifyMondayStatus(newStatus)
+      app.log.info({ labelText, newStatus, phase }, '[monday-webhook] status change phase')
       dbg(`status change: label="${labelText}" phase=${phase ?? 'ignored'}`)
 
       if (phase) {
@@ -784,6 +787,8 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         const agencyIdForScan = (await prisma.integration.findFirst({ where: { provider: 'monday' }, select: { agencyId: true } }))?.agencyId
                              ?? await getDefaultAgencyId()
 
+        app.log.info({ agencyIdForScan, itemId }, '[monday-webhook] scan lookup start')
+
         let scanPayload: { agencyId: string; clientId: string; runId: string; boxFolderId: string } | null = null
 
         if (agencyIdForScan) {
@@ -795,6 +800,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
             orderBy: { createdAt: 'desc' },
             select:  runSelect,
           })
+          app.log.info({ lookup: 'mondayItemId', itemId, found: !!run, runId: run?.id ?? null }, '[monday-webhook] scan lookup 1')
 
           // 2. Direct subitem match (run created with a subitem selected in canvas)
           if (!run) {
@@ -803,6 +809,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
               orderBy: { createdAt: 'desc' },
               select:  runSelect,
             })
+            app.log.info({ lookup: 'mondaySubItemId', itemId, found: !!run, runId: run?.id ?? null }, '[monday-webhook] scan lookup 2')
             if (run) dbg(`matched via mondaySubItemId=${itemId}`)
           }
 
@@ -814,6 +821,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
                 token2, `query($ids: [ID!]) { items(ids: $ids) { parent_item { id } } }`, { ids: [itemId] }
               )
               const parentItemId = parentData.items?.[0]?.parent_item?.id
+              app.log.info({ lookup: 'parentFallback', itemId, parentItemId: parentItemId ?? null }, '[monday-webhook] scan lookup 3 parent')
               if (parentItemId) {
                 dbg(`subitem ${itemId} → parent ${parentItemId}`)
                 run = await prisma.workflowRun.findFirst({
@@ -821,6 +829,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
                   orderBy: { createdAt: 'desc' },
                   select:  runSelect,
                 })
+                app.log.info({ lookup: 'parentFallback', parentItemId, found: !!run, runId: run?.id ?? null }, '[monday-webhook] scan lookup 3 result')
               }
             } catch (err) {
               app.log.warn({ err, itemId }, '[monday-webhook] subitem parent lookup failed')
@@ -833,14 +842,20 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
               ?? (run.clientFolderBox ?? '').match(/\/folder\/(\d+)/)?.[1]
               ?? null
 
+            app.log.info({ runId: run.id, clientFolderBox: run.clientFolderBox, deliveredBoxFolderId: run.deliveredBoxFolderId, boxFolderId, clientId: run.workflow?.clientId ?? null }, '[monday-webhook] scan run found')
+
             if (boxFolderId && run.workflow?.clientId) {
               scanPayload = { agencyId: run.agencyId, clientId: run.workflow.clientId, runId: run.id, boxFolderId }
               dbg(`WorkflowRun match: runId=${run.id} folderId=${boxFolderId}`)
             } else {
               dbg(`WorkflowRun found but no Box folder: runId=${run.id} clientFolderBox=${run.clientFolderBox}`)
             }
+          } else {
+            app.log.info({ itemId, agencyIdForScan }, '[monday-webhook] scan: no WorkflowRun found by any lookup')
           }
         }
+
+        app.log.info({ hasScanPayload: !!scanPayload }, '[monday-webhook] scan payload check')
 
         if (scanPayload) {
           await getBoxVersionScanQueue().add('scan', {
