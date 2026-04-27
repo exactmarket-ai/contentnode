@@ -2052,6 +2052,7 @@ interface AttachedTemplate {
   id: string
   name: string
   assignmentId: string
+  isShared?: boolean
 }
 
 export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: { clientId: string; clientName: string; initialVerticalId?: string }) {
@@ -2117,7 +2118,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       .then((r) => r.ok ? r.json() : null)
       .then((json) => {
         const t = json?.data
-        if (t?.id) setAttachedTemplate({ id: t.id, name: t.name, assignmentId: t.assignmentId })
+        if (t?.id) setAttachedTemplate({ id: t.id, name: t.name, assignmentId: t.assignmentId, isShared: t.assignmentClientId != null && t.assignmentClientId !== clientId })
       })
       .catch(() => {})
   }, [clientId, selectedVertical])
@@ -2521,12 +2522,12 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
               <div
                 className="flex items-center gap-1.5 rounded border border-border bg-background px-2 py-1 text-[11px]"
                 style={{ maxWidth: 180 }}
-                title={attachedTemplate.name}
+                title={attachedTemplate.isShared ? 'Shared template' : attachedTemplate.name}
               >
                 <svg className="h-3 w-3 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <span className="truncate text-muted-foreground">{attachedTemplate.name}</span>
+                <span className="truncate text-muted-foreground">{attachedTemplate.isShared ? 'Shared template' : attachedTemplate.name}</span>
                 {canManageTemplates && (
                   <button
                     onClick={removeTemplate}

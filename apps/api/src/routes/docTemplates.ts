@@ -700,9 +700,8 @@ export async function docTemplateRoutes(app: FastifyInstance) {
         OR: [
           ...(clientId   ? [{ clientId }]   : []),
           ...(verticalId ? [{ verticalId }] : []),
-          // docType/agencyDefault only match agency-wide assignments (no clientId set)
-          ...(docType    ? [{ docType, clientId: null }]    : []),
-          { agencyDefault: true, clientId: null },
+          ...(docType    ? [{ docType }]    : []),
+          { agencyDefault: true },
         ],
       },
       include: { template: { select: { id: true, name: true, docType: true, processedKey: true, confirmedVars: true } } },
@@ -716,6 +715,7 @@ export async function docTemplateRoutes(app: FastifyInstance) {
     scored.sort((a, b) => b.score - a.score)
 
     const best = scored[0] ?? null
-    return reply.send({ data: best ? { ...best.template, assignmentId: best.id } : null })
+    // Include the assignment's clientId so the UI can detect cross-client shared templates
+    return reply.send({ data: best ? { ...best.template, assignmentId: best.id, assignmentClientId: best.clientId } : null })
   })
 }
