@@ -487,4 +487,8 @@ async function shutdown() {
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
 
-console.log('[worker] all queues registered and listening')
+console.log('[worker] all queues registered and listening', {
+  boxVersionScan: QUEUE_BOX_VERSION_SCAN,
+  workflowRuns:   QUEUE_WORKFLOW_RUNS,
+  prefix:         process.env.QUEUE_ENV_PREFIX ?? '(none)',
+})

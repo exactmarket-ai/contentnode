@@ -866,8 +866,6 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
             ...scanPayload,
             mondayItemId: itemId,
             phase,
-          }, {
-            jobId: `box-version-scan-${itemId}-${phase}-${Math.floor(Date.now() / 3_600_000)}`,
           })
           app.log.info({ itemId, phase, runId: scanPayload.runId }, '[monday-webhook] box version scan enqueued')
           dbg(`box-version-scan enqueued for itemId=${itemId} phase=${phase}`)
