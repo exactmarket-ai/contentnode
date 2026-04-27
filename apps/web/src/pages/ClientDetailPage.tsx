@@ -7180,10 +7180,14 @@ export function ClientDetailPage() {
   // Tabs that live under the "Settings" group
   const SETTINGS_TABS: Tab[] = ['brain', 'library', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
   // Tabs rendered before the Demand Gen group button
-  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : [])]
-  // Tabs rendered after the Demand Gen group button
-  const POST_DEMAND_GEN_TABS: Tab[] = ['branding', 'thought-leadership', 'programs', 'workflows', 'reviews', 'deliverables', 'insights']
-  const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS]
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), 'programs']
+  // Tabs rendered between Demand Gen and Research group buttons
+  const POST_DEMAND_GEN_TABS: Tab[] = ['thought-leadership']
+  // Tabs rendered between Research group button and admin-only tabs
+  const POST_RESEARCH_TABS: Tab[] = ['workflows']
+  // Admin-only tabs rendered after workflows
+  const ADMIN_ONLY_TABS: Tab[] = ['reviews', 'deliverables', 'insights']
+  const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS, ...POST_RESEARCH_TABS, ...(isAdmin ? ADMIN_ONLY_TABS : [])]
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
@@ -7269,19 +7273,49 @@ export function ClientDetailPage() {
           <Icons.Search className="h-3 w-3" />
           Research
         </button>
-        {/* Settings group entry point */}
-        <button
-          onClick={() => switchTab('structure')}
-          className={cn(
-            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-            inSettings
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Icons.Settings className="h-3 w-3" />
-          Settings
-        </button>
+        {POST_RESEARCH_TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => switchTab(tab)}
+            className={cn(
+              'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+              activeTab === tab
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
+        {isAdmin && ADMIN_ONLY_TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => switchTab(tab)}
+            className={cn(
+              'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+              activeTab === tab
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
+        {/* Settings group entry point — admin only */}
+        {isAdmin && (
+          <button
+            onClick={() => switchTab('structure')}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+              inSettings
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Icons.Settings className="h-3 w-3" />
+            Settings
+          </button>
+        )}
       </div>
 
       {/* Demand Gen sub-tab row — only visible when a demand gen tab is active */}
