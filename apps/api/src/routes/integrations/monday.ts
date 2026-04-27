@@ -758,20 +758,24 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     }
 
     // ── Box version scan: fires on stage/status column changes ────────────────
-    // Also catches change_column_value events on status columns (Monday fires this
-    // instead of change_status_column_value for subitem board status changes).
-    const isStatusChange = (
-      event.type === 'change_status_column_value' ||
-      (event.type === 'change_column_value' &&
-        typeof (((event.value as Record<string, unknown> | undefined)?.label) as Record<string, unknown> | undefined)?.text === 'string')
-    ) && event.pulseId
+    const rawValue = event.value as Record<string, unknown> | null
+    const rawLabel = rawValue?.label as Record<string, unknown> | null
+    const labelText = typeof rawLabel?.text === 'string' ? rawLabel.text : ''
 
-    app.log.info({ isStatusChange: !!isStatusChange, eventType: event.type, pulseId: event.pulseId }, '[monday-webhook] isStatusChange evaluated')
+    app.log.info({ eventType: event.type, labelText, pulseId: event.pulseId }, '[monday-webhook] isStatusChange pre-check')
+
+    const isStatusChange = !!(
+      event.pulseId && (
+        event.type === 'change_status_column_value' ||
+        (event.type === 'update_column_value' && labelText.length > 0) ||
+        (event.type === 'change_column_value' && labelText.length > 0)
+      )
+    )
+
+    app.log.info({ isStatusChange, eventType: event.type, labelText, pulseId: event.pulseId }, '[monday-webhook] isStatusChange evaluated')
 
     if (isStatusChange) {
-      // Extract the new status label text from the event value payload
-      const labelText = ((event.value as Record<string, unknown> | undefined)?.label as Record<string, unknown> | undefined)?.text
-      const newStatus = (typeof labelText === 'string' ? labelText : '').trim().toLowerCase()
+      const newStatus = labelText.trim().toLowerCase()
 
       const phase = classifyMondayStatus(newStatus)
       app.log.info({ labelText, newStatus, phase }, '[monday-webhook] status change phase')
