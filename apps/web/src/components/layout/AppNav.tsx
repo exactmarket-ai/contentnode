@@ -208,9 +208,9 @@ const NAV_ITEMS = [
 ]
 
 const BOTTOM_NAV_ITEMS = [
-  { to: '/access',   icon: Icons.ShieldCheck, label: 'Access',   ...ACTIVE },
-  { to: '/team',     icon: Icons.UserCog,     label: 'Team',     ...ACTIVE },
-  { to: '/settings', icon: Icons.Settings2,   label: 'Settings', ...ACTIVE },
+  { to: '/access',   icon: Icons.ShieldCheck, label: 'Access',   ...ACTIVE, adminOnly: true },
+  { to: '/team',     icon: Icons.UserCog,     label: 'Team',     ...ACTIVE, adminOnly: true },
+  { to: '/settings', icon: Icons.Settings2,   label: 'Settings', ...ACTIVE, adminOnly: true },
   { to: '/theme',    icon: Icons.Palette,     label: 'Theme',    activeBg: '#fdf5ff', activeText: '#a200ee', activeBorder: '#e9c8ff', ownerOnly: true },
 ]
 
@@ -371,7 +371,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
             )}
           </>
         )}
-        {BOTTOM_NAV_ITEMS.filter((item) => !('ownerOnly' in item) || isOwner).map((item) => (
+        {BOTTOM_NAV_ITEMS.filter((item) => (!('ownerOnly' in item) || isOwner) && (!('adminOnly' in item) || isAdmin)).map((item) => (
           <NavItem key={item.to} {...item} collapsed={collapsed} />
         ))}
         {/* Invite — admin/owner only */}
