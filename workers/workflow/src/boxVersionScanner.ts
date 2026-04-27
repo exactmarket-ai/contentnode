@@ -225,7 +225,6 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
   const { agencyId, clientId, runId, boxFolderId, mondayItemId, phase } = job.data
 
   await withAgency(agencyId, async () => {
-    const token = await getBoxToken(agencyId)
     const scanStartedAt = new Date()
 
     // 1. Load WorkflowRun — need output for original text and deliveryBoxFileId
@@ -247,7 +246,11 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
     )
     const originalFileId  = run.deliveryBoxFileId ?? null
 
-    // 2. List all files in the delivery folder
+    // 2. Get a fresh Box token immediately before the first API call — refresh happens
+    //    here if the token is expired, not reactively after a failed listing attempt.
+    const token = await getBoxToken(agencyId)
+
+    // 3. List all files in the delivery folder
     let files: BoxFileItem[]
     try {
       files = await listFolderFiles(token, boxFolderId)

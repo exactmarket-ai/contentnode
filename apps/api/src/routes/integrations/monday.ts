@@ -841,12 +841,18 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
           }
 
           if (run) {
+            const tracking = await prisma.boxFileTracking.findFirst({
+              where:   { agencyId: run.agencyId, runId: run.id },
+              orderBy: { createdAt: 'desc' },
+              select:  { boxFolderId: true },
+            })
             const boxFolderId =
               run.deliveredBoxFolderId
+              ?? tracking?.boxFolderId
               ?? (run.clientFolderBox ?? '').match(/\/folder\/(\d+)/)?.[1]
               ?? null
 
-            app.log.info({ runId: run.id, clientFolderBox: run.clientFolderBox, deliveredBoxFolderId: run.deliveredBoxFolderId, boxFolderId, clientId: run.workflow?.clientId ?? null }, '[monday-webhook] scan run found')
+            app.log.info({ runId: run.id, clientFolderBox: run.clientFolderBox, deliveredBoxFolderId: run.deliveredBoxFolderId, trackingFolderId: tracking?.boxFolderId ?? null, boxFolderId, clientId: run.workflow?.clientId ?? null }, '[monday-webhook] scan run found')
 
             if (boxFolderId && run.workflow?.clientId) {
               scanPayload = { agencyId: run.agencyId, clientId: run.workflow.clientId, runId: run.id, boxFolderId }
