@@ -152,8 +152,8 @@ export function ImageGenerationConfig({
   nodeRunStatus?: { status?: string; output?: unknown }
   nodeLabel?: string
 }) {
-  const provider = (config.provider as string) ?? 'dalle3'
-  const support  = PROVIDER_SUPPORT[provider] ?? PROVIDER_SUPPORT.dalle3
+  const provider = (config.provider as string) ?? 'gptimage2'
+  const support  = PROVIDER_SUPPORT[provider] ?? PROVIDER_SUPPORT.gptimage2
   const [seedLocked, setSeedLocked] = useState((config.seed as number | null) != null)
 
   // Extract generated assets from run output OR stored config assets

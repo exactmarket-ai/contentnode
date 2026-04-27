@@ -451,11 +451,11 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   },
   {
     type: 'output', subtype: 'image-generation',
-    label: 'Image Generation', description: 'Generate images from a prompt using DALL-E 3, Stability AI, or Fal.ai',
+    label: 'Image Generation', description: 'Generate images from a prompt using GPT Image 2, DALL-E 3, or Fal.ai',
     category: 'media', icon: 'Image',
     defaultConfig: {
       subtype: 'image-generation',
-      provider: 'dalle3',
+      provider: 'gptimage2',
       aspect_ratio: '1:1',
       quality: 'standard',
       num_outputs: 1,
