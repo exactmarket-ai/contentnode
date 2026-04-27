@@ -6,6 +6,7 @@ import { prisma, auditService, usageEventService } from '@contentnode/database'
 import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue, getClientBrainProcessQueue, getClientVerticalBrainProcessQueue } from '../lib/queues.js'
+import { requireRole } from '../plugins/auth.js'
 import { markStaleIfBrainChanged } from './templateLibrary.js'
 import { seedDefaultTasksForClient } from '../lib/defaultScheduledTasks.js'
 import { getClerkUserNames } from '../lib/clerk.js'
@@ -4865,9 +4866,10 @@ Example format: {"field1":"value1","field2":"value2"}`,
     }
   )
 
-  // DELETE attachment
+  // DELETE attachment — Admin only
   app.delete<{ Params: { clientId: string; attachmentId: string } }>(
     '/:clientId/brain/attachments/:attachmentId',
+    { preHandler: requireRole('owner', 'admin') },
     async (req, reply) => {
       const { agencyId } = req.auth
       const { clientId, attachmentId } = req.params

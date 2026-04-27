@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,12 +69,14 @@ function SourceBadge({ source, label }: { source: string; label: string }) {
 function MasterBrainRow({
   doc,
   clientId,
+  isAdmin,
   onDelete,
   onSummaryUpdated,
   onScopeToggled,
 }: {
   doc: MasterBrainEntry
   clientId: string
+  isAdmin: boolean
   onDelete: (doc: MasterBrainEntry) => void
   onSummaryUpdated: (id: string, table: string, summary: string) => void
   onScopeToggled: (id: string, table: string, campaignScopedOnly: boolean) => void
@@ -202,7 +205,7 @@ function MasterBrainRow({
     return <span className="text-[10px] font-medium text-green-600 dark:text-green-400">✓ Interpreted</span>
   }
 
-  const canDelete = doc.table === 'client_brain_attachments'
+  const canDelete = doc.table === 'client_brain_attachments' && isAdmin
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -395,6 +398,8 @@ export function ClientBrainTab({
   clientId: string
   clientName: string
 }) {
+  const { isAdmin } = useCurrentUser()
+
   // Direct upload state (source='client')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -778,6 +783,7 @@ export function ClientBrainTab({
                 key={`${doc.table}:${doc.id}`}
                 doc={doc}
                 clientId={clientId}
+                isAdmin={isAdmin}
                 onDelete={handleDelete}
                 onSummaryUpdated={(id, table, summary) =>
                   setAllDocs((prev) => prev.map((d) =>
