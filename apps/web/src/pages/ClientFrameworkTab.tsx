@@ -1190,18 +1190,24 @@ function S16({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
     <div>
       <FwSectionHeader num="16" title="Content Funnel Mapping" usedIn={SECTIONS[15].usedIn} />
       <FwHelp>Mapping assets to funnel stages ensures CTAs point to the right next step.</FwHelp>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Funnel Stage Table</p>
+        <button onClick={() => set((d) => { d.s16.funnelStages.push({ stage: '', assets: '', primaryCTA: '', buyerState: '' }) })} className="text-xs text-blue-500 hover:text-blue-700 font-medium">+ Add Row</button>
+      </div>
       <div className="mb-6">
-        <FwTable headers={['Funnel Stage', 'Assets at This Stage', 'Primary CTA from This Stage', 'Buyer State']}>
+        <FwTable headers={['Funnel Stage', 'Assets at This Stage', 'Primary CTA from This Stage', 'Buyer State', '']}>
           {fw.s16.funnelStages.map((row, i) => (
             <tr key={i} className="border-b border-border">
               <FwTableCell><FwTableTextarea value={row.stage} onChange={(v) => set((d) => { d.s16.funnelStages[i].stage = v })} rows={3} placeholder="Funnel stage…" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.assets} onChange={(v) => set((d) => { d.s16.funnelStages[i].assets = v })} rows={3} placeholder="Assets…" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.primaryCTA} onChange={(v) => set((d) => { d.s16.funnelStages[i].primaryCTA = v })} rows={3} placeholder="Primary CTA…" /></FwTableCell>
               <FwTableCell><FwTableTextarea value={row.buyerState} onChange={(v) => set((d) => { d.s16.funnelStages[i].buyerState = v })} rows={3} placeholder="Buyer state / intent signal…" /></FwTableCell>
+              <FwTableCell>{fw.s16.funnelStages.length > 1 && <button onClick={() => set((d) => { d.s16.funnelStages.splice(i, 1) })} className="text-red-400 hover:text-red-600 text-xs">✕</button>}</FwTableCell>
             </tr>
           ))}
         </FwTable>
       </div>
+      <AddButton onClick={() => set((d) => { d.s16.funnelStages.push({ stage: '', assets: '', primaryCTA: '', buyerState: '' }) })} label="Add Row" />
       <FwField>
         <FwLabel>CTA Sequencing Notes</FwLabel>
         <FwHelp>Describe how the CTAs should chain together — what does each asset lead to next?</FwHelp>
