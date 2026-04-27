@@ -146,8 +146,8 @@ async function downloadFileText(token: string, fileId: string, filename: string)
 
   if (filename.toLowerCase().endsWith('.docx')) {
     const { default: mammoth } = await import('mammoth')
-    const buf = Buffer.from(await fileRes.arrayBuffer())
-    const result = await mammoth.extractRawText({ buffer: buf })
+    const fileBuffer = Buffer.from(new Uint8Array(await fileRes.arrayBuffer()))
+    const result = await mammoth.extractRawText({ buffer: fileBuffer })
     return result.value
   }
 
