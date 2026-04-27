@@ -536,6 +536,13 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 
   // ── POST /webhook — receive Monday events (no Clerk auth — called by Monday) ─
   app.post('/webhook', async (req, reply) => {
+    // Always log every incoming request before any validation or processing
+    app.log.info(
+      { method: req.method, url: req.url, headers: req.headers, body: req.body },
+      '[monday-webhook] INCOMING REQUEST'
+    )
+
+    try {
     const body = req.body as Record<string, unknown>
     const debugMode = (req.query as Record<string, string>).debug === '1'
     const debugLog: string[] = []
@@ -833,6 +840,10 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ ok: true, debug: debugLog })
+    } catch (err) {
+      app.log.error({ err }, '[monday-webhook] unhandled error — returning 200 to prevent Monday failure')
+      return reply.send({ ok: true })
+    }
   })
 }
 
