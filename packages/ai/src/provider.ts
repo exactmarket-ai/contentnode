@@ -1,6 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 
+const BASE_SYSTEM = 'Use US English spelling, grammar, and idioms throughout (e.g. "color" not "colour", "organize" not "organise", "license" not "licence"). Apply this unless the prompt explicitly instructs a different locale.'
+
+function buildSystem(custom?: string): string {
+  return custom ? `${BASE_SYSTEM}\n\n${custom}` : BASE_SYSTEM
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +82,7 @@ async function callAnthropic(config: ModelConfig, prompt: string, images?: Image
   const response = await client.messages.create({
     model: config.model,
     max_tokens: config.max_tokens ?? 4096,
-    ...(config.system_prompt ? { system: config.system_prompt } : {}),
+    system: buildSystem(config.system_prompt),
     messages,
   })
 
@@ -106,7 +112,7 @@ async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelRes
   const client = new OpenAI({ apiKey })
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    ...(config.system_prompt ? [{ role: 'system' as const, content: config.system_prompt }] : []),
+    { role: 'system' as const, content: buildSystem(config.system_prompt) },
     { role: 'user', content: prompt },
   ]
 
@@ -149,9 +155,7 @@ async function callOllama(config: ModelConfig, prompt: string): Promise<ModelRes
     model: config.model,
     stream: false,
     messages: [
-      ...(config.system_prompt
-        ? [{ role: 'system', content: config.system_prompt }]
-        : []),
+      { role: 'system', content: buildSystem(config.system_prompt) },
       { role: 'user', content: prompt },
     ],
     options: {
