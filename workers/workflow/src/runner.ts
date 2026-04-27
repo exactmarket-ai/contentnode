@@ -1264,20 +1264,20 @@ export class WorkflowRunner {
             ? await ensureBoxSubfolder(this.agencyId, effectiveRootFolderId, subfolder)
             : effectiveRootFolderId
 
-          // Helper: write URL + optional status back to Monday after delivery
-          // Uses subitem if selected, otherwise parent item
+          // Helper: write URL + optional status back to Monday after delivery.
+          // URL goes to the PARENT item (Test 1) — that's where the Box URL column lives.
+          // Status goes to the subitem (Sub 2) when one is selected, otherwise parent.
           const writeMonday = async (boxUrl: string) => {
-            if (!mondayWriteItemId || !mondayWriteBoardId) return
-            if (mondayColumn) {
+            if (mondayColumn && mondayItemId && mondayBoardId) {
               await writeFileUrlToMonday({
                 agencyId:    this.agencyId,
-                boardId:     mondayWriteBoardId,
-                itemId:      mondayWriteItemId,
+                boardId:     mondayBoardId,
+                itemId:      mondayItemId,
                 columnTitle: mondayColumn,
                 url:         boxUrl,
               }).catch((err) => console.error('[runner] Monday URL writeback failed:', err))
             }
-            if (mondayStatus) {
+            if (mondayStatus && mondayWriteItemId && mondayWriteBoardId) {
               await setMondayStatus({
                 agencyId:    this.agencyId,
                 boardId:     mondayWriteBoardId,
