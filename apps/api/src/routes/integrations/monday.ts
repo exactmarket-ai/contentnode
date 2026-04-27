@@ -598,10 +598,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 
       if (!agencyId) {
         app.log.error('[monday-webhook] no agencyId — skipping Box folder creation')
-        return reply.send({ ok: true, debug: debugLog })
-      }
-
-      try {
+      } else { boxFolderCreation: try {
         const token   = await getMondayToken(agencyId)
         const boardId = String(event.boardId)
         const itemId  = String(event.pulseId)
@@ -642,7 +639,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         const folderName = subProjectCol?.text?.trim()
         dbg(`subProjectCol="${subProjectCol?.title}" folderName="${folderName}"`)
         app.log.info({ subProjectColTitle: subProjectCol?.title, folderName }, '[monday-webhook] sub project check')
-        if (!folderName) return reply.send({ ok: true, debug: debugLog })
+        if (!folderName) { dbg('sub project empty on this item — skipping Box folder creation'); break boxFolderCreation }
 
         // Skip if Box folder URL already set for this item (dedup)
         const existingBoxCol = colValues.find(
@@ -652,7 +649,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         app.log.info({ existingBoxText: existingBoxCol?.text }, '[monday-webhook] dedup check')
         if (existingBoxCol?.text?.trim()) {
           app.log.info({ itemId, folderName }, '[monday-webhook] Box folder already set — skipping')
-          return reply.send({ ok: true, debug: debugLog })
+          break boxFolderCreation
         }
 
         // Match board → ContentNode client by board name, run inside agency context
@@ -753,11 +750,17 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         const errMsg = err instanceof Error ? err.message : String(err)
         dbg(`ERROR: ${errMsg}`)
         app.log.error({ err }, '[monday-webhook] Box folder creation failed')
-      }
+      } } // end boxFolderCreation / else
     }
 
     // ── Box version scan: fires on stage/status column changes ────────────────
-    const isStatusChange = event.type === 'change_status_column_value' && event.pulseId
+    // Also catches change_column_value events on status columns (Monday fires this
+    // instead of change_status_column_value for subitem board status changes).
+    const isStatusChange = (
+      event.type === 'change_status_column_value' ||
+      (event.type === 'change_column_value' &&
+        typeof (((event.value as Record<string, unknown> | undefined)?.label) as Record<string, unknown> | undefined)?.text === 'string')
+    ) && event.pulseId
 
     if (isStatusChange) {
       // Extract the new status label text from the event value payload
