@@ -18,6 +18,19 @@ export interface ScrapeResult {
 
 const TIMEOUT_MS    = 20_000
 const FIRECRAWL_KEY = process.env.FIRECRAWL_API_KEY
+
+// Block requests to private/internal IP ranges (SSRF protection)
+const PRIVATE_HOST = /^(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|::1|0:0:0:0:0:0:0:1)$/i
+const PRIVATE_CIDR = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|fc[0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i
+
+function assertPublicUrl(raw: string): void {
+  let parsed: URL
+  try { parsed = new URL(raw) } catch { throw new Error(`Invalid URL: ${raw}`) }
+  const h = parsed.hostname
+  if (PRIVATE_HOST.test(h) || PRIVATE_CIDR.test(h)) {
+    throw new Error(`SSRF blocked: private/internal URL not permitted (${h})`)
+  }
+}
 const JINA_KEY      = process.env.JINA_API_KEY   // optional — raises Jina rate limit
 const USER_AGENT    = 'Mozilla/5.0 (compatible; ContentNode/1.0; +https://contentnode.ai)'
 
@@ -96,6 +109,7 @@ async function fetchRaw(url: string): Promise<string | null> {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function fetchPage(url: string): Promise<ScrapeResult | null> {
+  assertPublicUrl(url) // throws for private/internal IPs
   // 1. Firecrawl
   const fc = await fetchViaFirecrawl(url)
   if (fc && fc.length > 100) return { text: fc, source: 'firecrawl' }

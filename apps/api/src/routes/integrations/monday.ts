@@ -535,10 +535,11 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
   })
 
   // ── POST /webhook — receive Monday events (no Clerk auth — called by Monday) ─
-  app.post('/webhook', async (req, reply) => {
-    // Always log every incoming request before any validation or processing
+  app.post('/webhook', { config: { rateLimit: { max: 500, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const _b = req.body as Record<string, unknown>
+    const _e = _b?.event as Record<string, unknown> | undefined
     app.log.info(
-      { method: req.method, url: req.url, headers: req.headers, body: req.body },
+      { eventType: _e?.type, pulseId: _e?.pulseId, boardId: _e?.boardId },
       '[monday-webhook] INCOMING REQUEST'
     )
 

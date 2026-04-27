@@ -73,7 +73,7 @@ const DEV_CLIENT_ID = process.env.DEV_CLIENT_ID ?? 'client_alpha'
 export async function runRoutes(app: FastifyInstance) {
   // ── POST / — trigger a workflow run ───────────────────────────────────────
   app.post('/', async (req, reply) => {
-    req.log.info({ body: req.body }, '[runs] incoming body')
+    req.log.info({ workflowId: (req.body as Record<string, unknown>)?.workflowId }, '[runs] incoming')
     const parsed = createRunBody.safeParse(req.body)
     if (!parsed.success) {
       req.log.warn({ issues: parsed.error.issues }, '[runs] validation failed')

@@ -15,7 +15,7 @@ const DEV_MODE = !CLERK_SECRET_KEY || CLERK_SECRET_KEY === 'sk_test_...'
 // explicitly skips /portal/* routes (see plugins/auth.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TOKEN_TTL_DAYS = 30
+const TOKEN_TTL_DAYS = 7
 
 /** Resolve a DeliverableAccess token.
  *  Returns { access, stakeholder, run } or null.
