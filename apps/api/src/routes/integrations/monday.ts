@@ -760,16 +760,16 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
     // ── Box version scan: fires on stage/status column changes ────────────────
     const rawValue = event.value as Record<string, unknown> | null
     const rawLabel = rawValue?.label as Record<string, unknown> | null
-    const labelText = typeof rawLabel?.text === 'string' ? rawLabel.text : ''
+    const labelText = typeof rawLabel?.text === 'string' ? rawLabel.text.trim() : ''
 
     app.log.info({ eventType: event.type, labelText, pulseId: event.pulseId }, '[monday-webhook] isStatusChange pre-check')
 
     const isStatusChange = !!(
       event.pulseId && (
         event.type === 'change_status_column_value' ||
-        (event.type === 'update_column_value' && labelText.length > 0) ||
-        (event.type === 'change_column_value' && labelText.length > 0)
-      )
+        event.type === 'update_column_value' ||
+        event.type === 'change_column_value'
+      ) && labelText.length > 0
     )
 
     app.log.info({ isStatusChange, eventType: event.type, labelText, pulseId: event.pulseId }, '[monday-webhook] isStatusChange evaluated')
@@ -889,16 +889,12 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 // ── Status classification ─────────────────────────────────────────────────────
 
 function classifyMondayStatus(status: string): 'client_review' | 'client_final' | null {
-  // status is already .trim().toLowerCase() at the call site
-  const CLIENT_REVIEW_TERMS = [
-    'client review', 'in review', 'under review', 'review',
-    'sent to client', 'awaiting review',
-    'copy4cr', 'copy for client review',
-  ]
-  const CLIENT_FINAL_TERMS  = ['final', 'approved', 'complete', 'done', 'sign off', 'signed off', 'client approved', 'closed']
+  // status is already .trim().toLowerCase() at the call site — exact match, case-insensitive
+  const CLIENT_REVIEW = new Set(['copy4cr', 'copyrev', 'design4cr', 'designrev', 'video-prodrev', 'video-pmmrev', 'brandrev'])
+  const CLIENT_FINAL  = new Set(['completed'])
 
-  if (CLIENT_REVIEW_TERMS.some(t => status.includes(t))) return 'client_review'
-  if (CLIENT_FINAL_TERMS.some(t => status.includes(t)))  return 'client_final'
+  if (CLIENT_REVIEW.has(status)) return 'client_review'
+  if (CLIENT_FINAL.has(status))  return 'client_final'
   return null
 }
 
