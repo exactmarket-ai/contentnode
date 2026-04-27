@@ -1225,7 +1225,7 @@ export class WorkflowRunner {
         const mondaySubItemBoardId = (runInput.mondaySubItemBoardId as string | undefined) ?? null
         const mondaySubItemName    = (runInput.mondaySubItemName as string | undefined) ?? null
         const mondayWriteItemId    = mondaySubItemId ?? mondayItemId
-        const mondayWriteBoardId   = mondayBoardId
+        const mondayWriteBoardId   = mondaySubItemId ? (mondaySubItemBoardId ?? mondayBoardId) : mondayBoardId
 
         // Create a per-run subfolder inside the project folder (name: {subitem}-{topic}-{date} or {topic}-{date})
         let effectiveRootFolderId = rootFolderId
