@@ -328,84 +328,164 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
       })
     }
 
-    // 4. Update or create StakeholderPreferenceProfile with weighted signals
-    if (stakeholderId && diffResult.confidence > 0.2) {
-      const now      = new Date()
-      const existing = await prisma.stakeholderPreferenceProfile.findUnique({
-        where: { stakeholderId },
-      })
+    // 4. Update or create StakeholderPreferenceProfile (known stakeholder)
+    //    or ClientPreferenceProfile (unknown editor — GAP 2 fallback).
+    //    Every signal above the confidence threshold updates something.
+    if (diffResult.confidence > 0.2) {
+      const now    = new Date()
+      const nowIso = now.toISOString()
 
-      if (existing) {
-        // Lazy decay: apply only if due
-        let tone      = existing.toneSignals      as unknown as WeightedSignal[]
-        let structure = existing.structureSignals as unknown as WeightedSignal[]
-        let reject    = existing.rejectPatterns   as unknown as WeightedSignal[]
+      const toWeighted = (signals: string[]): WeightedSignal[] =>
+        signals.filter(Boolean).map((s) => ({
+          signal:        s.trim(),
+          confidence:    diffResult.confidence * INITIAL_CONFIDENCE,
+          observedCount: 1,
+          firstSeenAt:   nowIso,
+          lastSeenAt:    nowIso,
+          docTypes:      documentType ? [documentType] : [],
+        }))
 
-        if (shouldRunDecay(existing.lastDecayAt, now)) {
-          tone      = applyDecay(tone, now)
-          structure = applyDecay(structure, now)
-          reject    = applyDecay(reject, now)
-        }
-
-        const merged = {
-          toneSignals:      mergeSignals(tone,      diffResult.toneSignals,      diffResult.confidence, now, documentType ?? null),
-          structureSignals: mergeSignals(structure,  diffResult.structureSignals, diffResult.confidence, now, documentType ?? null),
-          rejectPatterns:   mergeSignals(reject,     diffResult.rejectPatterns,   diffResult.confidence, now, documentType ?? null),
-        }
-
-        await prisma.stakeholderPreferenceProfile.update({
+      if (stakeholderId) {
+        // ── Known stakeholder path ────────────────────────────────────────────
+        const existing = await prisma.stakeholderPreferenceProfile.findUnique({
           where: { stakeholderId },
-          data:  {
-            toneSignals:      merged.toneSignals      as never,
-            structureSignals: merged.structureSignals as never,
-            rejectPatterns:   merged.rejectPatterns   as never,
-            revisionCount:    { increment: 1 },
-            lastSignalAt:     now,
-            ...(shouldRunDecay(existing.lastDecayAt, now) ? { lastDecayAt: now } : {}),
-          },
         })
 
-        const newCount = (existing.revisionCount ?? 0) + 1
-        await generateInsightsFromProfile(
-          agencyId, clientId, stakeholderId, newCount,
-          merged.toneSignals, merged.structureSignals, merged.rejectPatterns,
-        )
+        if (existing) {
+          let tone      = existing.toneSignals      as unknown as WeightedSignal[]
+          let structure = existing.structureSignals as unknown as WeightedSignal[]
+          let reject    = existing.rejectPatterns   as unknown as WeightedSignal[]
 
-        // Trigger principle inference every 5 revisions.
-        // jobId deduplicates concurrent enqueues for the same stakeholder.
-        if (newCount >= 5 && newCount % 5 === 0) {
-          await principleInferenceQueue.add(
-            'infer',
-            { agencyId, stakeholderId },
-            {
-              jobId:             `principle-${stakeholderId}-r${newCount}`,
-              removeOnComplete:  { count: 5 },
-              removeOnFail:      { count: 10 },
+          if (shouldRunDecay(existing.lastDecayAt, now)) {
+            tone      = applyDecay(tone, now)
+            structure = applyDecay(structure, now)
+            reject    = applyDecay(reject, now)
+          }
+
+          const merged = {
+            toneSignals:      mergeSignals(tone,      diffResult.toneSignals,      diffResult.confidence, now, documentType ?? null),
+            structureSignals: mergeSignals(structure,  diffResult.structureSignals, diffResult.confidence, now, documentType ?? null),
+            rejectPatterns:   mergeSignals(reject,     diffResult.rejectPatterns,   diffResult.confidence, now, documentType ?? null),
+          }
+
+          await prisma.stakeholderPreferenceProfile.update({
+            where: { stakeholderId },
+            data:  {
+              toneSignals:      merged.toneSignals      as never,
+              structureSignals: merged.structureSignals as never,
+              rejectPatterns:   merged.rejectPatterns   as never,
+              revisionCount:    { increment: 1 },
+              lastSignalAt:     now,
+              ...(shouldRunDecay(existing.lastDecayAt, now) ? { lastDecayAt: now } : {}),
             },
+          })
+
+          const newCount = (existing.revisionCount ?? 0) + 1
+          await generateInsightsFromProfile(
+            agencyId, clientId, stakeholderId, newCount,
+            merged.toneSignals, merged.structureSignals, merged.rejectPatterns,
           )
+
+          if (newCount >= 5 && newCount % 5 === 0) {
+            await principleInferenceQueue.add(
+              'infer',
+              { agencyId, stakeholderId },
+              {
+                jobId:             `principle-${stakeholderId}-r${newCount}`,
+                removeOnComplete:  { count: 5 },
+                removeOnFail:      { count: 10 },
+              },
+            )
+          }
+        } else {
+          await prisma.stakeholderPreferenceProfile.create({
+            data: {
+              stakeholderId,
+              agencyId,
+              toneSignals:      toWeighted(diffResult.toneSignals)      as never,
+              structureSignals: toWeighted(diffResult.structureSignals) as never,
+              rejectPatterns:   toWeighted(diffResult.rejectPatterns)   as never,
+              revisionCount:    1,
+              lastSignalAt:     now,
+              lastDecayAt:      now,
+            },
+          })
         }
       } else {
-        const nowIso = now.toISOString()
-        const toWeighted = (signals: string[]): WeightedSignal[] =>
-          signals.filter(Boolean).map((s) => ({
-            signal:        s.trim(),
-            confidence:    diffResult.confidence * INITIAL_CONFIDENCE,
-            observedCount: 1,
-            firstSeenAt:   nowIso,
-            lastSeenAt:    nowIso,
-            docTypes:      documentType ? [documentType] : [],
-          }))
+        // ── Unknown editor fallback: client-level preference profile (GAP 2) ─
+        const clientProfile = await prisma.clientPreferenceProfile.findUnique({
+          where: { clientId },
+        })
 
-        await prisma.stakeholderPreferenceProfile.create({
+        if (clientProfile) {
+          let tone      = clientProfile.toneSignals      as unknown as WeightedSignal[]
+          let structure = clientProfile.structureSignals as unknown as WeightedSignal[]
+          let reject    = clientProfile.rejectPatterns   as unknown as WeightedSignal[]
+
+          if (shouldRunDecay(clientProfile.lastDecayAt, now)) {
+            tone      = applyDecay(tone, now)
+            structure = applyDecay(structure, now)
+            reject    = applyDecay(reject, now)
+          }
+
+          const merged = {
+            toneSignals:      mergeSignals(tone,      diffResult.toneSignals,      diffResult.confidence, now, documentType ?? null),
+            structureSignals: mergeSignals(structure,  diffResult.structureSignals, diffResult.confidence, now, documentType ?? null),
+            rejectPatterns:   mergeSignals(reject,     diffResult.rejectPatterns,   diffResult.confidence, now, documentType ?? null),
+          }
+
+          await prisma.clientPreferenceProfile.update({
+            where: { clientId },
+            data:  {
+              toneSignals:      merged.toneSignals      as never,
+              structureSignals: merged.structureSignals as never,
+              rejectPatterns:   merged.rejectPatterns   as never,
+              revisionCount:    { increment: 1 },
+              lastSignalAt:     now,
+              ...(shouldRunDecay(clientProfile.lastDecayAt, now) ? { lastDecayAt: now } : {}),
+            },
+          })
+        } else {
+          await prisma.clientPreferenceProfile.create({
+            data: {
+              clientId,
+              agencyId,
+              toneSignals:      toWeighted(diffResult.toneSignals)      as never,
+              structureSignals: toWeighted(diffResult.structureSignals) as never,
+              rejectPatterns:   toWeighted(diffResult.rejectPatterns)   as never,
+              revisionCount:    1,
+              lastSignalAt:     now,
+              lastDecayAt:      now,
+            },
+          })
+        }
+      }
+
+      // ── GAP 3: Agency-level rollup for high-confidence signals ────────────
+      // Signals with confidence > 0.6 are written to the agency brain so
+      // editorial standards improve across all clients over time.
+      if (diffResult.confidence > 0.6) {
+        const rollupContent = [
+          `## Cross-client editorial signal (${attributedTo === 'stakeholder' ? `stakeholder ${stakeholderId}` : `client ${clientId} — unattributed`})`,
+          `Source: Box revision | Confidence: ${Math.round(diffResult.confidence * 100)}%`,
+          '',
+          diffResult.summary,
+          '',
+          diffResult.toneSignals.length      ? `**Tone patterns:** ${diffResult.toneSignals.join('; ')}` : '',
+          diffResult.structureSignals.length ? `**Structure patterns:** ${diffResult.structureSignals.join('; ')}` : '',
+          diffResult.rejectPatterns.length   ? `**Reject patterns:** ${diffResult.rejectPatterns.join('; ')}` : '',
+        ].filter(Boolean).join('\n')
+
+        await prisma.agencyBrainAttachment.create({
           data: {
-            stakeholderId,
             agencyId,
-            toneSignals:      toWeighted(diffResult.toneSignals)      as never,
-            structureSignals: toWeighted(diffResult.structureSignals) as never,
-            rejectPatterns:   toWeighted(diffResult.rejectPatterns)   as never,
-            revisionCount:    1,
-            lastSignalAt:     now,
-            lastDecayAt:      now,
+            filename:      `box-revision-agency-rollup-${boxFileId}.md`,
+            mimeType:      'text/markdown',
+            sizeBytes:     0,
+            extractionStatus: 'pending',
+            summaryStatus: 'ready',
+            summary:       rollupContent,
+            uploadMethod:  'note',
           },
         })
       }

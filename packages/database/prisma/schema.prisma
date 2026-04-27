@@ -75,6 +75,7 @@ model Agency {
   boxFileTrackings               BoxFileTracking[]
   humanizerSignals               HumanizerSignal[]
   stakeholderPreferenceProfiles  StakeholderPreferenceProfile[]
+  clientPreferenceProfiles       ClientPreferenceProfile[]
   stakeholderPrinciples          StakeholderPrinciple[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
@@ -221,6 +222,7 @@ model Client {
   humanizerSignals   HumanizerSignal[]
   programs            Program[]
   programContentPacks ProgramContentPack[]
+  preferenceProfile   ClientPreferenceProfile?
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -2308,6 +2310,31 @@ model StakeholderPreferenceProfile {
 
   @@index([agencyId])
   @@map("stakeholder_preference_profiles")
+}
+
+// ─────────────────────────────────────────────
+// ClientPreferenceProfile — aggregate editorial style profile for signals where
+// the editor identity is unknown. Accumulates WeightedSignals from HumanizerSignals
+// with no resolved stakeholderId. Keyed on clientId, one record per client.
+// ─────────────────────────────────────────────
+model ClientPreferenceProfile {
+  id               String    @id @default(cuid())
+  clientId         String    @unique @map("client_id")
+  agencyId         String    @map("agency_id")
+  toneSignals      Json      @default("[]") @map("tone_signals")
+  structureSignals Json      @default("[]") @map("structure_signals")
+  rejectPatterns   Json      @default("[]") @map("reject_patterns")
+  revisionCount    Int       @default(0) @map("revision_count")
+  lastSignalAt     DateTime? @map("last_signal_at")
+  lastDecayAt      DateTime? @map("last_decay_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  client  Client  @relation(fields: [clientId],  references: [id], onDelete: Cascade)
+  agency  Agency  @relation(fields: [agencyId],  references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@map("client_preference_profiles")
 }
 
 // ─────────────────────────────────────────────

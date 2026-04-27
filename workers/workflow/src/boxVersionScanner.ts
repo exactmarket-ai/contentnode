@@ -18,10 +18,12 @@
 import crypto from 'node:crypto'
 import { prisma, withAgency, auditService } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
-import { Worker, type Job } from 'bullmq'
-import { QUEUE_BOX_VERSION_SCAN, type BoxVersionScanJobData, getConnection } from './queues.js'
+import { Worker, Queue, type Job } from 'bullmq'
+import { QUEUE_BOX_VERSION_SCAN, QUEUE_BOX_DIFF, type BoxVersionScanJobData, type BoxDiffJobData, getConnection } from './queues.js'
 import { getBoxToken } from './boxDelivery.js'
 import { DIFF_EXTRACTION_PROMPT } from './boxDiffProcessor.js'
+
+const boxDiffQueue = new Queue<BoxDiffJobData>(QUEUE_BOX_DIFF, { connection: getConnection() })
 
 const BOX_API_URL = 'https://api.box.com/2.0'
 
@@ -152,6 +154,36 @@ async function downloadFileText(token: string, fileId: string, filename: string)
   }
 
   return fileRes.text()
+}
+
+interface BoxFileMeta {
+  modifiedByEmail: string | null
+  modifiedById:    string | null
+}
+
+async function fetchFileModifiedBy(token: string, fileId: string): Promise<BoxFileMeta> {
+  try {
+    const res = await fetch(
+      `${BOX_API_URL}/files/${fileId}?fields=modified_by,created_by`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!res.ok) {
+      console.warn(`[boxVersionScanner] fetchFileModifiedBy ${fileId} → ${res.status}`)
+      return { modifiedByEmail: null, modifiedById: null }
+    }
+    const body = await res.json() as {
+      modified_by?: { login?: string; id?: string }
+      created_by?:  { login?: string; id?: string }
+    }
+    const actor = body.modified_by ?? body.created_by
+    return {
+      modifiedByEmail: actor?.login ?? null,
+      modifiedById:    actor?.id    ?? null,
+    }
+  } catch (err) {
+    console.warn(`[boxVersionScanner] fetchFileModifiedBy error:`, err)
+    return { modifiedByEmail: null, modifiedById: null }
+  }
 }
 
 async function ensureArchiveFolder(token: string, parentFolderId: string): Promise<string> {
@@ -347,14 +379,46 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       return
     }
 
-    // 6. Resolve stakeholder from BoxFileTracking
-    const tracking = await prisma.boxFileTracking.findFirst({
+    // 6. Resolve stakeholder: first try Box file metadata (modified_by.login),
+    //    then fall back to BoxFileTracking.stakeholderId from the original delivery.
+    const boxMeta = await fetchFileModifiedBy(token, winner.id)
+    const editorEmail = boxMeta.modifiedByEmail
+
+    let resolvedStakeholderId: string | null = null
+    let attributedTo = 'unknown_external'
+
+    if (editorEmail) {
+      const matched = await prisma.stakeholder.findFirst({
+        where:  { agencyId, clientId, email: editorEmail },
+        select: { id: true },
+      })
+      if (matched) {
+        resolvedStakeholderId = matched.id
+        attributedTo = 'stakeholder'
+      }
+      // else: email present but not in system — attributedTo stays 'unknown_external'
+    } else {
+      // No email from Box — fall back to delivery stakeholder (mediated upload)
+      const tracking = await prisma.boxFileTracking.findFirst({
+        where:   { boxFolderId: effectiveFolderId, agencyId },
+        orderBy: { createdAt: 'desc' },
+        select:  { stakeholderId: true },
+      })
+      if (tracking?.stakeholderId) {
+        resolvedStakeholderId = tracking.stakeholderId
+        attributedTo = 'employee'
+      }
+    }
+
+    console.log(`[boxVersionScanner] attribution: attributedTo=${attributedTo} editorEmail=${editorEmail} stakeholderId=${resolvedStakeholderId}`)
+
+    const trackingForFilename = await prisma.boxFileTracking.findFirst({
       where:   { boxFolderId: effectiveFolderId, agencyId },
       orderBy: { createdAt: 'desc' },
-      select:  { stakeholderId: true, filename: true },
+      select:  { filename: true, mondayItemId: true },
     })
-    const stakeholderId = tracking?.stakeholderId ?? null
-    const filename      = tracking?.filename ?? winner.name
+    const filename             = trackingForFilename?.filename ?? winner.name
+    const effectiveMondayItemId = trackingForFilename?.mondayItemId ?? mondayItemId ?? null
 
     // 7. Create HumanizerSignal for primary diff (vs original)
     const primarySource = phase === 'client_final' ? 'client_final' : 'internal_review'
@@ -364,17 +428,33 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
         data: {
           agencyId,
           clientId,
-          stakeholderId,
-          runId:         effectiveRunId,
-          originalText:  originalText || '[original not available]',
-          editedText:    winnerText,
-          diffSummary:   primaryDiff.summary || null,
-          source:        primarySource,
-          attributedTo:  stakeholderId ? 'stakeholder' : 'unknown_external',
-          editorEmail:   null,
-          boxFileId:     winner.id,
-          documentType:  inferDocType(filename),
+          stakeholderId:  resolvedStakeholderId,
+          runId:          effectiveRunId,
+          originalText:   originalText || '[original not available]',
+          editedText:     winnerText,
+          diffSummary:    primaryDiff.summary || null,
+          source:         primarySource,
+          attributedTo,
+          editorEmail,
+          boxFileId:      winner.id,
+          documentType:   inferDocType(filename),
         } as Parameters<typeof prisma.humanizerSignal.create>[0]['data'],
+      })
+
+      // Enqueue boxDiffProcessor to update StakeholderPreferenceProfile / ClientPreferenceProfile
+      await boxDiffQueue.add('process-diff', {
+        agencyId,
+        clientId,
+        runId:         effectiveRunId,
+        stakeholderId: resolvedStakeholderId,
+        boxFileId:     winner.id,
+        mondayItemId:  effectiveMondayItemId,
+        originalText:  originalText || '[original not available]',
+        editedText:    winnerText,
+        attributedTo,
+        editorEmail,
+        filename,
+        documentType:  inferDocType(filename),
       })
     }
 
@@ -394,17 +474,32 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
             data: {
               agencyId,
               clientId,
-              stakeholderId,
-              runId:         effectiveRunId,
-              originalText:  internalReviewSignal.editedText,
-              editedText:    winnerText,
-              diffSummary:   clientDelta.summary || null,
-              source:        'client_delta',       // client's changes on top of internal review
-              attributedTo:  stakeholderId ? 'stakeholder' : 'unknown_external',
-              editorEmail:   null,
-              boxFileId:     winner.id,
-              documentType:  inferDocType(filename),
+              stakeholderId:  resolvedStakeholderId,
+              runId:          effectiveRunId,
+              originalText:   internalReviewSignal.editedText,
+              editedText:     winnerText,
+              diffSummary:    clientDelta.summary || null,
+              source:         'client_delta',
+              attributedTo,
+              editorEmail,
+              boxFileId:      winner.id,
+              documentType:   inferDocType(filename),
             } as Parameters<typeof prisma.humanizerSignal.create>[0]['data'],
+          })
+
+          await boxDiffQueue.add('process-diff', {
+            agencyId,
+            clientId,
+            runId:         effectiveRunId,
+            stakeholderId: resolvedStakeholderId,
+            boxFileId:     `${winner.id}-client_delta`,
+            mondayItemId:  effectiveMondayItemId,
+            originalText:  internalReviewSignal.editedText,
+            editedText:    winnerText,
+            attributedTo,
+            editorEmail,
+            filename,
+            documentType:  inferDocType(filename),
           })
         }
       }
