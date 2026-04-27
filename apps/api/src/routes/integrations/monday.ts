@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto'
+import { timingSafeEqual, createHmac } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { prisma, withAgency, type Prisma } from '@contentnode/database'
 import { requireRole } from '../../plugins/auth.js'
@@ -61,7 +61,9 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
   // Monday webhook bodies are sometimes non-standard JSON (extra whitespace,
   // BOM, or URL-encoded payloads). Register a lenient parser scoped to this
   // plugin so real Monday events aren't rejected before reaching the handler.
-  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    // Stash the raw string so the webhook handler can verify the HMAC signature
+    ;(req as unknown as Record<string, unknown>).rawBody = body as string
     try {
       done(null, JSON.parse(body as string))
     } catch {
@@ -554,15 +556,17 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return reply.send({ challenge: body.challenge })
     }
 
-    // Validate signing secret only when MONDAY_SIGNING_SECRET is explicitly set and non-empty
+    // Validate HMAC-SHA256 signature when MONDAY_SIGNING_SECRET is set and non-empty
     const signingSecret = process.env.MONDAY_SIGNING_SECRET?.trim()
     if (signingSecret) {
-      const auth = ((req.headers.authorization as string) ?? '').replace(/^Bearer\s+/i, '').trim()
-      const provided = Buffer.from(auth)
-      const expected = Buffer.from(signingSecret)
+      const rawBody = ((req as unknown as Record<string, unknown>).rawBody as string) ?? JSON.stringify(body)
+      const sig = (req.headers['x-monday-signature'] as string) ?? ''
+      const digest = 'sha256=' + createHmac('sha256', signingSecret).update(rawBody, 'utf8').digest('hex')
+      const provided = Buffer.from(sig)
+      const expected = Buffer.from(digest)
       const valid = provided.length === expected.length && timingSafeEqual(provided, expected)
       if (!valid) {
-        app.log.warn({ authHeader: auth.slice(0, 10) + '…' }, '[monday-webhook] invalid signing secret')
+        app.log.warn({ sig: sig.slice(0, 15) + '…' }, '[monday-webhook] invalid HMAC signature')
         return reply.code(401).send({ error: 'Invalid webhook signature' })
       }
     }
