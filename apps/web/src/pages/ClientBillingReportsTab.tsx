@@ -81,6 +81,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   'claude-sonnet-4-6': 'Anthropic Sonnet', 'claude-haiku-4-5-20251001': 'Anthropic Haiku',
   'gpt-4o': 'OpenAI GPT-4o', 'gpt-4o-mini': 'OpenAI GPT-4o mini',
   // Image gen
+  gptimage2: 'GPT Image 2', gptimage15: 'GPT Image 1.5', gptimage1mini: 'GPT Image Mini',
   dalle3: 'DALL·E 3', falai: 'FAL AI', fal: 'FAL AI',
   ideogram: 'Ideogram v2', ideogramai: 'Ideogram v2',
   leonardo: 'Leonardo.ai', leonardoai: 'Leonardo.ai',

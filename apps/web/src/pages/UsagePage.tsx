@@ -56,6 +56,9 @@ interface ImageServiceDef { name: string; rateLabel: string }
 interface VideoServiceDef { name: string; rateLabel: string }
 
 const IMAGE_SERVICE_DEFS: ImageServiceDef[] = [
+  { name: 'GPT Image 2',     rateLabel: '$0.02–0.04/img' },
+  { name: 'GPT Image 1.5',   rateLabel: '$0.03–0.06/img' },
+  { name: 'GPT Image Mini',  rateLabel: '$0.011–0.022/img' },
   { name: 'DALL-E 3',        rateLabel: '$0.04–0.12/img' },
   { name: 'Stability SDXL',  rateLabel: '$0.002/img' },
   { name: 'FAL FLUX Dev',    rateLabel: '$0.025/img' },
