@@ -34,7 +34,7 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount]     = useState(0)
   const [open, setOpen]                   = useState(false)
-  const [coords, setCoords]               = useState<{ top: number; left: number } | null>(null)
+  const [coords, setCoords]               = useState<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null)
   const btnRef  = useRef<HTMLButtonElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
 
@@ -70,7 +70,19 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
   const openBell = () => {
     if (open) { setOpen(false); return }
     const rect = btnRef.current!.getBoundingClientRect()
-    setCoords({ top: rect.top, left: rect.right + 8 })
+    const vh = window.innerHeight
+    const POPUP_WIDTH = 320  // w-80
+    const GAP = 8
+    const PADDING = 16
+    const left = Math.min(rect.right + GAP, vh - POPUP_WIDTH - PADDING)
+    // Open upward if less than 40% of viewport remains below the button
+    const spaceBelow = vh - rect.bottom
+    const spaceAbove = rect.top
+    if (spaceBelow < vh * 0.4 && spaceAbove > spaceBelow) {
+      setCoords({ bottom: vh - rect.top, left, maxHeight: Math.max(200, spaceAbove - PADDING) })
+    } else {
+      setCoords({ top: rect.top, left, maxHeight: Math.max(200, spaceBelow - PADDING) })
+    }
     setOpen(true)
   }
 
@@ -94,7 +106,7 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
     ? createPortal(
         <div
           ref={dropRef}
-          style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 }}
+          style={{ position: 'fixed', top: coords.top, bottom: coords.bottom, left: coords.left, zIndex: 9999 }}
           className="w-80 rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
         >
           {/* Header */}
@@ -108,7 +120,7 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
           </div>
 
           {/* List */}
-          <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
+          <div className="overflow-y-auto divide-y divide-gray-50" style={{ maxHeight: coords.maxHeight - 56 }}>
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 gap-2">
                 <Icons.BellOff className="h-6 w-6 text-gray-300" />
