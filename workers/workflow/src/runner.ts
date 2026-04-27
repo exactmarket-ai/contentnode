@@ -1220,7 +1220,8 @@ export class WorkflowRunner {
           ?? (runInput.mondayBoardId as string | undefined)
           ?? (clientObj?.mondayBoardId as string | undefined) ?? null
         // Subitem overrides parent item for Monday writeback when selected
-        const mondaySubItemId      = (runInput.mondaySubItemId as string | undefined) ?? null
+        const mondaySubItemId      = (runRecord.mondaySubItemId as string | undefined)
+          ?? (runInput.mondaySubItemId as string | undefined) ?? null
         const mondaySubItemBoardId = (runInput.mondaySubItemBoardId as string | undefined) ?? null
         const mondaySubItemName    = (runInput.mondaySubItemName as string | undefined) ?? null
         const mondayWriteItemId    = mondaySubItemId ?? mondayItemId
