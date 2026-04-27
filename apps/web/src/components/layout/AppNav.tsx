@@ -202,12 +202,9 @@ function UserAvatar({ avatarUrl, name, email, size = 'sm' }: { avatarUrl: string
 const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d8f5' }
 
 const NAV_ITEMS = [
-  { to: '/my-work',      icon: Icons.House,          label: 'My Work',           ...ACTIVE },
-  { to: '/workflows',    icon: Icons.Workflow,       label: 'Workflows',         ...ACTIVE },
-  { to: '/clients',      icon: Icons.Users,          label: 'Clients',           ...ACTIVE },
-  { to: '/calendar',     icon: Icons.CalendarDays,   label: 'Calendar',          ...ACTIVE },
-  { to: '/usage',        icon: Icons.BarChart2,      label: 'Usage',             ...ACTIVE },
-  { to: '/humanizer',    icon: Icons.BrainCircuit,   label: 'cnHumanizer',       ...ACTIVE },
+  { to: '/my-work',   icon: Icons.House,    label: 'My Work',   ...ACTIVE },
+  { to: '/workflows', icon: Icons.Workflow, label: 'Workflows', ...ACTIVE },
+  { to: '/clients',   icon: Icons.Users,    label: 'Clients',   ...ACTIVE },
 ]
 
 const BOTTOM_NAV_ITEMS = [
@@ -281,7 +278,8 @@ function NavItem({
 
 export function AppNav({ onSignOut }: AppNavProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const { user, isAdmin, isOwner, isManager } = useCurrentUser()
+  const { user, isAdmin, isOwner, isLead } = useCurrentUser()
+  const role = user?.role ?? ''
   const location = useLocation()
   const setPendingNavAction = useWorkflowStore((s) => s.setPendingNavAction)
 
@@ -330,73 +328,49 @@ export function AppNav({ onSignOut }: AppNavProps) {
 
       <div className="my-1 h-px w-full bg-border" />
 
-      {NAV_ITEMS.filter((item) => !('managerOnly' in item) || isManager).map((item) => (
+      {NAV_ITEMS.map((item) => (
         <NavItem key={item.to} {...item} collapsed={collapsed} />
       ))}
 
-      {/* Client Dashboard — admin and above only */}
-      {(isAdmin || isOwner) && (
-        <>
-          <NavItem
-            to="/client-dashboard"
-            collapsed={collapsed}
-            icon={Icons.LayoutDashboard}
-            label="Client Dashboard"
-            {...ACTIVE}
-          />
-          {!collapsed && (
-            <div className="pl-4">
-              <NavItem
-                to="/pipeline"
-                collapsed={collapsed}
-                icon={Icons.Kanban}
-                label="Pipeline"
-                {...ACTIVE}
-              />
-              <NavItem
-                to="/deliverables"
-                collapsed={collapsed}
-                icon={Icons.TableProperties}
-                label="Deliverables"
-                {...ACTIVE}
-              />
-              <NavItem
-                to="/reviews"
-                collapsed={collapsed}
-                icon={Icons.ClipboardEdit}
-                label="Reviews & Runs"
-                {...ACTIVE}
-              />
-              <NavItem
-                to="/quality"
-                collapsed={collapsed}
-                icon={Icons.TrendingUp}
-                label="Quality & Reports"
-                {...ACTIVE}
-              />
-            </div>
-          )}
-        </>
-      )}
-
-      {/* researchNODE — owner / super admin only */}
-      {isOwner && (
-        <>
-          <div className="my-1 h-px w-full bg-border" />
-          <NavItem
-            to="/research"
-            collapsed={collapsed}
-            icon={Icons.Telescope}
-            label="researchNODE"
-            activeBg="#f5f0ff"
-            activeText="#7c3aed"
-            activeBorder="#ddd6fe"
-          />
-        </>
+      {/* researchNODE — Lead, Manager, Admin, Strategist */}
+      {(isLead || role === 'strategist') && (
+        <NavItem
+          to="/research"
+          collapsed={collapsed}
+          icon={Icons.Telescope}
+          label="researchNODE"
+          activeBg="#f5f0ff"
+          activeText="#7c3aed"
+          activeBorder="#ddd6fe"
+        />
       )}
 
       <div className="mt-auto pt-2">
         <div className="my-1 h-px w-full bg-border" />
+
+        {/* Client Dashboard — Admin only */}
+        {isAdmin && (
+          <>
+            <NavItem
+              to="/client-dashboard"
+              collapsed={collapsed}
+              icon={Icons.LayoutDashboard}
+              label="Client Dashboard"
+              {...ACTIVE}
+            />
+            {!collapsed && (
+              <div className="pl-4">
+                <NavItem to="/pipeline"    collapsed={collapsed} icon={Icons.Kanban}          label="Pipeline"         {...ACTIVE} />
+                <NavItem to="/deliverables" collapsed={collapsed} icon={Icons.TableProperties} label="Deliverables"     {...ACTIVE} />
+                <NavItem to="/reviews"     collapsed={collapsed} icon={Icons.ClipboardEdit}   label="Reviews & Runs"   {...ACTIVE} />
+                <NavItem to="/quality"     collapsed={collapsed} icon={Icons.TrendingUp}      label="Quality & Reports" {...ACTIVE} />
+                <NavItem to="/usage"       collapsed={collapsed} icon={Icons.BarChart2}       label="Usage"            {...ACTIVE} />
+                <NavItem to="/calendar"    collapsed={collapsed} icon={Icons.CalendarDays}    label="Calendar"         {...ACTIVE} />
+                <NavItem to="/humanizer"   collapsed={collapsed} icon={Icons.BrainCircuit}    label="cnHumanizer"      {...ACTIVE} />
+              </div>
+            )}
+          </>
+        )}
         {BOTTOM_NAV_ITEMS.filter((item) => !('ownerOnly' in item) || isOwner).map((item) => (
           <NavItem key={item.to} {...item} collapsed={collapsed} />
         ))}
