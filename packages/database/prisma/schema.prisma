@@ -722,6 +722,7 @@ model WorkflowRun {
   clientFolderClient  String?   @db.Text @map("client_folder_client")
   mondayItemId        String?   @map("monday_item_id")
   mondayBoardId       String?   @map("monday_board_id")
+  mondaySubItemId     String?   @map("monday_sub_item_id")
   topic               String?
 
   // Delivery lifecycle — set by PM agent or manual "mark as delivered"

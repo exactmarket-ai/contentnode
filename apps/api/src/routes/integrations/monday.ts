@@ -770,23 +770,36 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       if (phase) {
         const itemId = String(event.pulseId)
 
-        // Primary lookup: WorkflowRun.mondayItemId — this is the authoritative link
-        // between a Monday item and a ContentNode run/folder.
-        // Also try mondaySubItemId (stored in run.input) for subitem events.
+        // Lookup order:
+        //   1. mondayItemId   — run was triggered from the parent item directly
+        //   2. mondaySubItemId — run was triggered with a subitem selected (most common canvas flow)
+        //   3. Parent API fallback — subitem event but neither column matched; resolve parent via Monday API
         const agencyIdForScan = (await prisma.integration.findFirst({ where: { provider: 'monday' }, select: { agencyId: true } }))?.agencyId
                              ?? await getDefaultAgencyId()
 
         let scanPayload: { agencyId: string; clientId: string; runId: string; boxFolderId: string } | null = null
 
         if (agencyIdForScan) {
-          // Try direct mondayItemId match first
+          const runSelect = { id: true, agencyId: true, workflow: { select: { clientId: true } }, clientFolderBox: true, deliveredBoxFolderId: true } as const
+
+          // 1. Direct parent item match
           let run = await prisma.workflowRun.findFirst({
             where:   { agencyId: agencyIdForScan, mondayItemId: itemId },
             orderBy: { createdAt: 'desc' },
-            select:  { id: true, agencyId: true, workflow: { select: { clientId: true } }, clientFolderBox: true, deliveredBoxFolderId: true },
+            select:  runSelect,
           })
 
-          // Subitem fallback: pulseId is the subitem ID, parent item ID may be on the run
+          // 2. Direct subitem match (run created with a subitem selected in canvas)
+          if (!run) {
+            run = await prisma.workflowRun.findFirst({
+              where:   { agencyId: agencyIdForScan, mondaySubItemId: itemId },
+              orderBy: { createdAt: 'desc' },
+              select:  runSelect,
+            })
+            if (run) dbg(`matched via mondaySubItemId=${itemId}`)
+          }
+
+          // 3. Parent API fallback — subitem event, neither column matched yet
           if (!run) {
             try {
               const token2 = await getMondayToken(agencyIdForScan)
@@ -799,7 +812,7 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
                 run = await prisma.workflowRun.findFirst({
                   where:   { agencyId: agencyIdForScan, mondayItemId: parentItemId },
                   orderBy: { createdAt: 'desc' },
-                  select:  { id: true, agencyId: true, workflow: { select: { clientId: true } }, clientFolderBox: true, deliveredBoxFolderId: true },
+                  select:  runSelect,
                 })
               }
             } catch (err) {
