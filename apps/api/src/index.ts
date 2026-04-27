@@ -34,6 +34,7 @@ import { permissionRoutes } from './routes/permissions.js'
 import { divisionRoutes } from './routes/divisions.js'
 import { verticalRoutes } from './routes/verticals.js'
 import { templateLibraryRoutes } from './routes/templateLibrary.js'
+import { kitSessionRoutes } from './routes/kitSessions.js'
 import { voiceProviderRoutes } from './routes/voiceProviders.js'
 import { nodePilotRoutes }     from './routes/nodepilot.js'
 import { demandPilotRoutes }    from './routes/demandpilot.js'
@@ -182,6 +183,7 @@ await app.register(boxIntegrationRoutes,     { prefix: '/api/v1/integrations/box
 await app.register(pipelineRoutes,           { prefix: '/api/v1/pipeline' })
 await app.register(deliverablesRoutes,       { prefix: '/api/v1/deliverables' })
 await app.register(myWorkRoutes,             { prefix: '/api/v1/my-work' })
+await app.register(kitSessionRoutes,         { prefix: '/api/v1/kit-sessions' })
 // Box webhook — public (no auth), verified by HMAC signature
 await app.register(boxFileWebhookRoutes,     { prefix: '/api/v1/webhooks/box-file' })
 

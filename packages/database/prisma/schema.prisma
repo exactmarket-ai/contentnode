@@ -47,6 +47,7 @@ model Agency {
   clientDemandGenBase  ClientDemandGenBase[]
   clientGTMAssessments ClientGTMAssessment[]
   clientFrameworks   ClientFramework[]
+  kitSessions        KitSession[]
   clientVerticals    ClientVertical[]
   verticals          Vertical[]
   frameworkAttachments ClientFrameworkAttachment[]
@@ -199,6 +200,7 @@ model Client {
   demandGenBase   ClientDemandGenBase?
   gtmAssessment   ClientGTMAssessment?
   frameworks      ClientFramework[]
+  kitSessions     KitSession[]
   clientVerticals ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
   frameworkResearch    ClientFrameworkResearch[]
@@ -243,6 +245,7 @@ model Vertical {
   agency     Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   demandGen            ClientDemandGen[]
   frameworks           ClientFramework[]
+  kitSessions          KitSession[]
   clientVerticals      ClientVertical[]
   frameworkAttachments ClientFrameworkAttachment[]
   frameworkResearch    ClientFrameworkResearch[]
@@ -410,6 +413,35 @@ model ClientFrameworkResearch {
   @@unique([clientId, verticalId])
   @@index([agencyId])
   @@map("client_framework_research")
+}
+
+// ─────────────────────────────────────────────
+// KitSession — GTM Kit Generator session state
+// ─────────────────────────────────────────────
+model KitSession {
+  id             String   @id @default(cuid())
+  agencyId       String   @map("agency_id")
+  clientId       String   @map("client_id")
+  verticalId     String   @map("vertical_id")
+  // 'full' | 'quick'
+  mode           String   @default("full")
+  // 'intake' | 'asset_01' .. 'asset_08' | 'delivery' | 'complete'
+  status         String   @default("intake")
+  currentAsset   Int?     @map("current_asset")
+  approvedAssets Json     @default("[]") @map("approved_assets")
+  chatHistory    Json     @default("[]") @map("chat_history")
+  intakeJson     Json?    @map("intake_json")
+  generatedFiles Json     @default("{}") @map("generated_files")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([clientId, verticalId])
+  @@map("kit_sessions")
 }
 
 // ─────────────────────────────────────────────
