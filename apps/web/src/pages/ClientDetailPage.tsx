@@ -7181,13 +7181,11 @@ export function ClientDetailPage() {
   const SETTINGS_TABS: Tab[] = ['brain', 'library', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), 'programs']
-  // Tabs rendered between Demand Gen and Research group buttons
-  const POST_DEMAND_GEN_TABS: Tab[] = ['thought-leadership']
-  // Tabs rendered between Research group button and admin-only tabs
+  // Tabs rendered between Research group button and remaining admin-only tabs
   const POST_RESEARCH_TABS: Tab[] = ['workflows']
   // Admin-only tabs rendered after workflows
   const ADMIN_ONLY_TABS: Tab[] = ['reviews', 'deliverables', 'insights']
-  const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...POST_DEMAND_GEN_TABS, ...POST_RESEARCH_TABS, ...(isAdmin ? ADMIN_ONLY_TABS : [])]
+  const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...(isAdmin ? ['thought-leadership' as Tab] : []), ...POST_RESEARCH_TABS, ...(isAdmin ? ADMIN_ONLY_TABS : [])]
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
@@ -7246,20 +7244,19 @@ export function ClientDetailPage() {
           <Icons.TrendingUp className="h-3 w-3" />
           Demand Gen
         </button>
-        {POST_DEMAND_GEN_TABS.map((tab) => (
+        {isAdmin && (
           <button
-            key={tab}
-            onClick={() => switchTab(tab)}
+            onClick={() => switchTab('thought-leadership')}
             className={cn(
               'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              activeTab === tab
+              activeTab === 'thought-leadership'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {TAB_LABELS[tab]}
+            {TAB_LABELS['thought-leadership']}
           </button>
-        ))}
+        )}
         {/* Research group entry point */}
         <button
           onClick={() => switchTab('company')}
