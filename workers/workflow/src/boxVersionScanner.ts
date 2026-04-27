@@ -240,21 +240,42 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
   await withAgency(agencyId, async () => {
     const scanStartedAt = new Date()
 
-    // 1. Load WorkflowRun — need output for original text and deliveryBoxFileId
+    // 1. Find most recent BoxFileTracking for this client — this is the authoritative
+    //    source for both the delivery folder and the run whose text we diff against.
+    //    The runId in the job data may point to an older run if the webhook fired late.
+    const latestTracking = await prisma.boxFileTracking.findFirst({
+      where:   { agencyId, clientId },
+      orderBy: { createdAt: 'desc' },
+      select:  { boxFolderId: true, runId: true },
+    })
+    const effectiveRunId    = latestTracking?.runId    ?? runId
+    const effectiveFolderId = latestTracking?.boxFolderId ?? boxFolderId
+
+    console.log(`[boxVersionScanner] job runId=${runId} boxFolderId=${boxFolderId} → effective runId=${effectiveRunId} folderId=${effectiveFolderId}`)
+
+    // 2. Load WorkflowRun for original text
     const run = await prisma.workflowRun.findUnique({
-      where:  { id: runId },
+      where:  { id: effectiveRunId },
       select: { output: true, deliveryBoxFileId: true, deliveredContentHash: true },
     })
     if (!run) {
-      console.warn(`[boxVersionScanner] run ${runId} not found — skipping`)
+      console.warn(`[boxVersionScanner] run ${effectiveRunId} not found — skipping`)
       return
     }
 
-    const runOutput       = (run.output ?? {}) as Record<string, unknown>
-    const originalText    = (
-      (runOutput.humanizedContent as string) ??
-      (runOutput.generatedContent as string) ??
-      (runOutput.outputText       as string) ??
+    const runOutput = (run.output ?? {}) as Record<string, unknown>
+
+    // Walk output structure: finalOutput.content → nodeStatuses[*].output.{content,outputText,...} → legacy keys
+    const finalOut = runOutput.finalOutput as Record<string, unknown> | undefined
+    const nodeStatuses = (runOutput.nodeStatuses ?? {}) as Record<string, { output?: Record<string, unknown> }>
+    const originalText: string = (
+      (typeof finalOut?.content === 'string' && finalOut.content ? finalOut.content : null) ??
+      Object.values(nodeStatuses)
+        .map(ns => ns?.output?.content ?? ns?.output?.outputText ?? ns?.output?.humanizedContent ?? ns?.output?.text)
+        .find((t): t is string => typeof t === 'string' && t.length > 0) ??
+      (runOutput.humanizedContent as string | undefined) ??
+      (runOutput.generatedContent as string | undefined) ??
+      (runOutput.outputText       as string | undefined) ??
       ''
     )
     const originalFileId  = run.deliveryBoxFileId ?? null
@@ -269,14 +290,14 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
     // 3. List all files in the delivery folder
     let files: BoxFileItem[]
     try {
-      files = await listFolderFiles(token, boxFolderId)
+      files = await listFolderFiles(token, effectiveFolderId)
     } catch (err) {
       console.error('[boxVersionScanner] failed to list Box folder:', err)
       return
     }
 
     if (files.length === 0) {
-      console.log(`[boxVersionScanner] no files in folder ${boxFolderId} — skipping`)
+      console.log(`[boxVersionScanner] no files in folder ${effectiveFolderId} — skipping`)
       return
     }
 
@@ -291,7 +312,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       )
 
     if (scored.length === 0) {
-      console.log(`[boxVersionScanner] all files scored -Infinity (only original) in folder ${boxFolderId}`)
+      console.log(`[boxVersionScanner] all files scored -Infinity (only original) in folder ${effectiveFolderId}`)
       return
     }
 
@@ -301,7 +322,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
     const topScore  = scored[0].score
 
     console.log(
-      `[boxVersionScanner] folder ${boxFolderId}: winner="${winner.name}" score=${topScore} ` +
+      `[boxVersionScanner] folder ${effectiveFolderId}: winner="${winner.name}" score=${topScore} ` +
       `breakdown=${JSON.stringify(winnerBD)} phase=${phase} losers=${losers.length}`,
     )
 
@@ -328,7 +349,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
 
     // 6. Resolve stakeholder from BoxFileTracking
     const tracking = await prisma.boxFileTracking.findFirst({
-      where:   { boxFolderId, agencyId },
+      where:   { boxFolderId: effectiveFolderId, agencyId },
       orderBy: { createdAt: 'desc' },
       select:  { stakeholderId: true, filename: true },
     })
@@ -344,7 +365,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
           agencyId,
           clientId,
           stakeholderId,
-          runId,
+          runId:         effectiveRunId,
           originalText:  originalText || '[original not available]',
           editedText:    winnerText,
           diffSummary:   primaryDiff.summary || null,
@@ -360,7 +381,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
     // 8. For client_final: also diff winner vs internal_review baseline
     if (phase === 'client_final') {
       const internalReviewSignal = await prisma.humanizerSignal.findFirst({
-        where:   { agencyId, runId, source: 'internal_review' },
+        where:   { agencyId, runId: effectiveRunId, source: 'internal_review' },
         orderBy: { createdAt: 'desc' },
         select:  { editedText: true },
       })
@@ -374,7 +395,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
               agencyId,
               clientId,
               stakeholderId,
-              runId,
+              runId:         effectiveRunId,
               originalText:  internalReviewSignal.editedText,
               editedText:    winnerText,
               diffSummary:   clientDelta.summary || null,
@@ -391,9 +412,9 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
 
     // 9. Update WorkflowRun with folder + content hash (Part 1 fields in use)
     await prisma.workflowRun.update({
-      where: { id: runId },
+      where: { id: effectiveRunId },
       data: {
-        deliveredBoxFolderId: boxFolderId,
+        deliveredBoxFolderId: effectiveFolderId,
         deliveredContentHash: winnerHash,
       },
     })
@@ -401,7 +422,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
     // 10. Archive non-winners
     if (losers.length > 0) {
       try {
-        const archiveFolderId = await ensureArchiveFolder(token, boxFolderId)
+        const archiveFolderId = await ensureArchiveFolder(token, effectiveFolderId)
         await Promise.all(losers.map(f => moveFileToFolder(token, f.id, archiveFolderId)))
         console.log(`[boxVersionScanner] archived ${losers.length} non-winner file(s)`)
       } catch (err) {
@@ -414,7 +435,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       actorType:    'system',
       action:       'box_version_scan_completed',
       resourceType: 'workflow_run',
-      resourceId:   runId,
+      resourceId:   effectiveRunId,
       metadata: {
         phase,
         winnerId:             winner.id,
@@ -432,7 +453,7 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
     })
 
     console.log(
-      `[boxVersionScanner] run ${runId}: ${phase} scan complete — ` +
+      `[boxVersionScanner] run ${effectiveRunId}: ${phase} scan complete — ` +
       `${primaryDiff.toneSignals.length + primaryDiff.structureSignals.length} signals extracted`,
     )
   })
