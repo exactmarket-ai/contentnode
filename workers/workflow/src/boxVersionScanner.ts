@@ -204,17 +204,30 @@ async function extractDiffSignals(originalText: string, editedText: string): Pro
     rejectPatterns: [], hasFactualCorrections: false, confidence: 0,
   }
 
-  if (!originalText || !editedText || originalText === editedText) return fallback
+  if (!originalText || !editedText || originalText === editedText) {
+    console.log(`[boxVersionScanner] extractDiffSignals short-circuit: originalEmpty=${!originalText} editedEmpty=${!editedText} identical=${originalText === editedText}`)
+    return fallback
+  }
+
+  const prompt = DIFF_EXTRACTION_PROMPT(originalText, editedText)
+  console.log(`[boxVersionScanner] diff prompt length=${prompt.length}, original=${originalText.length}chars, edited=${editedText.length}chars`)
 
   try {
     const raw = await callModel(
       { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
-      DIFF_EXTRACTION_PROMPT(originalText, editedText),
+      prompt,
     )
+    console.log(`[boxVersionScanner] Claude raw response: ${raw.text.slice(0, 500).replace(/\n/g, ' ')}`)
     const jsonMatch = raw.text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return fallback
-    return JSON.parse(jsonMatch[0]) as DiffResult
-  } catch {
+    if (!jsonMatch) {
+      console.log(`[boxVersionScanner] no JSON found in Claude response`)
+      return fallback
+    }
+    const parsed = JSON.parse(jsonMatch[0]) as DiffResult
+    console.log(`[boxVersionScanner] parsed diff: summary="${parsed.summary?.slice(0, 100)}" toneSignals=${parsed.toneSignals.length} structureSignals=${parsed.structureSignals.length} confidence=${parsed.confidence}`)
+    return parsed
+  } catch (err) {
+    console.error(`[boxVersionScanner] extractDiffSignals error:`, err)
     return fallback
   }
 }
@@ -245,6 +258,9 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       ''
     )
     const originalFileId  = run.deliveryBoxFileId ?? null
+
+    console.log(`[boxVersionScanner] originalText: ${originalText.length} chars, keys=${Object.keys(runOutput).join(',')}, snippet="${originalText.slice(0, 120).replace(/\n/g, ' ')}"`)
+
 
     // 2. Get a fresh Box token immediately before the first API call — refresh happens
     //    here if the token is expired, not reactively after a failed listing attempt.
@@ -297,6 +313,8 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       console.error('[boxVersionScanner] failed to download winner file:', err)
       return
     }
+
+    console.log(`[boxVersionScanner] winnerText: ${winnerText.length} chars, snippet="${winnerText.slice(0, 120).replace(/\n/g, ' ')}"`)
 
     // 5. Diff winner vs original delivered content (always — both phases)
     const primaryDiff = await extractDiffSignals(originalText, winnerText)
