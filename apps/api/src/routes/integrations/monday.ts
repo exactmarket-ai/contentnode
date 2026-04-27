@@ -554,18 +554,17 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
       return reply.send({ challenge: body.challenge })
     }
 
-    // Validate signing secret if configured
-    const signingSecret = process.env.MONDAY_SIGNING_SECRET
+    // Validate signing secret only when MONDAY_SIGNING_SECRET is explicitly set and non-empty
+    const signingSecret = process.env.MONDAY_SIGNING_SECRET?.trim()
     if (signingSecret) {
       const auth = ((req.headers.authorization as string) ?? '').replace(/^Bearer\s+/i, '').trim()
       const provided = Buffer.from(auth)
       const expected = Buffer.from(signingSecret)
       const valid = provided.length === expected.length && timingSafeEqual(provided, expected)
       if (!valid) {
+        app.log.warn({ authHeader: auth.slice(0, 10) + '…' }, '[monday-webhook] invalid signing secret')
         return reply.code(401).send({ error: 'Invalid webhook signature' })
       }
-    } else if (process.env.NODE_ENV === 'production') {
-      return reply.code(401).send({ error: 'Webhook signature required in production' })
     }
 
     const event = body.event as MondayWebhookEvent | undefined
