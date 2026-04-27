@@ -889,7 +889,12 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
 // ── Status classification ─────────────────────────────────────────────────────
 
 function classifyMondayStatus(status: string): 'client_review' | 'client_final' | null {
-  const CLIENT_REVIEW_TERMS = ['client review', 'in review', 'under review', 'review', 'sent to client', 'awaiting review']
+  // status is already .trim().toLowerCase() at the call site
+  const CLIENT_REVIEW_TERMS = [
+    'client review', 'in review', 'under review', 'review',
+    'sent to client', 'awaiting review',
+    'copy4cr', 'copy for client review',
+  ]
   const CLIENT_FINAL_TERMS  = ['final', 'approved', 'complete', 'done', 'sign off', 'signed off', 'client approved', 'closed']
 
   if (CLIENT_REVIEW_TERMS.some(t => status.includes(t))) return 'client_review'
