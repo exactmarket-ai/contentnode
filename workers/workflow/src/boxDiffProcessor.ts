@@ -462,11 +462,11 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
       }
 
       // ── GAP 3: Agency-level rollup for high-confidence signals ────────────
-      // Signals with confidence > 0.6 are written to the agency brain so
-      // editorial standards improve across all clients over time.
+      // High-confidence signals written to ClientBrainAttachment with a dedicated
+      // source tag so agency brain synthesis can aggregate across all clients.
       if (diffResult.confidence > 0.6) {
         const rollupContent = [
-          `## Cross-client editorial signal (${attributedTo === 'stakeholder' ? `stakeholder ${stakeholderId}` : `client ${clientId} — unattributed`})`,
+          `## Editorial signal rollup (${attributedTo === 'stakeholder' ? `stakeholder ${stakeholderId}` : `client ${clientId} — unattributed`})`,
           `Source: Box revision | Confidence: ${Math.round(diffResult.confidence * 100)}%`,
           '',
           diffResult.summary,
@@ -476,9 +476,11 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
           diffResult.rejectPatterns.length   ? `**Reject patterns:** ${diffResult.rejectPatterns.join('; ')}` : '',
         ].filter(Boolean).join('\n')
 
-        await prisma.agencyBrainAttachment.create({
+        await prisma.clientBrainAttachment.create({
           data: {
             agencyId,
+            clientId,
+            source:        'box_revision_agency_rollup',
             filename:      `box-revision-agency-rollup-${boxFileId}.md`,
             mimeType:      'text/markdown',
             sizeBytes:     0,

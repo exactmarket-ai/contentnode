@@ -379,38 +379,47 @@ async function processBoxVersionScan(job: Job<BoxVersionScanJobData>) {
       return
     }
 
-    // 6. Resolve stakeholder: first try Box file metadata (modified_by.login),
-    //    then fall back to BoxFileTracking.stakeholderId from the original delivery.
-    const boxMeta = await fetchFileModifiedBy(token, winner.id)
-    const editorEmail = boxMeta.modifiedByEmail
+    // 6. Resolve stakeholder via three-step priority:
+    //    1. Filename first-name match (e.g. "sarah-final", "john_v2")
+    //    2. Box file metadata modified_by.login email match
+    //    3. client_review fallback — signal is always saved regardless
+    const clientStakeholders = await prisma.stakeholder.findMany({
+      where:  { agencyId, clientId },
+      select: { id: true, name: true, email: true },
+    })
 
     let resolvedStakeholderId: string | null = null
-    let attributedTo = 'unknown_external'
+    let attributedTo = 'client_review'
+    let editorEmail: string | null = null
 
-    if (editorEmail) {
-      const matched = await prisma.stakeholder.findFirst({
-        where:  { agencyId, clientId, email: editorEmail },
-        select: { id: true },
-      })
-      if (matched) {
-        resolvedStakeholderId = matched.id
+    // Step 1 — filename first-name parsing
+    const filenameStem = winner.name.replace(/\.[^.]+$/, '').toLowerCase()
+    const filenameTokens = filenameStem.split(/[^a-z0-9]+/).filter(t => t.length >= 2)
+    for (const stk of clientStakeholders) {
+      const firstName = stk.name.split(/\s+/)[0].toLowerCase()
+      if (firstName.length >= 2 && filenameTokens.includes(firstName)) {
+        resolvedStakeholderId = stk.id
         attributedTo = 'stakeholder'
-      }
-      // else: email present but not in system — attributedTo stays 'unknown_external'
-    } else {
-      // No email from Box — fall back to delivery stakeholder (mediated upload)
-      const tracking = await prisma.boxFileTracking.findFirst({
-        where:   { boxFolderId: effectiveFolderId, agencyId },
-        orderBy: { createdAt: 'desc' },
-        select:  { stakeholderId: true },
-      })
-      if (tracking?.stakeholderId) {
-        resolvedStakeholderId = tracking.stakeholderId
-        attributedTo = 'employee'
+        break
       }
     }
 
-    console.log(`[boxVersionScanner] attribution: attributedTo=${attributedTo} editorEmail=${editorEmail} stakeholderId=${resolvedStakeholderId}`)
+    // Step 2 — Box modified_by email (only if step 1 didn't resolve)
+    if (!resolvedStakeholderId) {
+      const boxMeta = await fetchFileModifiedBy(token, winner.id)
+      editorEmail = boxMeta.modifiedByEmail
+      if (editorEmail) {
+        const matched = clientStakeholders.find(s => s.email?.toLowerCase() === editorEmail!.toLowerCase())
+        if (matched) {
+          resolvedStakeholderId = matched.id
+          attributedTo = 'stakeholder'
+        } else {
+          attributedTo = 'unknown_external'
+        }
+      }
+    }
+
+    console.log(`[boxVersionScanner] attribution: attributedTo=${attributedTo} editorEmail=${editorEmail} stakeholderId=${resolvedStakeholderId} filenameTokens=${filenameTokens.join(',')}`)
 
     const trackingForFilename = await prisma.boxFileTracking.findFirst({
       where:   { boxFolderId: effectiveFolderId, agencyId },
