@@ -700,8 +700,9 @@ export async function docTemplateRoutes(app: FastifyInstance) {
         OR: [
           ...(clientId   ? [{ clientId }]   : []),
           ...(verticalId ? [{ verticalId }] : []),
-          ...(docType    ? [{ docType }]    : []),
-          { agencyDefault: true },
+          // docType/agencyDefault only match agency-wide assignments (no clientId set)
+          ...(docType    ? [{ docType, clientId: null }]    : []),
+          { agencyDefault: true, clientId: null },
         ],
       },
       include: { template: { select: { id: true, name: true, docType: true, processedKey: true, confirmedVars: true } } },
