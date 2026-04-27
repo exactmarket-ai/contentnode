@@ -1207,7 +1207,9 @@ function S16({ fw, set }: { fw: FrameworkData; set: (fn: (d: FrameworkData) => v
           ))}
         </FwTable>
       </div>
-      <AddButton onClick={() => set((d) => { d.s16.funnelStages.push({ stage: '', assets: '', primaryCTA: '', buyerState: '' }) })} label="Add Row" />
+      <div className="mb-6">
+        <AddButton onClick={() => set((d) => { d.s16.funnelStages.push({ stage: '', assets: '', primaryCTA: '', buyerState: '' }) })} label="Add Row" />
+      </div>
       <FwField>
         <FwLabel>CTA Sequencing Notes</FwLabel>
         <FwHelp>Describe how the CTAs should chain together — what does each asset lead to next?</FwHelp>
