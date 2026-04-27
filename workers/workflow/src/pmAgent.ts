@@ -238,7 +238,7 @@ async function createWhyRerunQuestion(
       patternKey: 'same_topic_rerun_why',
       title:      `Why did you re-run "${opts.topic}"? (optional)`,
       body:       'Your answer helps me learn when re-runs are quality issues vs. intentional variations, so I can route them smarter over time.',
-      context:    { workflowId: opts.workflowId, topic: opts.topic, memoryKey: whyKey } as never,
+      context:    { workflowId: opts.workflowId, topic: opts.topic, memoryKey: opts.memoryKey } as never,
       actions:    [
         { label: 'Output needed improvement',  value: 'quality_issue',  alwaysApply: false },
         { label: 'Adjusted the prompt',        value: 'prompt_change',  alwaysApply: false },
