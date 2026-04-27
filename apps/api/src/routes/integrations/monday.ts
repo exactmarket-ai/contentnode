@@ -750,7 +750,11 @@ export async function mondayIntegrationRoutes(app: FastifyInstance) {
         const errMsg = err instanceof Error ? err.message : String(err)
         dbg(`ERROR: ${errMsg}`)
         app.log.error({ err }, '[monday-webhook] Box folder creation failed')
-      } } // end boxFolderCreation / else
+      }
+      // Debug: confirm execution reached here after boxFolderCreation block (break or completion)
+      app.log.info({ eventType: event.type, eventValue: event.value }, '[monday-webhook] PAST BOX FOLDER CREATION BLOCK')
+      dbg('PAST BOX FOLDER CREATION BLOCK')
+      } // end else
     }
 
     // ── Box version scan: fires on stage/status column changes ────────────────
