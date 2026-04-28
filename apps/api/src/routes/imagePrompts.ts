@@ -34,7 +34,7 @@ const SEED_PROMPTS = [
   {
     name: 'Learning Loop — Signals',
     styleTags: 'learning, signals, loop',
-    promptText: 'Deep dark background (#1a1a14), abstract circular flow visualization, content moving through stages as clean geometric forms, electric purple (#a200ee) light tracing the loop with soft violet (#c44fff) trailing glow, subtle edit marks rendered as minimal geometric accents, loop tightening toward center suggesting compounding intelligence, no people no text, cinematic lighting with soft volumetric purple glow, premium technology editorial aesthetic, 16:9',
+    promptText: 'Warm off-white background (#f5f4ef), abstract circular flow visualization, content moving through stages as clean geometric forms, electric purple (#a200ee) light tracing the loop with soft violet (#c44fff) trailing glow, subtle edit marks rendered as minimal geometric accents, loop tightening toward center suggesting compounding intelligence, no people no text, cinematic lighting with soft volumetric purple glow, premium technology editorial aesthetic, 16:9',
     notes: null,
     sortOrder: 4,
   },
