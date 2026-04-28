@@ -142,6 +142,33 @@ export async function imagePromptRoutes(app: FastifyInstance) {
     return reply.send({ data: { ok: true } })
   })
 
+  // POST /seed-client — copy agency prompts to a specific client (seeds agency first if empty)
+  app.post('/seed-client', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId } = req.body as { clientId?: string }
+    if (!clientId) return reply.code(400).send({ error: 'clientId is required' })
+
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+    // Ensure agency has global prompts — seed defaults if not
+    const agencyCount = await prisma.imagePrompt.count({ where: { agencyId, clientId: null } })
+    if (agencyCount === 0) {
+      await prisma.imagePrompt.createMany({
+        data: SEED_PROMPTS.map((p) => ({ ...p, agencyId, clientId: null })),
+      })
+    }
+
+    // Check if client already has prompts
+    const clientCount = await prisma.imagePrompt.count({ where: { agencyId, clientId } })
+    if (clientCount > 0) {
+      return reply.send({ data: { skipped: true, message: 'Client already has image prompts' } })
+    }
+
+    await seedImagePromptsForClient(agencyId, clientId)
+    return reply.send({ data: { seeded: true } })
+  })
+
   // POST /seed — idempotent seed of global starter prompts (admin only)
   app.post('/seed', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth

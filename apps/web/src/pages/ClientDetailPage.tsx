@@ -3003,6 +3003,202 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
   )
 }
 
+interface ClientImagePrompt {
+  id: string
+  name: string
+  promptText: string
+  styleTags: string
+  notes: string | null
+  sortOrder: number
+  createdAt: string
+}
+
+function ClientImagePromptsSection({ clientId }: { clientId: string }) {
+  const [prompts, setPrompts] = useState<ClientImagePrompt[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPromptText, setEditPromptText] = useState('')
+  const [editStyleTags, setEditStyleTags] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newPromptText, setNewPromptText] = useState('')
+  const [newStyleTags, setNewStyleTags] = useState('')
+  const [newNotes, setNewNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [seeding, setSeeding] = useState(false)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    apiFetch(`/api/v1/image-prompts?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => setPrompts(data ?? []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [clientId])
+
+  useEffect(() => { load() }, [load])
+
+  const seedSamples = async () => {
+    setSeeding(true)
+    try {
+      await apiFetch('/api/v1/image-prompts/seed-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId }),
+      })
+      load()
+    } finally { setSeeding(false) }
+  }
+
+  const startEdit = (p: ClientImagePrompt) => {
+    setEditingId(p.id); setEditName(p.name); setEditPromptText(p.promptText)
+    setEditStyleTags(p.styleTags); setEditNotes(p.notes ?? '')
+  }
+
+  const saveEdit = async () => {
+    if (!editingId) return
+    setSavingEdit(true)
+    try {
+      const res = await apiFetch(`/api/v1/image-prompts/${editingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, promptText: editPromptText, styleTags: editStyleTags, notes: editNotes || undefined }),
+      })
+      if (res.ok) { setEditingId(null); load() }
+    } finally { setSavingEdit(false) }
+  }
+
+  const deletePrompt = async (id: string) => {
+    if (!confirm('Delete this image prompt?')) return
+    await apiFetch(`/api/v1/image-prompts/${id}`, { method: 'DELETE' })
+    load()
+  }
+
+  const createPrompt = async () => {
+    if (!newName.trim() || !newPromptText.trim()) return
+    setSaving(true)
+    try {
+      const res = await apiFetch('/api/v1/image-prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), promptText: newPromptText.trim(), styleTags: newStyleTags.trim(), notes: newNotes.trim() || undefined, clientId }),
+      })
+      if (res.ok) {
+        setCreating(false); setNewName(''); setNewPromptText(''); setNewStyleTags(''); setNewNotes('')
+        load()
+      }
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Icons.Image className="h-4 w-4" style={{ color: '#b4b2a9' }} />
+          <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Image Prompts</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {prompts.length === 0 && !loading && (
+            <button
+              onClick={seedSamples}
+              disabled={seeding}
+              className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80 disabled:opacity-50"
+              style={{ color: '#b4b2a9' }}
+            >
+              <Icons.Sparkles className="h-3.5 w-3.5" />
+              {seeding ? 'Seeding…' : 'Copy agency samples'}
+            </button>
+          )}
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
+            style={{ color: '#a200ee' }}
+          >
+            <Icons.Plus className="h-3.5 w-3.5" />New prompt
+          </button>
+        </div>
+      </div>
+      <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
+        Image generation prompts for this client — visual style, brand aesthetic, and composition guides for AI image nodes.
+      </p>
+
+      {creating && (
+        <div className="mb-4 rounded-xl p-4 space-y-3" style={{ backgroundColor: '#fff', border: '1px solid #a200ee' }}>
+          <p className="text-[12px] font-semibold" style={{ color: '#7a00b4' }}>New Image Prompt</p>
+          <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name — e.g. Hero Banner" className="w-full rounded border px-2.5 py-1.5 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+          <input value={newStyleTags} onChange={(e) => setNewStyleTags(e.target.value)} placeholder="Style tags — e.g. hero, cinematic, brand" className="w-full rounded border px-2.5 py-1.5 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+          <textarea value={newPromptText} onChange={(e) => setNewPromptText(e.target.value)} placeholder="Full image prompt — background colour, composition, lighting, style, aspect ratio…" rows={4} className="w-full rounded border px-2.5 py-1.5 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1' }} />
+          <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="Notes (optional)" className="w-full rounded border px-2.5 py-1.5 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setCreating(false)} className="px-3 py-1.5 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
+            <button onClick={createPrompt} disabled={saving || !newName.trim() || !newPromptText.trim()} className="px-3 py-1.5 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>
+              {saving ? 'Saving…' : 'Save prompt'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+        {loading ? (
+          <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
+        ) : prompts.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-10 text-center px-6">
+            <Icons.Image className="h-8 w-8" style={{ color: '#e0dfd8' }} />
+            <p className="text-[13px]" style={{ color: '#b4b2a9' }}>No image prompts yet</p>
+            <p className="text-[12px]" style={{ color: '#c8c7c0' }}>Add one above or copy the agency samples to get started.</p>
+          </div>
+        ) : (
+          <div>
+            {prompts.map((p, i) => (
+              <div key={p.id}>
+                {i > 0 && <div style={{ borderTop: '1px solid #f0efea' }} />}
+                <div className="px-4 py-3 bg-white">
+                  {editingId === p.id ? (
+                    <div className="space-y-2">
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded border px-2 py-1 text-xs font-semibold outline-none" style={{ borderColor: '#e8e7e1' }} />
+                      <input value={editStyleTags} onChange={(e) => setEditStyleTags(e.target.value)} placeholder="Style tags…" className="w-full rounded border px-2 py-1 text-xs outline-none" style={{ borderColor: '#e8e7e1' }} />
+                      <textarea value={editPromptText} onChange={(e) => setEditPromptText(e.target.value)} rows={4} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1' }} />
+                      <input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Notes (optional)" className="w-full rounded border px-2 py-1 text-xs outline-none" style={{ borderColor: '#e8e7e1' }} />
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => setEditingId(null)} className="px-2.5 py-1 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
+                        <button onClick={saveEdit} disabled={savingEdit} className="px-2.5 py-1 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>{savingEdit ? 'Saving…' : 'Save'}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <button className="flex items-center gap-1 text-left" onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}>
+                          <Icons.ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform" style={{ color: '#b4b2a9', transform: expandedId === p.id ? 'rotate(90deg)' : 'none' }} />
+                          <span className="text-[13px] font-medium" style={{ color: '#1a1a14' }}>{p.name}</span>
+                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => startEdit(p)} className="rounded p-1 hover:bg-gray-100"><Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} /></button>
+                          <button onClick={() => deletePrompt(p.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
+                        </div>
+                      </div>
+                      {p.styleTags && <p className="text-[11px] mt-0.5 ml-5" style={{ color: '#b4b2a9' }}>{p.styleTags}</p>}
+                      {expandedId === p.id && (
+                        <pre className="mt-2 ml-5 whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-[11px] font-mono leading-relaxed" style={{ color: '#3a3a2e', border: '1px solid #e8e7e1' }}>{p.promptText}</pre>
+                      )}
+                      {expandedId === p.id && p.notes && (
+                        <p className="mt-1 ml-5 text-[11px]" style={{ color: '#b4b2a9' }}>{p.notes}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ClientLibraryTab({ clientId }: { clientId: string }) {
   const [files, setFiles] = useState<ClientFile[]>([])
   const [loading, setLoading] = useState(true)
@@ -3174,6 +3370,7 @@ function ClientLibraryTab({ clientId }: { clientId: string }) {
       </div>
 
       <ClientPromptsSection clientId={clientId} />
+      <ClientImagePromptsSection clientId={clientId} />
     </div>
   )
 }
