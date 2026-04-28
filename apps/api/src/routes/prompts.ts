@@ -300,15 +300,30 @@ const createBody = z.object({
 
 const updateBody = createBody.partial()
 
+const ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin', 'org_admin'])
+
 export async function promptRoutes(app: FastifyInstance) {
   // ── GET / — list prompt templates (optional ?clientId= filter) ──────────
   app.get<{ Querystring: { clientId?: string } }>('/', async (req, reply) => {
     const { agencyId } = req.auth
     const { clientId } = req.query
     const templates = await prisma.promptTemplate.findMany({
-      where: { agencyId, clientId: clientId ?? null },
+      where: { agencyId, clientId: clientId ?? null, deletedAt: null },
       orderBy: [{ source: 'asc' }, { isStale: 'asc' }, { createdAt: 'desc' }],
-      select: { id: true, name: true, category: true, description: true, parentId: true, clientId: true, useCount: true, source: true, isStale: true, createdAt: true, updatedAt: true, body: true },
+      select: { id: true, name: true, category: true, description: true, parentId: true, clientId: true, useCount: true, source: true, isStale: true, createdBy: true, createdAt: true, updatedAt: true, body: true },
+    })
+    return reply.send({ data: templates })
+  })
+
+  // ── GET /trash — soft-deleted templates (admin only) ─────────────────────
+  app.get<{ Querystring: { clientId?: string } }>('/trash', async (req, reply) => {
+    const { agencyId, role } = req.auth
+    if (!ADMIN_ROLES.has(role)) return reply.code(403).send({ error: 'Admins only' })
+    const { clientId } = req.query
+    const templates = await prisma.promptTemplate.findMany({
+      where: { agencyId, clientId: clientId ?? null, deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
+      select: { id: true, name: true, category: true, description: true, createdBy: true, deletedAt: true, deletedBy: true, body: true },
     })
     return reply.send({ data: templates })
   })
@@ -319,7 +334,6 @@ export async function promptRoutes(app: FastifyInstance) {
     const { clientId } = req.query
     if (!clientId) return reply.code(400).send({ error: 'clientId is required' })
 
-    // Verify the client belongs to this agency
     const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
     if (!client) return reply.code(404).send({ error: 'Client not found' })
 
@@ -333,12 +347,12 @@ export async function promptRoutes(app: FastifyInstance) {
 
   // ── POST / — create a new prompt template ────────────────────────────────
   app.post('/', async (req, reply) => {
-    const { agencyId } = req.auth
+    const { agencyId, userId } = req.auth
     const parsed = createBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
 
     const template = await prisma.promptTemplate.create({
-      data: { agencyId, ...parsed.data } as any,
+      data: { agencyId, createdBy: userId, ...parsed.data } as any,
     })
     return reply.code(201).send({ data: template })
   })
@@ -346,7 +360,7 @@ export async function promptRoutes(app: FastifyInstance) {
   // ── PATCH /:id — update name / body / category / description ─────────────
   app.patch<{ Params: { id: string } }>('/:id', async (req, reply) => {
     const { agencyId } = req.auth
-    const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId } })
+    const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId, deletedAt: null } })
     if (!existing) return reply.code(404).send({ error: 'Template not found' })
 
     const parsed = updateBody.safeParse(req.body)
@@ -363,18 +377,48 @@ export async function promptRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/:id/use', async (req, reply) => {
     const { agencyId } = req.auth
     await prisma.promptTemplate.updateMany({
-      where: { id: req.params.id, agencyId },
+      where: { id: req.params.id, agencyId, deletedAt: null },
       data: { useCount: { increment: 1 } },
     })
     return reply.send({ data: { ok: true } })
   })
 
-  // ── DELETE /:id ───────────────────────────────────────────────────────────
+  // ── DELETE /:id — soft delete (owner or admin) ────────────────────────────
   app.delete<{ Params: { id: string } }>('/:id', async (req, reply) => {
-    const { agencyId } = req.auth
-    const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId } })
+    const { agencyId, userId, role } = req.auth
+    const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId, deletedAt: null } })
     if (!existing) return reply.code(404).send({ error: 'Template not found' })
 
+    const isAdmin = ADMIN_ROLES.has(role)
+    const isOwner = existing.createdBy === userId
+    if (!isAdmin && !isOwner) return reply.code(403).send({ error: 'You can only delete templates you created' })
+
+    await prisma.promptTemplate.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date(), deletedBy: userId },
+    })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // ── POST /:id/restore — restore soft-deleted (admin only) ─────────────────
+  app.post<{ Params: { id: string } }>('/:id/restore', async (req, reply) => {
+    const { agencyId, role } = req.auth
+    if (!ADMIN_ROLES.has(role)) return reply.code(403).send({ error: 'Admins only' })
+    const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId } })
+    if (!existing) return reply.code(404).send({ error: 'Template not found' })
+    await prisma.promptTemplate.update({
+      where: { id: req.params.id },
+      data: { deletedAt: null, deletedBy: null },
+    })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // ── DELETE /:id/permanent — hard delete (admin only) ─────────────────────
+  app.delete<{ Params: { id: string } }>('/:id/permanent', async (req, reply) => {
+    const { agencyId, role } = req.auth
+    if (!ADMIN_ROLES.has(role)) return reply.code(403).send({ error: 'Admins only' })
+    const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId } })
+    if (!existing) return reply.code(404).send({ error: 'Template not found' })
     await prisma.promptTemplate.delete({ where: { id: req.params.id } })
     return reply.send({ data: { ok: true } })
   })

@@ -354,7 +354,7 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
       : { agencyId, clientId }
 
     const templates = await prisma.promptTemplate.findMany({
-      where,
+      where: { ...where, deletedAt: null },
       orderBy: [{ source: 'asc' }, { createdAt: 'desc' }],
     })
 

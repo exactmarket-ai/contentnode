@@ -2812,7 +2812,19 @@ interface ClientPromptTemplate {
   description: string | null
   parentId: string | null
   useCount: number
+  createdBy: string | null
   createdAt: string
+}
+
+interface TrashedPromptTemplate {
+  id: string
+  name: string
+  category: string
+  description: string | null
+  createdBy: string | null
+  deletedAt: string
+  deletedBy: string | null
+  body: string
 }
 
 const PROMPT_CATS = [
@@ -2825,6 +2837,7 @@ const PROMPT_CATS = [
 ]
 
 function ClientPromptsSection({ clientId }: { clientId: string }) {
+  const { user, isAdmin } = useCurrentUser()
   const [clientTemplates, setClientTemplates] = useState<ClientPromptTemplate[]>([])
   const [globalTemplates, setGlobalTemplates] = useState<ClientPromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
@@ -2841,6 +2854,9 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
   const [newDesc, setNewDesc] = useState('')
   const [newCategory, setNewCategory] = useState('general')
   const [saving, setSaving] = useState(false)
+  const [showTrash, setShowTrash] = useState(false)
+  const [trash, setTrash] = useState<TrashedPromptTemplate[]>([])
+  const [trashLoading, setTrashLoading] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -2884,9 +2900,29 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
   }
 
   const deleteTemplate = async (id: string) => {
-    if (!confirm('Delete this prompt template?')) return
+    if (!confirm('Move this template to Trash?')) return
     await apiFetch(`/api/v1/prompts/${id}`, { method: 'DELETE' })
     load()
+  }
+
+  const loadTrash = () => {
+    setTrashLoading(true)
+    apiFetch(`/api/v1/prompts/trash?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => setTrash(data ?? []))
+      .catch(console.error)
+      .finally(() => setTrashLoading(false))
+  }
+
+  const restoreTemplate = async (id: string) => {
+    await apiFetch(`/api/v1/prompts/${id}/restore`, { method: 'POST' })
+    loadTrash(); load()
+  }
+
+  const permanentDeleteTemplate = async (id: string, name: string) => {
+    if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return
+    await apiFetch(`/api/v1/prompts/${id}/permanent`, { method: 'DELETE' })
+    loadTrash()
   }
 
   const createTemplate = async () => {
@@ -2918,13 +2954,25 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
           <Icons.ScrollText className="h-4 w-4" style={{ color: '#b4b2a9' }} />
           <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Prompt Library</h2>
         </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
-          style={{ color: '#a200ee' }}
-        >
-          <Icons.Plus className="h-3.5 w-3.5" />New template
-        </button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => { setShowTrash((v) => !v); if (!showTrash) loadTrash() }}
+              className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
+              style={{ color: showTrash ? '#a200ee' : '#b4b2a9' }}
+              title="View trash"
+            >
+              <Icons.Trash2 className="h-3.5 w-3.5" />Trash
+            </button>
+          )}
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
+            style={{ color: '#a200ee' }}
+          >
+            <Icons.Plus className="h-3.5 w-3.5" />New template
+          </button>
+        </div>
       </div>
       <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
         Prompt templates specific to this client — tailored tone, voice guidelines, or topic-specific instructions.
@@ -2952,6 +3000,8 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
 
       {/* Helper to render a template row (used for both client + global lists) */}
       {(() => {
+        const canDelete = (t: ClientPromptTemplate) => isAdmin || user?.id === t.createdBy
+
         const renderRow = (t: ClientPromptTemplate, editable: boolean) => (
           <div key={t.id}>
             <div className="px-4 py-3 bg-white">
@@ -2980,7 +3030,9 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
                     {editable && (
                       <div className="flex items-center gap-1 shrink-0">
                         <button onClick={() => startEdit(t)} className="rounded p-1 hover:bg-gray-100"><Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} /></button>
-                        <button onClick={() => deleteTemplate(t.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
+                        {canDelete(t) && (
+                          <button onClick={() => deleteTemplate(t.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3021,25 +3073,67 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
         const hasDisplay = hasClient || globalTemplates.length > 0
 
         return (
-          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
-            {loading ? (
-              <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
-            ) : !hasDisplay ? (
-              <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
-                <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
-                <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No templates yet</p>
-              </div>
-            ) : (
-              <div>
-                {!hasClient && (
-                  <div className="px-4 py-2 border-b" style={{ backgroundColor: '#fafaf8', borderColor: '#e8e7e1' }}>
-                    <p className="text-[10px]" style={{ color: '#b4b2a9' }}>Showing agency starter templates — create a client-specific template above to customise</p>
-                  </div>
+          <>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+              {loading ? (
+                <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
+              ) : !hasDisplay ? (
+                <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
+                  <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
+                  <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No templates yet</p>
+                </div>
+              ) : (
+                <div>
+                  {!hasClient && (
+                    <div className="px-4 py-2 border-b" style={{ backgroundColor: '#fafaf8', borderColor: '#e8e7e1' }}>
+                      <p className="text-[10px]" style={{ color: '#b4b2a9' }}>Showing agency starter templates — create a client-specific template above to customise</p>
+                    </div>
+                  )}
+                  {renderGroup(displayGrouped, hasClient)}
+                </div>
+              )}
+            </div>
+
+            {/* Admin trash panel */}
+            {isAdmin && showTrash && (
+              <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+                <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#fafaf8', borderBottom: '1px solid #e8e7e1' }}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>Trash</p>
+                  {trashLoading && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#b4b2a9' }} />}
+                </div>
+                {trash.length === 0 ? (
+                  <p className="px-4 py-4 text-[12px]" style={{ color: '#b4b2a9' }}>Trash is empty.</p>
+                ) : (
+                  trash.map((t, i) => (
+                    <div key={t.id}>
+                      {i > 0 && <div style={{ borderTop: '1px solid #f0efea' }} />}
+                      <div className="px-4 py-3 bg-white flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium truncate" style={{ color: '#1a1a14' }}>{t.name}</p>
+                          <p className="text-[11px]" style={{ color: '#b4b2a9' }}>
+                            Deleted {new Date(t.deletedAt).toLocaleDateString()}
+                            {t.deletedBy && ` · by ${t.deletedBy.slice(0, 8)}…`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => restoreTemplate(t.id)}
+                            className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-gray-50"
+                            style={{ borderColor: '#e8e7e1', color: '#3a3a2e' }}
+                          >Restore</button>
+                          <button
+                            onClick={() => permanentDeleteTemplate(t.id, t.name)}
+                            className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-red-50"
+                            style={{ borderColor: '#fca5a5', color: '#ef4444' }}
+                          >Delete forever</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
                 )}
-                {renderGroup(displayGrouped, false)}
               </div>
             )}
-          </div>
+          </>
         )
       })()}
     </div>
@@ -3054,9 +3148,20 @@ interface ClientImagePrompt {
   notes: string | null
   sortOrder: number
   createdAt: string
+  createdBy: string | null
+}
+
+interface TrashedImagePrompt {
+  id: string
+  name: string
+  styleTags: string
+  createdBy: string | null
+  deletedAt: string
+  deletedBy: string | null
 }
 
 function ClientImagePromptsSection({ clientId }: { clientId: string }) {
+  const { user, isAdmin } = useCurrentUser()
   const [prompts, setPrompts] = useState<ClientImagePrompt[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -3073,6 +3178,9 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
   const [newNotes, setNewNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [seeding, setSeeding] = useState(false)
+  const [showTrash, setShowTrash] = useState(false)
+  const [trash, setTrash] = useState<TrashedImagePrompt[]>([])
+  const [trashLoading, setTrashLoading] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -3134,9 +3242,29 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
   }
 
   const deletePrompt = async (id: string) => {
-    if (!confirm('Delete this image prompt?')) return
+    if (!confirm('Move this image prompt to Trash?')) return
     await apiFetch(`/api/v1/image-prompts/${id}`, { method: 'DELETE' })
     load()
+  }
+
+  const loadTrash = () => {
+    setTrashLoading(true)
+    apiFetch(`/api/v1/image-prompts/trash?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => setTrash(data ?? []))
+      .catch(console.error)
+      .finally(() => setTrashLoading(false))
+  }
+
+  const restorePrompt = async (id: string) => {
+    await apiFetch(`/api/v1/image-prompts/${id}/restore`, { method: 'POST' })
+    loadTrash(); load()
+  }
+
+  const permanentDeletePrompt = async (id: string, name: string) => {
+    if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return
+    await apiFetch(`/api/v1/image-prompts/${id}/permanent`, { method: 'DELETE' })
+    loadTrash()
   }
 
   const createPrompt = async () => {
@@ -3172,6 +3300,16 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
             >
               <Icons.Sparkles className="h-3.5 w-3.5" />
               {seeding ? 'Seeding…' : 'Copy agency samples'}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => { setShowTrash((v) => !v); if (!showTrash) loadTrash() }}
+              className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
+              style={{ color: showTrash ? '#a200ee' : '#b4b2a9' }}
+              title="View trash"
+            >
+              <Icons.Trash2 className="h-3.5 w-3.5" />Trash
             </button>
           )}
           <button
@@ -3238,7 +3376,9 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button onClick={() => startEdit(p)} className="rounded p-1 hover:bg-gray-100"><Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} /></button>
-                          <button onClick={() => deletePrompt(p.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
+                          {(isAdmin || user?.id === p.createdBy) && (
+                            <button onClick={() => deletePrompt(p.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
+                          )}
                         </div>
                       </div>
                       {p.styleTags && <p className="text-[11px] mt-0.5 ml-5" style={{ color: '#b4b2a9' }}>{p.styleTags}</p>}
@@ -3256,6 +3396,46 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
           </div>
         )}
       </div>
+
+      {/* Admin trash panel */}
+      {isAdmin && showTrash && (
+        <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+          <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#fafaf8', borderBottom: '1px solid #e8e7e1' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>Trash</p>
+            {trashLoading && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#b4b2a9' }} />}
+          </div>
+          {trash.length === 0 ? (
+            <p className="px-4 py-4 text-[12px]" style={{ color: '#b4b2a9' }}>Trash is empty.</p>
+          ) : (
+            trash.map((p, i) => (
+              <div key={p.id}>
+                {i > 0 && <div style={{ borderTop: '1px solid #f0efea' }} />}
+                <div className="px-4 py-3 bg-white flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium truncate" style={{ color: '#1a1a14' }}>{p.name}</p>
+                    <p className="text-[11px]" style={{ color: '#b4b2a9' }}>
+                      Deleted {new Date(p.deletedAt).toLocaleDateString()}
+                      {p.deletedBy && ` · by ${p.deletedBy.slice(0, 8)}…`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => restorePrompt(p.id)}
+                      className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-gray-50"
+                      style={{ borderColor: '#e8e7e1', color: '#3a3a2e' }}
+                    >Restore</button>
+                    <button
+                      onClick={() => permanentDeletePrompt(p.id, p.name)}
+                      className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-red-50"
+                      style={{ borderColor: '#fca5a5', color: '#ef4444' }}
+                    >Delete forever</button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -47,10 +47,10 @@ const SEED_PROMPTS = [
   },
 ]
 
+const ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin', 'org_admin'])
+
 export async function imagePromptRoutes(app: FastifyInstance) {
-  // GET / — list image prompts
-  // ?clientId= to get client-specific prompts
-  // ?global=true to get only agency-level (no clientId)
+  // GET / — list image prompts (active only)
   app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
     const { clientId, global: globalOnly } = req.query as { clientId?: string; global?: string }
@@ -58,9 +58,22 @@ export async function imagePromptRoutes(app: FastifyInstance) {
     const prompts = await prisma.imagePrompt.findMany({
       where: {
         agencyId,
+        deletedAt: null,
         ...(globalOnly === 'true' ? { clientId: null } : clientId ? { clientId } : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
+    return reply.send({ data: prompts })
+  })
+
+  // GET /trash — soft-deleted image prompts (admin only)
+  app.get('/trash', async (req, reply) => {
+    const { agencyId, role } = req.auth
+    if (!ADMIN_ROLES.has(role)) return reply.code(403).send({ error: 'Admins only' })
+    const { clientId } = req.query as { clientId?: string }
+    const prompts = await prisma.imagePrompt.findMany({
+      where: { agencyId, clientId: clientId ?? null, deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
     })
     return reply.send({ data: prompts })
   })
@@ -73,12 +86,12 @@ export async function imagePromptRoutes(app: FastifyInstance) {
     const [clientPrompts, globalPrompts] = await Promise.all([
       clientId
         ? prisma.imagePrompt.findMany({
-            where: { agencyId, clientId },
+            where: { agencyId, clientId, deletedAt: null },
             orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           })
         : Promise.resolve([]),
       prisma.imagePrompt.findMany({
-        where: { agencyId, clientId: null },
+        where: { agencyId, clientId: null, deletedAt: null },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       }),
     ])
@@ -87,7 +100,7 @@ export async function imagePromptRoutes(app: FastifyInstance) {
 
   // POST / — create image prompt
   app.post('/', async (req, reply) => {
-    const { agencyId } = req.auth
+    const { agencyId, userId } = req.auth
     const body = req.body as { name: string; promptText: string; styleTags?: string; notes?: string; clientId?: string | null; sortOrder?: number }
 
     if (!body.name?.trim() || !body.promptText?.trim()) {
@@ -103,6 +116,7 @@ export async function imagePromptRoutes(app: FastifyInstance) {
         styleTags: body.styleTags?.trim() ?? '',
         notes: body.notes?.trim() || null,
         sortOrder: body.sortOrder ?? 0,
+        createdBy: userId,
       },
     })
     return reply.code(201).send({ data: prompt })
@@ -114,7 +128,7 @@ export async function imagePromptRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const body = req.body as { name?: string; promptText?: string; styleTags?: string; notes?: string; sortOrder?: number }
 
-    const existing = await prisma.imagePrompt.findFirst({ where: { id, agencyId } })
+    const existing = await prisma.imagePrompt.findFirst({ where: { id, agencyId, deletedAt: null } })
     if (!existing) return reply.code(404).send({ error: 'Not found' })
 
     const prompt = await prisma.imagePrompt.update({
@@ -130,14 +144,43 @@ export async function imagePromptRoutes(app: FastifyInstance) {
     return reply.send({ data: prompt })
   })
 
-  // DELETE /:id — admin only
-  app.delete('/:id', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
-    const { agencyId } = req.auth
+  // DELETE /:id — soft delete (owner or admin)
+  app.delete('/:id', async (req, reply) => {
+    const { agencyId, userId, role } = req.auth
     const { id } = req.params as { id: string }
 
-    const existing = await prisma.imagePrompt.findFirst({ where: { id, agencyId } })
+    const existing = await prisma.imagePrompt.findFirst({ where: { id, agencyId, deletedAt: null } })
     if (!existing) return reply.code(404).send({ error: 'Not found' })
 
+    const isAdmin = ADMIN_ROLES.has(role)
+    const isOwner = existing.createdBy === userId
+    if (!isAdmin && !isOwner) return reply.code(403).send({ error: 'You can only delete prompts you created' })
+
+    await prisma.imagePrompt.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedBy: userId },
+    })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // POST /:id/restore — restore soft-deleted (admin only)
+  app.post('/:id/restore', async (req, reply) => {
+    const { agencyId, role } = req.auth
+    if (!ADMIN_ROLES.has(role)) return reply.code(403).send({ error: 'Admins only' })
+    const { id } = req.params as { id: string }
+    const existing = await prisma.imagePrompt.findFirst({ where: { id, agencyId } })
+    if (!existing) return reply.code(404).send({ error: 'Not found' })
+    await prisma.imagePrompt.update({ where: { id }, data: { deletedAt: null, deletedBy: null } })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // DELETE /:id/permanent — hard delete (admin only)
+  app.delete('/:id/permanent', async (req, reply) => {
+    const { agencyId, role } = req.auth
+    if (!ADMIN_ROLES.has(role)) return reply.code(403).send({ error: 'Admins only' })
+    const { id } = req.params as { id: string }
+    const existing = await prisma.imagePrompt.findFirst({ where: { id, agencyId } })
+    if (!existing) return reply.code(404).send({ error: 'Not found' })
     await prisma.imagePrompt.delete({ where: { id } })
     return reply.send({ data: { ok: true } })
   })

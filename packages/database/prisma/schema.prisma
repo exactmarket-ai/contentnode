@@ -1204,6 +1204,8 @@ model PromptTemplate {
   brainSnapshotVersion String?  @map("brain_snapshot_version") // SHA-256 of Brain JSON at generation time
   isStale              Boolean  @default(false) @map("is_stale")
   createdBy            String?  @map("created_by")             // userId or 'system'
+  deletedAt            DateTime? @map("deleted_at")
+  deletedBy            String?  @map("deleted_by")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
@@ -2422,16 +2424,19 @@ model StakeholderPrinciple {
 // ImagePrompt — agency library + client copies
 // ─────────────────────────────────────────────
 model ImagePrompt {
-  id         String   @id @default(cuid())
-  agencyId   String   @map("agency_id")
-  clientId   String?  @map("client_id")   // null = global agency library
+  id         String    @id @default(cuid())
+  agencyId   String    @map("agency_id")
+  clientId   String?   @map("client_id")   // null = global agency library
   name       String
-  promptText String   @map("prompt_text") @db.Text
-  styleTags  String   @default("") @map("style_tags")
-  notes      String?  @db.Text
-  sortOrder  Int      @default(0) @map("sort_order")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  promptText String    @map("prompt_text") @db.Text
+  styleTags  String    @default("") @map("style_tags")
+  notes      String?   @db.Text
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdBy  String?   @map("created_by")
+  deletedAt  DateTime? @map("deleted_at")
+  deletedBy  String?   @map("deleted_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   agency Agency  @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
