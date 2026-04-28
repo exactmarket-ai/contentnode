@@ -3,6 +3,7 @@ import { apiFetch } from '@/lib/api'
 
 export interface CurrentUser {
   id: string
+  clerkId?: string
   email: string
   name: string | null
   title: string | null

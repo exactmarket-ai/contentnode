@@ -3,6 +3,7 @@ import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { formatBytes } from '@/components/layout/config/shared'
 import { DocTemplateEditor } from './DocTemplateEditor'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 interface AgencySettings {
   id: string
@@ -537,6 +538,7 @@ interface PromptTemplate {
   description: string | null
   parentId: string | null
   useCount: number
+  createdBy: string | null
   createdAt: string
 }
 
@@ -550,6 +552,7 @@ const PROMPT_CATEGORIES = [
 ]
 
 function PromptsSection() {
+  const { user, isAdmin } = useCurrentUser()
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -566,6 +569,7 @@ function PromptsSection() {
   const [newCategory, setNewCategory] = useState('general')
   const [saving, setSaving] = useState(false)
   const [seeding, setSeeding] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -605,10 +609,19 @@ function PromptsSection() {
   }
 
   const deleteTemplate = async (id: string) => {
-    if (!confirm('Delete this prompt template?')) return
-    await apiFetch(`/api/v1/prompts/${id}`, { method: 'DELETE' })
+    if (!confirm('Move this template to Trash?')) return
+    setDeleteError(null)
+    const res = await apiFetch(`/api/v1/prompts/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setDeleteError((json as { error?: string }).error ?? 'Failed to delete template.')
+      return
+    }
     load()
   }
+
+  const canDelete = (t: PromptTemplate) =>
+    isAdmin || (t.createdBy !== null && user?.clerkId === t.createdBy)
 
   const seedTemplates = async () => {
     setSeeding(true)
@@ -672,6 +685,13 @@ function PromptsSection() {
       <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
         Reusable instruction sets you can load into any AI Generate node. Save effective prompts here to reuse across workflows.
       </p>
+
+      {deleteError && (
+        <div className="mb-3 rounded-lg px-3 py-2 text-[12px]" style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>
+          {deleteError}
+          <button onClick={() => setDeleteError(null)} className="ml-2 underline">Dismiss</button>
+        </div>
+      )}
 
       {/* Create form */}
       {creating && (
@@ -843,13 +863,13 @@ function PromptsSection() {
                               >
                                 <Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} />
                               </button>
-                              <button
+                              {canDelete(t) && <button
                                 onClick={() => deleteTemplate(t.id)}
                                 className="rounded p-1 hover:bg-red-50"
                                 title="Delete"
                               >
                                 <Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} />
-                              </button>
+                              </button>}
                             </div>
                           </div>
                           {expandedId === t.id && (

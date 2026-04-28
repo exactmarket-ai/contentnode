@@ -652,6 +652,7 @@ export async function teamRoutes(app: FastifyInstance) {
       data: {
         ...rest,
         avatarUrl: avatarStorageKey ?? null,
+        clerkId: userId,
       },
     })
   })

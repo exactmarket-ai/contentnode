@@ -390,8 +390,13 @@ export async function promptRoutes(app: FastifyInstance) {
     if (!existing) return reply.code(404).send({ error: 'Template not found' })
 
     const isAdmin = ADMIN_ROLES.has(role)
-    const isOwner = existing.createdBy === userId
-    if (!isAdmin && !isOwner) return reply.code(403).send({ error: 'You can only delete templates you created' })
+    const isOwner = existing.createdBy !== null && existing.createdBy === userId
+    if (!isAdmin && !isOwner) {
+      const msg = existing.createdBy === null
+        ? 'This is an agency-owned template. Only admins can delete it.'
+        : 'You can only delete templates you created.'
+      return reply.code(403).send({ error: msg })
+    }
 
     await prisma.promptTemplate.update({
       where: { id: req.params.id },
@@ -443,7 +448,7 @@ export async function promptRoutes(app: FastifyInstance) {
       return reply.send({ data: { skipped: true, message: 'Blog templates already seeded' } })
     }
     await prisma.promptTemplate.createMany({
-      data: toInsert.map((t) => ({ agencyId, clientId: null, source: 'global', ...t })),
+      data: toInsert.map((t) => ({ agencyId, clientId: null, source: 'global', ...t, createdBy: null })),
     })
     return reply.send({ data: { seeded: toInsert.length } })
   })
