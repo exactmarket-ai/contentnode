@@ -1902,9 +1902,6 @@ export function SettingsPage() {
           {/* ── Document Templates ───────────────────────────────────────── */}
           <DocTemplateSection />
 
-          {/* ── File Library ─────────────────────────────────────────────── */}
-          <LibrarySection />
-
           {/* ── Prompt Templates + Image Prompts (side by side) ──────────── */}
           <div className="grid grid-cols-2 gap-8 items-start">
             <PromptsSection />
