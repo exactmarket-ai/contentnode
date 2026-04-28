@@ -2068,6 +2068,10 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [verticalsLoading, setVerticalsLoading] = useState(true)
   const [downloadingDocx, setDownloadingDocx] = useState(false)
   const [kitSessionOpen, setKitSessionOpen]   = useState(false)
+  const [kitSessionStatus, setKitSessionStatus] = useState<string | null>(null)
+  const [kitSessionId, setKitSessionId]         = useState<string | null>(null)
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
+  const [regenerating, setRegenerating]         = useState(false)
   const [docStyle, setDocStyle] = useState<DocStyleConfig>(DEFAULT_DOC_STYLE)
   const [attachedTemplate, setAttachedTemplate] = useState<AttachedTemplate | null>(null)
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
@@ -2146,6 +2150,38 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         latestFwRef.current = base
       })
   }, [clientId, selectedVertical])
+
+  // Fetch active kit session status whenever vertical changes
+  const fetchKitSessionStatus = useCallback(async () => {
+    if (!selectedVertical) { setKitSessionStatus(null); setKitSessionId(null); return }
+    try {
+      const res = await apiFetch(`/api/v1/kit-sessions/${clientId}/${selectedVertical.id}`)
+      const { data } = await res.json()
+      setKitSessionStatus(data?.status ?? null)
+      setKitSessionId(data?.id ?? null)
+    } catch { /* non-fatal */ }
+  }, [clientId, selectedVertical])
+
+  useEffect(() => { void fetchKitSessionStatus() }, [fetchKitSessionStatus])
+
+  const handleRegenerate = async () => {
+    if (!kitSessionId || !selectedVertical) return
+    setRegenerating(true)
+    try {
+      if (kitSessionStatus === 'generating') {
+        await apiFetch(`/api/v1/kit-sessions/${kitSessionId}/cancel`, { method: 'POST' })
+      }
+      await apiFetch(`/api/v1/kit-sessions/${kitSessionId}/archive`, { method: 'POST' })
+      setKitSessionStatus(null)
+      setKitSessionId(null)
+      setShowRegenerateConfirm(false)
+      setKitSessionOpen(true)
+    } catch {
+      setShowRegenerateConfirm(false)
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   // Load website scrape status when vertical changes, and poll while running
   useEffect(() => {
@@ -2566,17 +2602,62 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
               </button>
             )}
 
-            {/* Generate Kit button */}
+            {/* Kit session controls */}
             {fw && (
-              <button
-                onClick={() => setKitSessionOpen(true)}
-                className="flex items-center gap-1.5 rounded border border-blue-500 bg-blue-500 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600"
-              >
-                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-                Generate Kit
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Status badge */}
+                {kitSessionStatus === 'generating' && (
+                  <span className="flex items-center gap-1 text-xs text-purple-600">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-purple-500" />
+                    </span>
+                    Generating
+                  </span>
+                )}
+                {kitSessionStatus === 'error' && (
+                  <span className="flex items-center gap-1 text-xs text-red-600">
+                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                    Failed — click Regenerate
+                  </span>
+                )}
+                {(kitSessionStatus === 'delivery' || kitSessionStatus === 'complete') && (
+                  <span className="flex items-center gap-1 text-xs text-green-600">
+                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                    Kit ready
+                  </span>
+                )}
+                {kitSessionStatus === 'checkpoint' && (
+                  <span className="flex items-center gap-1 text-xs text-blue-600">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    Awaiting review
+                  </span>
+                )}
+
+                {/* Generate Kit / View Kit */}
+                <button
+                  onClick={() => setKitSessionOpen(true)}
+                  className="flex items-center gap-1.5 rounded border border-blue-500 bg-blue-500 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600"
+                >
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  {kitSessionStatus ? 'View Kit' : 'Generate Kit'}
+                </button>
+
+                {/* Regenerate Kit — only when a session exists */}
+                {kitSessionStatus && (
+                  <button
+                    onClick={() => setShowRegenerateConfirm(true)}
+                    className="flex items-center gap-1.5 rounded border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/40"
+                  >
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Regenerate Kit
+                  </button>
+                )}
+              </div>
             )}
 
             {/* Download button */}
@@ -2824,8 +2905,36 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
           clientName={clientName}
           verticalId={selectedVertical.id}
           verticalName={selectedVertical.name}
-          onClose={() => setKitSessionOpen(false)}
+          onClose={() => { setKitSessionOpen(false); void fetchKitSessionStatus() }}
         />
+      )}
+
+      {/* Regenerate confirmation dialog */}
+      {showRegenerateConfirm && selectedVertical && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-2">Regenerate Kit?</h3>
+            <p className="text-sm text-gray-600 mb-5 leading-relaxed">
+              This will start a fresh kit for <strong>{clientName} {selectedVertical.name}</strong>. Your current session will be archived and remain accessible via "View previous versions".
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => void handleRegenerate()}
+                disabled={regenerating}
+                className="flex-1 rounded-lg bg-[#a200ee] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#8800cc] disabled:opacity-50 transition-colors"
+              >
+                {regenerating ? 'Archiving…' : 'Archive and Start Fresh'}
+              </button>
+              <button
+                onClick={() => setShowRegenerateConfirm(false)}
+                disabled={regenerating}
+                className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
     </DraftContext.Provider>
