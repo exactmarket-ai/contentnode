@@ -130,18 +130,64 @@ function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>,
 
   const instructions = [
     // 01 Brochure
-    `Using the intake JSON provided, generate a professional B2B brochure in markdown format with these sections in order:
+    `Using the intake JSON provided, generate a professional B2B brochure in markdown. Output EXACTLY the sections below in this order, with the exact ## headers shown. No other sections. No HTML tags of any kind — no <br>, <strong>, <div>, or any other tag.
 
-1. **Cover**: headline from vertical.taglines[0], sub-headline from vertical.positioning_statement, vertical name
-2. **Stats bar**: 4 statistics from statistics[] — show stat, label, and source for each
-3. **Challenges table**: 3 columns — Challenge Name (name field only, no sub-paragraph text), Solution (derived from challenge.solution), Service Pillar (challenge.service_pillar). One row per challenge from challenges[].
-4. **Four pillars**: use pillars[] array. Format as 2×2 grid using markdown. Each cell: pillar name as bold header, one-sentence value_prop, then key_services as bullet list.
-5. **Why Us**: each differentiator from differentiators[] as a single bullet. One line per differentiator. No paragraphs.
-6. **Proof points**: stats from proof_points[] as a callout block
-7. **Case studies**: two cards from case_studies[0] and case_studies[1]. Each card: client_profile | situation (2 sentences max) | engagement (2 sentences max) | outcomes (2 sentences max). Omit any "Read the full story" rows.
-8. **Back cover CTA**: primary_cta.name as headline, primary_cta.description as body, then the exact URL from primary_cta.url on its own line as plain text. IMPORTANT: Substitute the actual URL value from the intake JSON — do not output "primary_cta.url" as a literal string.
+## Cover
+[vertical.taglines[0] — copy verbatim, one line]
+[vertical.positioning_statement — one sentence]
+[vertical.name]
 
-Enforce all copy length rules. Output clean markdown only.`,
+## Stats Bar
+Output exactly 4 lines, one per statistic from statistics[]. Each line must follow this format exactly:
+- **[stat value]** | [short label] | [source, year]
+
+## Challenges
+| Challenge | Our Response | Service Pillar |
+|---|---|---|
+[One row per challenge from challenges[]. Challenge = name only. Our Response = derived from solution. Service Pillar = service_pillar value.]
+
+## Four Pillars
+[For each of the 4 pillars from pillars[], output this block — no tables, no HTML:]
+### [pillar.name]
+[pillar.value_prop — one sentence]
+- [key_service 1]
+- [key_service 2]
+- [key_service 3]
+
+[blank line between pillars]
+
+## Why Us
+[One bullet per differentiator from differentiators[]. Format: - **[label]** — [position, one sentence max]]
+
+## Proof Points Strip
+[Exactly 4 lines from proof_points[]. Format:]
+- **[stat]** | [label]
+
+## Case Studies
+### [case_studies[0].client_profile]
+**Who they are:** [1 sentence]
+**Challenge:** [situation — 1-2 sentences]
+**What we delivered:** [engagement — 1-2 sentences]
+**Outcome:** [outcomes — 1-2 sentences]
+
+### [case_studies[1].client_profile or placeholder if missing]
+**Who they are:** [1 sentence or "Case study pending — contact your team"]
+**Challenge:** [—]
+**What we delivered:** [—]
+**Outcome:** [—]
+
+## Back Cover
+**[primary_cta.name]**
+[primary_cta.description — 1-2 sentences]
+[the actual URL value from primary_cta.url — substitute the real value from the intake JSON]
+
+RULES:
+- No HTML tags. No <br>, <strong>, <div>, or any other HTML anywhere.
+- No markdown tables in the Four Pillars section.
+- Bold only using **double asterisks**.
+- Platform-agnostic language throughout — do not name specific tools (no "Monday.com", "Box", "Salesforce", "HubSpot" etc.). Say "your project management stack" or "your existing delivery workflow" instead.
+- Every case study outcome must be specific and quantified where possible.
+- Back cover URL must be the real URL value from primary_cta.url in the intake JSON.`,
 
     // 02 eBook
     `Using the intake JSON provided, generate a complete standalone eBook as a full HTML document. Include <!DOCTYPE html>, <html>, <head> (with title, Google Fonts DM Sans link, and all CSS inline in <style>), and <body>.

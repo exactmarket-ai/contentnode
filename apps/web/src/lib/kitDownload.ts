@@ -277,6 +277,409 @@ async function buildCoverSection(
   ]
 }
 
+// ── Brochure-specific builders ─────────────────────────────────────────────────
+
+function noBorder() { return { style: BorderStyle.NONE, size: 0, color: 'auto' } as const }
+
+/** 4-cell horizontal stats bar: large bold number, label below, source below that */
+function buildStatBar(lines: string[], docStyle: DocStyle): Table {
+  const parsed = lines
+    .filter(l => /^[-*] /.test(l))
+    .slice(0, 4)
+    .map(l => {
+      const parts = l.slice(2).split('|').map(p => p.trim())
+      return {
+        val:    (parts[0] ?? '').replace(/\*\*/g, ''),
+        label:  parts[1] ?? '',
+        source: parts[2] ?? '',
+      }
+    })
+  while (parsed.length < 4) parsed.push({ val: '–', label: '', source: '' })
+
+  const primary  = hexNoHash(docStyle.primaryColor)
+  const divider  = tint(docStyle.primaryColor, 0.2)
+  const hf = docStyle.headingFont
+  const bf = docStyle.bodyFont
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top:              { style: BorderStyle.SINGLE, size: 6, color: primary },
+      bottom:           { style: BorderStyle.SINGLE, size: 6, color: primary },
+      left:             noBorder(),
+      right:            noBorder(),
+      insideHorizontal: noBorder(),
+      insideVertical:   { style: BorderStyle.SINGLE, size: 2, color: divider },
+    },
+    rows: [new TableRow({
+      children: parsed.map(s => new TableCell({
+        margins: { top: 160, bottom: 160, left: 120, right: 120 },
+        children: [
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.val), font: hf, size: 48, bold: true, color: primary })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.label), font: bf, size: 22 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.source), font: bf, size: 18, italics: true, color: '6B7280' })] }),
+        ],
+      })),
+    })],
+  })
+}
+
+/** 2×2 table for pillars. Each cell: name heading, value prop, bullet services — all as separate Paragraphs, no HTML */
+function buildPillars2x2(lines: string[], docStyle: DocStyle): Table {
+  const blocks: { name: string; valueProp: string; bullets: string[] }[] = []
+  let cur: { name: string; valueProp: string; bullets: string[] } | null = null
+  for (const line of lines) {
+    if (line.startsWith('### ')) {
+      if (cur) blocks.push(cur)
+      cur = { name: line.slice(4).trim(), valueProp: '', bullets: [] }
+    } else if (cur) {
+      if (/^[-*] /.test(line)) cur.bullets.push(line.slice(2).trim())
+      else if (line.trim() && !cur.valueProp) cur.valueProp = line.trim()
+    }
+  }
+  if (cur) blocks.push(cur)
+  while (blocks.length < 4) blocks.push({ name: 'Additional Service Area', valueProp: '', bullets: [] })
+
+  const primary   = hexNoHash(docStyle.primaryColor)
+  const secondary = hexNoHash(docStyle.secondaryColor)
+  const altFill   = tint(docStyle.secondaryColor, 0.06)
+  const borderCol = tint(docStyle.primaryColor, 0.3)
+  const hf = docStyle.headingFont
+  const bf = docStyle.bodyFont
+
+  const buildCell = (b: typeof blocks[0], idx: number): TableCell => {
+    const fill = idx % 2 === 0 ? 'FFFFFF' : altFill
+    return new TableCell({
+      shading: { fill, type: ShadingType.SOLID, color: fill },
+      margins: { top: 180, bottom: 180, left: 160, right: 160 },
+      children: [
+        new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: sanitize(b.name), font: hf, size: 24, bold: true, color: primary })] }),
+        ...(b.valueProp ? [new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text: sanitize(b.valueProp), font: bf, size: 20, italics: true, color: '3A3A34' })] })] : []),
+        ...b.bullets.map(bl => new Paragraph({
+          spacing: { after: 60 },
+          children: [
+            new TextRun({ text: '• ', font: bf, size: 20, color: secondary }),
+            new TextRun({ text: sanitize(bl), font: bf, size: 20 }),
+          ],
+        })),
+      ],
+    })
+  }
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top:              { style: BorderStyle.SINGLE, size: 4, color: primary },
+      bottom:           { style: BorderStyle.SINGLE, size: 4, color: primary },
+      left:             { style: BorderStyle.SINGLE, size: 4, color: primary },
+      right:            { style: BorderStyle.SINGLE, size: 4, color: primary },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+      insideVertical:   { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+    },
+    rows: [
+      new TableRow({ children: [buildCell(blocks[0], 0), buildCell(blocks[1], 1)] }),
+      new TableRow({ children: [buildCell(blocks[2], 2), buildCell(blocks[3], 3)] }),
+    ],
+  })
+}
+
+/** Dark-background proof strip: primaryColor fill, large white stat + label per cell */
+function buildProofStrip(lines: string[], docStyle: DocStyle): Table {
+  const parsed = lines
+    .filter(l => /^[-*] /.test(l))
+    .slice(0, 6)
+    .map(l => {
+      const parts = l.slice(2).split('|').map(p => p.trim())
+      return { val: (parts[0] ?? '').replace(/\*\*/g, ''), label: parts[1] ?? '' }
+    })
+  if (!parsed.length) return buildStatBar([], docStyle)
+
+  const primary  = hexNoHash(docStyle.primaryColor)
+  const hf = docStyle.headingFont
+  const bf = docStyle.bodyFont
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
+    rows: [new TableRow({
+      children: parsed.map(p => new TableCell({
+        shading: { fill: primary, type: ShadingType.SOLID, color: primary },
+        margins: { top: 200, bottom: 200, left: 120, right: 120 },
+        children: [
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(p.val), font: hf, size: 48, bold: true, color: 'FFFFFF' })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(p.label), font: bf, size: 20, color: 'DDDDDD' })] }),
+        ],
+      })),
+    })],
+  })
+}
+
+/** Two side-by-side case study cards */
+function buildCaseStudies(lines: string[], docStyle: DocStyle): (Paragraph | Table)[] {
+  const blocks: { title: string; fields: { key: string; value: string }[] }[] = []
+  let cur: { title: string; fields: { key: string; value: string }[] } | null = null
+  for (const line of lines) {
+    if (line.startsWith('### ')) {
+      if (cur) blocks.push(cur)
+      cur = { title: line.slice(4).trim(), fields: [] }
+    } else if (cur) {
+      const m = line.match(/^\*\*([^*]+):\*\*\s*(.*)/)
+      if (m) cur.fields.push({ key: m[1].trim(), value: m[2].trim() })
+    }
+  }
+  if (cur) blocks.push(cur)
+  const placeholder = {
+    title: 'Case study pending',
+    fields: [
+      { key: 'Who they are', value: 'Contact your team to add a case study.' },
+      { key: 'Challenge', value: '—' },
+      { key: 'What we delivered', value: '—' },
+      { key: 'Outcome', value: '—' },
+    ],
+  }
+  while (blocks.length < 2) blocks.push(placeholder)
+
+  const primary   = hexNoHash(docStyle.primaryColor)
+  const borderCol = tint(docStyle.primaryColor, 0.3)
+  const altFill   = tint(docStyle.secondaryColor, 0.05)
+  const hf = docStyle.headingFont
+  const bf = docStyle.bodyFont
+
+  const buildCard = (b: typeof blocks[0]): TableCell => new TableCell({
+    shading: { fill: altFill, type: ShadingType.SOLID, color: altFill },
+    margins: { top: 160, bottom: 160, left: 160, right: 160 },
+    borders: {
+      top:    { style: BorderStyle.SINGLE, size: 6, color: primary },
+      bottom: { style: BorderStyle.SINGLE, size: 2, color: borderCol },
+      left:   { style: BorderStyle.SINGLE, size: 2, color: borderCol },
+      right:  { style: BorderStyle.SINGLE, size: 2, color: borderCol },
+    },
+    children: [
+      new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: sanitize(b.title), font: hf, size: 24, bold: true, color: primary })] }),
+      ...b.fields.flatMap(f => [
+        new Paragraph({ spacing: { before: 80, after: 20 }, children: [new TextRun({ text: sanitize(f.key) + ':', font: bf, size: 20, bold: true })] }),
+        new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: sanitize(f.value), font: bf, size: 20 })] }),
+      ]),
+    ],
+  })
+
+  return [
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
+      rows: [new TableRow({ children: [buildCard(blocks[0]), buildCard(blocks[1])] })],
+    }),
+  ]
+}
+
+/** Dark CTA box with URL + optional secondary bullet list */
+function buildBackCoverCta(lines: string[], docStyle: DocStyle): (Paragraph | Table)[] {
+  let ctaName = ''
+  let ctaDesc = ''
+  let ctaUrl  = ''
+  const secondaries: string[] = []
+
+  for (const line of lines) {
+    if (/^\*\*[^*]+\*\*$/.test(line.trim())) { ctaName = line.trim().replace(/\*\*/g, ''); continue }
+    if (/^https?:\/\//i.test(line.trim()))    { ctaUrl  = line.trim(); continue }
+    if (/^[-*] /.test(line))                  { secondaries.push(line.slice(2).trim()); continue }
+    if (line.trim() && !ctaDesc)              { ctaDesc = line.trim() }
+  }
+
+  const primary = hexNoHash(docStyle.primaryColor)
+  const hf = docStyle.headingFont
+  const bf = docStyle.bodyFont
+
+  const ctaChildren: Paragraph[] = []
+  if (ctaName) ctaChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text: sanitize(ctaName), font: hf, size: 40, bold: true, color: 'FFFFFF' })] }))
+  if (ctaDesc) ctaChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: sanitize(ctaDesc), font: bf, size: 22, color: 'DDDDDD' })] }))
+  if (ctaUrl)  ctaChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80  }, children: [new TextRun({ text: ctaUrl, font: bf, size: 20, bold: true, color: 'FFFFFF', underline: {} })] }))
+
+  const elements: (Paragraph | Table)[] = [
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
+      rows: [new TableRow({
+        children: [new TableCell({
+          shading: { fill: primary, type: ShadingType.SOLID, color: primary },
+          margins: { top: 320, bottom: 320, left: 320, right: 320 },
+          children: ctaChildren.length ? ctaChildren : [new Paragraph({ children: [] })],
+        })],
+      })],
+    }),
+  ]
+  if (secondaries.length) {
+    elements.push(new Paragraph({ spacing: { before: 240 }, children: [] }))
+    for (const s of secondaries) {
+      elements.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: sanitize(s), font: bf, size: 22 })] }))
+    }
+  }
+  return elements
+}
+
+/** Brochure-specific cover: client name large + tagline + vertical name */
+async function buildBrochureCoverSection(
+  docStyle: DocStyle,
+  tagline: string,
+  clientName: string,
+  verticalName: string,
+): Promise<(Paragraph | Table)[]> {
+  const primary = hexNoHash(docStyle.primaryColor)
+  const items: Paragraph[] = []
+
+  if (docStyle.logoDataUrl) {
+    const logoType = imageTypeFromDataUrl(docStyle.logoDataUrl)
+    let placed = false
+    if (logoType) {
+      const dims = await getImageDimensions(docStyle.logoDataUrl)
+      if (dims && dims.h > 0) {
+        const TARGET_H = 50
+        const targetW = Math.round(TARGET_H * (dims.w / dims.h))
+        try {
+          items.push(new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 480, after: 320 },
+            children: [new ImageRun({ data: dataUrlToArrayBuffer(docStyle.logoDataUrl), type: logoType, transformation: { width: targetW, height: TARGET_H } })],
+          }))
+          placed = true
+        } catch { /* fall through */ }
+      }
+    }
+    if (!placed && docStyle.agencyName) {
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 480, after: 320 }, children: [new TextRun({ text: docStyle.agencyName, font: docStyle.headingFont, size: 32, bold: true, color: 'FFFFFF' })] }))
+    }
+  } else {
+    items.push(new Paragraph({ spacing: { before: 960 }, children: [] }))
+  }
+
+  items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text: sanitize(clientName), font: docStyle.headingFont, size: 64, bold: true, color: 'FFFFFF' })] }))
+  if (tagline) items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: sanitize(tagline), font: docStyle.headingFont, size: 32, color: 'DDDDDD' })] }))
+  items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [new TextRun({ text: sanitize(verticalName), font: docStyle.bodyFont, size: 24, color: 'AAAAAA' })] }))
+
+  return [new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
+    rows: [new TableRow({
+      height: { value: convertInchesToTwip(9.5), rule: HeightRule.EXACT },
+      children: [new TableCell({ shading: { fill: primary, type: ShadingType.SOLID, color: primary }, children: items })],
+    })],
+  })]
+}
+
+/** Main orchestrator: parses brochure markdown by section and applies specialized renderers */
+export async function buildBrochureDocxBlob(
+  markdown: string,
+  docStyle: DocStyle,
+  clientName: string,
+  verticalName: string,
+): Promise<Blob> {
+  const primaryHex   = hexNoHash(docStyle.primaryColor)
+  const secondaryHex = hexNoHash(docStyle.secondaryColor)
+  const bodyColor    = '1A1A14'
+  const bodyFont     = docStyle.bodyFont
+  const headFont     = docStyle.headingFont
+
+  // Split into named sections by ## headers
+  const rawSections = markdown.split(/^(?=## )/m).filter(s => s.trim())
+  const sections = rawSections.map(s => {
+    const lines = s.split('\n')
+    const m = lines[0].match(/^## (.+)/)
+    return { name: (m ? m[1] : '').trim().toLowerCase(), lines: lines.slice(1) }
+  })
+
+  const coverSection = sections.find(s => s.name === 'cover')
+  const coverTagline = coverSection?.lines.find(l => l.trim())?.trim() ?? ''
+
+  const body: (Paragraph | Table)[] = []
+
+  const renderGeneric = (lines: string[]) => {
+    let tableLines: string[] = []
+    const flush = () => {
+      if (!tableLines.length) return
+      const dataRows = tableLines.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
+      if (dataRows.length) body.push(buildStyledTable(tableLines, docStyle))
+      tableLines = []
+    }
+    for (const line of lines) {
+      if (line.startsWith('|')) { tableLines.push(line); continue }
+      flush()
+      if      (line.startsWith('# '))    body.push(new Paragraph({ style: 'Heading1', children: [new TextRun(sanitize(line.slice(2)))] }))
+      else if (line.startsWith('## '))   body.push(new Paragraph({ style: 'Heading2', children: [new TextRun(sanitize(line.slice(3)))] }))
+      else if (line.startsWith('### '))  body.push(new Paragraph({ style: 'Heading3', children: [new TextRun(sanitize(line.slice(4)))] }))
+      else if (line.startsWith('#### ')) body.push(new Paragraph({ style: 'Heading4', children: [new TextRun(sanitize(line.slice(5)))] }))
+      else if (/^[-*] /.test(line))      body.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
+      else if (line.startsWith('> '))    body.push(new Paragraph({ indent: { left: 720 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
+      else if (/^---+$|^===+$/.test(line.trim())) body.push(buildHRule(docStyle.primaryColor))
+      else if (line.trim() === '')        body.push(new Paragraph({}))
+      else                               body.push(new Paragraph({ children: parseInlineRuns(line, bodyFont, 22, bodyColor) }))
+    }
+    flush()
+  }
+
+  for (const { name, lines } of sections) {
+    if (name === 'cover') continue
+
+    if (name.includes('stat')) {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Key Statistics')] }))
+      body.push(buildStatBar(lines, docStyle))
+      body.push(new Paragraph({}))
+    } else if (name.includes('challenge')) {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Challenges We Solve')] }))
+      renderGeneric(lines)
+      body.push(new Paragraph({}))
+    } else if (name.includes('pillar')) {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Our Four Pillars')] }))
+      body.push(buildPillars2x2(lines, docStyle))
+      body.push(new Paragraph({}))
+    } else if (name.includes('why')) {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Why Us')] }))
+      renderGeneric(lines)
+      body.push(new Paragraph({}))
+    } else if (name.includes('proof')) {
+      body.push(buildHRule(docStyle.primaryColor))
+      body.push(buildProofStrip(lines, docStyle))
+      body.push(new Paragraph({}))
+    } else if (name.includes('case')) {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Client Stories')] }))
+      body.push(...buildCaseStudies(lines, docStyle))
+      body.push(new Paragraph({}))
+    } else if (name.includes('back cover') || name.includes('back') || name.includes('cta')) {
+      body.push(buildHRule(docStyle.primaryColor))
+      body.push(...buildBackCoverCta(lines, docStyle))
+    } else {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun(sanitize(name))] }))
+      renderGeneric(lines)
+      body.push(new Paragraph({}))
+    }
+  }
+
+  const coverChildren = await buildBrochureCoverSection(docStyle, coverTagline, clientName, verticalName)
+
+  const showFooter = docStyle.includePageNumbers || !!docStyle.agencyName || !!docStyle.footerText
+  const footers = showFooter ? { default: buildFooterElement(docStyle) } : undefined
+
+  const doc = new Document({
+    styles: {
+      paragraphStyles: [
+        { id: 'Normal',   name: 'Normal',   run: { font: bodyFont, size: 22, color: bodyColor } },
+        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 48, bold: true, color: primaryHex }, paragraph: { spacing: { before: 240, after: 160 } } },
+        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 36, bold: true, color: primaryHex }, paragraph: { spacing: { before: 200, after: 120 } } },
+        { id: 'Heading3', name: 'Heading 3', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 28, bold: true, color: secondaryHex }, paragraph: { spacing: { before: 160, after: 80 } } },
+        { id: 'Heading4', name: 'Heading 4', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 24, bold: true, color: primaryHex }, paragraph: { spacing: { before: 120, after: 60 } } },
+      ],
+    },
+    numbering: {
+      config: [{ reference: 'default-numbering', levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: convertInchesToTwip(0.5), hanging: convertInchesToTwip(0.25) } } } }] }],
+    },
+    sections: [
+      { properties: { type: SectionType.NEXT_PAGE }, children: coverChildren },
+      { ...(footers ? { footers } : {}), children: body },
+    ],
+  })
+
+  return Packer.toBlob(doc)
+}
+
 // ── Main DOCX builder ──────────────────────────────────────────────────────────
 
 export async function markdownToDocxBlob(
@@ -537,6 +940,9 @@ export async function downloadKit(
     blob = new Blob([branded], { type: 'text/html;charset=utf-8' })
   } else if (asset.ext === 'pptx') {
     blob = await markdownToPptxBlob(asset.content, style)
+  } else if (asset.ext === 'docx' && asset.index === 0) {
+    // Brochure uses a specialized section-aware renderer
+    blob = await buildBrochureDocxBlob(asset.content, style, clientName, verticalName)
   } else {
     blob = await markdownToDocxBlob(asset.content, style, {
       assetName: asset.name,
