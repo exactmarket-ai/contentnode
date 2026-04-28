@@ -299,3 +299,19 @@ export function getKitGenerationQueue(): Queue<KitGenerationJobData> {
   }
   return kitGenerationQueue
 }
+
+export const QUEUE_STORYBOARD_GENERATION = 'storyboard-generation'
+
+export interface StoryboardJobData {
+  sessionId: string
+  agencyId: string
+  framesPerScene: 1 | 2 | 3 | 4
+}
+
+let storyboardQueue: Queue<StoryboardJobData> | null = null
+export function getStoryboardQueue(): Queue<StoryboardJobData> {
+  if (!storyboardQueue) {
+    storyboardQueue = new Queue<StoryboardJobData>(QUEUE_STORYBOARD_GENERATION, { connection: getBullMQConnection() })
+  }
+  return storyboardQueue
+}

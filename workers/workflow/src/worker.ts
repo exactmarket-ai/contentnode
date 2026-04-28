@@ -61,7 +61,8 @@ import { startBrainCollapseWorker } from './brainCollapseProcessor.js'
 import { startPrincipleInferenceWorker } from './principleInference.js'
 import { startBoxVersionScanWorker } from './boxVersionScanner.js'
 import { processKitGenerationJob } from './kitGenerator.js'
-import { QUEUE_KIT_GENERATION, type KitGenerationJobData } from './queues.js'
+import { runStoryboardJob } from './kitStoryboardGenerator.js'
+import { QUEUE_KIT_GENERATION, QUEUE_STORYBOARD_GENERATION, type KitGenerationJobData, type StoryboardJobData } from './queues.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -398,6 +399,18 @@ const kitGenerationWorker = createWorker<KitGenerationJobData>(
   { lockDuration: 10 * 60 * 1000 }, // 10 min — eBook/Cheat Sheet can take 4-7 min to generate
 )
 kitGenerationWorker.on('error', (err) => console.error('[kit-generation-worker] error:', err))
+
+// ── storyboard-generation ─────────────────────────────────────────────────────
+const storyboardWorker = createWorker<StoryboardJobData>(
+  QUEUE_STORYBOARD_GENERATION,
+  async (job) => {
+    console.log(`[storyboard] job picked up: session ${job.data.sessionId} framesPerScene=${job.data.framesPerScene}`)
+    await runStoryboardJob(job)
+  },
+  1,
+  { lockDuration: 20 * 60 * 1000 }, // 20 min — image generation per scene can be slow
+)
+storyboardWorker.on('error', (err) => console.error('[storyboard-worker] error:', err))
 
 // ── box version sweep — passive safety net, runs every 2 hours ───────────────
 // Catches Box versions that arrived without a Monday status change event

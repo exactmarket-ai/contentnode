@@ -7,7 +7,8 @@
  */
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '@contentnode/database'
-import { getKitGenerationQueue } from '../lib/queues.js'
+import { getKitGenerationQueue, getStoryboardQueue } from '../lib/queues.js'
+import { downloadBuffer } from '@contentnode/storage'
 
 // ── Intake JSON mapper ────────────────────────────────────────────────────────
 
@@ -576,6 +577,87 @@ export async function kitSessionRoutes(app: FastifyInstance) {
       })
 
       return reply.send({ data: sessions })
+    }
+  )
+
+  // POST /:sessionId/storyboard — enqueue storyboard generation
+  app.post<{ Params: { sessionId: string }; Body: { framesPerScene?: number } }>(
+    '/:sessionId/storyboard',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId } = req.params
+      const raw = (req.body as { framesPerScene?: unknown })?.framesPerScene
+      const framesPerScene = (typeof raw === 'number' && [1, 2, 3, 4].includes(raw) ? raw : 1) as 1 | 2 | 3 | 4
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      const files  = (session.generatedFiles ?? {}) as Record<string, unknown>
+      const assets = (files.assets as Array<Record<string, unknown>>) ?? []
+      if (assets[5]?.status !== 'complete') {
+        return reply.code(400).send({ error: 'Asset 06 (Video Script) must be complete before generating storyboard' })
+      }
+
+      const current = (files.storyboard ?? {}) as Record<string, unknown>
+      await prisma.kitSession.update({
+        where: { id: sessionId },
+        data: {
+          generatedFiles: {
+            ...files,
+            storyboard: { ...current, status: 'pending', framesPerScene, startedAt: new Date().toISOString() },
+          } as object,
+        },
+      })
+
+      await getStoryboardQueue().add(
+        'generate-storyboard',
+        { sessionId, agencyId, framesPerScene },
+        { removeOnComplete: { count: 20 }, removeOnFail: { count: 10 } },
+      )
+
+      return reply.send({ ok: true })
+    }
+  )
+
+  // GET /:sessionId/storyboard — return storyboard progress
+  app.get<{ Params: { sessionId: string } }>(
+    '/:sessionId/storyboard',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId } = req.params
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      const files = (session.generatedFiles ?? {}) as Record<string, unknown>
+      const storyboard = (files.storyboard ?? null) as Record<string, unknown> | null
+      return reply.send({ data: storyboard })
+    }
+  )
+
+  // GET /:sessionId/storyboard/download — stream PDF from storage
+  app.get<{ Params: { sessionId: string } }>(
+    '/:sessionId/storyboard/download',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId } = req.params
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      const files     = (session.generatedFiles ?? {}) as Record<string, unknown>
+      const storyboard = (files.storyboard ?? null) as Record<string, unknown> | null
+      if (!storyboard || storyboard.status !== 'complete' || !storyboard.pdfStorageKey) {
+        return reply.code(404).send({ error: 'Storyboard PDF not available yet' })
+      }
+
+      const buf = await downloadBuffer(storyboard.pdfStorageKey as string)
+      const filename = (storyboard.pdfFilename as string | undefined) ?? 'storyboard.pdf'
+
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .send(buf)
     }
   )
 }

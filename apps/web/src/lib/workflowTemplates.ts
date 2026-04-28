@@ -4,7 +4,7 @@ export interface WorkflowTemplate {
   id: string
   name: string
   description: string
-  category: 'blog' | 'social' | 'email' | 'seo' | 'general' | 'marketing' | 'demand_gen'
+  category: 'blog' | 'social' | 'email' | 'seo' | 'general' | 'marketing' | 'demand_gen' | 'video'
   icon: string
   nodes: Node[]
   edges: Edge[]
@@ -3606,6 +3606,86 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
     edges: [
       { id: 'e-sd-1', source: 'sd-src', target: 'sd-cd'  },
       { id: 'e-sd-2', source: 'sd-cd',  target: 'sd-html' },
+    ],
+  },
+
+  // ─── Video Storyboard Generator ─────────────────────────────────────────────
+  {
+    id: 'video-storyboard-generator',
+    name: 'Video Storyboard Generator',
+    description:
+      'Takes a Video Script (or GTM Kit Asset 06) and converts it into a fully illustrated PDF storyboard. Parses scene tables, generates one or more AI images per scene via GPT Image 2, and assembles a branded Puppeteer-rendered PDF with sidebars, timecodes, and animation notes.',
+    category: 'video',
+    icon: 'Film',
+    nodes: [
+      {
+        id: 'vsb-script',
+        type: 'source',
+        position: { x: 80, y: 200 },
+        data: {
+          label: 'Video Script',
+          subtype: 'video-script-reader',
+          config: {
+            subtype: 'video-script-reader',
+            source: 'upstream',
+          },
+        },
+      },
+      {
+        id: 'vsb-parser',
+        type: 'logic',
+        position: { x: 340, y: 200 },
+        data: {
+          label: 'Scene Parser',
+          subtype: 'scene-parser',
+          config: {
+            subtype: 'scene-parser',
+          },
+        },
+      },
+      {
+        id: 'vsb-frames',
+        type: 'logic',
+        position: { x: 600, y: 200 },
+        data: {
+          label: 'Frames Config',
+          subtype: 'frames-config',
+          config: {
+            subtype: 'frames-config',
+            framesPerScene: 1,
+          },
+        },
+      },
+      {
+        id: 'vsb-composer',
+        type: 'output',
+        position: { x: 860, y: 200 },
+        data: {
+          label: 'Storyboard Composer',
+          subtype: 'storyboard-composer',
+          config: {
+            subtype: 'storyboard-composer',
+          },
+        },
+      },
+      {
+        id: 'vsb-pdf',
+        type: 'output',
+        position: { x: 1120, y: 200 },
+        data: {
+          label: 'PDF Assembler',
+          subtype: 'pdf-assembler',
+          config: {
+            subtype: 'pdf-assembler',
+          },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e-vsb-1', source: 'vsb-script',   target: 'vsb-parser'   },
+      { id: 'e-vsb-2', source: 'vsb-parser',   target: 'vsb-frames'   },
+      { id: 'e-vsb-3', source: 'vsb-frames',   target: 'vsb-composer' },
+      { id: 'e-vsb-4', source: 'vsb-composer', target: 'vsb-pdf'      },
     ],
   },
 ]

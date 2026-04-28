@@ -49,7 +49,7 @@ function defaultModelForProvider(p: string) {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  demand_gen: 'Demand Generation', marketing: 'Marketing Campaigns', blog: 'Blog', social: 'Social', email: 'Email', seo: 'SEO', general: 'General',
+  demand_gen: 'Demand Generation', marketing: 'Marketing Campaigns', video: 'Video', blog: 'Blog', social: 'Social', email: 'Email', seo: 'SEO', general: 'General',
 }
 
 interface Client { id: string; name: string; requireOffline: boolean }

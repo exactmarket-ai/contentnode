@@ -40,6 +40,19 @@ interface GeneratedFiles {
   docStyle?: DocStyle
   checkpointQuestions?: string
   consistencyIssues?: string[]
+  storyboard?: StoryboardProgress
+}
+
+interface StoryboardProgress {
+  status: 'pending' | 'generating' | 'complete' | 'error'
+  framesPerScene: number
+  totalScenes: number
+  completedScenes: number
+  pdfStorageKey?: string
+  pdfFilename?: string
+  error?: string
+  startedAt: string
+  completedAt?: string
 }
 
 interface KitSessionData {
@@ -417,6 +430,56 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
   }
 
   const [reexporting, setReexporting] = useState<number | null>(null)
+
+  // ── Storyboard generation state ──────────────────────────────────────────────
+  const [showFramesModal, setShowFramesModal]       = useState(false)
+  const [framesPerScene, setFramesPerScene]         = useState<1 | 2 | 3 | 4>(1)
+  const [storyboardStarting, setStoryboardStarting] = useState(false)
+  const [storyboard, setStoryboard]                 = useState<StoryboardProgress | null>(null)
+
+  // Sync storyboard status from session
+  useEffect(() => {
+    if (session?.generatedFiles?.storyboard) {
+      setStoryboard(session.generatedFiles.storyboard)
+    }
+  }, [session])
+
+  // Poll storyboard progress while generating or pending
+  useEffect(() => {
+    if (!session || !storyboard || (storyboard.status !== 'generating' && storyboard.status !== 'pending')) return
+    const iv = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/api/v1/kit-sessions/${session.id}/storyboard`)
+        const { data } = await res.json()
+        if (data) setStoryboard(data as StoryboardProgress)
+      } catch { /* non-fatal */ }
+    }, 4000)
+    return () => clearInterval(iv)
+  }, [session, storyboard])
+
+  const startStoryboard = async () => {
+    if (!session) return
+    setStoryboardStarting(true)
+    try {
+      await apiFetch(`/api/v1/kit-sessions/${session.id}/storyboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ framesPerScene }),
+      })
+      setStoryboard({ status: 'pending', framesPerScene, totalScenes: 0, completedScenes: 0, startedAt: new Date().toISOString() })
+      setShowFramesModal(false)
+    } catch {
+      setLoadError('Failed to start storyboard generation.')
+    } finally {
+      setStoryboardStarting(false)
+    }
+  }
+
+  const downloadStoryboard = () => {
+    if (!session) return
+    window.open(`/api/v1/kit-sessions/${session.id}/storyboard/download`, '_blank')
+  }
+
   const reexportAsset = async (asset: AssetRecord) => {
     if (!asset.content || reexporting !== null) return
     setReexporting(asset.index)
@@ -901,6 +964,69 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                   ))}
                 </div>
 
+                {/* Video Storyboard Generator */}
+                {(() => {
+                  const videoScript = (session.generatedFiles?.assets ?? []).find((a) => a.index === 5)
+                  if (!videoScript || videoScript.status !== 'complete') return null
+                  return (
+                    <div className="mt-6 rounded-xl border border-purple-200 bg-purple-50 px-5 py-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-purple-900">Video Storyboard</p>
+                          <p className="text-xs text-purple-600 mt-0.5">
+                            Generate an illustrated PDF storyboard from Asset 06 using AI images.
+                          </p>
+                        </div>
+                        {!storyboard ? (
+                          <button
+                            onClick={() => setShowFramesModal(true)}
+                            className="shrink-0 rounded-lg bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
+                          >
+                            Generate Storyboard
+                          </button>
+                        ) : storyboard.status === 'complete' ? (
+                          <button
+                            onClick={downloadStoryboard}
+                            className="shrink-0 rounded-lg bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
+                          >
+                            Download PDF
+                          </button>
+                        ) : storyboard.status === 'error' ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-red-600">{storyboard.error ?? 'Generation failed'}</span>
+                            <button
+                              onClick={() => setShowFramesModal(true)}
+                              className="shrink-0 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 transition-colors"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="text-xs font-semibold text-purple-800">
+                                {storyboard.status === 'pending' ? 'Queued…' : `Scene ${storyboard.completedScenes} / ${storyboard.totalScenes || '?'}`}
+                              </span>
+                              {storyboard.totalScenes > 0 && (
+                                <div className="h-1.5 w-32 overflow-hidden rounded-full bg-purple-200">
+                                  <div
+                                    className="h-full rounded-full bg-purple-500 transition-all"
+                                    style={{ width: `${Math.round((storyboard.completedScenes / storyboard.totalScenes) * 100)}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <svg className="h-4 w-4 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* Footer: filename hint + previous versions toggle */}
                 <div className="mt-5 flex items-center justify-between">
                   <p className="text-xs text-gray-400">
@@ -958,6 +1084,60 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
         </div>
       </div>
 
+      {/* Frames-per-scene modal */}
+      {showFramesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="px-6 pt-5 pb-4">
+              <h3 className="text-base font-bold text-gray-900 mb-1">Generate Video Storyboard</h3>
+              <p className="text-xs text-gray-500 mb-5">
+                Choose how many AI-generated images to create per scene. More frames = richer storyboard, but takes longer.
+              </p>
+              <div className="grid grid-cols-4 gap-2 mb-5">
+                {([1, 2, 3, 4] as const).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setFramesPerScene(n)}
+                    className={cn(
+                      'rounded-xl border-2 py-3 flex flex-col items-center gap-1 transition-all',
+                      framesPerScene === n
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300',
+                    )}
+                  >
+                    <span className={cn('text-xl font-bold', framesPerScene === n ? 'text-purple-700' : 'text-gray-700')}>{n}</span>
+                    <span className="text-[10px] text-gray-400">{n === 1 ? 'frame' : 'frames'}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400 text-center mb-4">
+                {framesPerScene === 1 && 'Fastest — 1 image per scene'}
+                {framesPerScene === 2 && 'Balanced — 2 images per scene'}
+                {framesPerScene === 3 && 'Detailed — 3 images per scene'}
+                {framesPerScene === 4 && 'Full coverage — 4 images per scene (slowest)'}
+              </p>
+            </div>
+            <div className="flex gap-2 px-6 pb-5">
+              <button
+                onClick={() => setShowFramesModal(false)}
+                className="flex-1 rounded-lg border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void startStoryboard()}
+                disabled={storyboardStarting}
+                className={cn(
+                  'flex-1 rounded-lg py-2 text-sm font-semibold text-white transition-colors',
+                  storyboardStarting ? 'cursor-not-allowed bg-purple-300' : 'bg-purple-600 hover:bg-purple-700',
+                )}
+              >
+                {storyboardStarting ? 'Starting…' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

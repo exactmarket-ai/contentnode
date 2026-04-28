@@ -31,11 +31,18 @@ export const QUEUE_BRAIN_COLLAPSE                 = `${_p}brain-collapse`
 export const QUEUE_PRINCIPLE_INFERENCE            = `${_p}principle-inference`
 export const QUEUE_BOX_VERSION_SCAN               = `${_p}box-version-scan`
 export const QUEUE_KIT_GENERATION                 = `${_p}kit-generation`
+export const QUEUE_STORYBOARD_GENERATION          = `${_p}storyboard-generation`
 
 export interface KitGenerationJobData {
   sessionId: string
   agencyId: string
   assetIndex: number  // 0-7
+}
+
+export interface StoryboardJobData {
+  sessionId: string
+  agencyId: string
+  framesPerScene: 1 | 2 | 3 | 4
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
