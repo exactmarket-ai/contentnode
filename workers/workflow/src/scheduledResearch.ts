@@ -536,7 +536,36 @@ async function runManualProgramCycle(
     orderBy: { createdAt: 'desc' },
   })
 
-  if (!contextAtt?.extractedText) {
+  // Fall back to GTM Framework data if no brain attachment exists
+  let contextText = contextAtt?.extractedText ?? ''
+  if (!contextText) {
+    const frameworks = await prisma.clientFramework.findMany({
+      where: { agencyId, clientId: effectiveClientId },
+      select: { data: true, vertical: { select: { name: true } } },
+    })
+    if (frameworks.length > 0) {
+      contextText = frameworks.map((fw) => {
+        const d = fw.data as Record<string, unknown>
+        const lines: string[] = [`=== GTM Framework: ${fw.vertical.name} ===`]
+        const flatten = (obj: unknown, prefix = ''): void => {
+          if (!obj || typeof obj !== 'object') return
+          for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+            if (Array.isArray(v)) {
+              v.forEach((item, i) => flatten(item, `${prefix}${k}[${i}].`))
+            } else if (v && typeof v === 'object') {
+              flatten(v, `${prefix}${k}.`)
+            } else if (typeof v === 'string' && v.trim()) {
+              lines.push(`${prefix}${k}: ${v.trim()}`)
+            }
+          }
+        }
+        flatten(d)
+        return lines.join('\n')
+      }).join('\n\n')
+    }
+  }
+
+  if (!contextText) {
     console.warn(`[manual-program-cycle] no brain context for client ${effectiveClientId}`)
     return
   }
@@ -585,7 +614,7 @@ Return ONLY valid JSON:
 
   const result = await callModel(
     { ...SONNET, system_prompt: systemPrompt },
-    `Context: ${contextAtt.filename ?? 'brain'}\n\n--- CONTEXT ---\n${contextAtt.extractedText.slice(0, 13000)}`,
+    `Context: ${contextAtt?.filename ?? 'GTM Framework'}\n\n--- CONTEXT ---\n${contextText.slice(0, 13000)}`,
   )
 
   let blogs: unknown[] = []
