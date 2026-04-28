@@ -120,7 +120,10 @@ function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>,
   const brandPreamble = docStyle && HTML_ASSET_INDICES.has(assetIndex)
     ? `CRITICAL — Use these exact brand values in all CSS. Define them at the top of your :root block and use var() throughout — never hardcode hex values:\n` +
       `:root {\n  --color-primary: ${docStyle.primaryColor};\n  --color-dark: ${docStyle.primaryColor};\n  --color-accent: ${docStyle.secondaryColor};\n  --heading-font: '${docStyle.headingFont}', sans-serif;\n  --body-font: '${docStyle.bodyFont}', sans-serif;\n}\n` +
-      `Always write background-color: var(--color-primary), color: var(--color-accent), etc. Do not use #1a2744, #0070f3, or any other hardcoded hex in the CSS.\n\n`
+      `Always write background-color: var(--color-primary), color: var(--color-accent), etc. Do not use #1a2744, #0070f3, or any other hardcoded hex in the CSS.\n` +
+      (docStyle.agencyName ? `Agency name for footer and navigation: "${docStyle.agencyName}" — include this in the footer and nav bar.\n` : '') +
+      (docStyle.footerText ? `Footer tagline: "${docStyle.footerText}" — include this in the document footer section.\n` : '') +
+      `\n`
     : ''
 
   const base = `${brandPreamble}Here is the complete intake JSON:\n\n\`\`\`json\n${intakeStr}\n\`\`\`\n\nGenerate the ${name} now.\n\n`
@@ -518,7 +521,7 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
 
       // If response was cut off, make one continuation call to complete it
       if (HTML_ASSET_INDICES.has(assetIndex) && result.finish_reason === 'max_tokens') {
-        console.log(`[kit-generation] asset ${assetIndex} truncated — continuing generation`)
+        console.warn(`[kit-generation] asset ${assetIndex} (${ASSET_DEFINITIONS[assetIndex].name}) truncated at max_tokens — requesting continuation`)
         const cont = await callModel(
           {
             provider: 'anthropic',
@@ -531,6 +534,9 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
           getAssetUserPrompt(assetIndex, intake),
         )
         content = content + cont.text
+        if (cont.finish_reason === 'max_tokens') {
+          console.warn(`[kit-generation] asset ${assetIndex} continuation also truncated — content may be incomplete`)
+        }
       }
 
       // Strip markdown code fences and any spurious content before <!DOCTYPE html>

@@ -46,7 +46,6 @@ function hexNoHash(color: string): string {
   return color.replace('#', '').toUpperCase()
 }
 
-// Mix hex color with white at given opacity (0–1)
 function tint(color: string, opacity: number): string {
   const c = color.length === 4
     ? `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`
@@ -80,6 +79,23 @@ function imageTypeFromDataUrl(dataUrl: string): 'png' | 'jpg' | 'gif' | 'bmp' | 
   return 'png'
 }
 
+// Returns natural pixel dimensions of an image data URL.
+// Resolves null if the image fails to load or takes longer than 2 seconds.
+// Never set both DOCX/PPTX width and height to fixed values without computing
+// from these dimensions — that stretches or squishes the logo.
+async function getImageDimensions(dataUrl: string): Promise<{ w: number; h: number } | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () =>
+      img.naturalWidth > 0 && img.naturalHeight > 0
+        ? resolve({ w: img.naturalWidth, h: img.naturalHeight })
+        : resolve(null)
+    img.onerror = () => resolve(null)
+    setTimeout(() => resolve(null), 2000)
+    img.src = dataUrl
+  })
+}
+
 // ── DOCX helpers ───────────────────────────────────────────────────────────────
 
 function sanitize(text: string): string {
@@ -107,23 +123,23 @@ function buildStyledTable(tableLines: string[], docStyle: DocStyle): Table {
   const borderCol  = tint(docStyle.primaryColor, 0.3)
   const dataRows   = tableLines.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
   const bodyFont   = docStyle.bodyFont
-  const bodySize   = 20 // 10pt in half-points
+  const bodySize   = 22 // 11pt in half-points
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top:     { style: BorderStyle.SINGLE, size: 4, color: borderCol },
-      bottom:  { style: BorderStyle.SINGLE, size: 4, color: borderCol },
-      left:    { style: BorderStyle.SINGLE, size: 4, color: borderCol },
-      right:   { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+      top:              { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+      bottom:           { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+      left:             { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+      right:            { style: BorderStyle.SINGLE, size: 4, color: borderCol },
       insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: borderCol },
       insideVertical:   { style: BorderStyle.SINGLE, size: 4, color: borderCol },
     },
     rows: dataRows.map((row, rowIdx) => {
-      const cells   = row.split('|').slice(1, -1).map(c => c.trim())
-      const isHead  = rowIdx === 0
-      const isAlt   = !isHead && rowIdx % 2 === 0
-      const fill    = isHead ? primary : isAlt ? altRow : 'FFFFFF'
+      const cells  = row.split('|').slice(1, -1).map(c => c.trim())
+      const isHead = rowIdx === 0
+      const isAlt  = !isHead && rowIdx % 2 === 0
+      const fill   = isHead ? primary : isAlt ? altRow : 'FFFFFF'
       return new TableRow({
         children: cells.map(cell => new TableCell({
           shading: { fill, type: ShadingType.SOLID, color: fill },
@@ -144,35 +160,76 @@ function buildFooterElement(docStyle: DocStyle): Footer {
   const size  = 18 // 9pt
   const muted = '6B7280'
   const parts: TextRun[] = []
-  if (docStyle.agencyName) parts.push(new TextRun({ text: docStyle.agencyName, font, size, color: muted }))
+
+  // Left: agency name
+  if (docStyle.agencyName) {
+    parts.push(new TextRun({ text: docStyle.agencyName, font, size, color: muted }))
+  }
+  // Center: footer text
   if (docStyle.footerText) {
-    if (parts.length) parts.push(new TextRun({ text: '    ', font, size }))
+    parts.push(new TextRun({ text: '\t', font, size }))
     parts.push(new TextRun({ text: docStyle.footerText, font, size, color: muted }))
   }
-  parts.push(new TextRun({ text: '\t', font, size }))
-  parts.push(new TextRun({ children: [PageNumber.CURRENT], font, size, color: muted }))
-  parts.push(new TextRun({ text: ' / ', font, size, color: muted }))
-  parts.push(new TextRun({ children: [PageNumber.TOTAL_PAGES], font, size, color: muted }))
-  return new Footer({ children: [new Paragraph({ children: parts, tabStops: [{ type: 'right', position: 9360 }] })] })
+  // Right: page number
+  if (docStyle.includePageNumbers) {
+    parts.push(new TextRun({ text: '\t', font, size }))
+    parts.push(new TextRun({ children: [PageNumber.CURRENT], font, size, color: muted }))
+    parts.push(new TextRun({ text: ' / ', font, size, color: muted }))
+    parts.push(new TextRun({ children: [PageNumber.TOTAL_PAGES], font, size, color: muted }))
+  }
+
+  return new Footer({
+    children: [new Paragraph({
+      children: parts,
+      tabStops: [
+        { type: 'center', position: 4680 }, // center of standard letter page
+        { type: 'right',  position: 9360 }, // right margin
+      ],
+    })],
+  })
 }
 
-function buildCoverSection(docStyle: DocStyle, assetName: string, clientName: string, verticalName: string): (Paragraph | Table)[] {
-  const primary = hexNoHash(docStyle.primaryColor)
-  const coverItems: (Paragraph | Table)[] = []
+async function buildCoverSection(
+  docStyle: DocStyle,
+  assetName: string,
+  clientName: string,
+  verticalName: string,
+): Promise<(Paragraph | Table)[]> {
+  const primary      = hexNoHash(docStyle.primaryColor)
+  const coverItems: Paragraph[] = []
 
-  // Logo
+  // Logo with correct aspect ratio, or fall back to agency name text
   if (docStyle.logoDataUrl) {
-    try {
-      const logoType = imageTypeFromDataUrl(docStyle.logoDataUrl)
-      if (logoType) {
-        const logoData = dataUrlToArrayBuffer(docStyle.logoDataUrl)
-        coverItems.push(new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 720, after: 480 },
-          children: [new ImageRun({ data: logoData, type: logoType, transformation: { width: 200, height: 80 } })],
-        }))
+    const logoType = imageTypeFromDataUrl(docStyle.logoDataUrl)
+    let placed = false
+    if (logoType) {
+      const dims = await getImageDimensions(docStyle.logoDataUrl)
+      if (dims && dims.h > 0) {
+        const TARGET_H = 50                                  // fixed height (px)
+        const targetW  = Math.round(TARGET_H * (dims.w / dims.h)) // width from ratio
+        try {
+          const logoData = dataUrlToArrayBuffer(docStyle.logoDataUrl)
+          coverItems.push(new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 720, after: 480 },
+            children: [new ImageRun({ data: logoData, type: logoType, transformation: { width: targetW, height: TARGET_H } })],
+          }))
+          placed = true
+        } catch { /* fall through to text fallback */ }
       }
-    } catch { /* skip on error */ }
+    }
+    if (!placed) {
+      // SVG, unresolvable dims, or ImageRun error: agencyName text is correct fallback
+      coverItems.push(
+        docStyle.agencyName
+          ? new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 720, after: 480 },
+              children: [new TextRun({ text: docStyle.agencyName, font: docStyle.headingFont, size: 32, bold: true, color: 'FFFFFF' })],
+            })
+          : new Paragraph({ spacing: { before: 1440 }, children: [] }),
+      )
+    }
   } else {
     coverItems.push(new Paragraph({ spacing: { before: 1440 }, children: [] }))
   }
@@ -202,10 +259,10 @@ function buildCoverSection(docStyle: DocStyle, assetName: string, clientName: st
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       borders: {
-        top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-        bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-        left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-        right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        top:              { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        bottom:           { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        left:             { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        right:            { style: BorderStyle.NONE, size: 0, color: 'auto' },
         insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'auto' },
         insideVertical:   { style: BorderStyle.NONE, size: 0, color: 'auto' },
       },
@@ -213,7 +270,7 @@ function buildCoverSection(docStyle: DocStyle, assetName: string, clientName: st
         height: { value: convertInchesToTwip(9.5), rule: HeightRule.EXACT },
         children: [new TableCell({
           shading: { fill: primary, type: ShadingType.SOLID, color: primary },
-          children: coverItems as Paragraph[],
+          children: coverItems,
         })],
       })],
     }),
@@ -248,26 +305,25 @@ export async function markdownToDocxBlob(
     if (line.startsWith('|')) { tableLines.push(line); continue }
     flushTable()
 
-    if      (line.startsWith('# '))   children.push(new Paragraph({ style: 'Heading1', children: [new TextRun(sanitize(line.slice(2)))] }))
-    else if (line.startsWith('## '))  children.push(new Paragraph({ style: 'Heading2', children: [new TextRun(sanitize(line.slice(3)))] }))
-    else if (line.startsWith('### ')) children.push(new Paragraph({ style: 'Heading3', children: [new TextRun(sanitize(line.slice(4)))] }))
-    else if (line.startsWith('#### '))children.push(new Paragraph({ style: 'Heading4', children: [new TextRun(sanitize(line.slice(5)))] }))
-    else if (/^[-*] /.test(line))     children.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
-    else if (line.startsWith('> '))   children.push(new Paragraph({ indent: { left: 720 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
+    if      (line.startsWith('# '))    children.push(new Paragraph({ style: 'Heading1', children: [new TextRun(sanitize(line.slice(2)))] }))
+    else if (line.startsWith('## '))   children.push(new Paragraph({ style: 'Heading2', children: [new TextRun(sanitize(line.slice(3)))] }))
+    else if (line.startsWith('### '))  children.push(new Paragraph({ style: 'Heading3', children: [new TextRun(sanitize(line.slice(4)))] }))
+    else if (line.startsWith('#### ')) children.push(new Paragraph({ style: 'Heading4', children: [new TextRun(sanitize(line.slice(5)))] }))
+    else if (/^[-*] /.test(line))      children.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
+    else if (line.startsWith('> '))    children.push(new Paragraph({ indent: { left: 720 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
     else if (/^---+$|^===+$/.test(line.trim())) children.push(buildHRule(docStyle.primaryColor))
-    else if (line.trim() === '')      children.push(new Paragraph({}))
-    else                              children.push(new Paragraph({ children: parseInlineRuns(line, bodyFont, 22, bodyColor) }))
+    else if (line.trim() === '')        children.push(new Paragraph({}))
+    else                               children.push(new Paragraph({ children: parseInlineRuns(line, bodyFont, 22, bodyColor) }))
   }
   flushTable()
 
   const hasCover = docStyle.includeCoverPage && !!meta?.assetName
   const coverChildren = hasCover
-    ? buildCoverSection(docStyle, meta!.assetName!, meta!.clientName ?? '', meta!.verticalName ?? '')
+    ? await buildCoverSection(docStyle, meta!.assetName!, meta!.clientName ?? '', meta!.verticalName ?? '')
     : []
 
-  const footers = docStyle.includePageNumbers
-    ? { default: buildFooterElement(docStyle) }
-    : undefined
+  const showFooter = docStyle.includePageNumbers || !!docStyle.agencyName || !!docStyle.footerText
+  const footers = showFooter ? { default: buildFooterElement(docStyle) } : undefined
 
   const doc = new Document({
     styles: {
@@ -324,11 +380,21 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
   const prs = new PptxGenJS()
   prs.layout = 'LAYOUT_WIDE'
 
-  const primary   = docStyle.primaryColor
-  const secondary = docStyle.secondaryColor
-  const headFont  = docStyle.headingFont
-  const bodyFont  = docStyle.bodyFont
+  const primary    = docStyle.primaryColor
+  const headFont   = docStyle.headingFont
+  const bodyFont   = docStyle.bodyFont
   const titleColor = primary.replace('#', '')
+
+  // Compute logo placement once: height fixed at 0.4", width from natural aspect ratio.
+  // If dimensions cannot be determined, logoW is null and we fall back to agency name text.
+  const LOGO_H = 0.4 // inches
+  let pptxLogoW: number | null = null
+  if (docStyle.logoDataUrl) {
+    const dims = await getImageDimensions(docStyle.logoDataUrl)
+    if (dims && dims.h > 0) {
+      pptxLogoW = parseFloat((LOGO_H * (dims.w / dims.h)).toFixed(3))
+    }
+  }
 
   const slideBlocks = markdown.split(/(?=^## Slide \d+:)/m).filter(b => b.trim())
 
@@ -348,7 +414,6 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
       const slide = prs.addSlide()
 
       if (isCover || isDivider) {
-        // Full colored background for cover and section dividers
         slide.background = { color: primary.replace('#', '') }
         slide.addText(sanitize(title), {
           x: 0.4, y: 3.0, w: 12.2, h: 1.2,
@@ -356,7 +421,6 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
           align: 'center', valign: 'middle',
         })
       } else {
-        // Content slides: white background with primary accent bar at top
         slide.background = { color: 'FFFFFF' }
         slide.addShape(prs.ShapeType.rect, {
           x: 0, y: 0, w: '100%', h: 0.11,
@@ -382,15 +446,18 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
         }
       }
 
-      // Logo on every slide
-      if (docStyle.logoDataUrl) {
+      // Logo (aspect-ratio preserved) or agency name text fallback in bottom-right corner
+      if (docStyle.logoDataUrl && pptxLogoW !== null) {
         try {
-          slide.addImage({ data: docStyle.logoDataUrl, x: 11.3, y: 6.7, w: 1.5, h: 0.6, sizing: { type: 'contain', w: 1.5, h: 0.6 } })
+          const lx = parseFloat(Math.max(0, 13.33 - pptxLogoW - 0.3).toFixed(3))
+          slide.addImage({ data: docStyle.logoDataUrl, x: lx, y: 6.85, w: pptxLogoW, h: LOGO_H })
         } catch { /* skip on error */ }
+      } else if (docStyle.agencyName) {
+        slide.addText(docStyle.agencyName, {
+          x: 10.5, y: 6.9, w: 2.5, h: 0.35,
+          fontSize: 7, color: 'AAAAAA', fontFace: bodyFont, align: 'right',
+        })
       }
-
-      // Accent elements in secondary color (table-like rows / callout boxes)
-      // Applied via text color on bullet items that look like headers
     })
   }
 
@@ -420,12 +487,14 @@ function injectDocStyleIntoHtml(html: string, docStyle: DocStyle): string {
   }
 </style>`
 
+  // Inject before </head>; if missing try before <body; skip entirely for malformed HTML
   let result = html.includes('</head>')
     ? html.replace('</head>', styleOverride + '\n</head>')
     : html.includes('<body')
       ? html.replace('<body', styleOverride + '\n<body')
-      : html  // malformed/truncated HTML — skip injection rather than prepend
+      : html
 
+  // Logo: height:36px + width:auto preserves aspect ratio — never set both to fixed values
   if (docStyle.logoDataUrl) {
     const logoScript = `
 <script>
@@ -437,7 +506,7 @@ function injectDocStyleIntoHtml(html: string, docStyle: DocStyle): string {
       var img = document.createElement('img');
       img.src = logo;
       img.alt = 'Logo';
-      img.style.cssText = 'height:36px;max-width:140px;object-fit:contain;vertical-align:middle;margin-right:12px;display:inline-block;';
+      img.style.cssText = 'height:36px;width:auto;max-width:160px;object-fit:contain;display:block;margin-right:12px;';
       navs[0].insertBefore(img, navs[0].firstChild);
     }
   });
