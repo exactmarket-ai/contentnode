@@ -1,10 +1,23 @@
 import { prisma, withAgency } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
+import { downloadBuffer } from '@contentnode/storage'
 import { Queue } from 'bullmq'
 import { getConnection, QUEUE_KIT_GENERATION, type KitGenerationJobData } from './queues.js'
 
 const SONNET = 'claude-sonnet-4-6'
 const API_KEY = 'ANTHROPIC_API_KEY'
+
+export interface DocStyle {
+  primaryColor: string
+  secondaryColor: string
+  headingFont: string
+  bodyFont: string
+  logoDataUrl: string | null
+  agencyName: string
+  footerText: string
+  includeCoverPage: boolean
+  includePageNumbers: boolean
+}
 
 export interface AssetRecord {
   index: number
@@ -20,8 +33,48 @@ export interface AssetRecord {
 
 export interface GeneratedFiles {
   assets: AssetRecord[]
+  docStyle?: DocStyle
   checkpointQuestions?: string
   consistencyIssues?: string[]
+}
+
+async function resolveDocStyle(agencyId: string, clientId: string): Promise<DocStyle> {
+  const [agency, clientStyle] = await Promise.all([
+    prisma.agencySettings.findUnique({ where: { agencyId } }),
+    prisma.clientDocStyle.findUnique({ where: { clientId } }),
+  ])
+
+  const logoKey = clientStyle?.logoStorageKey ?? agency?.docLogoStorageKey ?? null
+  let logoDataUrl: string | null = null
+  if (logoKey) {
+    try {
+      if (logoKey.startsWith('data:')) {
+        logoDataUrl = logoKey
+      } else {
+        const buf = await downloadBuffer(logoKey)
+        const ext = logoKey.split('.').pop()?.toLowerCase() ?? 'png'
+        const mime = ext === 'svg' ? 'image/svg+xml'
+          : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+          : ext === 'gif' ? 'image/gif'
+          : 'image/png'
+        logoDataUrl = `data:${mime};base64,${buf.toString('base64')}`
+      }
+    } catch (err) {
+      console.warn('[kit-generation] logo resolve failed (non-fatal):', err)
+    }
+  }
+
+  return {
+    primaryColor:     clientStyle?.primaryColor   ?? agency?.docPrimaryColor   ?? '#1B1F3B',
+    secondaryColor:   clientStyle?.secondaryColor ?? agency?.docSecondaryColor ?? '#4A90D9',
+    headingFont:      clientStyle?.headingFont    ?? agency?.docHeadingFont    ?? 'Calibri',
+    bodyFont:         clientStyle?.bodyFont       ?? agency?.docBodyFont       ?? 'Calibri',
+    logoDataUrl,
+    agencyName:       clientStyle?.agencyName     ?? agency?.docAgencyName     ?? '',
+    footerText:       clientStyle?.footerText     ?? agency?.docFooterText     ?? '',
+    includeCoverPage: (clientStyle?.coverPage     ?? agency?.docCoverPage      ?? true),
+    includePageNumbers: (clientStyle?.pageNumbers ?? agency?.docPageNumbers    ?? true),
+  }
 }
 
 export const ASSET_DEFINITIONS: Omit<AssetRecord, 'status'>[] = [
@@ -427,16 +480,19 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
     const existingFiles = (session.generatedFiles ?? { assets: initAssets() }) as GeneratedFiles
     const assets: AssetRecord[] = existingFiles.assets?.length === 8 ? existingFiles.assets : initAssets()
 
+    // Resolve docStyle once per session (first asset or if missing)
+    const docStyle: DocStyle = existingFiles.docStyle ?? await resolveDocStyle(agencyId, session.clientId)
+
     assets[assetIndex] = { ...ASSET_DEFINITIONS[assetIndex], status: 'generating', stage: 'Reading framework data...' }
     await prisma.kitSession.update({
       where: { id: sessionId },
-      data: { status: 'generating', currentAsset: assetIndex, generatedFiles: { assets } as any },
+      data: { status: 'generating', currentAsset: assetIndex, generatedFiles: { assets, docStyle } as any },
     })
 
     assets[assetIndex].stage = 'Generating content with Claude...'
     await prisma.kitSession.update({
       where: { id: sessionId },
-      data: { generatedFiles: { assets } as any },
+      data: { generatedFiles: { assets, docStyle } as any },
     })
 
     let content: string
@@ -454,7 +510,7 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
       }
       await prisma.kitSession.update({
         where: { id: sessionId },
-        data: { status: 'error', generatedFiles: { assets } as any },
+        data: { status: 'error', generatedFiles: { assets, docStyle } as any },
       })
       throw err
     }
@@ -479,7 +535,7 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
           status: 'delivery',
           currentAsset: 7,
           approvedAssets: allApproved as any,
-          generatedFiles: { assets, consistencyIssues: issues } as any,
+          generatedFiles: { assets, docStyle, consistencyIssues: issues } as any,
         },
       })
       console.log(`[kit-generation] session ${sessionId} complete — delivery ready`)
@@ -489,14 +545,14 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
         data: {
           status: 'checkpoint',
           currentAsset: assetIndex,
-          generatedFiles: { assets, checkpointQuestions: CHECKPOINT_QUESTIONS[assetIndex] } as any,
+          generatedFiles: { assets, docStyle, checkpointQuestions: CHECKPOINT_QUESTIONS[assetIndex] } as any,
         },
       })
       console.log(`[kit-generation] session ${sessionId} checkpoint after asset ${assetIndex}`)
     } else {
       await prisma.kitSession.update({
         where: { id: sessionId },
-        data: { generatedFiles: { assets } as any, currentAsset: assetIndex },
+        data: { generatedFiles: { assets, docStyle } as any, currentAsset: assetIndex },
       })
       await getKitQueue().add(
         'generate-asset',

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
-import { downloadKit } from '@/lib/kitDownload'
+import { downloadKit, type DocStyle } from '@/lib/kitDownload'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +37,7 @@ interface AssetRecord {
 
 interface GeneratedFiles {
   assets?: AssetRecord[]
+  docStyle?: DocStyle
   checkpointQuestions?: string
   consistencyIssues?: string[]
 }
@@ -431,7 +432,21 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
 
   const downloadAsset = async (asset: AssetRecord) => {
     if (!asset.content) return
-    await downloadKit({ ...asset, content: asset.content }, clientName, verticalName)
+    const docStyle = session?.generatedFiles?.docStyle
+    await downloadKit({ ...asset, content: asset.content }, clientName, verticalName, docStyle)
+  }
+
+  const [reexporting, setReexporting] = useState<number | null>(null)
+  const reexportAsset = async (asset: AssetRecord) => {
+    if (!asset.content || reexporting !== null) return
+    setReexporting(asset.index)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/doc-style/merged`)
+      const merged = res.ok ? ((await res.json()) as { data: DocStyle }).data : undefined
+      await downloadKit({ ...asset, content: asset.content }, clientName, verticalName, merged)
+    } finally {
+      setReexporting(null)
+    }
   }
 
   // Close with escape
@@ -887,18 +902,30 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                         <p className="text-sm font-semibold text-gray-900 truncate">{asset.num} {asset.name}</p>
                         <p className="text-[10px] uppercase text-gray-400">.{asset.ext}</p>
                       </div>
-                      <button
-                        onClick={() => void downloadAsset(asset)}
-                        disabled={asset.status !== 'complete'}
-                        className={cn(
-                          'ml-3 shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
-                          asset.status === 'complete'
-                            ? 'bg-[#a200ee] text-white hover:bg-[#8800cc]'
-                            : 'cursor-not-allowed bg-gray-200 text-gray-400',
+                      <div className="ml-3 flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => void downloadAsset(asset)}
+                          disabled={asset.status !== 'complete'}
+                          className={cn(
+                            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                            asset.status === 'complete'
+                              ? 'bg-[#a200ee] text-white hover:bg-[#8800cc]'
+                              : 'cursor-not-allowed bg-gray-200 text-gray-400',
+                          )}
+                        >
+                          Download
+                        </button>
+                        {asset.status === 'complete' && (
+                          <button
+                            onClick={() => void reexportAsset(asset)}
+                            disabled={reexporting !== null}
+                            title="Re-export with current branding"
+                            className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                          >
+                            {reexporting === asset.index ? '…' : '↻'}
+                          </button>
                         )}
-                      >
-                        Download
-                      </button>
+                      </div>
                     </div>
                   ))}
                 </div>
