@@ -610,8 +610,6 @@ export async function docTemplateRoutes(app: FastifyInstance) {
       return reply
         .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         .header('Content-Disposition', `attachment; filename="${outFilename}"`)
-        .header('X-Fill-Debug', `found=${allNames.length} matched=${matched} style=${hasBracket ? 'bracket' : 'curly'} sample=[${debugSample}]`)
-        .header('Access-Control-Expose-Headers', 'X-Fill-Debug')
         .send(out)
     } catch (err: unknown) {
       const dtErr = err as { properties?: { errors?: Array<{ message: string }> } }
