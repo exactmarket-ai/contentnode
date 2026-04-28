@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
-import { apiFetch, assetUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { downloadKit, type DocStyle } from '@/lib/kitDownload'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -475,9 +475,25 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
     }
   }
 
-  const downloadStoryboard = () => {
+  const downloadStoryboard = async () => {
     if (!session) return
-    window.open(assetUrl(`/api/v1/kit-sessions/${session.id}/storyboard/download`), '_blank')
+    try {
+      const res = await apiFetch(`/api/v1/kit-sessions/${session.id}/storyboard/download`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const filename = (storyboard?.filename as string | undefined) ?? 'storyboard.pdf'
+      a.href = objectUrl
+      a.download = filename
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (e) {
+      console.error('[downloadStoryboard] failed:', e)
+    }
   }
 
   const reexportAsset = async (asset: AssetRecord) => {
