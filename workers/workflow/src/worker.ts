@@ -404,13 +404,15 @@ kitGenerationWorker.on('error', (err) => console.error('[kit-generation-worker] 
 const storyboardWorker = createWorker<StoryboardJobData>(
   QUEUE_STORYBOARD_GENERATION,
   async (job) => {
-    console.log(`[storyboard] job picked up: session ${job.data.sessionId} framesPerScene=${job.data.framesPerScene}`)
-    await runStoryboardJob(job)
+    const { sessionId, agencyId, framesPerScene } = job.data
+    console.log(`[storyboard] job picked up: session ${sessionId} framesPerScene=${framesPerScene}`)
+    await withAgency(agencyId, () => runStoryboardJob(job))
   },
   1,
   { lockDuration: 20 * 60 * 1000 }, // 20 min — image generation per scene can be slow
 )
 storyboardWorker.on('error', (err) => console.error('[storyboard-worker] error:', err))
+storyboardWorker.on('failed', (job, err) => console.error(`[storyboard-worker] job ${job?.id} failed:`, err.message))
 
 // ── box version sweep — passive safety net, runs every 2 hours ───────────────
 // Catches Box versions that arrived without a Monday status change event
@@ -506,6 +508,7 @@ async function shutdown() {
     principleInferenceWorker.close(),
     boxVersionScanWorker.close(),
     kitGenerationWorker.close(),
+    storyboardWorker.close(),
     boxVersionSweepWorker.close(),
     fileCleanupWorker.close(),
   ])
