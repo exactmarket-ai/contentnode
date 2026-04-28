@@ -6,10 +6,11 @@ import { getPromptSuggestQueue } from '../lib/queues.js'
 const CATEGORIES = ['general', 'content', 'seo', 'social', 'email', 'other'] as const
 
 const SEED_TEMPLATES = [
+  // ── Blog ─────────────────────────────────────────────────────────────────────
   {
     name: 'Blog — Problem First',
     category: 'content' as const,
-    description: 'Thought leadership and SEO blog that opens with the reader\'s operational reality before introducing a solution.',
+    description: 'Thought leadership blog that opens with the reader\'s operational reality before introducing a solution.',
     body: `You are a senior B2B content strategist writing for [AGENCY_CLIENT_NAME]'s target audience of [TARGET_AUDIENCE].
 
 Write a [WORD_COUNT] word blog post with this title: [TITLE]
@@ -23,19 +24,18 @@ Structure:
 - Closing: End with a single clear implication for the reader. One sentence. No call to action paragraph.
 
 Voice rules:
-- Active voice throughout
-- No passive constructions
-- Sentences under 25 words where possible
+- Active voice throughout. No passive constructions.
+- Sentences under 25 words where possible.
 - No use of: robust, seamless, holistic, leverage, cutting-edge, paradigm, synergy
 - Never open a sentence with "By partnering with..."
-- Write as a peer, not a vendor
+- Write as a peer, not a vendor.
 
 CTA at end: [PRIMARY_CTA]`,
   },
   {
     name: 'Blog — Contrarian Take',
     category: 'content' as const,
-    description: 'Opinion piece that challenges conventional wisdom in the client\'s industry. Built for LinkedIn amplification and top-of-funnel awareness.',
+    description: 'Opinion piece that challenges conventional wisdom in the client\'s industry. Built for LinkedIn amplification.',
     body: `You are a senior B2B strategist writing a contrarian opinion piece for [AGENCY_CLIENT_NAME].
 
 Write a [WORD_COUNT] word blog post that challenges a commonly held belief in [VERTICAL/INDUSTRY].
@@ -45,26 +45,24 @@ The contrarian position: [CONTRARIAN_POSITION]
 
 Structure:
 - Opening: State what everyone believes. One clear declarative sentence. Then immediately challenge it.
-- Why the conventional wisdom exists: Be fair — explain why people believe this and why it made sense at some point. Do not strawman the opposing view.
-- What changed: Identify the specific shift — market, technology, regulation, or buyer behavior — that makes the old belief wrong or incomplete.
-- The real picture: Make the contrarian case with specifics. Use [KEY_STAT_1] and [KEY_STAT_2]. Ground it in [VERTICAL/INDUSTRY] reality.
+- Why the conventional wisdom exists: Be fair. Explain why people believe this. Do not strawman.
+- What changed: Identify the specific shift — market, technology, regulation, or buyer behavior.
+- The real picture: Make the contrarian case with specifics. Use [KEY_STAT_1] and [KEY_STAT_2].
 - What this means for the reader: One concrete implication they can act on.
 - Closing line: A single sentence that reframes the whole argument. Make it memorable.
 
 Voice rules:
-- Confident but not arrogant
-- Direct declarative sentences
+- Confident but not arrogant. Direct declarative sentences.
 - No hedging language — no "perhaps", "might", "could"
-- Active voice throughout
 - No use of: disrupt, game-changer, paradigm shift, revolutionary, unprecedented
-- The reader should feel smarter after reading this, not sold to
+- The reader should feel smarter, not sold to.
 
 CTA at end: [PRIMARY_CTA]`,
   },
   {
     name: 'Blog — Practical Guide',
     category: 'content' as const,
-    description: 'Step-by-step how-to guide written for practitioners. Built for SEO and bottom-of-funnel enablement.',
+    description: 'Step-by-step how-to guide for practitioners. Built for SEO and bottom-of-funnel enablement.',
     body: `You are a senior practitioner writing a practical how-to guide for [AGENCY_CLIENT_NAME]'s audience of [TARGET_AUDIENCE] in [VERTICAL/INDUSTRY].
 
 Write a [WORD_COUNT] word practical guide with this title: [TITLE]
@@ -73,27 +71,221 @@ The reader's goal: [READER_GOAL]
 The reader's current obstacle: [CURRENT_OBSTACLE]
 
 Structure:
-- Opening: Name the goal and the obstacle in two sentences. No preamble. Get to it immediately.
+- Opening: Name the goal and the obstacle in two sentences. No preamble.
 - Context: One short paragraph on why this matters now. Reference [MARKET_PRESSURE] and [KEY_STAT].
-- The guide (3-5 steps or sections):
-  Each step has:
-  * A clear action-oriented heading (verb first)
-  * 2-3 sentences of explanation
-  * One specific example or proof point from [VERTICAL/INDUSTRY]
-  * One common mistake to avoid
-- What good looks like: A short paragraph describing the outcome when this is done correctly. Reference [PROOF_POINT_OR_CASE_STUDY].
+- The guide (3-5 steps): Each step has a verb-first heading, 2-3 sentences of explanation, one example from [VERTICAL/INDUSTRY], and one common mistake to avoid.
+- What good looks like: Short paragraph describing the outcome. Reference [PROOF_POINT_OR_CASE_STUDY].
 - Closing: One sentence on the first action the reader should take today.
 
 Voice rules:
-- Write for a smart practitioner, not a beginner
-- Assume the reader knows their industry
-- No explaining basic concepts they already know
-- Specific over general at every opportunity
-- Active voice throughout
+- Write for a smart practitioner. Assume the reader knows their industry.
+- Specific over general at every opportunity. Active voice throughout.
 - No use of: best practices, world-class, best-in-class, industry-leading, robust
-- Every claim must be specific — no vague outcomes
 
 CTA at end: [PRIMARY_CTA]`,
+  },
+
+  // ── LinkedIn ──────────────────────────────────────────────────────────────────
+  {
+    name: 'LinkedIn — Thought Leadership Post',
+    category: 'social' as const,
+    description: 'Executive thought leadership post for a senior leader\'s personal LinkedIn feed. Not a company ad — a personal perspective.',
+    body: `You are writing a LinkedIn thought leadership post for a senior executive at [AGENCY_CLIENT_NAME].
+
+Topic: [POST_TOPIC]
+The executive's core point of view: [POV_OR_LESSON]
+Target audience: [TARGET_AUDIENCE]
+
+Structure:
+- Hook (line 1): Bold, specific, standalone sentence. This is what shows before "...see more". No generic openers.
+- Body (3 short paragraphs): POV or lesson learned. Concrete and specific to [VERTICAL/INDUSTRY]. No corporate buzzwords.
+- Closing question (1 sentence): Invites reflection or discussion without being salesy.
+
+Length: 150-200 words total. Written in first person.
+
+Voice rules:
+- Authentic, not polished-corporate. Reads like a thoughtful person, not a brand.
+- No hard sell. No "DM me to learn more" in the body.
+- No use of: excited to announce, thrilled, honored, passionate, game-changer
+- Short paragraphs — 2-3 lines max. White space matters on LinkedIn.`,
+  },
+  {
+    name: 'LinkedIn — Carousel Post',
+    category: 'social' as const,
+    description: '7-slide LinkedIn carousel with a teaching moment or insight framework.',
+    body: `You are writing a LinkedIn carousel post for [AGENCY_CLIENT_NAME].
+
+Topic: [CAROUSEL_TOPIC]
+Core teaching moment: [KEY_INSIGHT]
+Target audience: [TARGET_AUDIENCE]
+
+Produce 7 slides:
+- Slide 1 (Hook): Bold title (max 10 words). Must make the reader want to swipe.
+- Slides 2-6 (Content): One tight insight or step per slide. Headline + 1-2 supporting lines (max 25 words per slide). Progressive — each slide builds on the last.
+- Slide 7 (CTA): What to do next. One clear action.
+
+Voice rules:
+- Educational, not promotional. The reader should learn something they didn't know.
+- Short sentences. No jargon unless [VERTICAL/INDUSTRY]-specific and necessary.
+- Tone matches [BRAND_VOICE].`,
+  },
+
+  // ── Email ─────────────────────────────────────────────────────────────────────
+  {
+    name: 'Email — Cold Outreach',
+    category: 'email' as const,
+    description: 'Cold outbound email to a prospective buyer. No generic openers. Specific to the target buyer and primary service.',
+    body: `You are writing a cold outreach email for [AGENCY_CLIENT_NAME] targeting [TARGET_BUYER_ROLE] at [TARGET_COMPANY_TYPE] in [VERTICAL/INDUSTRY].
+
+The primary service or offer: [PRIMARY_SERVICE_OR_OFFER]
+The specific pain point this solves: [BUYER_PAIN_POINT]
+One relevant proof point or outcome: [PROOF_POINT]
+
+Output:
+- Subject line: Max 8 words. Specific, not clever. No question marks.
+- Preview text: Max 12 words. Continues the subject line naturally.
+- Body (3 short paragraphs):
+  1. Opening: Name the specific problem the buyer is likely dealing with right now. No "I hope this finds you well."
+  2. Middle: What [AGENCY_CLIENT_NAME] does and why it matters for this buyer. One proof point only.
+  3. Close: Soft ask. One sentence. Not a calendar link dump.
+- PS line (optional): One additional proof point or social signal.
+
+Voice rules:
+- Reads like it's from a human, not a sales team. Confident but not pushy.
+- No use of: reach out, touch base, synergy, quick call, pick your brain
+- Under 150 words for the body.`,
+  },
+  {
+    name: 'Email — Nurture Sequence (3-Part)',
+    category: 'email' as const,
+    description: '3-email sequence for new leads or post-inquiry follow-up. Each email earns the next.',
+    body: `You are writing a 3-email nurture sequence for [AGENCY_CLIENT_NAME] targeting [TARGET_AUDIENCE] who have shown initial interest in [PRIMARY_SERVICE_OR_OFFER].
+
+Buyer's biggest fear: [BUYER_FEAR]
+Buyer's primary motivation: [BUYER_MOTIVATION]
+One strong proof point or case reference: [PROOF_POINT]
+
+Write all 3 emails:
+
+Email 1 — Day 0 (Welcome + Credibility):
+- Subject + preview text
+- Warm, human opener. One strong credibility point. No product pitch.
+- Body: 100-120 words.
+
+Email 2 — Day 3 (Address the Fear):
+- Subject + preview text
+- Name the buyer's biggest fear. Reframe it as solvable. Show empathy, then evidence.
+- Body: 120-150 words.
+
+Email 3 — Day 7 (Proof + Soft CTA):
+- Subject + preview text
+- Social proof or case reference. Soft CTA — not a pressure close.
+- Body: 100-120 words.
+
+Voice rules: [BRAND_VOICE]. No use of: just checking in, circling back, per my last email.`,
+  },
+  {
+    name: 'Email — Newsletter Issue',
+    category: 'email' as const,
+    description: 'Monthly or weekly editorial newsletter. Reads like a trusted advisor, not a company broadcast.',
+    body: `You are writing one issue of [AGENCY_CLIENT_NAME]'s [FREQUENCY] email newsletter for subscribers who are [TARGET_AUDIENCE].
+
+Newsletter theme for this issue: [ISSUE_THEME]
+One useful insight, story, or how-to to feature: [MAIN_VALUE_SECTION]
+Subtle service tie-in (one sentence only): [SERVICE_TIE_IN]
+
+Output:
+- Subject line + preview text
+- Opener (2-3 sentences): Warm, personal. Sets up the theme. Not a company update.
+- Main value section (200-250 words): Useful insight, story, or how-to. NOT a sales pitch.
+- Service tie-in (1 sentence): Natural, not forced.
+- CTA: Single, clear. Not multiple asks.
+
+Avoid phrases: [AVOID_PHRASES]
+
+Voice rules:
+- Reads like it's from a trusted advisor, not a marketing department.
+- No use of: exciting news, we're thrilled, don't miss out, limited time
+- Conversational. First person singular preferred.`,
+  },
+
+  // ── Social ────────────────────────────────────────────────────────────────────
+  {
+    name: 'Social — Content Series (5 Posts)',
+    category: 'social' as const,
+    description: 'Themed series of 5 social posts forming a coherent narrative arc. Works across LinkedIn and Instagram.',
+    body: `You are writing a 5-post social content series for [AGENCY_CLIENT_NAME] targeting [TARGET_AUDIENCE].
+
+Series theme: [SERIES_THEME]
+Campaign or content goal: [CONTENT_GOAL]
+Platforms: [PLATFORMS e.g. LinkedIn, Instagram]
+
+Write all 5 posts. Each post:
+- Hook (line 1): Standalone, scroll-stopping. Specific, not vague.
+- Body (max 60 words): One core idea per post. No fluff.
+- Hashtags (3-5): Relevant to [VERTICAL/INDUSTRY] and [SERIES_THEME].
+
+Posts should form a narrative arc:
+- Post 1: Establish the problem or premise
+- Post 2: Deepen the context
+- Post 3: Introduce the shift or insight
+- Post 4: Show proof or example
+- Post 5: Land the conclusion or CTA
+
+Voice rules: [BRAND_VOICE]. Short sentences. Active voice. No corporate filler.`,
+  },
+
+  // ── Strategy ──────────────────────────────────────────────────────────────────
+  {
+    name: 'Case Study',
+    category: 'content' as const,
+    description: 'Customer success story in Challenge → Solution → Result format. Outcome-led, not brochure-style.',
+    body: `You are writing a case study for [AGENCY_CLIENT_NAME] about a client success in [VERTICAL/INDUSTRY].
+
+Client background: [CLIENT_BACKGROUND]
+The challenge they faced: [CHALLENGE]
+The solution delivered: [SOLUTION_APPROACH]
+3 quantified results: [RESULT_1], [RESULT_2], [RESULT_3]
+Pull quote (or placeholder): [PULL_QUOTE]
+
+Structure (400-600 words):
+- Headline: Outcome-led. Lead with the result, not the client name.
+- Client background: 2 sentences. Context only.
+- The challenge: What was happening and why it mattered.
+- The solution: What was done and how. Not a product spec — focus on impact.
+- Results: 3 specific, quantified outcomes. Numbers first.
+- Pull quote: One sentence attributed to [CLIENT_ROLE].
+- CTA: [PRIMARY_CTA]
+
+Voice rules:
+- Reads as a proof asset, not a brochure.
+- Active voice. Outcome before process.
+- No use of: synergy, holistic, innovative, cutting-edge`,
+  },
+  {
+    name: 'Sales One-Pager',
+    category: 'other' as const,
+    description: 'Single-page capability summary for sales conversations, proposals, and pitch packs.',
+    body: `You are writing a sales one-pager for [AGENCY_CLIENT_NAME] targeting [TARGET_BUYER_ROLE] at [TARGET_COMPANY_TYPE].
+
+Primary service or offer: [PRIMARY_SERVICE]
+3 differentiators: [DIFFERENTIATOR_1], [DIFFERENTIATOR_2], [DIFFERENTIATOR_3]
+Buyer fears to address: [BUYER_FEAR_1], [BUYER_FEAR_2]
+2-3 outcome stats or proof points: [PROOF_POINTS]
+Named offerings (4-6): [OFFERINGS_LIST]
+
+Sections (punchy, print-ready):
+1. Headline: Who you help + the outcome. Max 12 words.
+2. The problem we solve (3 bullets): Address buyer fears directly.
+3. Our approach (3 differentiators): What sets [AGENCY_CLIENT_NAME] apart.
+4. Proof: 2-3 outcome stats or client archetypes.
+5. Services: 4-6 named offerings, one line each.
+6. CTA: [PRIMARY_CTA]
+
+Voice rules:
+- Every line earns its place. No filler.
+- Designed to be sent as a PDF or printed for a meeting.
+- No use of: world-class, industry-leading, best-in-class, passionate`,
   },
 ]
 

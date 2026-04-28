@@ -2826,6 +2826,7 @@ const PROMPT_CATS = [
 
 function ClientPromptsSection({ clientId }: { clientId: string }) {
   const [clientTemplates, setClientTemplates] = useState<ClientPromptTemplate[]>([])
+  const [globalTemplates, setGlobalTemplates] = useState<ClientPromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -2843,14 +2844,26 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true)
-    apiFetch(`/api/v1/prompts?clientId=${clientId}`)
-      .then((r) => r.json())
-      .then(({ data }) => setClientTemplates(data ?? []))
+    Promise.all([
+      apiFetch(`/api/v1/prompts?clientId=${clientId}`).then((r) => r.json()),
+      apiFetch('/api/v1/prompts').then((r) => r.json()),
+    ])
+      .then(([clientRes, globalRes]) => {
+        const clientData: ClientPromptTemplate[] = clientRes.data ?? []
+        const globalData: ClientPromptTemplate[] = globalRes.data ?? []
+        setClientTemplates(clientData)
+        setGlobalTemplates(globalData)
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [clientId])
 
-  useEffect(() => { load() }, [load])
+  // Seed global templates first so they're always available
+  useEffect(() => {
+    apiFetch('/api/v1/prompts/seed', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => load())
+  }, [load])
 
   const startEdit = (t: ClientPromptTemplate) => {
     setEditingId(t.id); setEditName(t.name); setEditBody(t.body)
@@ -3000,18 +3013,31 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
           ))
 
         const hasClient = clientTemplates.length > 0
+        // When no client-specific templates, fall back to global agency templates
+        const displayGrouped = hasClient ? grouped : globalTemplates.reduce<Record<string, ClientPromptTemplate[]>>((acc, t) => {
+          ;(acc[t.category] ??= []).push(t)
+          return acc
+        }, {})
+        const hasDisplay = hasClient || globalTemplates.length > 0
 
         return (
           <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
             {loading ? (
               <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
-            ) : !hasClient ? (
+            ) : !hasDisplay ? (
               <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
                 <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
-                <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No client-specific templates yet</p>
+                <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No templates yet</p>
               </div>
             ) : (
-              <div>{renderGroup(grouped, true)}</div>
+              <div>
+                {!hasClient && (
+                  <div className="px-4 py-2 border-b" style={{ backgroundColor: '#fafaf8', borderColor: '#e8e7e1' }}>
+                    <p className="text-[10px]" style={{ color: '#b4b2a9' }}>Showing agency starter templates — create a client-specific template above to customise</p>
+                  </div>
+                )}
+                {renderGroup(displayGrouped, false)}
+              </div>
             )}
           </div>
         )
