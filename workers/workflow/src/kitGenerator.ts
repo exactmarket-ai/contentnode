@@ -190,21 +190,147 @@ RULES:
 - Back cover URL must be the real URL value from primary_cta.url in the intake JSON.`,
 
     // 02 eBook
-    `Using the intake JSON provided, generate a complete standalone eBook as a full HTML document. Include <!DOCTYPE html>, <html>, <head> (with title, Google Fonts DM Sans link, and all CSS inline in <style>), and <body>.
+    `Using the intake JSON provided, generate a complete standalone eBook as a single valid HTML document.
 
-Structure and requirements:
-- CSS: define --color-primary, --color-dark, --color-accent CSS variables at :root. Use professional dark navy (#1a2744) for dark sections and accent (#0070f3) for highlights.
-- Navigation bar: vertical name on left, 5 section links on right (The Landscape, In Practice, What We Do, Why Us, Talk to Us)
-- Cover section: dark background (#1a2744), large headline using the exact verbatim text of vertical.taglines[0] (copy character-for-character), 3 stats from statistics[] in a row
-- Section 1 — The Landscape: 4-stat grid (stat + label + source), challenge rows with colored service pillar pills (one row per challenge from challenges[]), regulatory cards from regulatory_frameworks[]
-- Section 2 — In Practice: 2 case study cards from case_studies[] — client_profile, situation, outcomes, headline_stat
-- Section 3 — What We Do: 4 pillar bands from pillars[], each with value_prop and key_services bullet list and matching proof point from proof_points[]
-- Section 4 — Why Us: differentiator cards from differentiators[], proof strip with stats from proof_points[]
-- Section 5 — Talk to Us: split CTA block — left side: primary_cta.name + primary_cta.description + CTA button linking to the actual URL from primary_cta.url (substitute the real URL from the intake JSON, also show it as visible plain text beneath the button); right side: relevant stat
-- Sources footnote: numbered list of all stat sources from statistics[].map(s => s.source + ' (' + s.year + ')')
-- Footer: vertical.client_name, vertical.name, document_control.document_version if available
+CRITICAL RULES (read before generating any code):
+- Output ONLY valid HTML. Start with <!DOCTYPE html> and end with </html>. No markdown fences, no backticks.
+- All CSS in a single <style> block inside <head>. No inline style attributes except for dynamically computed values.
+- All colors via CSS variables — var(--color-primary), var(--color-dark), var(--color-accent). NEVER hardcode #1a2744, #0070f3, or any brand hex. The variable values will be injected by the system.
+- Public-facing content only. Never include internal notes, DPA requirements, "Available on request", security posture checklists, or any operational/sales-only content.
+- Platform-agnostic language. Replace any specific tool names: "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "GPTZero/Originality.ai/Copyleaks" → "configurable AI detection services".
 
-Global style: max-width 960px, margin: 0 auto, box-shadow on main container, font-family: 'DM Sans', sans-serif. Output complete valid HTML only.`,
+────────────────────────────────────────────
+CSS VARIABLES (define at :root — system will override with client brand values):
+:root {
+  --color-primary: #1B1F3B;
+  --color-dark: #1B1F3B;
+  --color-accent: #4A90D9;
+  --heading-font: 'DM Sans', sans-serif;
+  --body-font: 'DM Sans', sans-serif;
+}
+Service pillar pill colors (hardcoded — not brand colors):
+  Cloud / Cloud Security → var(--color-accent)
+  Cybersecurity / Cyber → #ef4444
+  IT Operations / IT Ops → #00dcc3
+  Data + AI / Data → #9b51e0
+  Default / other → #6b7280
+
+────────────────────────────────────────────
+HEAD:
+- <title>[vertical.name] — [vertical.client_name]</title>
+- Google Fonts: DM Sans (300, 400, 500, 600, 700)
+- All CSS in one <style> block
+
+────────────────────────────────────────────
+NAV BAR:
+Fixed top, var(--color-dark) background, white text.
+Left: vertical.client_name + vertical.name pill.
+Right: 5 anchor links — "The Landscape" "In Practice" "What We Do" "Why Us" "Talk to Us".
+
+────────────────────────────────────────────
+COVER SECTION (id="cover"):
+Full-width, var(--color-dark) background, min-height 100vh, centered.
+1. Large headline: exact verbatim text of vertical.taglines[0] — copy character-for-character. White, 48–56px.
+2. Subhead: vertical.positioning_statement. Light grey, 20px.
+3. Stats row: 3 stats from statistics[0..2]. Each: bold large number (white), label below (light grey), source below (muted, 12px).
+
+────────────────────────────────────────────
+SECTION 1 — THE LANDSCAPE (id="landscape"):
+White background.
+
+1a. SECTION HEADER: "The Landscape" + market_pressure_narrative (1 paragraph).
+
+1b. STAT GRID: 4 cards in a 2×2 grid from statistics[0..3]. Each card: large bold stat (var(--color-primary)), label, source (muted italic).
+
+1c. CHALLENGE ROWS: One row per challenge from challenges[]. Each row: challenge name (left, bold), service pillar pill (colored per pillar type, inline right). No internal solution notes — public-facing only.
+
+1d. PULL QUOTE BLOCK: A large italic pull quote using the first entry from brand_voice.sounds_like[] if available, otherwise derive a sharp 1-sentence quote from market_pressure_narrative. Style: large italic text (22–26px), var(--color-accent) left border (4px), light background. Speaker role below: "Industry practitioner" or derive from context. Do NOT use a named individual.
+
+1e. REGULATORY CARDS: One card per framework from regulatory_frameworks[]. Each card:
+  - Framework name (bold, var(--color-primary))
+  - Our capability: capability field from the framework (1–2 sentences)
+  - Service pillar pill (bottom of card, colored per pillar type rules above)
+  Style as a card grid (2–3 columns), white background, subtle border, rounded corners. No tables.
+
+────────────────────────────────────────────
+SECTION 2 — IN PRACTICE (id="practice"):
+Light grey background.
+
+2a. SECTION HEADER: "In Practice".
+
+2b. CASE STUDY CARDS: Two cards from case_studies[0] and case_studies[1].
+  If case_studies[] has fewer than 2 entries, generate structured placeholder cards:
+  Placeholder card structure:
+    - Header band: var(--color-primary) background, "Enterprise Client" + "Managed Services Engagement" in white.
+    - Two-column body: left = "The Situation" + 2-sentence placeholder context; right = "What We Delivered" + 2-sentence placeholder.
+    - Outcome badge: var(--color-accent) pill with "Outcome pending — contact team".
+  Real card structure (when data exists):
+    - Header band: var(--color-primary) background, client_profile + engagement type in white.
+    - Two-column body: left = "The Situation" + situation (2 sentences); right = "What We Delivered" + engagement (2 sentences).
+    - Outcome badge: var(--color-accent) pill with headline_stat or outcomes summary.
+    - Quote band (if quote field exists): italic quote text + speaker attribution.
+  Do NOT show "Case studies coming soon" or any notice. Always render two structured cards.
+
+────────────────────────────────────────────
+SECTION 3 — WHAT WE DO (id="services"):
+White background.
+
+3a. SECTION HEADER: "What We Do".
+
+3b. PILLAR BANDS: One full-width band per pillar from pillars[]. Each band:
+  - Left column (40%): pillar name (large, var(--color-primary)), value_prop (one sentence), key_services as bullet list.
+  - Right column (60%): SEGMENT CARDS — one small card per segment from segments[] that maps to this pillar (or all segments if no pillar mapping). Each segment card shows:
+    - Segment name (bold)
+    - LEAD HOOK: segment.lead_hook displayed prominently as a styled italic callout (font-size 15–16px, var(--color-accent) color, quotation marks). This is the opening question — make it visually prominent.
+    - core_pain (smaller, muted)
+  Alternate band background: odd = white, even = var(--color-primary) at 4% opacity.
+
+────────────────────────────────────────────
+SECTION 4 — WHY US (id="why"):
+Light grey background.
+
+4a. SECTION HEADER: "Why Us".
+
+4b. DIFFERENTIATOR CARDS: Grid of cards from differentiators[]. Each card: label (bold, var(--color-primary)), position (body text, 1 sentence).
+
+4c. PROOF STRIP: Full-width band, var(--color-dark) background, white text. One cell per proof point from proof_points[]. Each cell: large bold stat number (white, 40–48px), label below (light grey, 14px). This strip is mandatory — do not skip it.
+
+────────────────────────────────────────────
+SECTION 5 — TALK TO US (id="contact"):
+var(--color-dark) background, white text.
+
+SPLIT LAYOUT — two columns (CSS grid, 1fr 1fr, gap 48px):
+
+LEFT COLUMN (primary CTA):
+  - Large heading: primary_cta.name (white, 28–32px)
+  - Description: primary_cta.description (light grey)
+  - CTA button: var(--color-accent) background, white text, "Get Started" or primary_cta.name, links to the actual URL from primary_cta.url (substitute the real value from the intake JSON)
+  - URL also shown as plain visible text below the button (muted, 12px)
+
+RIGHT COLUMN (secondary entry points):
+  Use secondary_ctas[] if available, otherwise generate 3 standard entry points:
+  "Book a discovery call", "Download the brochure", "View our service stack".
+  Each as a list item with → arrow, white text, 16px.
+
+────────────────────────────────────────────
+SOURCES FOOTNOTE:
+Numbered list of all stat sources: statistics[].map(s => s.source + ' (' + s.year + ')').
+Small muted text. Section header "Sources".
+
+────────────────────────────────────────────
+FOOTER:
+Dark background. Left: vertical.client_name + vertical.name. Right: document_control.document_version if available, otherwise blank.
+
+────────────────────────────────────────────
+FINAL CHECKS before outputting:
+- No specific tool names (Monday.com, Box, GPTZero, etc.)
+- No internal content (DPA, security posture, "available on request")
+- Proof strip present in Section 4
+- Two case study cards present (real or structured placeholder — never a notice)
+- Lead hooks visible in Section 3 segment cards
+- Split two-column layout in Section 5
+- All colors via var() — no hardcoded brand hex values
+- Output starts with <!DOCTYPE html> and ends with </html>`,
 
     // 03 Sales Cheat Sheet
     `Using the intake JSON provided, generate a 2-page sales cheat sheet as a complete standalone HTML document.
