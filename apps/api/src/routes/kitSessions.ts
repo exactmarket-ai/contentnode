@@ -370,9 +370,9 @@ export async function kitSessionRoutes(app: FastifyInstance) {
       if (!client)   return reply.code(404).send({ error: 'Client not found' })
       if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
 
-      // Return most recent non-complete session, or null (client starts a new one via PATCH)
+      // Return most recent active session (excludes completed and archived)
       const session = await prisma.kitSession.findFirst({
-        where: { agencyId, clientId, verticalId, status: { not: 'complete' } },
+        where: { agencyId, clientId, verticalId, status: { notIn: ['complete', 'archived'] } },
         orderBy: { updatedAt: 'desc' },
       })
 
@@ -444,14 +444,14 @@ export async function kitSessionRoutes(app: FastifyInstance) {
       const existingFiles = (session.generatedFiles ?? {}) as { assets?: unknown[] }
       if (!existingFiles.assets || existingFiles.assets.length !== 8) {
         const ASSET_DEFS = [
-          { index: 0, name: 'Brochure',          num: '01', ext: 'md',   status: 'pending' },
+          { index: 0, name: 'Brochure',          num: '01', ext: 'docx', status: 'pending' },
           { index: 1, name: 'eBook',             num: '02', ext: 'html', status: 'pending' },
           { index: 2, name: 'Sales Cheat Sheet', num: '03', ext: 'html', status: 'pending' },
-          { index: 3, name: 'BDR Emails',        num: '04', ext: 'md',   status: 'pending' },
-          { index: 4, name: 'Customer Deck',     num: '05', ext: 'md',   status: 'pending' },
-          { index: 5, name: 'Video Script',      num: '06', ext: 'md',   status: 'pending' },
-          { index: 6, name: 'Web Page Copy',     num: '07', ext: 'md',   status: 'pending' },
-          { index: 7, name: 'Internal Brief',    num: '08', ext: 'md',   status: 'pending' },
+          { index: 3, name: 'BDR Emails',        num: '04', ext: 'docx', status: 'pending' },
+          { index: 4, name: 'Customer Deck',     num: '05', ext: 'pptx', status: 'pending' },
+          { index: 5, name: 'Video Script',      num: '06', ext: 'docx', status: 'pending' },
+          { index: 6, name: 'Web Page Copy',     num: '07', ext: 'docx', status: 'pending' },
+          { index: 7, name: 'Internal Brief',    num: '08', ext: 'docx', status: 'pending' },
         ]
         await prisma.kitSession.update({
           where: { id: sessionId },
@@ -519,6 +519,42 @@ export async function kitSessionRoutes(app: FastifyInstance) {
       })
 
       return reply.send({ ok: true })
+    }
+  )
+
+  // POST /:sessionId/archive — archive a completed session so a new one can be started
+  app.post<{ Params: { sessionId: string } }>(
+    '/:sessionId/archive',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId } = req.params
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      await prisma.kitSession.update({
+        where: { id: sessionId },
+        data: { status: 'archived' },
+      })
+
+      return reply.send({ ok: true })
+    }
+  )
+
+  // GET /:clientId/:verticalId/history — list archived sessions (metadata only, no content)
+  app.get<{ Params: { clientId: string; verticalId: string } }>(
+    '/:clientId/:verticalId/history',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { clientId, verticalId } = req.params
+
+      const sessions = await prisma.kitSession.findMany({
+        where: { agencyId, clientId, verticalId, status: 'archived' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, mode: true, status: true, createdAt: true, updatedAt: true },
+      })
+
+      return reply.send({ data: sessions })
     }
   )
 }

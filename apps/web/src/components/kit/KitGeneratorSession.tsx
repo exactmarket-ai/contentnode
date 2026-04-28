@@ -52,6 +52,13 @@ interface KitSessionData {
   generatedFiles: GeneratedFiles
 }
 
+interface ArchivedSession {
+  id: string
+  mode: string
+  createdAt: string
+  updatedAt: string
+}
+
 interface IntakeResponse {
   intake: Record<string, unknown>
   validation: IntakeValidation
@@ -266,10 +273,15 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
   const [session, setSession]         = useState<KitSessionData | null>(null)
   const [loadError, setLoadError]     = useState<string | null>(null)
   const [starting, setStarting]       = useState(false)
-  const [approveNotes, setApproveNotes] = useState('')
-  const [approving, setApproving]       = useState(false)
-  const [cancelling, setCancelling]     = useState(false)
-  const generationStartRef              = React.useRef<number | null>(null)
+  const [approveNotes, setApproveNotes]   = useState('')
+  const [approving, setApproving]         = useState(false)
+  const [cancelling, setCancelling]       = useState(false)
+  const [showConfirm, setShowConfirm]     = useState(false)
+  const [archiving, setArchiving]         = useState(false)
+  const [showHistory, setShowHistory]     = useState(false)
+  const [history, setHistory]             = useState<ArchivedSession[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const generationStartRef                = React.useRef<number | null>(null)
 
   // Load intake + existing session on mount
   const load = useCallback(async () => {
@@ -385,6 +397,35 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
       onClose()
     } catch { /* ignore */ } finally {
       setCancelling(false)
+    }
+  }
+
+  const loadHistory = async () => {
+    setHistoryLoading(true)
+    try {
+      const res = await apiFetch(`/api/v1/kit-sessions/${clientId}/${verticalId}/history`)
+      const { data } = await res.json()
+      setHistory(Array.isArray(data) ? data as ArchivedSession[] : [])
+    } catch { /* non-fatal */ } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const archiveAndRestart = async () => {
+    if (!session) return
+    setArchiving(true)
+    try {
+      await apiFetch(`/api/v1/kit-sessions/${session.id}/archive`, { method: 'POST' })
+      setSession(null)
+      setShowConfirm(false)
+      setShowHistory(false)
+      generationStartRef.current = null
+      setPhase('mode')
+    } catch {
+      setLoadError('Failed to archive session. Please try again.')
+      setShowConfirm(false)
+    } finally {
+      setArchiving(false)
     }
   }
 
@@ -794,6 +835,8 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
           {phase === 'delivery' && session && (
             <div className="flex-1 overflow-y-auto p-8">
               <div className="max-w-3xl mx-auto">
+
+                {/* Header row with Regenerate button */}
                 <div className="mb-6 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-green-500">
                     <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -804,6 +847,15 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                     <h2 className="text-lg font-bold text-gray-900">All 8 assets ready</h2>
                     <p className="text-sm text-gray-500">{clientName} {verticalName} GTM Kit</p>
                   </div>
+                  <button
+                    onClick={() => setShowConfirm(true)}
+                    className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Regenerate Kit
+                  </button>
                 </div>
 
                 {/* Consistency issues */}
@@ -836,7 +888,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                         <p className="text-[10px] uppercase text-gray-400">.{asset.ext}</p>
                       </div>
                       <button
-                        onClick={() => downloadAsset(asset)}
+                        onClick={() => void downloadAsset(asset)}
                         disabled={asset.status !== 'complete'}
                         className={cn(
                           'ml-3 shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
@@ -851,16 +903,91 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                   ))}
                 </div>
 
-                {/* Download all hint */}
-                <p className="mt-4 text-center text-xs text-gray-400">
-                  Files are named: {clientName} {verticalName} Kit - 01 Brochure.docx etc.
-                </p>
+                {/* Footer: filename hint + previous versions toggle */}
+                <div className="mt-5 flex items-center justify-between">
+                  <p className="text-xs text-gray-400">
+                    Files are named: {clientName} {verticalName} Kit - 01 Brochure.docx etc.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowHistory((v) => !v)
+                      if (!showHistory) void loadHistory()
+                    }}
+                    className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+                  >
+                    {showHistory ? 'Hide previous versions' : 'View previous versions'}
+                  </button>
+                </div>
+
+                {/* Previous versions list */}
+                {showHistory && (
+                  <div className="mt-3 rounded-xl border border-gray-200 overflow-hidden">
+                    {historyLoading ? (
+                      <p className="px-4 py-3 text-xs text-gray-400">Loading…</p>
+                    ) : history.length === 0 ? (
+                      <p className="px-4 py-3 text-xs text-gray-400">No previous versions archived yet.</p>
+                    ) : (
+                      history.map((s, i) => (
+                        <div
+                          key={s.id}
+                          className={cn(
+                            'flex items-center justify-between px-4 py-2.5',
+                            i < history.length - 1 && 'border-b border-gray-100',
+                          )}
+                        >
+                          <span className="text-xs text-gray-700">
+                            {new Date(s.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}{' '}
+                            <span className="text-gray-400">
+                              {new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </span>
+                          <span className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase',
+                            s.mode === 'quick' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700',
+                          )}>
+                            {s.mode === 'quick' ? 'Quick Generate' : 'Full Session'}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
               </div>
             </div>
           )}
 
         </div>
       </div>
+
+      {/* Regenerate confirmation modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-2">Regenerate Kit?</h3>
+            <p className="text-sm text-gray-600 mb-5 leading-relaxed">
+              This will replace your current kit for <strong>{clientName} {verticalName}</strong>. Your previous assets will be archived and remain accessible via "View previous versions".
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => void archiveAndRestart()}
+                disabled={archiving}
+                className="flex-1 rounded-lg bg-[#a200ee] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#8800cc] disabled:opacity-50 transition-colors"
+              >
+                {archiving ? 'Archiving…' : 'Archive and Regenerate'}
+              </button>
+              <button
+                onClick={() => setShowConfirm(false)}
+                disabled={archiving}
+                className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
