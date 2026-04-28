@@ -221,12 +221,13 @@ export function createQueue<T>(name: string): Queue<T> {
 export function createWorker<T>(
   name: string,
   processor: ConstructorParameters<typeof Worker<T>>[1],
-  concurrency = 5
+  concurrency = 5,
+  overrides?: { lockDuration?: number }
 ): Worker<T> {
   return new Worker<T>(name, processor, {
     connection: getConnection(),
     concurrency,
-    lockDuration: 60000,       // 60s lock per job (default 30s)
+    lockDuration: overrides?.lockDuration ?? 60000,
     stalledInterval: 5000,     // check for stalled jobs every 5s (default 30s)
     maxStalledCount: 1,        // re-queue stalled jobs once, then fail them
   })

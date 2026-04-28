@@ -28,6 +28,8 @@ export interface ModelConfig {
   max_tokens?: number
   /** If set, treats this as a continuation of a prior truncated response (multi-turn prefill). */
   continuationOf?: string
+  /** Per-request timeout in ms. Defaults to 180000 (3 min). Raise for long-output assets. */
+  timeout_ms?: number
 }
 
 export interface ModelResult {
@@ -66,9 +68,8 @@ async function callAnthropic(config: ModelConfig, prompt: string, images?: Image
   const apiKey = config.api_key_ref ? resolveApiKey(config.api_key_ref) : (process.env.ANTHROPIC_API_KEY ?? '')
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set')
 
-  // Default: 3-minute timeout per attempt, 1 retry max (= 6 min worst case).
-  // The SDK default of 10 min × 3 retries = 30 min is far too long for background jobs.
-  const client = new Anthropic({ apiKey, timeout: 3 * 60 * 1000, maxRetries: 1 })
+  // timeout_ms is per request; retries are handled at the application layer (not the SDK).
+  const client = new Anthropic({ apiKey, timeout: config.timeout_ms ?? (3 * 60 * 1000), maxRetries: 0 })
 
   const userContent: Anthropic.MessageParam['content'] = images && images.length > 0
     ? [

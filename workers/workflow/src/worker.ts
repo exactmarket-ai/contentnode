@@ -390,11 +390,12 @@ const boxVersionScanWorker      = startBoxVersionScanWorker()
 // ── kit-generation ────────────────────────────────────────────────────────────
 const kitGenerationWorker = createWorker<KitGenerationJobData>(
   QUEUE_KIT_GENERATION,
-  async (job: Job<KitGenerationJobData>) => {
+  async (job: Job<KitGenerationJobData>, token?: string) => {
     console.log(`[kit-generation] job picked up: asset ${job.data.assetIndex} session ${job.data.sessionId}`)
-    await processKitGenerationJob(job.data)
+    await processKitGenerationJob(job.data, job, token)
   },
-  2, // max 2 concurrent kit generation jobs
+  2,
+  { lockDuration: 10 * 60 * 1000 }, // 10 min — eBook/Cheat Sheet can take 4-7 min to generate
 )
 kitGenerationWorker.on('error', (err) => console.error('[kit-generation-worker] error:', err))
 

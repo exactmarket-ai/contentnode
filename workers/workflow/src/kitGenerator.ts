@@ -1,7 +1,7 @@
 import { prisma, withAgency } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { downloadBuffer } from '@contentnode/storage'
-import { Queue } from 'bullmq'
+import { Queue, type Job } from 'bullmq'
 import { getConnection, QUEUE_KIT_GENERATION, type KitGenerationJobData } from './queues.js'
 
 const SONNET = 'claude-sonnet-4-6'
@@ -476,7 +476,15 @@ function getKitQueue(): Queue<KitGenerationJobData> {
   return _kitQueue
 }
 
-export async function processKitGenerationJob(data: KitGenerationJobData): Promise<void> {
+const MAX_RETRIES = 2
+const LONG_ASSET_INDICES = new Set([1, 2])
+const RETRY_DELAYS_MS = [5_000, 15_000]
+
+export async function processKitGenerationJob(
+  data: KitGenerationJobData,
+  job?: Job<KitGenerationJobData>,
+  token?: string,
+): Promise<void> {
   const { sessionId, agencyId, assetIndex } = data
   console.log(`[kit-generation] asset ${assetIndex} starting for session ${sessionId}`)
 
@@ -489,8 +497,6 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
 
     const existingFiles = (session.generatedFiles ?? { assets: initAssets() }) as GeneratedFiles
     const assets: AssetRecord[] = existingFiles.assets?.length === 8 ? existingFiles.assets : initAssets()
-
-    // Resolve docStyle once per session (first asset or if missing)
     const docStyle: DocStyle = existingFiles.docStyle ?? await resolveDocStyle(agencyId, session.clientId)
 
     assets[assetIndex] = { ...ASSET_DEFINITIONS[assetIndex], status: 'generating', stage: 'Reading framework data...' }
@@ -499,47 +505,104 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
       data: { status: 'generating', currentAsset: assetIndex, generatedFiles: { assets, docStyle } as any },
     })
 
-    assets[assetIndex].stage = 'Generating content with Claude...'
-    await prisma.kitSession.update({
-      where: { id: sessionId },
-      data: { generatedFiles: { assets, docStyle } as any },
-    })
+    // Renew BullMQ job lock every 30s so long-running assets don't get re-queued
+    const lockRenewal = job && token
+      ? setInterval(() => {
+          job.extendLock(token, 60_000).catch(e => console.warn('[kit-generation] lock renewal failed:', e))
+        }, 30_000)
+      : null
 
-    let content: string
+    const isLongAsset = LONG_ASSET_INDICES.has(assetIndex)
+    let content: string | null = null
+    let lastError: Error | null = null
+
     try {
-      const result = await callModel(
-        {
-          provider: 'anthropic',
-          model: SONNET,
-          api_key_ref: API_KEY,
-          system_prompt: SYSTEM_PROMPT,
-          max_tokens: (assetIndex === 1 || assetIndex === 2) ? 16000 : undefined,
-        },
-        getAssetUserPrompt(assetIndex, intake, docStyle),
-      )
-      content = result.text
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const delay = RETRY_DELAYS_MS[attempt - 1]
+          console.warn(`[kit-generation] asset ${assetIndex} retry ${attempt}/${MAX_RETRIES} in ${delay}ms`)
+          await new Promise(r => setTimeout(r, delay))
+        }
 
-      // If response was cut off, make one continuation call to complete it
-      if (HTML_ASSET_INDICES.has(assetIndex) && result.finish_reason === 'max_tokens') {
-        console.warn(`[kit-generation] asset ${assetIndex} (${ASSET_DEFINITIONS[assetIndex].name}) truncated at max_tokens — requesting continuation`)
-        const cont = await callModel(
-          {
-            provider: 'anthropic',
-            model: SONNET,
-            api_key_ref: API_KEY,
-            system_prompt: SYSTEM_PROMPT,
-            max_tokens: 8000,
-            continuationOf: content,
-          },
-          getAssetUserPrompt(assetIndex, intake),
-        )
-        content = content + cont.text
-        if (cont.finish_reason === 'max_tokens') {
-          console.warn(`[kit-generation] asset ${assetIndex} continuation also truncated — content may be incomplete`)
+        // Stage progress timer — fires every 15s for long assets
+        let stageTimer: ReturnType<typeof setInterval> | null = null
+        if (isLongAsset) {
+          const startedAt = Date.now()
+          assets[assetIndex].stage = 'Generating content with Claude...'
+          stageTimer = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+            assets[assetIndex].stage = elapsed < 60
+              ? `Generating — ${elapsed}s elapsed...`
+              : `Almost done — ${elapsed}s elapsed, wrapping up...`
+            prisma.kitSession.update({
+              where: { id: sessionId },
+              data: { generatedFiles: { assets, docStyle } as any },
+            }).catch(() => {})
+          }, 15_000)
+        } else {
+          assets[assetIndex].stage = 'Generating content with Claude...'
+          await prisma.kitSession.update({
+            where: { id: sessionId },
+            data: { generatedFiles: { assets, docStyle } as any },
+          })
+        }
+
+        try {
+          const result = await callModel(
+            {
+              provider: 'anthropic',
+              model: SONNET,
+              api_key_ref: API_KEY,
+              system_prompt: SYSTEM_PROMPT,
+              max_tokens: isLongAsset ? 16000 : undefined,
+              timeout_ms: isLongAsset ? 8 * 60 * 1000 : 3 * 60 * 1000,
+            },
+            getAssetUserPrompt(assetIndex, intake, docStyle),
+          )
+          content = result.text
+
+          if (HTML_ASSET_INDICES.has(assetIndex) && result.finish_reason === 'max_tokens') {
+            console.warn(`[kit-generation] asset ${assetIndex} truncated — requesting continuation`)
+            const cont = await callModel(
+              {
+                provider: 'anthropic',
+                model: SONNET,
+                api_key_ref: API_KEY,
+                system_prompt: SYSTEM_PROMPT,
+                max_tokens: 8000,
+                continuationOf: content,
+                timeout_ms: 5 * 60 * 1000,
+              },
+              getAssetUserPrompt(assetIndex, intake),
+            )
+            content = content + cont.text
+            if (cont.finish_reason === 'max_tokens') {
+              console.warn(`[kit-generation] asset ${assetIndex} continuation also truncated — content may be incomplete`)
+            }
+          }
+
+          break // success — exit retry loop
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err))
+          console.error(`[kit-generation] asset ${assetIndex} attempt ${attempt + 1} failed: ${lastError.message}`)
+        } finally {
+          if (stageTimer) clearInterval(stageTimer)
         }
       }
+    } finally {
+      if (lockRenewal) clearInterval(lockRenewal)
+    }
 
-      // Strip markdown code fences and any spurious content before <!DOCTYPE html>
+    if (content === null) {
+      // All retries exhausted — record error on this asset but continue pipeline
+      console.error(`[kit-generation] asset ${assetIndex} failed after all retries — marking error and continuing`)
+      assets[assetIndex] = {
+        ...ASSET_DEFINITIONS[assetIndex],
+        status: 'error',
+        error: lastError?.message ?? 'Generation failed after retries',
+      }
+    } else {
+      // Post-process HTML assets
       if (HTML_ASSET_INDICES.has(assetIndex)) {
         content = content
           .replace(/^```html\s*\n?/i, '')
@@ -548,7 +611,6 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
         const dtIdx = content.search(/<!doctype html/i)
         if (dtIdx > 0) content = content.slice(dtIdx)
 
-        // Bake docStyle CSS variables into the saved HTML — ensures correct colors even if Claude hardcoded values
         if (content.includes('</head>')) {
           const rootOverride = [
             '<style>',
@@ -564,26 +626,16 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
           content = content.replace('</head>', rootOverride + '\n</head>')
         }
       }
-    } catch (err) {
+
       assets[assetIndex] = {
         ...ASSET_DEFINITIONS[assetIndex],
-        status: 'error',
-        error: err instanceof Error ? err.message : String(err),
+        status: 'complete',
+        content,
+        completedAt: new Date().toISOString(),
       }
-      await prisma.kitSession.update({
-        where: { id: sessionId },
-        data: { status: 'error', generatedFiles: { assets, docStyle } as any },
-      })
-      throw err
     }
 
-    assets[assetIndex] = {
-      ...ASSET_DEFINITIONS[assetIndex],
-      status: 'complete',
-      content,
-      completedAt: new Date().toISOString(),
-    }
-
+    // Advance pipeline regardless of whether this asset succeeded or errored
     const isLastAsset = assetIndex === 7
     const isFullMode = session.mode === 'full'
     const approvedAssets = (session.approvedAssets as number[]) ?? []
@@ -605,7 +657,7 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
       await prisma.kitSession.update({
         where: { id: sessionId },
         data: {
-          status: 'checkpoint',
+          status: assets[assetIndex].status === 'error' ? 'error' : 'checkpoint',
           currentAsset: assetIndex,
           generatedFiles: { assets, docStyle, checkpointQuestions: CHECKPOINT_QUESTIONS[assetIndex] } as any,
         },
