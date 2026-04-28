@@ -179,7 +179,23 @@ async function authPluginFn(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Token is missing agency_id claim' })
     }
 
-    req.auth = { agencyId, userId: payload.sub, role }
+    // When role wasn't explicitly provided by the JWT (defaults to 'member') and no
+    // DEFAULT_ROLE env override is set, look up the user's actual role from the database.
+    // This handles staging/production environments where Clerk custom session claims
+    // (agency_id / role) aren't configured — without it every user gets 'member' and
+    // admin-only routes silently return empty results.
+    let resolvedRole = role
+    if (!process.env.DEFAULT_ROLE && roleFromToken === 'member') {
+      try {
+        const dbUser = await prisma.user.findFirst({
+          where: { agencyId, clerkUserId: payload.sub },
+          select: { role: true },
+        })
+        if (dbUser?.role) resolvedRole = dbUser.role
+      } catch { /* non-fatal — fall back to JWT role */ }
+    }
+
+    req.auth = { agencyId, userId: payload.sub, role: resolvedRole }
     agencyStorage.enterWith({ agencyId })
 
     // Track last active — fire-and-forget, only updates if stale (>5 min)
