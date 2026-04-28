@@ -26,6 +26,8 @@ export interface ModelConfig {
   system_prompt?: string
   temperature?: number
   max_tokens?: number
+  /** If set, treats this as a continuation of a prior truncated response (multi-turn prefill). */
+  continuationOf?: string
 }
 
 export interface ModelResult {
@@ -34,6 +36,7 @@ export interface ModelResult {
   input_tokens: number  // prompt + context tokens (billed at lower rate)
   output_tokens: number // generated tokens (billed at higher rate)
   model_used: string
+  finish_reason: string // 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use'
 }
 
 /** A base64-encoded image to pass as a vision input. */
@@ -77,7 +80,13 @@ async function callAnthropic(config: ModelConfig, prompt: string, images?: Image
       ]
     : prompt
 
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userContent }]
+  const messages: Anthropic.MessageParam[] = config.continuationOf
+    ? [
+        { role: 'user', content: userContent },
+        { role: 'assistant', content: config.continuationOf },
+        { role: 'user', content: 'Continue exactly from where you left off. Do not repeat any content. Do not add any prefix or preamble.' },
+      ]
+    : [{ role: 'user', content: userContent }]
 
   const response = await client.messages.create({
     model: config.model,
@@ -99,6 +108,7 @@ async function callAnthropic(config: ModelConfig, prompt: string, images?: Image
     input_tokens: inputT,
     output_tokens: outputT,
     model_used: response.model,
+    finish_reason: response.stop_reason ?? 'unknown',
   }
 }
 
@@ -134,6 +144,7 @@ async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelRes
     input_tokens: inputT,
     output_tokens: outputT,
     model_used: response.model,
+    finish_reason: response.choices[0]?.finish_reason ?? 'unknown',
   }
 }
 
@@ -183,6 +194,7 @@ async function callOllama(config: ModelConfig, prompt: string): Promise<ModelRes
     input_tokens: inputT,
     output_tokens: outputT,
     model_used: data.model,
+    finish_reason: 'end_turn',
   }
 }
 

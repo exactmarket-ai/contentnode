@@ -422,7 +422,9 @@ function injectDocStyleIntoHtml(html: string, docStyle: DocStyle): string {
 
   let result = html.includes('</head>')
     ? html.replace('</head>', styleOverride + '\n</head>')
-    : styleOverride + html
+    : html.includes('<body')
+      ? html.replace('<body', styleOverride + '\n<body')
+      : html  // malformed/truncated HTML — skip injection rather than prepend
 
   if (docStyle.logoDataUrl) {
     const logoScript = `

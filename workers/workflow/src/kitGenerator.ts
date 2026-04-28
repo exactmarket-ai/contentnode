@@ -498,10 +498,43 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
     let content: string
     try {
       const result = await callModel(
-        { provider: 'anthropic', model: SONNET, api_key_ref: API_KEY, system_prompt: SYSTEM_PROMPT },
+        {
+          provider: 'anthropic',
+          model: SONNET,
+          api_key_ref: API_KEY,
+          system_prompt: SYSTEM_PROMPT,
+          max_tokens: assetIndex === 1 ? 16000 : assetIndex === 2 ? 8000 : undefined,
+        },
         getAssetUserPrompt(assetIndex, intake),
       )
       content = result.text
+
+      // If response was cut off, make one continuation call to complete it
+      if (HTML_ASSET_INDICES.has(assetIndex) && result.finish_reason === 'max_tokens') {
+        console.log(`[kit-generation] asset ${assetIndex} truncated — continuing generation`)
+        const cont = await callModel(
+          {
+            provider: 'anthropic',
+            model: SONNET,
+            api_key_ref: API_KEY,
+            system_prompt: SYSTEM_PROMPT,
+            max_tokens: 8000,
+            continuationOf: content,
+          },
+          getAssetUserPrompt(assetIndex, intake),
+        )
+        content = content + cont.text
+      }
+
+      // Strip markdown code fences and any spurious content before <!DOCTYPE html>
+      if (HTML_ASSET_INDICES.has(assetIndex)) {
+        content = content
+          .replace(/^```html\s*\n?/i, '')
+          .replace(/\n?```\s*$/, '')
+          .trim()
+        const dtIdx = content.search(/<!doctype html/i)
+        if (dtIdx > 0) content = content.slice(dtIdx)
+      }
     } catch (err) {
       assets[assetIndex] = {
         ...ASSET_DEFINITIONS[assetIndex],
