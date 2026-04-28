@@ -574,10 +574,22 @@ Every path must include the URL. Never output "primary_cta.url" as a literal str
     // 06 Video Script
     `Using the intake JSON provided, generate a video script document in markdown format.
 
+CRITICAL RULES — PLATFORM-AGNOSTIC LANGUAGE:
+Never name specific third-party tools in On-Screen Text or Voiceover copy. These are public-facing.
+Banned: Monday.com, Asana, Jira, Box, Dropbox, SharePoint, Salesforce, HubSpot, Slack, Teams, and any other named vendor.
+Replace with: "your PM tool", "your project management platform", "your file delivery platform", "assets land where they always have", "your CRM", "your collaboration platform", etc.
+Production Notes are internal and may reference specific tools — the ban applies ONLY to On-Screen Text and Voiceover columns.
+
+CTA URL RULE:
+Every version's final CTA must use the exact URL from primary_cta.url. If primary_cta.url is empty or missing, use [URL] as a placeholder. Never invent or hardcode a URL.
+
 ## Cover
-**[vertical.name] Video Script**
-Client: [vertical.client_name]
-Draft v1 | Internal Use Only
+
+# [vertical.name] Video Script
+**Client:** [vertical.client_name]
+**Format:** Version A (60s) and Version B (90s)
+**Audience:** [segments[0].name]
+**Call to Action:** [primary_cta.name]
 
 ## Production Notes
 > **Tone:** [derive from brand_voice.tone — if empty, use "confident, direct, peer-level"]
@@ -585,24 +597,29 @@ Draft v1 | Internal Use Only
 > **Music:** Understated professional background. Fade in at open, fade out under CTA.
 > **Brand colours:** Per brand guidelines — reference design team for hex values.
 > **Positioning constraint:** [vertical.what_we_are_not[0] — use exact text]
+> **Target runtime:** Version A — 60 seconds. Version B — 90 seconds.
+> **Pre-production check:** Confirm CTA URL matches primary_cta.url exactly before handoff to production team.
 
 ## Version A — 60-Second Storyboard
-| Scene/Time | On-Screen Text | Imagery Suggestion |
-|------------|---------------|-------------------|
-[8-10 rows. Open with operational consequence from challenges[]. Build through solution. Close with CTA. Final row CTA URL must exactly match primary_cta.url]
+| Scene | Time | On-Screen Text | Voiceover | Imagery Suggestion |
+|-------|------|---------------|-----------|-------------------|
+[8-10 rows. Scene numbers 1–N. Scene 1: hook — operational consequence from challenges[]. Scene 3: key stat from statistics[]. Scene 4: product/service intro. Scene 7: invisible integration point (use generic tool language — "your PM tool triggers it. Assets land where they always have."). Final scene: CTA — use exact URL from primary_cta.url or [URL] if empty. On-Screen Text and Voiceover columns must contain zero specific vendor names.]
 
 ## 60-Second Distribution Notes
-- LinkedIn video: caption "X orgs face [challenge]. See how [client] responds →"
+- LinkedIn video: caption "X orgs face [challenge]. See how [vertical.client_name] responds →"
 - YouTube pre-roll: skip-proof hook in first 5 seconds
 - Website hero: autoplay, muted, loop first 15 seconds
 
 ## Version B — 90-Second Storyboard
-| Scene/Time | On-Screen Text | Imagery Suggestion |
-|------------|---------------|-------------------|
-[12-14 rows. Expand challenge section, add a case study moment, fuller CTA close]
+| Scene | Time | On-Screen Text | Voiceover | Imagery Suggestion |
+|-------|------|---------------|-----------|-------------------|
+[12-14 rows. Same scene numbering continues from 1. Expand challenge section with additional stat, add a case study moment (use client_profile + headline_stat from case_studies[0] — no specific tool names), fuller CTA close. On-Screen Text and Voiceover columns must contain zero specific vendor names.]
+
+## 30-Second Cut Guide
+**For a 30-second cut:** Use Scenes 1 (hook), 3 (key stat), 4 (product intro), 7 (invisible integration point), and the final CTA scene only. Remove all other scenes. Adjust timing proportionally — target 5–7 seconds per retained scene.
 
 ## 60-Second Voiceover Script (Version A)
-[Timecoded voiceover matching Version A storyboard exactly. Format: 0:00-0:08 [text]. Every line keyed to a storyboard row.]`,
+[Timecoded voiceover matching Version A storyboard exactly. Format: 0:00–0:08 [text]. Every line keyed to a storyboard scene. Zero specific vendor or tool names. Final line must include the exact CTA URL from primary_cta.url or [URL] if empty.]`,
 
     // 07 Web Page Copy
     `Using the intake JSON provided, generate web page copy in markdown format for a vertical landing page.
