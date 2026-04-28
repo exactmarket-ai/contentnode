@@ -859,11 +859,20 @@ function runConsistencyChecks(assets: AssetRecord[], intake: Record<string, unkn
   const taglines = (vertical.taglines as string[] | undefined) ?? []
   const whatNotLines = (vertical.what_we_are_not as string[] | undefined) ?? []
 
-  if (primaryCtaUrl) {
-    // Check raw content for URL (href attributes in HTML also contain it)
-    const missing = assets
-      .filter(a => a.content && !a.content.includes(primaryCtaUrl))
-      .map(a => a.name)
+  // Only check URL if it looks like an actual URL (not a trigger description)
+  if (primaryCtaUrl && /^https?:\/\//.test(primaryCtaUrl)) {
+    // Assets where a raw CTA URL is naturally expected in the copy
+    const CTA_URL_ASSET_INDICES = [0, 3, 6] // Brochure, BDR Emails, Web Page Copy
+    // Lenient match: strip protocol + trailing slash so https://x.com/ ≡ x.com
+    const urlCore = primaryCtaUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase()
+    const missing = CTA_URL_ASSET_INDICES
+      .filter(i => {
+        const a = assets[i]
+        if (!a?.content) return false
+        const haystack = searchable(a).toLowerCase()
+        return !haystack.includes(urlCore) && !haystack.includes(primaryCtaUrl.toLowerCase())
+      })
+      .map(i => assets[i].name)
     if (missing.length > 0) {
       issues.push(`Primary CTA URL not found in: ${missing.join(', ')}`)
     }
