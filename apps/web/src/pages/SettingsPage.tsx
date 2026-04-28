@@ -1889,7 +1889,7 @@ export function SettingsPage() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-6" style={{ backgroundColor: '#fafaf8' }}>
-        <div style={{ maxWidth: 560 }} className="space-y-10">
+        <div style={{ maxWidth: 1100 }} className="space-y-10">
 
           {/* ── Integrations ─────────────────────────────────────────────── */}
           <CredentialsSection />
@@ -1905,11 +1905,11 @@ export function SettingsPage() {
           {/* ── File Library ─────────────────────────────────────────────── */}
           <LibrarySection />
 
-          {/* ── Prompt Templates ─────────────────────────────────────────── */}
-          <PromptsSection />
-
-          {/* ── Image Prompts ────────────────────────────────────────────── */}
-          <ImagePromptsSection />
+          {/* ── Prompt Templates + Image Prompts (side by side) ──────────── */}
+          <div className="grid grid-cols-2 gap-8 items-start">
+            <PromptsSection />
+            <ImagePromptsSection />
+          </div>
 
           {/* ── External Contacts ────────────────────────────────────────── */}
           <section>
