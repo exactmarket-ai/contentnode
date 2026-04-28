@@ -123,13 +123,10 @@ function TemplateDrawer({ template, onClose, onSaved: _onSaved, onUse, onFork }:
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border px-5 py-3">
+        <div className="flex items-center border-t border-border px-5 py-3">
           <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { onFork(template); onClose() }}>
             <Icons.Copy className="h-3 w-3 mr-1" />
             Save as
-          </Button>
-          <Button size="sm" className="h-7 text-xs" onClick={() => { onUse(template.id); onClose() }}>
-            Use template
           </Button>
         </div>
       </div>
@@ -277,13 +274,6 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
           {template.useCount > 0 ? `Used ${template.useCount}×` : 'Unused'}
         </span>
         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-          <button
-            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors text-[11px] font-medium"
-            onClick={(e) => { e.stopPropagation(); onUse(template.id) }}
-            title="Mark as used"
-          >
-            Use
-          </button>
           {/* More menu */}
           <div className="relative" ref={menuRef}>
             <button
