@@ -7211,7 +7211,7 @@ export function ClientDetailPage() {
     campaigns:     'Campaigns',
     programs:      'Programs',
     deliverables:  'Deliverables',
-    library:             'Library',
+    library:             'Prompt Library',
     'thought-leadership': 'Thought Leadership',
     framework:     'GTM Framework',
     'product-marketing': 'productPILOT',
