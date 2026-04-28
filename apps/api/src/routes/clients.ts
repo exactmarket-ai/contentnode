@@ -3362,6 +3362,48 @@ Output as clean HTML using <h3> for slide titles, <ul> for bullet points. Do not
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       update: { data: body as any },
     })
+
+    // Sync framework into brain as a text attachment so program runner + AI tools can use it
+    try {
+      const verticalRecord = await prisma.vertical.findFirst({ where: { id: req.params.verticalId, agencyId }, select: { name: true } })
+      const clientRecord   = await prisma.client.findFirst({ where: { id: req.params.id, agencyId }, select: { name: true } })
+      const vName = verticalRecord?.name ?? req.params.verticalId
+      const cName = clientRecord?.name ?? req.params.id
+      const lines: string[] = [`GTM Framework — ${cName} / ${vName}`]
+      const flatten = (obj: unknown, prefix = ''): void => {
+        if (!obj || typeof obj !== 'object') return
+        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+          if (Array.isArray(v)) { v.forEach((item, i) => flatten(item, `${prefix}${k}[${i}].`)) }
+          else if (v && typeof v === 'object') { flatten(v, `${prefix}${k}.`) }
+          else if (typeof v === 'string' && v.trim()) { lines.push(`${prefix}${k}: ${v.trim()}`) }
+        }
+      }
+      flatten(body)
+      const content = lines.join('\n')
+      const filename = `GTM Framework — ${vName}.md`
+      const existing = await prisma.clientBrainAttachment.findFirst({
+        where: { clientId: req.params.id, agencyId, filename, source: 'gtm_framework' },
+      })
+      if (existing) {
+        await prisma.clientBrainAttachment.update({
+          where: { id: existing.id },
+          data: { extractedText: content, summary: content, summaryStatus: 'ready', extractionStatus: 'done', sizeBytes: content.length },
+        })
+      } else {
+        await prisma.clientBrainAttachment.create({
+          data: {
+            agencyId, clientId: req.params.id, filename,
+            storageKey: null, mimeType: 'text/markdown', sizeBytes: content.length,
+            extractionStatus: 'done', summaryStatus: 'ready',
+            extractedText: content, summary: content,
+            source: 'gtm_framework', uploadMethod: 'framework',
+          },
+        })
+      }
+    } catch (err) {
+      console.error('[framework/save] brain sync failed (non-fatal):', err)
+    }
+
     return reply.send({ data: fw.data })
   })
 
