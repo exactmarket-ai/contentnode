@@ -2922,7 +2922,7 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <Icons.ScrollText className="h-4 w-4" style={{ color: '#b4b2a9' }} />
-          <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Prompt Templates</h2>
+          <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Prompt Library</h2>
         </div>
         <button
           onClick={() => setCreating(true)}
