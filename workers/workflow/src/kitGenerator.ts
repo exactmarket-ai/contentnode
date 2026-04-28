@@ -333,21 +333,90 @@ FINAL CHECKS before outputting:
 - Output starts with <!DOCTYPE html> and ends with </html>`,
 
     // 03 Sales Cheat Sheet
-    `Using the intake JSON provided, generate a 2-page sales cheat sheet as a complete standalone HTML document.
+    `Using the intake JSON provided, generate a sales cheat sheet as a complete standalone HTML document.
 
-Requirements:
-- Add "INTERNAL USE ONLY" prominently at the very top (red badge or banner)
-- CSS: clean, high-contrast, professional. Include @media print rule that hides nav and shows page-break markers. Max-width 1000px.
-- Page 1 sections (use page-break CSS class between pages):
-  1. ICP Segment table: columns = Segment | Primary Buyer | Core Pain | Opening Hook | Entry Point. One row per segment from segments[]. Use lead_hook for "Opening Hook".
-  2. Pain-to-Solution table: columns = # | Pain Point | Your Response | Service Pillar. One row per challenge from challenges[]. Use challenge.name, challenge.solution, challenge.service_pillar.
-- Page 2 sections:
-  1. Objection handling table: columns = The Objection | Your Response | Follow-Up Question. From objections[].
-  2. Qualifying questions grid: 2 columns, 8 questions derived from challenges[] and segments[] insights, each with a "Why it works" note
-  3. Regulatory context table from regulatory_frameworks[]: columns = Framework | Our Capability | Sales Note
-  4. 2 case study cards from case_studies[]
-  5. Proof points from proof_points[] and key stats from statistics[]
-  6. CTA block: 3 scripted versions of the primary ask (different lengths: 1 sentence, 2 sentences, 3 sentences) based on primary_cta. Every version must end with the exact URL from primary_cta.url as a plain-text standalone line. Substitute the actual URL value from the intake JSON — never output the field path name.
+CRITICAL RULES:
+- Output ONLY valid HTML. Start with <!DOCTYPE html>, end with </html>. No markdown fences.
+- "INTERNAL USE ONLY" red banner at the very top — prominent, impossible to miss.
+- This is an internal sales tool. Never include public-facing marketing copy.
+- Platform-agnostic language throughout: "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "GPTZero/Originality.ai/Copyleaks" → "configurable AI detection services", "Anthropic and OpenAI" → "AI model providers". This applies everywhere — ICP table, pain map, objections, CTA scripts.
+- No internal architecture documentation: never mention BullMQ, PostgreSQL, RLS, queue names, or API key management. Replace with business outcomes.
+- Never leave a field blank. If intake data is missing, generate a credible placeholder that fits the format.
+
+────────────────────────────────────────────
+HEAD:
+- Title: "[vertical.name] Sales Cheat Sheet — [vertical.client_name] — INTERNAL ONLY"
+- All CSS in one <style> block. Clean, high-contrast. Max-width 1100px. Include @media print { .no-print { display:none } .page-break { page-break-before: always } }.
+
+────────────────────────────────────────────
+PAGE 1
+
+P1-A. HEADER BAND
+"INTERNAL USE ONLY" in a red (#dc2626) banner. Below it: "[vertical.name] Sales Cheat Sheet — [vertical.client_name]".
+
+P1-B. ICP SEGMENT TABLE
+Table with columns: Segment | Primary Buyer | Core Pain | Opening Hook | Entry Point
+One row per segment from segments[].
+
+OPENING HOOK RULES (most critical field — never leave blank):
+- Use segment.lead_hook verbatim if it is populated.
+- If lead_hook is empty, generate a hook using this formula: start with "If" or a direct operational scenario for that segment's core_pain. Make it a question forcing the prospect to think about a real consequence. Under 40 words. Something a rep can say word-for-word on a cold call.
+- Example formula: "If your [role] is spending [time] on [pain], what happens when [consequence]?"
+- NEVER output "No hook specified" or leave this cell empty.
+
+P1-C. PAIN-TO-SOLUTION MAP
+Table with columns: # | Pain Point | Your Response | Service Pillar
+One row per challenge from challenges[]. Pain Point = challenge.name. Your Response = challenge.solution (1-2 sentences, business language). Service Pillar = challenge.service_pillar as a colored pill.
+
+────────────────────────────────────────────
+PAGE 2 (add <div class="page-break"></div> before this page)
+
+P2-A. OBJECTION HANDLING
+Table with exactly 3 columns: The Objection | Your Response | Follow-Up Question
+The Follow-Up Question MUST be a separate column — never embed it inside the response text.
+From objections[]. If objections[] is empty, generate 4 realistic objections for this vertical.
+
+P2-B. QUALIFYING QUESTIONS
+2-column grid. 8 questions derived from challenges[] and segments[]. Each question paired with a "Why it works" note (1 sentence). Label the columns "Question" and "Why it works".
+
+P2-C. REGULATORY CONTEXT
+Do NOT use a table. Use two sections:
+
+Section A — one block per framework from regulatory_frameworks[]:
+Framework name as a subheading. 3-4 specific bullet points covering: what it requires, the client's exposure, and how your services address it.
+
+Section B — Agency Role Statement (always present, fixed text):
+"We implement the controls. Demonstrating compliance is the organisation's responsibility."
+
+Sales note at bottom (muted text, italic):
+"Use regulatory pressure as the urgency trigger, not the primary value prop. Lead with operational outcomes."
+
+Do NOT include: internal notes, DPA reminders, "Available on request", security posture checklists, or any operational process instructions for the team.
+
+P2-D. CASE STUDY CARDS
+Two case study cards side-by-side. Always render the full card structure.
+
+If case_studies[] has data, use: client_profile as header, situation, engagement, outcomes, headline_stat, and quote if present.
+If case_studies[] is empty or has fewer than 2 entries, use structured placeholder cards:
+  - Header: "Enterprise Client | Managed Services Engagement"
+  - The Situation: "[3 bullet placeholders — fill with client type and core challenge]"
+  - What We Delivered: "[3 bullet placeholders — fill with services engaged]"
+  - Outcome: "[Stat or result — fill before use]"
+  - Quote: "[Client quote — add before distributing]"
+  - "Use this story when:" tag: "[Match to segment — fill before use]"
+
+Each card must also show a "Use this story when:" tag at the bottom derived from the most relevant segment or challenge.
+NEVER show "Case studies coming soon" or any notice. Always render two structured cards.
+
+P2-E. PROOF POINTS
+Use proof_points[] from the intake. Format each as: stat/claim (bold) + one-sentence business implication + source if available.
+If proof_points[] is empty, use: "Research-to-finished deliverable in under 5 minutes vs. 1-2 days of senior strategist time — confirmed in active production."
+Do NOT include technical architecture details (BullMQ, PostgreSQL, API layers, etc.).
+
+P2-F. CTA SCRIPTS
+3 scripted versions of the primary ask — different lengths (1 sentence, 2 sentences, 3 sentences).
+Base on primary_cta. Each version must end with the actual URL value from primary_cta.url on its own line.
+Label them: "Quick ask (phone)" | "Standard ask (email)" | "Full ask (meeting request)".
 
 Output complete valid HTML only.`,
 
