@@ -7492,7 +7492,7 @@ export function ClientDetailPage() {
         {activeTab === 'programs' && <ProgramsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'library' && (
-          <div className="space-y-10">
+          <div className="space-y-10 pb-16">
             <ClientLibraryTab clientId={client.id} />
             <div>
               <div className="flex items-center gap-2 mb-4">
