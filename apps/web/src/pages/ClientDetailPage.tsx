@@ -2860,12 +2860,12 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
       .finally(() => setLoading(false))
   }, [clientId])
 
-  // Auto-seed blog templates at agency level if none exist yet
+  // Seed blog templates first, then load so globals appear on first visit
   useEffect(() => {
-    apiFetch('/api/v1/prompts/seed', { method: 'POST' }).catch(() => {})
-  }, [])
-
-  useEffect(() => { load() }, [load])
+    apiFetch('/api/v1/prompts/seed', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => load())
+  }, [load])
 
   const startEdit = (t: ClientPromptTemplate) => {
     setEditingId(t.id); setEditName(t.name); setEditBody(t.body)
