@@ -113,10 +113,17 @@ const SYSTEM_PROMPT = `You are a senior B2B content strategist generating a prof
 - Never claim the agency certifies compliance, builds industry-specific software, or provides legal counsel
 - Use US English spelling, grammar, and idioms throughout`
 
-function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>): string {
+function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>, docStyle?: DocStyle): string {
   const intakeStr = JSON.stringify(intake, null, 2)
   const { name } = ASSET_DEFINITIONS[assetIndex]
-  const base = `Here is the complete intake JSON:\n\n\`\`\`json\n${intakeStr}\n\`\`\`\n\nGenerate the ${name} now.\n\n`
+
+  const brandPreamble = docStyle && HTML_ASSET_INDICES.has(assetIndex)
+    ? `CRITICAL — Use these exact brand values in all CSS. Define them at the top of your :root block and use var() throughout — never hardcode hex values:\n` +
+      `:root {\n  --color-primary: ${docStyle.primaryColor};\n  --color-dark: ${docStyle.primaryColor};\n  --color-accent: ${docStyle.secondaryColor};\n  --heading-font: '${docStyle.headingFont}', sans-serif;\n  --body-font: '${docStyle.bodyFont}', sans-serif;\n}\n` +
+      `Always write background-color: var(--color-primary), color: var(--color-accent), etc. Do not use #1a2744, #0070f3, or any other hardcoded hex in the CSS.\n\n`
+    : ''
+
+  const base = `${brandPreamble}Here is the complete intake JSON:\n\n\`\`\`json\n${intakeStr}\n\`\`\`\n\nGenerate the ${name} now.\n\n`
 
   const instructions = [
     // 01 Brochure
@@ -503,9 +510,9 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
           model: SONNET,
           api_key_ref: API_KEY,
           system_prompt: SYSTEM_PROMPT,
-          max_tokens: assetIndex === 1 ? 16000 : assetIndex === 2 ? 8000 : undefined,
+          max_tokens: (assetIndex === 1 || assetIndex === 2) ? 16000 : undefined,
         },
-        getAssetUserPrompt(assetIndex, intake),
+        getAssetUserPrompt(assetIndex, intake, docStyle),
       )
       content = result.text
 
@@ -534,6 +541,22 @@ export async function processKitGenerationJob(data: KitGenerationJobData): Promi
           .trim()
         const dtIdx = content.search(/<!doctype html/i)
         if (dtIdx > 0) content = content.slice(dtIdx)
+
+        // Bake docStyle CSS variables into the saved HTML — ensures correct colors even if Claude hardcoded values
+        if (content.includes('</head>')) {
+          const rootOverride = [
+            '<style>',
+            ':root {',
+            `  --color-primary: ${docStyle.primaryColor};`,
+            `  --color-dark: ${docStyle.primaryColor};`,
+            `  --color-accent: ${docStyle.secondaryColor};`,
+            `  --heading-font: '${docStyle.headingFont}', sans-serif;`,
+            `  --body-font: '${docStyle.bodyFont}', sans-serif;`,
+            '}',
+            '</style>',
+          ].join('\n')
+          content = content.replace('</head>', rootOverride + '\n</head>')
+        }
       }
     } catch (err) {
       assets[assetIndex] = {
