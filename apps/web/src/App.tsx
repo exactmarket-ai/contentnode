@@ -30,6 +30,7 @@ import { PipelinePage } from '@/pages/PipelinePage'
 import { MyWorkPage }   from '@/pages/MyWorkPage'
 import DeliverablesPage from '@/pages/DeliverablesPage'
 import { ThemePage } from '@/pages/ThemePage'
+import { PromptLibraryPage } from '@/pages/PromptLibraryPage'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
@@ -117,6 +118,7 @@ const protectedChildren = [
   { path: 'pipeline',     element: <PipelinePage /> },
   { path: 'deliverables', element: <DeliverablesPage /> },
   { path: 'workflows', element: <WorkflowListPage /> },
+  { path: 'prompt-library', element: <PromptLibraryPage /> },
   { path: 'reviews', element: <ReviewsAndRunsPage /> },
   { path: 'runs', element: <Navigate to="/reviews" replace /> },
   { path: 'workflows/new', element: <WorkflowEditor /> },

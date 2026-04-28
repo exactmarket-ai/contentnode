@@ -2836,8 +2836,8 @@ const PROMPT_CATS = [
   { value: 'other',   label: 'Other' },
 ]
 
-function ClientPromptsSection({ clientId }: { clientId: string }) {
-  const { user, isAdmin } = useCurrentUser()
+function ClientPromptsSection({ clientId }: { clientId?: string }) {
+  const { user, isAdmin, canUsePilot } = useCurrentUser()
   const [clientTemplates, setClientTemplates] = useState<ClientPromptTemplate[]>([])
   const [globalTemplates, setGlobalTemplates] = useState<ClientPromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
@@ -2861,7 +2861,7 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
-      apiFetch(`/api/v1/prompts?clientId=${clientId}`).then((r) => r.json()),
+      clientId ? apiFetch(`/api/v1/prompts?clientId=${clientId}`).then((r) => r.json()) : Promise.resolve({ data: [] }),
       apiFetch('/api/v1/prompts').then((r) => r.json()),
     ])
       .then(([clientRes, globalRes]) => {
@@ -2932,7 +2932,7 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
       const res = await apiFetch('/api/v1/prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), body: newBody.trim(), description: newDesc.trim() || undefined, category: newCategory, clientId }),
+        body: JSON.stringify({ name: newName.trim(), body: newBody.trim(), description: newDesc.trim() || undefined, category: newCategory, ...(clientId ? { clientId } : {}) }),
       })
       if (res.ok) {
         setCreating(false); setNewName(''); setNewBody(''); setNewDesc(''); setNewCategory('general')
@@ -2955,7 +2955,7 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
           <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Prompt Library</h2>
         </div>
         <div className="flex items-center gap-2">
-          {isAdmin && (
+          {canUsePilot && (
             <button
               onClick={() => { setShowTrash((v) => !v); if (!showTrash) loadTrash() }}
               className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
@@ -3094,8 +3094,8 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
               )}
             </div>
 
-            {/* Admin trash panel */}
-            {isAdmin && showTrash && (
+            {/* Trash panel — visible to internal users; restore/delete-forever admin-only */}
+            {showTrash && (
               <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
                 <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#fafaf8', borderBottom: '1px solid #e8e7e1' }}>
                   <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>Trash</p>
@@ -3115,18 +3115,20 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
                             {t.deletedBy && ` · by ${t.deletedBy.slice(0, 8)}…`}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => restoreTemplate(t.id)}
-                            className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-gray-50"
-                            style={{ borderColor: '#e8e7e1', color: '#3a3a2e' }}
-                          >Restore</button>
-                          <button
-                            onClick={() => permanentDeleteTemplate(t.id, t.name)}
-                            className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-red-50"
-                            style={{ borderColor: '#fca5a5', color: '#ef4444' }}
-                          >Delete forever</button>
-                        </div>
+                        {isAdmin && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => restoreTemplate(t.id)}
+                              className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-gray-50"
+                              style={{ borderColor: '#e8e7e1', color: '#3a3a2e' }}
+                            >Restore</button>
+                            <button
+                              onClick={() => permanentDeleteTemplate(t.id, t.name)}
+                              className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-red-50"
+                              style={{ borderColor: '#fca5a5', color: '#ef4444' }}
+                            >Delete forever</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -3160,8 +3162,8 @@ interface TrashedImagePrompt {
   deletedBy: string | null
 }
 
-function ClientImagePromptsSection({ clientId }: { clientId: string }) {
-  const { user, isAdmin } = useCurrentUser()
+function ClientImagePromptsSection({ clientId }: { clientId?: string }) {
+  const { user, isAdmin, canUsePilot } = useCurrentUser()
   const [prompts, setPrompts] = useState<ClientImagePrompt[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -3184,13 +3186,16 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true)
-    apiFetch(`/api/v1/image-prompts?clientId=${clientId}`)
+    const url = clientId
+      ? `/api/v1/image-prompts?clientId=${clientId}`
+      : '/api/v1/image-prompts?global=true'
+    apiFetch(url)
       .then((r) => r.json())
       .then(({ data }) => {
         const list: ClientImagePrompt[] = data ?? []
         setPrompts(list)
-        // Auto-seed from agency defaults if client has none yet
-        if (list.length === 0) {
+        // Auto-seed from agency defaults if client has none yet (client-specific only)
+        if (clientId && list.length === 0) {
           apiFetch('/api/v1/image-prompts/seed-client', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3249,7 +3254,7 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
 
   const loadTrash = () => {
     setTrashLoading(true)
-    apiFetch(`/api/v1/image-prompts/trash?clientId=${clientId}`)
+    apiFetch(clientId ? `/api/v1/image-prompts/trash?clientId=${clientId}` : '/api/v1/image-prompts/trash')
       .then((r) => r.json())
       .then(({ data }) => setTrash(data ?? []))
       .catch(console.error)
@@ -3274,7 +3279,7 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
       const res = await apiFetch('/api/v1/image-prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), promptText: newPromptText.trim(), styleTags: newStyleTags.trim(), notes: newNotes.trim() || undefined, clientId }),
+        body: JSON.stringify({ name: newName.trim(), promptText: newPromptText.trim(), styleTags: newStyleTags.trim(), notes: newNotes.trim() || undefined, ...(clientId ? { clientId } : {}) }),
       })
       if (res.ok) {
         setCreating(false); setNewName(''); setNewPromptText(''); setNewStyleTags(''); setNewNotes('')
@@ -3302,7 +3307,7 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
               {seeding ? 'Seeding…' : 'Copy agency samples'}
             </button>
           )}
-          {isAdmin && (
+          {canUsePilot && (
             <button
               onClick={() => { setShowTrash((v) => !v); if (!showTrash) loadTrash() }}
               className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
@@ -3397,8 +3402,8 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
         )}
       </div>
 
-      {/* Admin trash panel */}
-      {isAdmin && showTrash && (
+      {/* Trash panel — visible to internal users; restore/delete-forever admin-only */}
+      {showTrash && (
         <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
           <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#fafaf8', borderBottom: '1px solid #e8e7e1' }}>
             <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>Trash</p>
@@ -3418,18 +3423,20 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
                       {p.deletedBy && ` · by ${p.deletedBy.slice(0, 8)}…`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => restorePrompt(p.id)}
-                      className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-gray-50"
-                      style={{ borderColor: '#e8e7e1', color: '#3a3a2e' }}
-                    >Restore</button>
-                    <button
-                      onClick={() => permanentDeletePrompt(p.id, p.name)}
-                      className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-red-50"
-                      style={{ borderColor: '#fca5a5', color: '#ef4444' }}
-                    >Delete forever</button>
-                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => restorePrompt(p.id)}
+                        className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-gray-50"
+                        style={{ borderColor: '#e8e7e1', color: '#3a3a2e' }}
+                      >Restore</button>
+                      <button
+                        onClick={() => permanentDeletePrompt(p.id, p.name)}
+                        className="px-2.5 py-1 text-[11px] font-medium rounded border hover:bg-red-50"
+                        style={{ borderColor: '#fca5a5', color: '#ef4444' }}
+                      >Delete forever</button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -7340,6 +7347,23 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 const TABS = ['overview', 'workflows', 'campaigns', 'programs', 'board', 'deliverables', 'library', 'thought-leadership', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
+// ── Agency-level prompt library (no clientId — shows global templates) ────────
+
+export function AgencyPromptLibrary() {
+  return (
+    <div className="flex gap-8 pb-16 items-start">
+      <div className="flex-1 min-w-0">
+        <ClientPromptsSection />
+      </div>
+      <div className="w-80 shrink-0">
+        <ClientImagePromptsSection />
+      </div>
+    </div>
+  )
+}
+
+// ── Main client detail page ───────────────────────────────────────────────────
+
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -7444,7 +7468,7 @@ export function ClientDetailPage() {
   // Tabs that live under the "Research" group
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment', 'scheduled-tasks']
   // Tabs that live under the "Settings" group
-  const SETTINGS_TABS: Tab[] = ['brain', 'library', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
+  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
@@ -7692,26 +7716,6 @@ export function ClientDetailPage() {
         {activeTab === 'campaigns' && <CampaignsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'programs' && <ProgramsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
-        {activeTab === 'library' && (
-          <div className="flex gap-8 pb-16 items-start">
-            {/* Left column — Prompt Library */}
-            <div className="flex-1 min-w-0 space-y-8">
-              <ClientLibraryTab clientId={client.id} />
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <Icons.Sparkles className="h-4 w-4 text-violet-500" />
-                  <h2 className="text-[15px] font-semibold">Prompt Library</h2>
-                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-600">Brain-powered</span>
-                </div>
-                <ClientPromptLibraryTab clientId={client.id} />
-              </div>
-            </div>
-            {/* Right column — Image Prompts */}
-            <div className="w-80 shrink-0">
-              <ClientImagePromptsSection clientId={client.id} />
-            </div>
-          </div>
-        )}
         {activeTab === 'thought-leadership' && <ThoughtLeadershipTab clientId={client.id} />}
         {activeTab === 'product-marketing' && <ProductMarketingTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
