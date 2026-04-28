@@ -258,6 +258,8 @@ interface ValidationError {
 function validateIntake(intake: ReturnType<typeof mapFrameworkToIntake>): ValidationError[] {
   const errors: ValidationError[] = []
 
+  // ── Hard blocks — generation cannot proceed without these ─────────────────
+
   if (!intake.vertical.positioning_statement) {
     errors.push({ field: 'vertical.positioning_statement', message: 'Section 01: Positioning statement is required', blocking: true })
   }
@@ -266,39 +268,58 @@ function validateIntake(intake: ReturnType<typeof mapFrameworkToIntake>): Valida
   }
 
   const challengesWithPillar = intake.challenges.filter((c) => c.service_pillar.trim())
-  if (challengesWithPillar.length < 5) {
+  if (challengesWithPillar.length < 3) {
     errors.push({
       field: 'challenges',
-      message: `Section 04: At least 5 challenges with service pillar mappings are required (found ${challengesWithPillar.length})`,
+      message: `Section 04: At least 3 challenges with service pillar mappings are required (found ${challengesWithPillar.length})`,
       blocking: true,
     })
   }
+
+  if (!intake.primary_cta.name || !intake.primary_cta.url) {
+    errors.push({
+      field: 'primary_cta',
+      message: 'Section 18: Primary CTA (name and URL) is required — every asset ends with this call to action',
+      blocking: true,
+    })
+  }
+
+  // ── Optional sections — warnings only, generation proceeds with placeholders ─
 
   const statsWithSource = intake.statistics.filter((s) => s.source.trim() && s.year.trim())
-  if (statsWithSource.length < 4) {
+  if (statsWithSource.length === 0) {
     errors.push({
       field: 'statistics',
-      message: `Section 03: At least 4 statistics each with source and year are required (found ${statsWithSource.length})`,
-      blocking: true,
+      message: 'Section 03 has no statistics. Placeholder stat blocks have been used. Add real stats to your GTM Framework and regenerate to replace them.',
+      blocking: false,
     })
-  }
-
-  const caseStudiesWithOutcomes = intake.case_studies.filter((c) => c.outcomes.trim())
-
-  const publicCases = intake.case_studies.filter((c) => c.outcomes.trim())
-  const unapproved = publicCases.filter((c) => !c.approved_for_use)
-  if (unapproved.length > 0) {
+  } else if (statsWithSource.length < 4) {
     errors.push({
-      field: 'case_studies.approved_for_use',
-      message: `Section 09: ${unapproved.length} case study/studies used in public assets are not marked as approved for use`,
-      blocking: true,
+      field: 'statistics',
+      message: `Section 03: Only ${statsWithSource.length} statistic${statsWithSource.length === 1 ? '' : 's'} with source and year (4 recommended). Assets may have sparse stat sections.`,
+      blocking: false,
     })
   }
 
-  // Warnings (non-blocking)
-  if (!intake.primary_cta.name) {
-    errors.push({ field: 'primary_cta', message: 'Section 18: No primary CTA defined — a placeholder will be used', blocking: false })
+  if (intake.proof_points.length === 0) {
+    errors.push({
+      field: 'proof_points',
+      message: 'Section 09 has no proof points. Placeholders have been used. Add real proof points to your GTM Framework and regenerate.',
+      blocking: false,
+    })
   }
+
+  const hasCaseStudies = intake.case_studies.some((c) => c.outcomes.trim())
+  if (!hasCaseStudies) {
+    errors.push({
+      field: 'case_studies',
+      message: 'Section 13 has no testimonials or case studies. Structured placeholders have been used. Add real examples to your GTM Framework and regenerate.',
+      blocking: false,
+    })
+  }
+
+  // ── Other warnings ────────────────────────────────────────────────────────
+
   if (intake.brand_voice.sounds_like.length === 0 && intake.brand_voice.not_like.length === 0) {
     errors.push({ field: 'brand_voice', message: 'Section 11: No brand voice examples — generic tone guardrails will apply', blocking: false })
   }

@@ -154,7 +154,7 @@ function ValidationBanner({ validation }: { validation: IntakeValidation }) {
       {warnings.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="mb-2 text-sm font-semibold text-amber-800">
-            {warnings.length} warning{warnings.length > 1 ? 's' : ''} — generation will proceed with gaps
+            {warnings.length} warning{warnings.length > 1 ? 's' : ''} — generation will proceed with placeholders
           </p>
           <ul className="flex flex-col gap-1">
             {warnings.map((e, i) => (
