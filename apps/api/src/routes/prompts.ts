@@ -196,11 +196,18 @@ export async function promptRoutes(app: FastifyInstance) {
     })
     const existingNames = new Set(existing.map((t) => t.name))
     const toInsert = SEED_TEMPLATES.filter((t) => !existingNames.has(t.name))
+
+    // Upgrade any existing ones from 'user' to 'global' so they appear under the Global tab
+    await prisma.promptTemplate.updateMany({
+      where: { agencyId, clientId: null, name: { in: SEED_TEMPLATES.map((t) => t.name) }, source: 'user' },
+      data: { source: 'global' },
+    })
+
     if (toInsert.length === 0) {
       return reply.send({ data: { skipped: true, message: 'Blog templates already seeded' } })
     }
     await prisma.promptTemplate.createMany({
-      data: toInsert.map((t) => ({ agencyId, clientId: null, source: 'user', ...t })),
+      data: toInsert.map((t) => ({ agencyId, clientId: null, source: 'global', ...t })),
     })
     return reply.send({ data: { seeded: toInsert.length } })
   })

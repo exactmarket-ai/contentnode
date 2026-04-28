@@ -437,14 +437,26 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true)
-    apiFetch(`/api/v1/template-library?clientId=${clientId}`)
-      .then((r) => r.json())
-      .then(({ data }) => setTemplates(data ?? []))
+    Promise.all([
+      apiFetch(`/api/v1/template-library?clientId=${clientId}`).then((r) => r.json()),
+      apiFetch('/api/v1/template-library?global=true').then((r) => r.json()),
+    ])
+      .then(([clientRes, globalRes]) => {
+        const clientTemplates: PromptTemplate[] = clientRes.data ?? []
+        const globalTemplates: PromptTemplate[] = globalRes.data ?? []
+        const seen = new Set(clientTemplates.map((t) => t.id))
+        setTemplates([...clientTemplates, ...globalTemplates.filter((t) => !seen.has(t.id))])
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [clientId])
 
-  useEffect(() => { load() }, [load])
+  // Seed global blog templates first, then load so they appear for blank clients
+  useEffect(() => {
+    apiFetch('/api/v1/prompts/seed', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => load())
+  }, [load])
 
   const handleGenerate = async () => {
     const aiCount = templates.filter((t) => t.source === 'ai').length
