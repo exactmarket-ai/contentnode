@@ -726,58 +726,97 @@ ENFORCE: CTA labels = clean text only, zero audience metadata. 3-box bodies = 1 
     // 08 Internal Brief
     `Using the intake JSON provided, generate an internal GTM launch brief in markdown format.
 
+CRITICAL RULES:
+- PLATFORM-AGNOSTIC: Never name specific third-party tools anywhere in this document. Use "your PM tool", "your file delivery platform", "your CRM", "leading AI models", "configurable detection services" instead of Monday.com, Box, Salesforce, GPTZero, Claude, etc.
+- NO AUDIENCE METADATA in CTAs or anywhere else. CTAs show only clean labels.
+- NO DATE-SPECIFIC urgency (no "end of 2025", no year references for forward-looking claims).
+
 # INTERNAL USE ONLY
 
 ## Cover
-**[vertical.name] GTM Launch Brief**
-Client: [vertical.client_name]
-Prepared by: [document_control.marketing_contact or "Marketing Team"]
-Internal Use Only — Do Not Distribute
+
+# [vertical.name] GTM Launch Brief
+**Client:** [vertical.client_name]
+**Internal Use Only · Sales + Marketing**
+Prepared by: [document_control.marketing_contact if available, else "Marketing Team"]
 
 ## Send Note
 **To:** Sales Team + BDR Team
 **Subject:** [vertical.name] Kit Ready — [vertical.client_name] — Action Required
 
 ## Opening
-The [vertical.name] GTM kit is ready. [1 sentence urgency framing based on regulatory_frameworks[] — e.g. "With [regulation] enforcement accelerating, this is the quarter to move."]
+The [vertical.name] GTM kit is ready. [1 sentence non-dated urgency framing based on regulatory_frameworks[] — e.g. "With [regulation] enforcement accelerating, the window for differentiated positioning is now." Do NOT include any specific year or "end of [year]" language.]
 
 ## Why This Vertical, Why Now
-[4 stats from statistics[] — bold the stat value, cite source and year in parentheses]
-[2-3 sentence urgency paragraph drawing from regulatory_frameworks[] and market_narrative]
+
+[4-cell visual impact bar — render as a 4-column table, NO shading on data rows:]
+| **[statistics[0].stat]** | **[statistics[1].stat]** | **[statistics[2].stat]** | **[statistics[3].stat]** |
+|---|---|---|---|
+| [statistics[0].label] · [statistics[0].source] | [statistics[1].label] · [statistics[1].source] | [statistics[2].label] · [statistics[2].source] | [statistics[3].label] · [statistics[3].source] |
+
+[1 compact urgency paragraph (3-4 sentences max) drawing from regulatory_frameworks[] and market_narrative. No year references. No database terminology. No specific vendor names.]
 
 ## What's in the Kit
-SIMPLE TABLE — simple borders only, NO cell shading, NO background colors:
-| # | Asset | Description | How to Use |
-|---|-------|-------------|------------|
-[One row per asset: 01 Brochure through 08 Internal Brief — one-line description and specific use case]
+
+2-column table only — NO shading, NO background colors, simple borders:
+| Asset | What It Is + How to Use It |
+|-------|---------------------------|
+| 01 Brochure | Leave-behind for discovery and qualification meetings |
+| 02 eBook | Gated thought-leadership asset; use in nurture sequences and post-meeting follow-up |
+| 03 Sales Cheat Sheet | Rep quick-reference — objection handling, CTA scripts, regulatory context |
+| 04 BDR Call Scripts & Emails | Cold outreach sequences with call scripts and email copy; ready to send |
+| 05 Customer Deck | Client-facing presentation for evaluation and proposal meetings |
+| 06 Video Script | Video content for LinkedIn, YouTube, and website hero — two cuts (60s and 90s) |
+| 07 Web Page Copy | Vertical landing page copy; hand to web team with brand guidelines |
+| 08 Internal Brief | This document — distribute to sales and BDR teams at kit launch |
 
 ## Where to Start
+
+2-column table — simple borders, NO shading:
 | Sales Team | BDR Team |
 |------------|----------|
-| 1. [action] | 1. [action] |
-| 2. [action] | 2. [action] |
-| 3. [action] | 3. [action] |
-| 4. [action] | 4. [action] |
-| 5. [action] | 5. [action] |
+| 1. [ONE imperative action, max 15 words] | 1. [ONE imperative action, max 15 words] |
+| 2. [ONE imperative action, max 15 words] | 2. [ONE imperative action, max 15 words] |
+| 3. [ONE imperative action, max 15 words] | 3. [ONE imperative action, max 15 words] |
+| 4. [ONE imperative action, max 15 words] | 4. [ONE imperative action, max 15 words] |
+| 5. [ONE imperative action, max 15 words] | 5. [ONE imperative action, max 15 words] |
+
+Each cell = one imperative verb phrase only. No conjunctions. No explanatory sentences. Examples: "Lead with the eBook in discovery follow-up." / "Send Email 1 within 24 hours of trigger."
 
 ## Primary CTA
-> **[primary_cta.name]**
-> [primary_cta.description]
+
+> **[primary_cta.name — clean label only, no audience description]**
+> [primary_cta.description — 1 sentence]
 > → [primary_cta.url]
 >
-> Proof: [case_studies[0].headline_stat — if available] from [case_studies[0].client_profile]
+> Client win: [case_studies[0].headline_stat from case_studies[0].client_profile if available, else "[Add client win here: segment, problem, ContentNode workflow used, measurable result]"]
 
 ## Compliance Angle
-[1 paragraph — how to use regulatory_frameworks[] in deal conversations. Specific frameworks by name. Never claim we certify compliance or provide legal counsel.]
+
+[Exactly 3–4 sentences covering these four points — one sentence each:]
+1. Data isolation: [one sentence on multi-tenant data isolation architecture — no database names]
+2. Agency-owned keys: [one sentence on agency retaining ownership of all AI provider credentials]
+3. SOC 2: [one sentence on current SOC 2 status — if not certified, say "pursuing" or "in progress"]
+4. What we don't claim: [one sentence — we do not provide legal counsel or guarantee regulatory compliance]
 
 ## Key Messages
-Five plain bullets. NO shaded boxes. NO heavy borders. Each = **Bold headline** + one sentence explanation.
 
-1. **[Message headline]** — [one sentence]
-2. **[Message headline]** — [one sentence]
-3. **[Message headline]** — [one sentence]
-4. **[Message headline]** — [one sentence]
-5. **[Message headline]** — [one sentence]
+[5 messages. Each message rendered as a blockquote block — bold headline + exactly one sentence. Simple border, white background. Use blockquote syntax (>) for each.]
+
+> **[Message 1 headline]**
+> [One sentence. No specific tool names.]
+
+> **[Message 2 headline]**
+> [One sentence. No specific tool names.]
+
+> **[Message 3 headline]**
+> [One sentence. No specific tool names.]
+
+> **ContentNode fits inside existing workflows.**
+> ContentNode triggers from status changes in your PM tool, delivers finished files to your file delivery stack, and writes asset links back automatically — the client's experience never changes.
+
+> **[Message 5 headline]**
+> [One sentence. No specific tool names.]
 
 ## Non-Negotiable
 
@@ -785,9 +824,12 @@ Five plain bullets. NO shaded boxes. NO heavy borders. Each = **Bold headline** 
 > [List VERBATIM from vertical.what_we_are_not[]. Every line exactly as written. Do not paraphrase. Do not reorder. Do not add or remove words.]
 
 CRITICAL FORMATTING RULES:
-- Key messages section = plain markdown bullets only, no shading whatsoever
-- Asset table = | pipes | only, no CSS, no background
-- Non-negotiable = verbatim text, copy-paste from what_we_are_not[]`
+- Key messages = blockquote blocks (>) only — one per message, no numbered list, no shading
+- Asset table = exactly 2 columns: Asset | What It Is + How to Use It
+- Where to Start = max 15 words per cell, imperative only
+- Non-negotiable = verbatim copy from what_we_are_not[]
+- Zero specific third-party tool names anywhere in document
+- Zero audience targeting metadata anywhere in document`
   ]
 
   return base + instructions[assetIndex]
