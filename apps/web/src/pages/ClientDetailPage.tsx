@@ -2857,6 +2857,7 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
   const [showTrash, setShowTrash] = useState(false)
   const [trash, setTrash] = useState<TrashedPromptTemplate[]>([])
   const [trashLoading, setTrashLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -2901,7 +2902,13 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
 
   const deleteTemplate = async (id: string) => {
     if (!confirm('Move this template to Trash?')) return
-    await apiFetch(`/api/v1/prompts/${id}`, { method: 'DELETE' })
+    setDeleteError(null)
+    const res = await apiFetch(`/api/v1/prompts/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setDeleteError((json as { error?: string }).error ?? 'Failed to delete template.')
+      return
+    }
     load()
   }
 
@@ -3000,7 +3007,9 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
 
       {/* Helper to render a template row (used for both client + global lists) */}
       {(() => {
-        const canDelete = (t: ClientPromptTemplate) => isAdmin || user?.clerkId === t.createdBy
+        // null createdBy = agency-owned/seeded template → admin-only delete
+        const canDelete = (t: ClientPromptTemplate) =>
+          isAdmin || (t.createdBy !== null && user?.clerkId === t.createdBy)
 
         const renderRow = (t: ClientPromptTemplate, editable: boolean) => (
           <div key={t.id}>
@@ -3074,6 +3083,12 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
 
         return (
           <>
+            {deleteError && (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-[12px]" style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c' }}>
+                <span>{deleteError}</span>
+                <button onClick={() => setDeleteError(null)} className="shrink-0 font-medium hover:opacity-70">✕</button>
+              </div>
+            )}
             <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
               {loading ? (
                 <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
