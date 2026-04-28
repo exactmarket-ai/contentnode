@@ -2907,7 +2907,7 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
 
   const loadTrash = () => {
     setTrashLoading(true)
-    apiFetch(`/api/v1/prompts/trash?clientId=${clientId}`)
+    apiFetch(clientId ? `/api/v1/prompts/trash?clientId=${clientId}` : '/api/v1/prompts/trash')
       .then((r) => r.json())
       .then(({ data }) => setTrash(data ?? []))
       .catch(console.error)
@@ -2955,7 +2955,7 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
           <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Prompt Library</h2>
         </div>
         <div className="flex items-center gap-2">
-          {canUsePilot && (
+          {isAdmin && (
             <button
               onClick={() => { setShowTrash((v) => !v); if (!showTrash) loadTrash() }}
               className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
@@ -3000,7 +3000,7 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
 
       {/* Helper to render a template row (used for both client + global lists) */}
       {(() => {
-        const canDelete = (t: ClientPromptTemplate) => isAdmin || user?.id === t.createdBy
+        const canDelete = (t: ClientPromptTemplate) => isAdmin || user?.clerkId === t.createdBy
 
         const renderRow = (t: ClientPromptTemplate, editable: boolean) => (
           <div key={t.id}>
@@ -3307,7 +3307,7 @@ function ClientImagePromptsSection({ clientId }: { clientId?: string }) {
               {seeding ? 'Seeding…' : 'Copy agency samples'}
             </button>
           )}
-          {canUsePilot && (
+          {isAdmin && (
             <button
               onClick={() => { setShowTrash((v) => !v); if (!showTrash) loadTrash() }}
               className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
@@ -3381,7 +3381,7 @@ function ClientImagePromptsSection({ clientId }: { clientId?: string }) {
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button onClick={() => startEdit(p)} className="rounded p-1 hover:bg-gray-100"><Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} /></button>
-                          {(isAdmin || user?.id === p.createdBy) && (
+                          {(isAdmin || user?.clerkId === p.createdBy) && (
                             <button onClick={() => deletePrompt(p.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
                           )}
                         </div>
