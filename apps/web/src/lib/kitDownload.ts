@@ -818,11 +818,44 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
 
       if (isCover || isDivider) {
         slide.background = { color: primary.replace('#', '') }
-        slide.addText(sanitize(title), {
-          x: 0.4, y: 3.0, w: 12.2, h: 1.2,
-          fontSize: 28, bold: true, color: 'FFFFFF', fontFace: headFont,
-          align: 'center', valign: 'middle',
-        })
+
+        if (isCover && bodyLines.length > 0) {
+          // Rich cover: title at top-center, subtitle + client line below, accent bar at bottom
+          slide.addText(sanitize(title), {
+            x: 0.6, y: 1.8, w: 12.1, h: 1.6,
+            fontSize: 36, bold: true, color: 'FFFFFF', fontFace: headFont,
+            align: 'center', valign: 'middle', wrap: true,
+          })
+          const subtitle = sanitize(bodyLines[0].replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim())
+          if (subtitle) {
+            slide.addText(subtitle, {
+              x: 1.0, y: 3.55, w: 11.33, h: 0.75,
+              fontSize: 16, bold: false, color: 'DDDDDD', fontFace: bodyFont,
+              align: 'center', valign: 'middle', wrap: true,
+            })
+          }
+          if (bodyLines[1]) {
+            const clientLine = sanitize(bodyLines[1].replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim())
+            slide.addText(clientLine, {
+              x: 1.0, y: 4.4, w: 11.33, h: 0.5,
+              fontSize: 13, bold: false, color: 'AAAAAA', fontFace: bodyFont,
+              align: 'center', valign: 'middle',
+            })
+          }
+          // Accent bar at bottom
+          const accentHex = (docStyle.secondaryColor ?? '#4A90D9').replace('#', '')
+          slide.addShape(prs.ShapeType.rect, {
+            x: 0, y: 7.12, w: '100%', h: 0.15,
+            fill: { color: accentHex },
+            line: { color: accentHex, width: 0 },
+          })
+        } else {
+          slide.addText(sanitize(title), {
+            x: 0.4, y: 3.0, w: 12.2, h: 1.2,
+            fontSize: 28, bold: true, color: 'FFFFFF', fontFace: headFont,
+            align: 'center', valign: 'middle',
+          })
+        }
       } else {
         slide.background = { color: 'FFFFFF' }
         slide.addShape(prs.ShapeType.rect, {

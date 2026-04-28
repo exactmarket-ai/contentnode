@@ -486,52 +486,90 @@ INTERNAL USE ONLY — Not for Distribution
 Version 1.0 · [current year]`,
 
     // 05 Customer Deck
-    `Using the intake JSON provided, generate a customer presentation in markdown format structured as slides. Use ## Slide N: [Title] as the header for each slide.
+    `Using the intake JSON provided, generate a customer-facing presentation in markdown format. Use ## Slide N: [Title] as the header for each slide. Each slide body is bullet points — short, punchy, one idea per line.
 
-## Slide 1: Cover
-- Headline: vertical.taglines[0]
-- Sub-headline: vertical.positioning_statement
-- Client: vertical.client_name | Vertical: vertical.name
+CRITICAL RULES:
+- This is a CUSTOMER-FACING deck. Remove ALL internal sales notes, DPA reminders, "Available on request" language, internal process instructions, and technical architecture details. None of these belong in a customer presentation.
+- Business language only. No: BullMQ, PostgreSQL, RLS, queue names, API layers, database terminology, or infrastructure specifics. Translate every technical mechanism to a business outcome.
+- Platform-agnostic: "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "Monday URL Writeback" → "status writeback to your PM tool", "Anthropic and OpenAI" → "AI model providers".
+- Every statistic must have a source citation. Flag [UNSOURCED] if no source available.
 
+────────────────────────────────────────────
+## Slide 1: [exact verbatim text of vertical.taglines[0]]
+- [vertical.positioning_statement — one sentence]
+- [vertical.client_name] · [vertical.name]
+
+────────────────────────────────────────────
 ## Slide 2: Market Pressure
-4 stat cards from statistics[]. For each: bold the stat value, show label beneath, cite source. Add market_narrative text below the stats.
+4 stats from statistics[]. For each: **bold the stat value** — label — (source, year)
+Below the stats: one paragraph from market_pressure_narrative.
 
-## Slide 3: Challenges
-2×3 grid layout (use markdown table or bullet structure). Each challenge from challenges[] with: name, why_it_exists (1 sentence), service_pillar as a colored label. Group by service_pillar where possible.
+────────────────────────────────────────────
+## Slide 3: The Challenges
+ONE UNIFIED LIST — do NOT split by category. One bullet per challenge from challenges[].
+Format each bullet: **[challenge.name]** — [why_it_exists, 1 sentence] · [service_pillar label]
+Keep bullets short (max 15 words each). No sub-bullets.
 
+────────────────────────────────────────────
 ## Slide 4: Compliance & Regulatory
-4 cards from regulatory_frameworks[]: name, capability (1 sentence), sales_note.
+One block per framework from regulatory_frameworks[]. For each:
+**[Framework Name]** — [capability, 1 sentence — customer-facing, no internal sales notes]
+No sales notes. No "DPA" language. No "Available on request". No "Lead with this in enterprise conversations." Customer-facing capability only.
 
+────────────────────────────────────────────
 ## Slide 5: Our Four Pillars
-2×2 grid from pillars[]. Each cell: pillar name (bold), value_prop (1 sentence), key_services as 3-4 bullet points.
+One block per pillar from pillars[]:
+**[pillar.name]** — [value_prop, 1 sentence]
+- [key_service 1]
+- [key_service 2]
+- [key_service 3]
 
-## Slide 6: Cloud Deep-Dive
-Focus on cloud services from service_stack[] where regulatory_domain includes cloud concepts. 4 feature callouts: service name + what_it_delivers.
+────────────────────────────────────────────
+## Slide 6: [pillars[0].name] — How It Works
+Business outcomes for the first service pillar. Lead with what the client experiences, not how it works internally.
+4 bullet points. Each: bold outcome claim (≤10 words) + one-sentence explanation. No technical jargon.
+Example format: **Delivery in hours, not weeks** — Content moves from brief to approved asset without manual handoffs.
 
-## Slide 7: Cybersecurity Deep-Dive
-5 service cards from service_stack[] where regulatory_domain includes security concepts. Each: service name + what_it_delivers.
+────────────────────────────────────────────
+## Slide 7: [pillars[1].name] — How It Works
+Same format as Slide 6 for the second service pillar.
+4 bullet points. Business outcomes. No infrastructure or database terminology.
 
-## Slide 8: IT Operations & Data + AI
-Split slide: left = IT operations services, right = data/AI services from remaining service_stack[] items.
+────────────────────────────────────────────
+## Slide 8: [pillars[2].name or "Delivery & Operations"] — How It Works
+Same format for the third pillar or remaining service areas.
+4 bullet points. Business outcomes only.
 
+────────────────────────────────────────────
 ## Slide 9: Why Us
-Stats strip from proof_points[]. Below: 6 differentiator cards from differentiators[] — each as bold label + one-sentence position.
+STATS BAR FIRST — list proof_points[] as: **[stat]** — [label] (one per line, bold the number)
+Then 6 differentiator bullets from differentiators[]: **[label]** — [position, 1 sentence]
+No technical proof points. Only business claims a client would care about.
 
-## Slide 10: Case Study — [case_studies[0].client_profile]
-3-column layout: Situation | Engagement | Outcomes. From case_studies[0].
-*[Design team: insert case study visual from case study deck]*
+────────────────────────────────────────────
+## Slide 10: Case Study — [case_studies[0].client_profile or "Enterprise Client"]
+3-column structure: Situation | What We Delivered | Outcomes
+Use case_studies[0] if available. If empty: "Situation: [placeholder]" / "Delivered: [placeholder]" / "Outcome: [placeholder]"
+*[Design team: insert visual from case study deck]*
 
-## Slide 11: Case Study — [case_studies[1].client_profile]
-3-column layout: Situation | Engagement | Outcomes. From case_studies[1].
-*[Design team: insert case study visual from case study deck]*
+────────────────────────────────────────────
+## Slide 11: Case Study — [case_studies[1].client_profile or "Mid-Market Client"]
+Same structure as Slide 10 using case_studies[1] or placeholder.
+*[Design team: insert visual from case study deck]*
 
-## Slide 12: Assessment Paths
-4 paths color-coded by scenario. Derive paths from regulatory_frameworks[] and segments[]. Each path: scenario name, trigger condition, entry point/CTA.
+────────────────────────────────────────────
+## Slide 12: Your Path Forward
+4 paths derived from segments[] and regulatory_frameworks[]. Each path:
+**[Path name]** — [trigger condition, 1 sentence]
+→ [Entry point CTA] — [actual URL from primary_cta.url — substitute the real value]
+Every path must include the URL. Never output "primary_cta.url" as a literal string.
 
-## Slide 13: Closing
-Exact text of vertical.taglines[0], primary_cta.name and primary_cta.description, then the actual URL from primary_cta.url as a plain-text standalone line (substitute the real URL value from the intake JSON — never output the field path name), plus proof_points[] as closing stats.
-
-ENFORCE: Every statistic must have a source citation on its slide. Flag [UNSOURCED] next to any stat without a source.`,
+────────────────────────────────────────────
+## Slide 13: [exact verbatim text of vertical.taglines[0]]
+- [vertical.positioning_statement]
+- **[primary_cta.name]** — [primary_cta.description]
+- [actual URL from primary_cta.url — substitute real value]
+- [proof_points[0].stat] [proof_points[0].label] · [proof_points[1].stat] [proof_points[1].label] · [proof_points[2].stat if available]`,
 
     // 06 Video Script
     `Using the intake JSON provided, generate a video script document in markdown format.
