@@ -1001,11 +1001,33 @@ function ProgramDetailPanel({
                       </div>
                       {selectedPack.items && selectedPack.items.length > 0 ? (
                         <div className="space-y-3">
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => {
+                                const text = selectedPack.items!.map((i) => `## ${i.label}\n\n${i.editedContent ?? i.content}`).join('\n\n---\n\n')
+                                const a = document.createElement('a')
+                                a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
+                                a.download = `${selectedPack.cycleLabel}.txt`
+                                a.click()
+                              }}
+                              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                            >
+                              <Icons.Download className="h-3 w-3" />
+                              Download all
+                            </button>
+                          </div>
                           {selectedPack.items.map((item) => (
                             <div key={item.id} className="rounded-xl border border-border overflow-hidden">
                               <div className="flex items-center gap-2 border-b border-border/60 bg-zinc-50 px-4 py-2">
                                 <Icons.FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <span className="text-[11px] font-semibold text-foreground">{item.label}</span>
+                                <span className="flex-1 text-[11px] font-semibold text-foreground">{item.label}</span>
+                                <button
+                                  onClick={() => navigator.clipboard.writeText(item.editedContent ?? item.content ?? '')}
+                                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                                  title="Copy to clipboard"
+                                >
+                                  <Icons.Copy className="h-3.5 w-3.5" />
+                                </button>
                               </div>
                               <div className="px-4 py-3 max-h-[300px] overflow-y-auto">
                                 {renderMarkdown(item.editedContent ?? item.content)}
