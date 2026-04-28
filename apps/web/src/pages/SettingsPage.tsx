@@ -516,6 +516,19 @@ function LibrarySection() {
 
 // ── Prompt Templates section ──────────────────────────────────────────────────
 
+function HighlightedPromptBody({ body }: { body: string }) {
+  const parts = body.split(/(\[[A-Z0-9_/]+\])/g)
+  return (
+    <pre className="whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-[11px] font-mono leading-relaxed" style={{ color: '#3a3a2e', border: '1px solid #e8e7e1' }}>
+      {parts.map((part, i) =>
+        /^\[[A-Z0-9_/]+\]$/.test(part)
+          ? <mark key={i} className="rounded px-0.5 font-semibold" style={{ backgroundColor: '#fdf5ff', color: '#7a00b4', outline: '1px solid #e4b3ff' }}>{part}</mark>
+          : part
+      )}
+    </pre>
+  )
+}
+
 interface PromptTemplate {
   id: string
   name: string
@@ -552,6 +565,7 @@ function PromptsSection() {
   const [newDesc, setNewDesc] = useState('')
   const [newCategory, setNewCategory] = useState('general')
   const [saving, setSaving] = useState(false)
+  const [seeding, setSeeding] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -596,6 +610,14 @@ function PromptsSection() {
     load()
   }
 
+  const seedTemplates = async () => {
+    setSeeding(true)
+    try {
+      await apiFetch('/api/v1/prompts/seed', { method: 'POST' })
+      load()
+    } finally { setSeeding(false) }
+  }
+
   const createTemplate = async () => {
     if (!newName.trim() || !newBody.trim()) return
     setSaving(true)
@@ -627,14 +649,25 @@ function PromptsSection() {
           <Icons.ScrollText className="h-4 w-4" style={{ color: '#b4b2a9' }} />
           <h2 className="text-[15px] font-semibold" style={{ color: '#1a1a14' }}>Prompt Templates</h2>
         </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
-          style={{ color: '#a200ee' }}
-        >
-          <Icons.Plus className="h-3.5 w-3.5" />
-          New template
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={seedTemplates}
+            disabled={seeding}
+            className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80 disabled:opacity-50"
+            style={{ color: '#b4b2a9' }}
+          >
+            <Icons.Sparkles className="h-3.5 w-3.5" />
+            {seeding ? 'Seeding…' : 'Seed blog templates'}
+          </button>
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80"
+            style={{ color: '#a200ee' }}
+          >
+            <Icons.Plus className="h-3.5 w-3.5" />
+            New template
+          </button>
+        </div>
       </div>
       <p className="text-[13px] mb-4" style={{ color: '#b4b2a9' }}>
         Reusable instruction sets you can load into any AI Generate node. Save effective prompts here to reuse across workflows.
@@ -820,9 +853,9 @@ function PromptsSection() {
                             </div>
                           </div>
                           {expandedId === t.id && (
-                            <pre className="mt-2 ml-5 whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-[11px] font-mono leading-relaxed" style={{ color: '#3a3a2e', border: '1px solid #e8e7e1' }}>
-                              {t.body}
-                            </pre>
+                            <div className="mt-2 ml-5">
+                              <HighlightedPromptBody body={t.body} />
+                            </div>
                           )}
                         </div>
                       )}

@@ -2,6 +2,19 @@ import { useEffect, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 
+function HighlightedBody({ body }: { body: string }) {
+  const parts = body.split(/(\[[A-Z0-9_/]+\])/g)
+  return (
+    <pre className="whitespace-pre-wrap text-xs leading-relaxed" style={{ color: '#3a3a2e', fontFamily: 'inherit' }}>
+      {parts.map((part, i) =>
+        /^\[[A-Z0-9_/]+\]$/.test(part)
+          ? <mark key={i} className="rounded px-0.5 font-semibold" style={{ backgroundColor: '#fdf5ff', color: '#7a00b4', outline: '1px solid #e4b3ff' }}>{part}</mark>
+          : part
+      )}
+    </pre>
+  )
+}
+
 export interface PromptTemplate {
   id: string
   name: string
@@ -222,9 +235,7 @@ export function PromptPickerModal({
                 )}
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-3">
-                <pre className="whitespace-pre-wrap text-xs leading-relaxed" style={{ color: '#3a3a2e', fontFamily: 'inherit' }}>
-                  {previewing.body}
-                </pre>
+                <HighlightedBody body={previewing.body} />
               </div>
               <div className="border-t border-border px-4 py-3 flex justify-end">
                 <button
