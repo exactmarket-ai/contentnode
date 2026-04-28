@@ -423,34 +423,67 @@ Output complete valid HTML only.`,
     // 04 BDR Emails
     `Using the intake JSON provided, generate BDR call scripts and email sequences in markdown format.
 
-Structure:
+CRITICAL RULES:
+- Platform-agnostic language everywhere (emails, voicemails, scripts): "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "Monday" → "your PM tool", "Box revision" → "file revision". No specific tool names.
+- Email CTA lines must be clean: just the URL + one short closing question (e.g. "Worth 30 minutes?" or "Want to see it?"). Never include audience targeting metadata in email body copy.
+- No audience descriptions like "Agency owners and heads of content at mid-funnel evaluation stage" inside email bodies.
+
+────────────────────────────────────────────
 ## Cover
-[Vertical Name] BDR Email Sequences & Call Scripts — [Client Name]
-*Version 1.0 — Internal Use Only*
+**[vertical.name] BDR Call Scripts & Email Sequences**
+[vertical.client_name]
+[count of segments] Segments · [count of segments + 1] Email Sequences
+Version 1.0 — Internal Use Only
 
+────────────────────────────────────────────
 ## Contents
-Table listing all emails: Segment | Subject Line
+Table with 2 columns: Segment | Subject Line
+One row per segment email, plus one row for the AI/Innovation email.
 
+────────────────────────────────────────────
 ## How to Use
-Personalisation instructions. Explain [customize with name/company/context] bracket system.
+Single short paragraph only — no bullet lists, no bracket-type documentation:
+"Personalise every [customize with...] bracket before sending. Subject lines and conversation starters work without customisation but specificity improves response rates. The primary CTA is the same in every email — never pitch a full managed services engagement on cold outreach."
 
+────────────────────────────────────────────
 ## Call Scripts
-Table: Segment | Conversation Starter 1 | Conversation Starter 2 | Conversation Starter 3 | Voicemail Script (2-3 sentences max)
-One row per segment from segments[].
+Table with exactly 4 columns:
+# | Segment (subject line in smaller text below the segment name) | Conversation Starters (all 3 in one cell, numbered 1. 2. 3., each 1-2 sentences) | Voicemail Script (2-3 sentences max)
 
+One row per segment from segments[]. Use segments[].lead_hook as the basis for Starter 1.
+
+────────────────────────────────────────────
 ## Email Sequences
-One email block per segment from segments[], plus one AI/Innovation email for all segments. Each email:
-**Subject:** [specific value-focused subject]
-**Preview:** [1 sentence]
+One email block per segment from segments[], plus one AI/Innovation email (addressed to all segments).
+
+Each email block format:
+**[Segment Name]**
+**Subject:** [specific value-focused subject line]
+**Preview:** [1 sentence — the hook]
 ---
-[Email body — MAXIMUM 5 LINES. Count lines carefully. Trim immediately if over 6 lines. Each line = one sentence or one short thought. No long paragraphs.]
+[Email body — MAXIMUM 5 LINES. Count lines. Each line = one sentence or short thought. No paragraphs. No audience targeting metadata.]
 
-**CTA:** [primary assessment offer] → [the actual URL from primary_cta.url in the intake JSON]
+[URL from primary_cta.url — substitute the real value]
+[One short closing question: "Worth 30 minutes?" or "Want to see it?" — pick the one that fits the segment tone]
 
 ---
-[customization note in brackets]
+*[customize with: specific challenge, company name, recent trigger event]*
 
-ENFORCE: No email body may exceed 6 lines. Count before writing. Every email CTA line must contain the actual URL value from primary_cta.url as plain text — never output "primary_cta.url" as a literal string.`,
+ENFORCE:
+- No email body may exceed 6 lines. Count before writing.
+- CTA is always just the URL + closing question — no audience description, no funnel stage notes.
+- Never output "primary_cta.url" as a literal string — substitute the real URL from the intake JSON.
+- No specific tool names (Monday.com, Box, GPTZero, etc.) anywhere.
+
+────────────────────────────────────────────
+## Back Cover
+**[vertical.client_name] — [vertical.name]**
+*BDR Call Scripts & Email Sequences*
+
+INTERNAL USE ONLY — Not for Distribution
+
+[agency name from document_control.marketing_contact or "Marketing Team"]
+Version 1.0 · [current year]`,
 
     // 05 Customer Deck
     `Using the intake JSON provided, generate a customer presentation in markdown format structured as slides. Use ## Slide N: [Title] as the header for each slide.
