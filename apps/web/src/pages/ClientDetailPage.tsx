@@ -2826,7 +2826,6 @@ const PROMPT_CATS = [
 
 function ClientPromptsSection({ clientId }: { clientId: string }) {
   const [clientTemplates, setClientTemplates] = useState<ClientPromptTemplate[]>([])
-  const [globalTemplates, setGlobalTemplates] = useState<ClientPromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -2844,28 +2843,14 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true)
-    Promise.all([
-      apiFetch(`/api/v1/prompts?clientId=${clientId}`).then((r) => r.json()),
-      apiFetch('/api/v1/prompts').then((r) => r.json()),
-    ])
-      .then(([clientRes, globalRes]) => {
-        const clientData: ClientPromptTemplate[] = clientRes.data ?? []
-        const globalData: ClientPromptTemplate[] = globalRes.data ?? []
-        setClientTemplates(clientData)
-        // Exclude globals that were forked into client-specific copies
-        const clientNames = new Set(clientData.map((t) => t.name))
-        setGlobalTemplates(globalData.filter((t) => !clientNames.has(t.name)))
-      })
+    apiFetch(`/api/v1/prompts?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then(({ data }) => setClientTemplates(data ?? []))
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [clientId])
 
-  // Seed blog templates first, then load so globals appear on first visit
-  useEffect(() => {
-    apiFetch('/api/v1/prompts/seed', { method: 'POST' })
-      .catch(() => {})
-      .finally(() => load())
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   const startEdit = (t: ClientPromptTemplate) => {
     setEditingId(t.id); setEditName(t.name); setEditBody(t.body)
@@ -2912,10 +2897,6 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
     return acc
   }, {})
 
-  const globalGrouped = globalTemplates.reduce<Record<string, ClientPromptTemplate[]>>((acc, t) => {
-    ;(acc[t.category] ??= []).push(t)
-    return acc
-  }, {})
 
   return (
     <div className="mt-8">
@@ -3019,32 +3000,18 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
           ))
 
         const hasClient = clientTemplates.length > 0
-        const hasGlobal = globalTemplates.length > 0
 
         return (
-          <div className="space-y-3">
-            {/* Client-specific templates */}
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
-              {loading ? (
-                <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
-              ) : !hasClient ? (
-                <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
-                  <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
-                  <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No client-specific templates yet</p>
-                </div>
-              ) : (
-                <div>{renderGroup(grouped, true)}</div>
-              )}
-            </div>
-
-            {/* Agency-level templates (read-only, always visible) */}
-            {!loading && hasGlobal && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5 px-1" style={{ color: '#b4b2a9' }}>Agency Templates</p>
-                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
-                  <div>{renderGroup(globalGrouped, false)}</div>
-                </div>
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+            {loading ? (
+              <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
+            ) : !hasClient ? (
+              <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
+                <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
+                <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No client-specific templates yet</p>
               </div>
+            ) : (
+              <div>{renderGroup(grouped, true)}</div>
             )}
           </div>
         )
