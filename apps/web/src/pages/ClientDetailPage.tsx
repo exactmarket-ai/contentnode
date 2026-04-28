@@ -3089,29 +3089,10 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
                 <button onClick={() => setDeleteError(null)} className="shrink-0 font-medium hover:opacity-70">✕</button>
               </div>
             )}
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
-              {loading ? (
-                <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
-              ) : !hasDisplay ? (
-                <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
-                  <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
-                  <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No templates yet</p>
-                </div>
-              ) : (
-                <div>
-                  {!hasClient && (
-                    <div className="px-4 py-2 border-b" style={{ backgroundColor: '#fafaf8', borderColor: '#e8e7e1' }}>
-                      <p className="text-[10px]" style={{ color: '#b4b2a9' }}>Showing agency starter templates — create a client-specific template above to customise</p>
-                    </div>
-                  )}
-                  {renderGroup(displayGrouped, hasClient)}
-                </div>
-              )}
-            </div>
 
-            {/* Trash panel — visible to internal users; restore/delete-forever admin-only */}
+            {/* Trash panel — toggled inline above the active list */}
             {showTrash && (
-              <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+              <div className="mb-3 rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
                 <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#fafaf8', borderBottom: '1px solid #e8e7e1' }}>
                   <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>Trash</p>
                   {trashLoading && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#b4b2a9' }} />}
@@ -3150,6 +3131,26 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
                 )}
               </div>
             )}
+
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+              {loading ? (
+                <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
+              ) : !hasDisplay ? (
+                <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
+                  <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
+                  <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No templates yet</p>
+                </div>
+              ) : (
+                <div>
+                  {!hasClient && (
+                    <div className="px-4 py-2 border-b" style={{ backgroundColor: '#fafaf8', borderColor: '#e8e7e1' }}>
+                      <p className="text-[10px]" style={{ color: '#b4b2a9' }}>Showing agency starter templates — create a client-specific template above to customise</p>
+                    </div>
+                  )}
+                  {renderGroup(displayGrouped, hasClient)}
+                </div>
+              )}
+            </div>
           </>
         )
       })()}
