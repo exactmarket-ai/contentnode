@@ -3235,12 +3235,7 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
 }
 
 function ClientLibraryTab({ clientId }: { clientId: string }) {
-  return (
-    <div className="p-6" style={{ maxWidth: 640 }}>
-      <ClientPromptsSection clientId={clientId} />
-      <ClientImagePromptsSection clientId={clientId} />
-    </div>
-  )
+  return <ClientPromptsSection clientId={clientId} />
 }
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
@@ -7492,15 +7487,22 @@ export function ClientDetailPage() {
         {activeTab === 'programs' && <ProgramsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'library' && (
-          <div className="space-y-10 pb-16">
-            <ClientLibraryTab clientId={client.id} />
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Icons.Sparkles className="h-4 w-4 text-violet-500" />
-                <h2 className="text-[15px] font-semibold">Prompt Library</h2>
-                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-600">Brain-powered</span>
+          <div className="flex gap-8 pb-16 items-start">
+            {/* Left column — Prompt Library */}
+            <div className="flex-1 min-w-0 space-y-8">
+              <ClientLibraryTab clientId={client.id} />
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <Icons.Sparkles className="h-4 w-4 text-violet-500" />
+                  <h2 className="text-[15px] font-semibold">Prompt Library</h2>
+                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-600">Brain-powered</span>
+                </div>
+                <ClientPromptLibraryTab clientId={client.id} />
               </div>
-              <ClientPromptLibraryTab clientId={client.id} />
+            </div>
+            {/* Right column — Image Prompts */}
+            <div className="w-80 shrink-0">
+              <ClientImagePromptsSection clientId={client.id} />
             </div>
           </div>
         )}
