@@ -2825,7 +2825,8 @@ const PROMPT_CATS = [
 ]
 
 function ClientPromptsSection({ clientId }: { clientId: string }) {
-  const [templates, setTemplates] = useState<ClientPromptTemplate[]>([])
+  const [clientTemplates, setClientTemplates] = useState<ClientPromptTemplate[]>([])
+  const [globalTemplates, setGlobalTemplates] = useState<ClientPromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -2841,16 +2842,30 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
   const [newCategory, setNewCategory] = useState('general')
   const [saving, setSaving] = useState(false)
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
-    apiFetch(`/api/v1/prompts?clientId=${clientId}`)
-      .then((r) => r.json())
-      .then(({ data }) => setTemplates(data ?? []))
+    Promise.all([
+      apiFetch(`/api/v1/prompts?clientId=${clientId}`).then((r) => r.json()),
+      apiFetch('/api/v1/prompts').then((r) => r.json()),
+    ])
+      .then(([clientRes, globalRes]) => {
+        const clientData: ClientPromptTemplate[] = clientRes.data ?? []
+        const globalData: ClientPromptTemplate[] = globalRes.data ?? []
+        setClientTemplates(clientData)
+        // Exclude globals that were forked into client-specific copies
+        const clientNames = new Set(clientData.map((t) => t.name))
+        setGlobalTemplates(globalData.filter((t) => !clientNames.has(t.name)))
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }
+  }, [clientId])
 
-  useEffect(() => { load() }, [clientId])
+  // Auto-seed blog templates at agency level if none exist yet
+  useEffect(() => {
+    apiFetch('/api/v1/prompts/seed', { method: 'POST' }).catch(() => {})
+  }, [])
+
+  useEffect(() => { load() }, [load])
 
   const startEdit = (t: ClientPromptTemplate) => {
     setEditingId(t.id); setEditName(t.name); setEditBody(t.body)
@@ -2892,7 +2907,12 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
     } finally { setSaving(false) }
   }
 
-  const grouped = templates.reduce<Record<string, ClientPromptTemplate[]>>((acc, t) => {
+  const grouped = clientTemplates.reduce<Record<string, ClientPromptTemplate[]>>((acc, t) => {
+    ;(acc[t.category] ??= []).push(t)
+    return acc
+  }, {})
+
+  const globalGrouped = globalTemplates.reduce<Record<string, ClientPromptTemplate[]>>((acc, t) => {
     ;(acc[t.category] ??= []).push(t)
     return acc
   }, {})
@@ -2936,69 +2956,99 @@ function ClientPromptsSection({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
-        {loading ? (
-          <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
-        ) : templates.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-10 text-center px-6">
-            <Icons.ScrollText className="h-8 w-8" style={{ color: '#e0dfd8' }} />
-            <p className="text-[13px]" style={{ color: '#b4b2a9' }}>No client templates yet</p>
-          </div>
-        ) : (
-          <div>
-            {Object.entries(grouped).map(([cat, catTemplates], gi) => (
-              <div key={cat}>
-                {gi > 0 && <div style={{ borderTop: '1px solid #e8e7e1' }} />}
-                <div className="px-4 py-2" style={{ backgroundColor: '#fafaf8' }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>
-                    {PROMPT_CATS.find((c) => c.value === cat)?.label ?? cat}
-                  </p>
-                </div>
-                {catTemplates.map((t, ti) => (
-                  <div key={t.id}>
-                    {ti > 0 && <div style={{ borderTop: '1px solid #f0efea' }} />}
-                    <div className="px-4 py-3 bg-white">
-                      {editingId === t.id ? (
-                        <div className="space-y-2">
-                          <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded border px-2 py-1 text-xs font-semibold outline-none" style={{ borderColor: '#e8e7e1' }} />
-                          <div className="grid grid-cols-2 gap-2">
-                            <select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="w-full rounded border px-2 py-1 text-xs bg-white outline-none" style={{ borderColor: '#e8e7e1' }}>
-                              {PROMPT_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                            </select>
-                            <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" className="w-full rounded border px-2 py-1 text-xs outline-none" style={{ borderColor: '#e8e7e1' }} />
-                          </div>
-                          <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={5} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1' }} />
-                          <div className="flex justify-end gap-2">
-                            <button onClick={() => setEditingId(null)} className="px-2.5 py-1 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
-                            <button onClick={saveEdit} disabled={savingEdit} className="px-2.5 py-1 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>{savingEdit ? 'Saving…' : 'Save'}</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="flex items-start justify-between gap-2">
-                            <button className="flex items-center gap-1 text-left" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
-                              <Icons.ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform" style={{ color: '#b4b2a9', transform: expandedId === t.id ? 'rotate(90deg)' : 'none' }} />
-                              <span className="text-[13px] font-medium" style={{ color: '#1a1a14' }}>{t.name}</span>
-                            </button>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button onClick={() => startEdit(t)} className="rounded p-1 hover:bg-gray-100"><Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} /></button>
-                              <button onClick={() => deleteTemplate(t.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
-                            </div>
-                          </div>
-                          {t.description && <p className="text-[11px] mt-0.5 ml-5" style={{ color: '#b4b2a9' }}>{t.description}</p>}
-                          {expandedId === t.id && (
-                            <pre className="mt-2 ml-5 whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-[11px] font-mono leading-relaxed" style={{ color: '#3a3a2e', border: '1px solid #e8e7e1' }}>{t.body}</pre>
-                          )}
-                        </div>
-                      )}
-                    </div>
+      {/* Helper to render a template row (used for both client + global lists) */}
+      {(() => {
+        const renderRow = (t: ClientPromptTemplate, editable: boolean) => (
+          <div key={t.id}>
+            <div className="px-4 py-3 bg-white">
+              {editable && editingId === t.id ? (
+                <div className="space-y-2">
+                  <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded border px-2 py-1 text-xs font-semibold outline-none" style={{ borderColor: '#e8e7e1' }} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="w-full rounded border px-2 py-1 text-xs bg-white outline-none" style={{ borderColor: '#e8e7e1' }}>
+                      {PROMPT_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                    <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" className="w-full rounded border px-2 py-1 text-xs outline-none" style={{ borderColor: '#e8e7e1' }} />
                   </div>
-                ))}
-              </div>
-            ))}
+                  <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={5} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1' }} />
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setEditingId(null)} className="px-2.5 py-1 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
+                    <button onClick={saveEdit} disabled={savingEdit} className="px-2.5 py-1 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>{savingEdit ? 'Saving…' : 'Save'}</button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <button className="flex items-center gap-1 text-left" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
+                      <Icons.ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform" style={{ color: '#b4b2a9', transform: expandedId === t.id ? 'rotate(90deg)' : 'none' }} />
+                      <span className="text-[13px] font-medium" style={{ color: '#1a1a14' }}>{t.name}</span>
+                    </button>
+                    {editable && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => startEdit(t)} className="rounded p-1 hover:bg-gray-100"><Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} /></button>
+                        <button onClick={() => deleteTemplate(t.id)} className="rounded p-1 hover:bg-red-50"><Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} /></button>
+                      </div>
+                    )}
+                  </div>
+                  {t.description && <p className="text-[11px] mt-0.5 ml-5" style={{ color: '#b4b2a9' }}>{t.description}</p>}
+                  {expandedId === t.id && (
+                    <pre className="mt-2 ml-5 whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-[11px] font-mono leading-relaxed" style={{ color: '#3a3a2e', border: '1px solid #e8e7e1' }}>{t.body}</pre>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        )
+
+        const renderGroup = (group: Record<string, ClientPromptTemplate[]>, editable: boolean) =>
+          Object.entries(group).map(([cat, catTemplates], gi) => (
+            <div key={`${editable ? 'c' : 'g'}-${cat}`}>
+              {gi > 0 && <div style={{ borderTop: '1px solid #e8e7e1' }} />}
+              <div className="px-4 py-2" style={{ backgroundColor: '#fafaf8' }}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#b4b2a9' }}>
+                  {PROMPT_CATS.find((c) => c.value === cat)?.label ?? cat}
+                </p>
+              </div>
+              {catTemplates.map((t, ti) => (
+                <div key={t.id}>
+                  {ti > 0 && <div style={{ borderTop: '1px solid #f0efea' }} />}
+                  {renderRow(t, editable)}
+                </div>
+              ))}
+            </div>
+          ))
+
+        const hasClient = clientTemplates.length > 0
+        const hasGlobal = globalTemplates.length > 0
+
+        return (
+          <div className="space-y-3">
+            {/* Client-specific templates */}
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+              {loading ? (
+                <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
+              ) : !hasClient ? (
+                <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
+                  <Icons.ScrollText className="h-7 w-7" style={{ color: '#e0dfd8' }} />
+                  <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No client-specific templates yet</p>
+                </div>
+              ) : (
+                <div>{renderGroup(grouped, true)}</div>
+              )}
+            </div>
+
+            {/* Agency-level templates (read-only, always visible) */}
+            {!loading && hasGlobal && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5 px-1" style={{ color: '#b4b2a9' }}>Agency Templates</p>
+                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+                  <div>{renderGroup(globalGrouped, false)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -3035,7 +3085,25 @@ function ClientImagePromptsSection({ clientId }: { clientId: string }) {
     setLoading(true)
     apiFetch(`/api/v1/image-prompts?clientId=${clientId}`)
       .then((r) => r.json())
-      .then(({ data }) => setPrompts(data ?? []))
+      .then(({ data }) => {
+        const list: ClientImagePrompt[] = data ?? []
+        setPrompts(list)
+        // Auto-seed from agency defaults if client has none yet
+        if (list.length === 0) {
+          apiFetch('/api/v1/image-prompts/seed-client', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId }),
+          })
+            .then(() => {
+              apiFetch(`/api/v1/image-prompts?clientId=${clientId}`)
+                .then((r) => r.json())
+                .then(({ data: seeded }) => setPrompts(seeded ?? []))
+                .catch(() => {})
+            })
+            .catch(() => {})
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [clientId])
