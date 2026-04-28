@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 import { DimensionBar, type DimensionItem } from '@/components/layout/DimensionBar'
 import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
@@ -1003,11 +1004,27 @@ function ProgramDetailPanel({
                         <div className="space-y-3">
                           <div className="flex justify-end">
                             <button
-                              onClick={() => {
-                                const text = selectedPack.items!.map((i) => `## ${i.label}\n\n${i.editedContent ?? i.content}`).join('\n\n---\n\n')
+                              onClick={async () => {
+                                const children: Paragraph[] = []
+                                for (const item of selectedPack.items!) {
+                                  children.push(new Paragraph({ text: item.label, heading: HeadingLevel.HEADING_1, spacing: { before: 400, after: 200 } }))
+                                  const body = (item.editedContent ?? item.content ?? '').trim()
+                                  for (const line of body.split('\n')) {
+                                    const clean = line.replace(/^#{1,6}\s*/, '').replace(/\*\*/g, '').replace(/\*/g, '').trim()
+                                    if (!clean) { children.push(new Paragraph('')); continue }
+                                    const isHeading = /^#{1,6}\s/.test(line)
+                                    children.push(new Paragraph({
+                                      ...(isHeading ? { heading: HeadingLevel.HEADING_2 } : {}),
+                                      children: [new TextRun({ text: clean })],
+                                      spacing: { after: 160 },
+                                    }))
+                                  }
+                                }
+                                const doc = new Document({ sections: [{ children }] })
+                                const blob = await Packer.toBlob(doc)
                                 const a = document.createElement('a')
-                                a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
-                                a.download = `${selectedPack.cycleLabel}.txt`
+                                a.href = URL.createObjectURL(blob)
+                                a.download = `${selectedPack.cycleLabel}.docx`
                                 a.click()
                               }}
                               className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
