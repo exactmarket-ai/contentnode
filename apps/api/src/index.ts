@@ -57,6 +57,7 @@ import { pipelineRoutes }         from './routes/pipeline.js'
 import { deliverablesRoutes }     from './routes/deliverables.js'
 import { myWorkRoutes }           from './routes/myWork.js'
 import { boxFileWebhookRoutes }   from './routes/webhooks/boxFile.js'
+import { imagePromptRoutes }      from './routes/imagePrompts.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -186,6 +187,7 @@ await app.register(myWorkRoutes,             { prefix: '/api/v1/my-work' })
 await app.register(kitSessionRoutes,         { prefix: '/api/v1/kit-sessions' })
 // Box webhook — public (no auth), verified by HMAC signature
 await app.register(boxFileWebhookRoutes,     { prefix: '/api/v1/webhooks/box-file' })
+await app.register(imagePromptRoutes,        { prefix: '/api/v1/image-prompts' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

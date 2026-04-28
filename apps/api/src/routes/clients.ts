@@ -9,6 +9,7 @@ import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmen
 import { requireRole } from '../plugins/auth.js'
 import { markStaleIfBrainChanged } from './templateLibrary.js'
 import { seedDefaultTasksForClient } from '../lib/defaultScheduledTasks.js'
+import { seedImagePromptsForClient } from './imagePrompts.js'
 import { getClerkUserNames } from '../lib/clerk.js'
 import { GTM_VARIABLES } from './docTemplates.js'
 
@@ -714,6 +715,8 @@ export async function clientRoutes(app: FastifyInstance) {
 
     // Seed default (disabled) scheduled task templates for the new client
     seedDefaultTasksForClient(agencyId, client.id).catch(() => {})
+    // Copy global agency image prompts to the new client as their starting set
+    seedImagePromptsForClient(agencyId, client.id).catch(() => {})
 
     return reply.code(201).send({ data: client })
   })

@@ -1,7 +1,11 @@
+import { useState } from 'react'
+import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { FieldGroup } from '../shared'
+import { ImagePromptPickerModal } from '@/components/modals/ImagePromptPickerModal'
+import { useWorkflowStore } from '@/store/workflowStore'
 
 const PROVIDERS = [
   { value: 'anthropic', label: 'Anthropic' },
@@ -44,9 +48,20 @@ export function ImagePromptBuilderConfig({
   const provider = (config.provider as string) ?? 'anthropic'
   const model    = (config.model as string) ?? 'claude-haiku-4-5-20251001'
   const models   = MODELS[provider] ?? MODELS.anthropic
+  const [showPicker, setShowPicker] = useState(false)
+  const clientId   = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
+  const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
 
   return (
     <div className="flex flex-col gap-4">
+      {showPicker && (
+        <ImagePromptPickerModal
+          clientId={clientId}
+          clientName={clientName}
+          onClose={() => setShowPicker(false)}
+          onSelect={(p) => { onChange('style_hint', p.promptText); setShowPicker(false) }}
+        />
+      )}
       <FieldGroup label="LLM Provider">
         <Select
           value={provider}
@@ -90,6 +105,18 @@ export function ImagePromptBuilderConfig({
       </FieldGroup>
 
       <FieldGroup label="Style Hint (optional)">
+        <div className="flex items-center justify-between mb-1">
+          <span />
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            className="flex items-center gap-1 text-[10px] font-medium hover:opacity-80"
+            style={{ color: '#a200ee' }}
+          >
+            <Icons.Library className="h-3 w-3" />
+            Load from Library
+          </button>
+        </div>
         <Textarea
           className="min-h-[60px] text-xs resize-none"
           placeholder="e.g. cinematic, oil painting, dark and moody…"

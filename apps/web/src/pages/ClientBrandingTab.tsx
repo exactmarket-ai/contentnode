@@ -1604,10 +1604,231 @@ function BrandBuilderSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Client Image Prompts section
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ImagePrompt {
+  id: string
+  name: string
+  promptText: string
+  styleTags: string
+  notes: string | null
+  sortOrder: number
+  clientId: string | null
+  createdAt: string
+}
+
+function ClientImagePromptsSection({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const [clientPrompts, setClientPrompts] = useState<ImagePrompt[]>([])
+  const [agencyPrompts, setAgencyPrompts] = useState<ImagePrompt[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPromptText, setEditPromptText] = useState('')
+  const [editStyleTags, setEditStyleTags] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newPromptText, setNewPromptText] = useState('')
+  const [newStyleTags, setNewStyleTags] = useState('')
+  const [newNotes, setNewNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await apiFetch(`/api/v1/image-prompts/picker?clientId=${clientId}`)
+      const { data } = await res.json()
+      setClientPrompts(data?.clientPrompts ?? [])
+      setAgencyPrompts(data?.globalPrompts ?? [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }, [clientId])
+
+  useEffect(() => { load() }, [load])
+
+  const startEdit = (p: ImagePrompt) => {
+    setEditingId(p.id)
+    setEditName(p.name)
+    setEditPromptText(p.promptText)
+    setEditStyleTags(p.styleTags)
+    setEditNotes(p.notes ?? '')
+  }
+
+  const saveEdit = async () => {
+    if (!editingId) return
+    setSavingEdit(true)
+    try {
+      const res = await apiFetch(`/api/v1/image-prompts/${editingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, promptText: editPromptText, styleTags: editStyleTags, notes: editNotes || undefined }),
+      })
+      if (res.ok) { setEditingId(null); load() }
+    } finally { setSavingEdit(false) }
+  }
+
+  const deletePrompt = async (id: string) => {
+    if (!confirm('Delete this image prompt?')) return
+    await apiFetch(`/api/v1/image-prompts/${id}`, { method: 'DELETE' })
+    load()
+  }
+
+  const createPrompt = async () => {
+    if (!newName.trim() || !newPromptText.trim()) return
+    setSaving(true)
+    try {
+      const res = await apiFetch('/api/v1/image-prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), promptText: newPromptText.trim(), styleTags: newStyleTags.trim(), notes: newNotes.trim() || undefined, clientId }),
+      })
+      if (res.ok) {
+        setCreating(false)
+        setNewName(''); setNewPromptText(''); setNewStyleTags(''); setNewNotes('')
+        load()
+      }
+    } finally { setSaving(false) }
+  }
+
+  const PromptRow = ({ p, showDelete }: { p: ImagePrompt; showDelete: boolean }) => (
+    <div>
+      {editingId === p.id ? (
+        <div className="space-y-2.5 py-3 px-4 bg-white">
+          <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded border px-2 py-1 text-xs font-semibold outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+          <input value={editStyleTags} onChange={(e) => setEditStyleTags(e.target.value)} placeholder="Style tags…" className="w-full rounded border px-2 py-1 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+          <textarea value={editPromptText} onChange={(e) => setEditPromptText(e.target.value)} rows={4} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none focus:border-purple-400 resize-y" style={{ borderColor: '#e8e7e1' }} />
+          <input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Notes (optional)" className="w-full rounded border px-2 py-1 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setEditingId(null)} className="px-2.5 py-1 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
+            <button onClick={saveEdit} disabled={savingEdit} className="px-2.5 py-1 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>
+              {savingEdit ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 py-3 bg-white">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <button className="flex items-center gap-1 text-left" onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}>
+                <Icons.ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform" style={{ color: '#b4b2a9', transform: expandedId === p.id ? 'rotate(90deg)' : 'none' }} />
+                <span className="text-[13px] font-medium" style={{ color: '#1a1a14' }}>{p.name}</span>
+              </button>
+              {p.styleTags && <p className="text-[11px] mt-0.5 ml-5" style={{ color: '#b4b2a9' }}>{p.styleTags}</p>}
+            </div>
+            {showDelete && (
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => startEdit(p)} className="rounded p-1 hover:bg-gray-100" title="Edit">
+                  <Icons.Pencil className="h-3.5 w-3.5" style={{ color: '#b4b2a9' }} />
+                </button>
+                <button onClick={() => deletePrompt(p.id)} className="rounded p-1 hover:bg-red-50" title="Delete">
+                  <Icons.Trash2 className="h-3.5 w-3.5" style={{ color: '#f87171' }} />
+                </button>
+              </div>
+            )}
+          </div>
+          {expandedId === p.id && (
+            <div className="mt-2 ml-5 space-y-1.5">
+              <pre className="whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-[11px] font-mono leading-relaxed" style={{ color: '#3a3a2e', border: '1px solid #e8e7e1' }}>{p.promptText}</pre>
+              {p.notes && <p className="text-[11px]" style={{ color: '#b4b2a9' }}>{p.notes}</p>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Client prompts */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <Icons.Image className="h-4 w-4" style={{ color: '#b4b2a9' }} />
+            <h3 className="text-[14px] font-semibold" style={{ color: '#1a1a14' }}>{clientName} Prompts</h3>
+          </div>
+          <button onClick={() => setCreating(true)} className="flex items-center gap-1 text-[12px] font-medium hover:opacity-80" style={{ color: '#a200ee' }}>
+            <Icons.Plus className="h-3.5 w-3.5" />
+            New prompt
+          </button>
+        </div>
+        <p className="text-[12px] mb-3" style={{ color: '#b4b2a9' }}>Prompts specific to this client. Override or extend the agency defaults.</p>
+
+        {creating && (
+          <div className="mb-3 rounded-xl p-4 space-y-3" style={{ backgroundColor: '#fff', border: '1px solid #a200ee' }}>
+            <p className="text-[12px] font-semibold" style={{ color: '#7a00b4' }}>New Prompt</p>
+            <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="w-full rounded border px-2.5 py-1.5 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+            <input value={newStyleTags} onChange={(e) => setNewStyleTags(e.target.value)} placeholder="Style tags (optional)" className="w-full rounded border px-2.5 py-1.5 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+            <textarea value={newPromptText} onChange={(e) => setNewPromptText(e.target.value)} placeholder="Full prompt text…" rows={4} className="w-full rounded border px-2.5 py-1.5 text-xs font-mono outline-none focus:border-purple-400 resize-y" style={{ borderColor: '#e8e7e1' }} />
+            <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="Notes (optional)" className="w-full rounded border px-2.5 py-1.5 text-xs outline-none focus:border-purple-400" style={{ borderColor: '#e8e7e1' }} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setCreating(false)} className="px-3 py-1.5 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
+              <button onClick={createPrompt} disabled={saving || !newName.trim() || !newPromptText.trim()} className="px-3 py-1.5 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+          {loading ? (
+            <div className="flex justify-center py-6"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
+          ) : clientPrompts.length === 0 ? (
+            <div className="flex flex-col items-center gap-1.5 py-8 text-center px-6">
+              <Icons.Image className="h-7 w-7" style={{ color: '#e0dfd8' }} />
+              <p className="text-[12px]" style={{ color: '#b4b2a9' }}>No client-specific prompts yet</p>
+            </div>
+          ) : (
+            <div>
+              {clientPrompts.map((p, i) => (
+                <div key={p.id}>
+                  {i > 0 && <div style={{ borderTop: '1px solid #f0efea' }} />}
+                  <PromptRow p={p} showDelete={true} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Agency prompts (read-only reference) */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Icons.Building2 className="h-4 w-4" style={{ color: '#b4b2a9' }} />
+          <h3 className="text-[14px] font-semibold" style={{ color: '#1a1a14' }}>Agency Prompts</h3>
+        </div>
+        <p className="text-[12px] mb-3" style={{ color: '#b4b2a9' }}>Agency-level defaults inherited by this client. Edit in Settings → Library.</p>
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e8e7e1' }}>
+          {loading ? (
+            <div className="flex justify-center py-6"><Icons.Loader2 className="h-5 w-5 animate-spin" style={{ color: '#b4b2a9' }} /></div>
+          ) : agencyPrompts.length === 0 ? (
+            <div className="py-6 text-center"><p className="text-[12px]" style={{ color: '#b4b2a9' }}>No agency prompts — seed them in Settings.</p></div>
+          ) : (
+            <div>
+              {agencyPrompts.map((p, i) => (
+                <div key={p.id}>
+                  {i > 0 && <div style={{ borderTop: '1px solid #f0efea' }} />}
+                  <PromptRow p={p} showDelete={false} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SubTab = 'profile' | 'builder'
+type SubTab = 'profile' | 'builder' | 'image-prompts'
 
 export function ClientBrandingTab({
   clientId,
@@ -1732,7 +1953,7 @@ export function ClientBrandingTab({
         {/* Sub-tabs */}
         <div className="shrink-0 border-b border-border px-6">
           <div className="flex gap-4">
-            {(['profile', 'builder'] as SubTab[]).map((t) => (
+            {(['profile', 'builder', 'image-prompts'] as SubTab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setSubTab(t)}
@@ -1743,7 +1964,7 @@ export function ClientBrandingTab({
                     : 'border-transparent text-muted-foreground hover:text-foreground'
                 )}
               >
-                {t === 'profile' ? 'Brand Profile' : 'Brand Builder'}
+                {t === 'profile' ? 'Brand Profile' : t === 'builder' ? 'Brand Builder' : 'Image Prompts'}
               </button>
             ))}
           </div>
@@ -1765,6 +1986,9 @@ export function ClientBrandingTab({
                 clientId={clientId}
                 verticalId={activeVerticalId}
               />
+            )}
+            {subTab === 'image-prompts' && (
+              <ClientImagePromptsSection clientId={clientId} clientName={clientName} />
             )}
           </div>
         </div>

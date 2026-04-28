@@ -86,6 +86,7 @@ model Agency {
   programContentPacks      ProgramContentPack[]
   verticalProgramTemplates VerticalProgramTemplate[]
   agencyCredentials        AgencyCredential[]
+  imagePrompts             ImagePrompt[]
 
   @@map("agencies")
 }
@@ -225,6 +226,7 @@ model Client {
   programs            Program[]
   programContentPacks ProgramContentPack[]
   preferenceProfile   ClientPreferenceProfile?
+  imagePrompts        ImagePrompt[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -2414,4 +2416,27 @@ model StakeholderPrinciple {
   @@index([agencyId])
   @@index([stakeholderId])
   @@map("stakeholder_principles")
+}
+
+// ─────────────────────────────────────────────
+// ImagePrompt — agency library + client copies
+// ─────────────────────────────────────────────
+model ImagePrompt {
+  id         String   @id @default(cuid())
+  agencyId   String   @map("agency_id")
+  clientId   String?  @map("client_id")   // null = global agency library
+  name       String
+  promptText String   @map("prompt_text") @db.Text
+  styleTags  String   @default("") @map("style_tags")
+  notes      String?  @db.Text
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  agency Agency  @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("image_prompts")
 }

@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 import { FieldGroup } from '../shared'
 import { AttachmentZone } from '../AttachmentZone'
 import { MediaFilmstrip, type MediaAsset } from '../MediaFilmstrip'
+import { ImagePromptPickerModal } from '@/components/modals/ImagePromptPickerModal'
+import { useWorkflowStore } from '@/store/workflowStore'
 
 // ─── Provider metadata ────────────────────────────────────────────────────────
 
@@ -152,9 +154,12 @@ export function ImageGenerationConfig({
   nodeRunStatus?: { status?: string; output?: unknown }
   nodeLabel?: string
 }) {
-  const provider = (config.provider as string) ?? 'gptimage2'
-  const support  = PROVIDER_SUPPORT[provider] ?? PROVIDER_SUPPORT.gptimage2
+  const provider   = (config.provider as string) ?? 'gptimage2'
+  const support    = PROVIDER_SUPPORT[provider] ?? PROVIDER_SUPPORT.gptimage2
   const [seedLocked, setSeedLocked] = useState((config.seed as number | null) != null)
+  const [showPicker, setShowPicker] = useState(false)
+  const clientId   = useWorkflowStore((s) => s.workflow.clientId ?? undefined)
+  const clientName = useWorkflowStore((s) => s.workflow.clientName ?? undefined)
 
   // Extract generated assets from run output OR stored config assets
   const runOutput = nodeRunStatus?.output as Record<string, unknown> | undefined
@@ -168,6 +173,15 @@ export function ImageGenerationConfig({
 
   return (
     <div className="flex flex-col gap-4">
+      {showPicker && (
+        <ImagePromptPickerModal
+          clientId={clientId}
+          clientName={clientName}
+          onClose={() => setShowPicker(false)}
+          onSelect={(p) => { onChange('static_prompt', p.promptText); setShowPicker(false) }}
+        />
+      )}
+
       {/* Skip toggle */}
       <div
         className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${isLocked ? 'border-amber-400/60 bg-amber-950/20' : 'border-border bg-muted/20'}`}
@@ -212,6 +226,28 @@ export function ImageGenerationConfig({
             ))}
           </SelectContent>
         </Select>
+      </FieldGroup>
+
+      {/* Static prompt override */}
+      <FieldGroup label="Prompt Override (optional)">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[10px] text-muted-foreground">Bypasses upstream prompt builder when set</p>
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            className="flex items-center gap-1 text-[10px] font-medium hover:opacity-80 shrink-0"
+            style={{ color: '#a200ee' }}
+          >
+            <Icons.Library className="h-3 w-3" />
+            Load from Library
+          </button>
+        </div>
+        <Textarea
+          className="min-h-[60px] text-xs resize-none"
+          placeholder="Leave blank to use upstream Image Prompt Builder output…"
+          value={(config.static_prompt as string) ?? ''}
+          onChange={(e) => onChange('static_prompt', e.target.value)}
+        />
       </FieldGroup>
 
       {/* Aspect ratio */}
