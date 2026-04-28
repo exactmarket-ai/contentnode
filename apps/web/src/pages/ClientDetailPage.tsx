@@ -7344,7 +7344,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
 // ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'campaigns', 'programs', 'board', 'deliverables', 'library', 'thought-leadership', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 // ── Agency-level prompt library (no clientId — shows global templates) ────────
@@ -7438,10 +7438,10 @@ export function ClientDetailPage() {
   const TAB_LABELS: Record<Tab, string> = {
     overview:      'Overview',
     workflows:     'Workflows',
+    library:       'Prompt Library',
     campaigns:     'Campaigns',
     programs:      'Programs',
     deliverables:  'Deliverables',
-    library:             'Prompt Library',
     'thought-leadership': 'Thought Leadership',
     framework:     'GTM Framework',
     'product-marketing': 'productPILOT',
@@ -7459,6 +7459,7 @@ export function ClientDetailPage() {
     profile:       'Company Profiler',
     company:       'Company Research',
     structure:     'Structure',
+    'agency-library': 'Prompt Library',
     'scheduled-tasks': 'Scheduled Tasks',
     'doc-style':       'Doc Style',
   }
@@ -7467,12 +7468,12 @@ export function ClientDetailPage() {
   const DEMAND_GEN_TABS: Tab[] = ['demandgen', 'campaigns']
   // Tabs that live under the "Research" group
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment', 'scheduled-tasks']
-  // Tabs that live under the "Settings" group
-  const SETTINGS_TABS: Tab[] = ['brain', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
+  // Tabs that live under the "Settings" group (admin-only via Settings entry point)
+  const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
-  const POST_RESEARCH_TABS: Tab[] = ['workflows']
+  const POST_RESEARCH_TABS: Tab[] = ['workflows', 'library']
   // Admin-only tabs rendered after workflows
   const ADMIN_ONLY_TABS: Tab[] = ['reviews', 'deliverables', 'insights']
   const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...(isAdmin ? ['thought-leadership' as Tab] : []), ...POST_RESEARCH_TABS, ...(isAdmin ? ADMIN_ONLY_TABS : [])]
@@ -7713,6 +7714,24 @@ export function ClientDetailPage() {
         : <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && <OverviewTab client={client} onTabChange={switchTab} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
         {activeTab === 'workflows' && <WorkflowsTab client={client} onUpdate={setClient} />}
+        {activeTab === 'library' && (
+          <div className="flex gap-8 pb-16 items-start">
+            <div className="flex-1 min-w-0 space-y-8">
+              <ClientLibraryTab clientId={client.id} />
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <Icons.Sparkles className="h-4 w-4 text-violet-500" />
+                  <h2 className="text-[15px] font-semibold">Prompt Library</h2>
+                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-600">Brain-powered</span>
+                </div>
+                <ClientPromptLibraryTab clientId={client.id} />
+              </div>
+            </div>
+            <div className="w-80 shrink-0">
+              <ClientImagePromptsSection clientId={client.id} />
+            </div>
+          </div>
+        )}
         {activeTab === 'campaigns' && <CampaignsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'programs' && <ProgramsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
@@ -7729,6 +7748,7 @@ export function ClientDetailPage() {
         {activeTab === 'profile' && <ProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'company' && <CompanyProfileTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'structure' && <StructureTab client={client} onUpdate={(data) => setClient((prev) => prev ? { ...prev, ...data } : prev)} />}
+        {activeTab === 'agency-library' && <AgencyPromptLibrary />}
         {activeTab === 'doc-style' && <ClientDocStyleTab clientId={client.id} />}
       </div>}
 
