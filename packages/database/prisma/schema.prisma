@@ -433,9 +433,10 @@ model KitSession {
   approvedAssets Json     @default("[]") @map("approved_assets")
   chatHistory    Json     @default("[]") @map("chat_history")
   intakeJson     Json?    @map("intake_json")
-  generatedFiles Json     @default("{}") @map("generated_files")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  generatedFiles       Json     @default("{}") @map("generated_files")
+  storyboardImageCache Json     @default("{}") @map("storyboard_image_cache")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)

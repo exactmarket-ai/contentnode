@@ -44,6 +44,11 @@ import { ReviewMinerExecutor } from './executors/reviewMiner.js'
 import { SeoIntentExecutor } from './executors/seoIntent.js'
 import { AudienceSignalExecutor } from './executors/audienceSignal.js'
 import { WrikeSourceExecutor } from './executors/wrikeSource.js'
+import { VideoScriptReaderExecutor } from './executors/videoScriptReader.js'
+import { SceneParserExecutor } from './executors/sceneParser.js'
+import { FramesConfigExecutor } from './executors/framesConfig.js'
+import { StoryboardComposerExecutor } from './executors/storyboardComposer.js'
+import { PdfAssemblerExecutor } from './executors/pdfAssembler.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -143,6 +148,12 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'audience_signal':               AudienceSignalExecutor,
   // Integrations
   'wrike_source':                  WrikeSourceExecutor,
+  // Video Storyboard pipeline
+  'source:video-script-reader':    VideoScriptReaderExecutor,
+  'logic:scene-parser':            SceneParserExecutor,
+  'logic:frames-config':           FramesConfigExecutor,
+  'logic:storyboard-composer':     StoryboardComposerExecutor,
+  'output:pdf-assembler':          PdfAssemblerExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {

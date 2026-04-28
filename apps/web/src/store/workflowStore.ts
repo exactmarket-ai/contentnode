@@ -194,6 +194,37 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'CheckSquare',
     defaultConfig: { subtype: 'wrike-source', days_back: 14, synthesis: 'summary' },
   },
+  // Video Storyboard pipeline
+  {
+    type: 'source', subtype: 'video-script-reader',
+    label: 'Video Script Reader', description: 'Load a video script from a GTM Kit session or upstream input',
+    category: 'video', icon: 'FileVideo',
+    defaultConfig: { subtype: 'video-script-reader', source: 'passthrough', kitSessionId: '', assetIndex: 5 },
+  },
+  {
+    type: 'logic', subtype: 'scene-parser',
+    label: 'Scene Parser', description: 'Parse a video script markdown table into structured scene objects',
+    category: 'video', icon: 'ListOrdered',
+    defaultConfig: { subtype: 'scene-parser' },
+  },
+  {
+    type: 'logic', subtype: 'frames-config',
+    label: 'Frames Config', description: 'Set how many storyboard frames to generate per scene (1–4)',
+    category: 'video', icon: 'LayoutGrid',
+    defaultConfig: { subtype: 'frames-config', framesPerScene: 1 },
+  },
+  {
+    type: 'logic', subtype: 'storyboard-composer',
+    label: 'Storyboard Composer', description: 'Render a storyboard page to PDF using scene data and brand colors',
+    category: 'video', icon: 'PanelLeft',
+    defaultConfig: { subtype: 'storyboard-composer', clientName: '', verticalName: '' },
+  },
+  {
+    type: 'output', subtype: 'pdf-assembler',
+    label: 'PDF Assembler', description: 'Combine storyboard pages into a single downloadable PDF',
+    category: 'video', icon: 'BookMarked',
+    defaultConfig: { subtype: 'pdf-assembler', filename: '' },
+  },
   {
     type: 'audio_input', subtype: 'audio-input',
     label: 'Audio Input', description: 'Upload an existing audio file to use as a source in your workflow',
