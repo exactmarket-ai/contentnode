@@ -60,6 +60,8 @@ import { startPMAgentWorker } from './pmAgent.js'
 import { startBrainCollapseWorker } from './brainCollapseProcessor.js'
 import { startPrincipleInferenceWorker } from './principleInference.js'
 import { startBoxVersionScanWorker } from './boxVersionScanner.js'
+import { processKitGenerationJob } from './kitGenerator.js'
+import { QUEUE_KIT_GENERATION, type KitGenerationJobData } from './queues.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -385,6 +387,17 @@ const brainCollapseWorker       = startBrainCollapseWorker()
 const principleInferenceWorker  = startPrincipleInferenceWorker()
 const boxVersionScanWorker      = startBoxVersionScanWorker()
 
+// ── kit-generation ────────────────────────────────────────────────────────────
+const kitGenerationWorker = createWorker<KitGenerationJobData>(
+  QUEUE_KIT_GENERATION,
+  async (job: Job<KitGenerationJobData>) => {
+    console.log(`[kit-generation] job picked up: asset ${job.data.assetIndex} session ${job.data.sessionId}`)
+    await processKitGenerationJob(job.data)
+  },
+  2, // max 2 concurrent kit generation jobs
+)
+kitGenerationWorker.on('error', (err) => console.error('[kit-generation-worker] error:', err))
+
 // ── box version sweep — passive safety net, runs every 2 hours ───────────────
 // Catches Box versions that arrived without a Monday status change event
 // (network blips, direct Box uploads, etc.).
@@ -478,6 +491,7 @@ async function shutdown() {
     brainCollapseWorker.close(),
     principleInferenceWorker.close(),
     boxVersionScanWorker.close(),
+    kitGenerationWorker.close(),
     boxVersionSweepWorker.close(),
     fileCleanupWorker.close(),
   ])

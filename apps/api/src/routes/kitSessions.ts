@@ -7,6 +7,7 @@
  */
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '@contentnode/database'
+import { getKitGenerationQueue } from '../lib/queues.js'
 
 // ── Intake JSON mapper ────────────────────────────────────────────────────────
 
@@ -424,6 +425,100 @@ export async function kitSessionRoutes(app: FastifyInstance) {
       })
 
       return reply.send({ data: updated })
+    }
+  )
+
+  // POST /:sessionId/generate — kick off generation from asset 0 (or current)
+  app.post<{ Params: { sessionId: string }; Body: { resumeFromAsset?: number } }>(
+    '/:sessionId/generate',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId } = req.params
+      const resumeFrom = req.body?.resumeFromAsset ?? 0
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+      if (!session.intakeJson) return reply.code(400).send({ error: 'Session has no intakeJson — save intake before generating' })
+
+      // Initialize generatedFiles with pending assets if empty
+      const existingFiles = (session.generatedFiles ?? {}) as { assets?: unknown[] }
+      if (!existingFiles.assets || existingFiles.assets.length !== 8) {
+        const ASSET_DEFS = [
+          { index: 0, name: 'Brochure',          num: '01', ext: 'md',   status: 'pending' },
+          { index: 1, name: 'eBook',             num: '02', ext: 'html', status: 'pending' },
+          { index: 2, name: 'Sales Cheat Sheet', num: '03', ext: 'html', status: 'pending' },
+          { index: 3, name: 'BDR Emails',        num: '04', ext: 'md',   status: 'pending' },
+          { index: 4, name: 'Customer Deck',     num: '05', ext: 'md',   status: 'pending' },
+          { index: 5, name: 'Video Script',      num: '06', ext: 'md',   status: 'pending' },
+          { index: 6, name: 'Web Page Copy',     num: '07', ext: 'md',   status: 'pending' },
+          { index: 7, name: 'Internal Brief',    num: '08', ext: 'md',   status: 'pending' },
+        ]
+        await prisma.kitSession.update({
+          where: { id: sessionId },
+          data: { generatedFiles: { assets: ASSET_DEFS } as any, status: 'generating' },
+        })
+      }
+
+      await getKitGenerationQueue().add(
+        'generate-asset',
+        { sessionId, agencyId, assetIndex: resumeFrom },
+        { removeOnComplete: { count: 50 }, removeOnFail: { count: 20 } },
+      )
+
+      return reply.code(202).send({ ok: true, message: `Generation queued from asset ${resumeFrom}` })
+    }
+  )
+
+  // POST /:sessionId/approve — approve current checkpoint in Full Session mode
+  app.post<{ Params: { sessionId: string }; Body: { notes?: string } }>(
+    '/:sessionId/approve',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId } = req.params
+      const notes = req.body?.notes ?? ''
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+      if (session.status !== 'checkpoint') return reply.code(400).send({ error: 'Session is not at a checkpoint' })
+
+      const assetIndex = session.currentAsset ?? 0
+      const approvedAssets = [...((session.approvedAssets as number[]) ?? []), assetIndex]
+
+      // Store approval note in chatHistory
+      const chatHistory = [...((session.chatHistory as unknown[]) ?? [])]
+      if (notes) chatHistory.push({ role: 'user', content: notes, assetIndex, type: 'approval' })
+
+      await prisma.kitSession.update({
+        where: { id: sessionId },
+        data: { approvedAssets: approvedAssets as any, chatHistory: chatHistory as any },
+      })
+
+      await getKitGenerationQueue().add(
+        'generate-asset',
+        { sessionId, agencyId, assetIndex: assetIndex + 1 },
+        { removeOnComplete: { count: 50 }, removeOnFail: { count: 20 } },
+      )
+
+      return reply.send({ ok: true, nextAsset: assetIndex + 1 })
+    }
+  )
+
+  // POST /:sessionId/cancel — cancel generation and save progress
+  app.post<{ Params: { sessionId: string } }>(
+    '/:sessionId/cancel',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId } = req.params
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      await prisma.kitSession.update({
+        where: { id: sessionId },
+        data: { status: 'cancelled' },
+      })
+
+      return reply.send({ ok: true })
     }
   )
 }

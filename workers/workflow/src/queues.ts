@@ -30,6 +30,13 @@ export const QUEUE_PM_AGENT                       = `${_p}pm-agent`
 export const QUEUE_BRAIN_COLLAPSE                 = `${_p}brain-collapse`
 export const QUEUE_PRINCIPLE_INFERENCE            = `${_p}principle-inference`
 export const QUEUE_BOX_VERSION_SCAN               = `${_p}box-version-scan`
+export const QUEUE_KIT_GENERATION                 = `${_p}kit-generation`
+
+export interface KitGenerationJobData {
+  sessionId: string
+  agencyId: string
+  assetIndex: number  // 0-7
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Job data types

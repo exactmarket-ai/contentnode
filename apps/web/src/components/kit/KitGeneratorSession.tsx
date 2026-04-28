@@ -1,9 +1,7 @@
 /**
  * KitGeneratorSession — full-page GTM Kit Generator overlay.
  *
- * Phase 1 (current): intake review — reads framework, validates, shows
- * intake JSON, lets user choose Full/Quick mode, then starts generation.
- * Asset generation is NOT built yet — confirmation of intake JSON required first.
+ * Phases: intake → mode → generating → checkpoint (full mode only) → delivery
  */
 import React, { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
@@ -24,21 +22,33 @@ interface IntakeValidation {
   warningCount: number
 }
 
+interface AssetRecord {
+  index: number
+  name: string
+  num: string
+  ext: string
+  status: 'pending' | 'generating' | 'complete' | 'error'
+  content?: string
+  stage?: string
+  completedAt?: string
+  error?: string
+}
+
+interface GeneratedFiles {
+  assets?: AssetRecord[]
+  checkpointQuestions?: string
+  consistencyIssues?: string[]
+}
+
 interface KitSessionData {
   id: string
   mode: string
   status: string
   currentAsset: number | null
   approvedAssets: number[]
-  chatHistory: ChatMessage[]
+  chatHistory: { role: string; content: string; assetIndex?: number }[]
   intakeJson: Record<string, unknown> | null
-  generatedFiles: Record<string, unknown>
-}
-
-interface ChatMessage {
-  role: 'system' | 'assistant' | 'user'
-  content: string
-  ts: string
+  generatedFiles: GeneratedFiles
 }
 
 interface IntakeResponse {
@@ -54,14 +64,14 @@ interface IntakeResponse {
 // ── Asset manifest ────────────────────────────────────────────────────────────
 
 const ASSETS = [
-  { index: 0, num: '01', name: 'Brochure',              ext: 'docx' },
+  { index: 0, num: '01', name: 'Brochure',              ext: 'md' },
   { index: 1, num: '02', name: 'eBook',                 ext: 'html' },
   { index: 2, num: '03', name: 'Sales Cheat Sheet',     ext: 'html' },
-  { index: 3, num: '04', name: 'BDR Emails',            ext: 'docx' },
-  { index: 4, num: '05', name: 'Customer Deck',         ext: 'pptx' },
-  { index: 5, num: '06', name: 'Video Script',          ext: 'docx' },
-  { index: 6, num: '07', name: 'Web Page Copy',         ext: 'docx' },
-  { index: 7, num: '08', name: 'Internal Brief',        ext: 'docx' },
+  { index: 3, num: '04', name: 'BDR Emails',            ext: 'md' },
+  { index: 4, num: '05', name: 'Customer Deck',         ext: 'md' },
+  { index: 5, num: '06', name: 'Video Script',          ext: 'md' },
+  { index: 6, num: '07', name: 'Web Page Copy',         ext: 'md' },
+  { index: 7, num: '08', name: 'Internal Brief',        ext: 'md' },
 ]
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -248,13 +258,17 @@ interface Props {
 }
 
 export function KitGeneratorSession({ clientId, clientName, verticalId, verticalName, onClose }: Props) {
-  const [phase, setPhase]             = useState<'loading' | 'intake' | 'mode' | 'generating' | 'delivery'>('loading')
+  const [phase, setPhase]             = useState<'loading' | 'intake' | 'mode' | 'generating' | 'checkpoint' | 'delivery'>('loading')
   const [intake, setIntake]           = useState<Record<string, unknown> | null>(null)
   const [validation, setValidation]   = useState<IntakeValidation | null>(null)
   const [mode, setMode]               = useState<'full' | 'quick'>('full')
   const [session, setSession]         = useState<KitSessionData | null>(null)
   const [loadError, setLoadError]     = useState<string | null>(null)
   const [starting, setStarting]       = useState(false)
+  const [approveNotes, setApproveNotes] = useState('')
+  const [approving, setApproving]       = useState(false)
+  const [cancelling, setCancelling]     = useState(false)
+  const generationStartRef              = React.useRef<number | null>(null)
 
   // Load intake + existing session on mount
   const load = useCallback(async () => {
@@ -273,20 +287,40 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
         const s = sessionRes.data as KitSessionData
         setSession(s)
         setMode(s.mode as 'full' | 'quick')
-        if (s.status !== 'intake') {
-          setPhase(s.status === 'delivery' || s.status === 'complete' ? 'delivery' : 'generating')
-          return
-        }
+        if (s.status === 'delivery' || s.status === 'complete') { setPhase('delivery'); return }
+        if (s.status === 'checkpoint') { setPhase('checkpoint'); return }
+        if (s.status === 'generating' || s.status === 'cancelled' || s.status === 'error') { setPhase('generating'); return }
       }
 
       setPhase('intake')
-    } catch (err) {
+    } catch {
       setLoadError('Failed to load framework data. Check your connection and try again.')
       setPhase('intake')
     }
   }, [clientId, verticalId])
 
   useEffect(() => { void load() }, [load])
+
+  // Poll for session updates during generation and checkpoint phases
+  useEffect(() => {
+    if (phase !== 'generating' && phase !== 'checkpoint') return
+    if (phase === 'generating' && !generationStartRef.current) {
+      generationStartRef.current = Date.now()
+    }
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/api/v1/kit-sessions/${clientId}/${verticalId}`)
+        const { data } = await res.json()
+        if (!data) return
+        const s = data as KitSessionData
+        setSession(s)
+        if (s.status === 'delivery' || s.status === 'complete') setPhase('delivery')
+        else if (s.status === 'checkpoint') setPhase('checkpoint')
+        else if (s.status === 'error') setPhase('generating') // stays on generating, shows error
+      } catch { /* non-fatal polling error */ }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [phase, clientId, verticalId])
 
   // Start generation — create or resume session, snapshot intake JSON
   const startGeneration = async () => {
@@ -302,24 +336,68 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
         })
         const { data } = await res.json()
         currentSession = data as KitSessionData
-      } else {
-        // Update mode on existing session
-        const res = await apiFetch(`/api/v1/kit-sessions/${currentSession.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode, status: 'asset_01', currentAsset: 0, intakeJson: intake }),
-        })
-        const { data } = await res.json()
-        currentSession = data as KitSessionData
       }
-      setSession(currentSession)
+      // Save intakeJson and mode on the session before generating
+      await apiFetch(`/api/v1/kit-sessions/${currentSession.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, intakeJson: intake }),
+      })
+      setSession({ ...currentSession, mode, intakeJson: intake, generatedFiles: {} })
+      // Kick off generation
+      await apiFetch(`/api/v1/kit-sessions/${currentSession.id}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
       setPhase('generating')
-      // TODO: kick off generation — asset building to be added after intake JSON is confirmed
     } catch {
-      setLoadError('Failed to start session. Please try again.')
+      setLoadError('Failed to start generation. Please try again.')
     } finally {
       setStarting(false)
     }
+  }
+
+  const approveCheckpoint = async () => {
+    if (!session) return
+    setApproving(true)
+    try {
+      await apiFetch(`/api/v1/kit-sessions/${session.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: approveNotes }),
+      })
+      setApproveNotes('')
+      setPhase('generating')
+    } catch {
+      setLoadError('Failed to approve. Please try again.')
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  const cancelGeneration = async () => {
+    if (!session) return
+    setCancelling(true)
+    try {
+      await apiFetch(`/api/v1/kit-sessions/${session.id}/cancel`, { method: 'POST' })
+      onClose()
+    } catch { /* ignore */ } finally {
+      setCancelling(false)
+    }
+  }
+
+  const downloadAsset = (asset: AssetRecord) => {
+    if (!asset.content) return
+    const blob = new Blob([asset.content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${clientName} ${verticalName} Kit - ${asset.num} ${asset.name}.${asset.ext}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   // Close with escape
@@ -328,9 +406,6 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
-
-  const filename = (asset: typeof ASSETS[0]) =>
-    `${clientName} ${verticalName} Kit - ${asset.num} ${asset.name}.${asset.ext}`
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
@@ -356,6 +431,14 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {(phase === 'generating' || phase === 'checkpoint') && (
+            <button
+              onClick={() => void cancelGeneration()}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
           {phase === 'intake' && !loadError && validation && !validation.blocking && (
             <button
               onClick={() => setPhase('mode')}
@@ -495,39 +578,290 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
             </div>
           )}
 
-          {/* Generating — placeholder pending asset build confirmation */}
+          {/* Generating */}
           {phase === 'generating' && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
-                <svg className="h-8 w-8 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
+            <div className="flex flex-1 flex-col gap-0 overflow-hidden">
+              {(() => {
+                const assets = session?.generatedFiles?.assets ?? []
+                const doneCount = assets.filter(a => a.status === 'complete').length
+                const totalCount = 8
+                const pct = Math.round((doneCount / totalCount) * 100)
+                const errored = assets.find(a => a.status === 'error')
+                const elapsedMs = generationStartRef.current ? Date.now() - generationStartRef.current : 0
+                const msPerAsset = doneCount > 0 ? elapsedMs / doneCount : 45000
+                const remainingMs = (totalCount - doneCount) * msPerAsset
+                const remainingMin = Math.ceil(remainingMs / 60000)
+                return (
+                  <>
+                    <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-gray-600">
+                          {errored ? '⚠ Generation error on one asset' : doneCount === 0 ? 'Starting generation…' : `${doneCount} of ${totalCount} assets complete`}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          {!errored && doneCount < totalCount && (
+                            <span className="text-xs text-gray-400">
+                              ~{remainingMin > 1 ? `${remainingMin} min` : 'less than a minute'} remaining
+                            </span>
+                          )}
+                          <button
+                            onClick={() => void cancelGeneration()}
+                            disabled={cancelling}
+                            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            {cancelling ? 'Cancelling…' : 'Cancel'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-gray-100">
+                        <div
+                          className="h-1.5 rounded-full bg-[#a200ee] transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Asset list */}
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <div className="max-w-2xl mx-auto flex flex-col gap-2">
+                        {(assets.length === 8 ? assets : Array.from({ length: 8 }, (_, i) => ({
+                          index: i,
+                          name: ['Brochure','eBook','Sales Cheat Sheet','BDR Emails','Customer Deck','Video Script','Web Page Copy','Internal Brief'][i],
+                          num: ['01','02','03','04','05','06','07','08'][i],
+                          ext: ['md','html','html','md','md','md','md','md'][i],
+                          status: 'pending' as const,
+                        }))).map((asset) => (
+                          <div
+                            key={asset.index}
+                            className={cn(
+                              'flex items-center gap-3 rounded-xl border px-4 py-3 transition-all',
+                              asset.status === 'complete' ? 'border-green-200 bg-green-50'
+                                : asset.status === 'generating' ? 'border-purple-200 bg-purple-50'
+                                : asset.status === 'error' ? 'border-red-200 bg-red-50'
+                                : 'border-gray-200 bg-white',
+                            )}
+                          >
+                            {/* Status icon */}
+                            <div className="shrink-0">
+                              {asset.status === 'complete' && (
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-green-500">
+                                  <svg className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              )}
+                              {asset.status === 'generating' && (
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-500">
+                                  <svg className="h-3.5 w-3.5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                  </svg>
+                                </div>
+                              )}
+                              {asset.status === 'error' && (
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500">
+                                  <svg className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </div>
+                              )}
+                              {asset.status === 'pending' && (
+                                <div className="h-7 w-7 rounded-full border-2 border-gray-200 bg-white flex items-center justify-center">
+                                  <span className="text-[10px] font-bold text-gray-300">{asset.num}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className={cn(
+                                  'text-sm font-semibold',
+                                  asset.status === 'complete' ? 'text-green-800'
+                                    : asset.status === 'generating' ? 'text-purple-800'
+                                    : asset.status === 'error' ? 'text-red-800'
+                                    : 'text-gray-400',
+                                )}>
+                                  {asset.num} {asset.name}
+                                </span>
+                                <span className="text-[10px] uppercase text-gray-300">.{asset.ext}</span>
+                              </div>
+                              {asset.status === 'generating' && asset.stage && (
+                                <p className="mt-0.5 text-xs text-purple-600 animate-pulse">{asset.stage}</p>
+                              )}
+                              {asset.status === 'error' && asset.error && (
+                                <p className="mt-0.5 text-xs text-red-600 truncate">{asset.error}</p>
+                              )}
+                              {asset.status === 'complete' && asset.completedAt && (
+                                <p className="mt-0.5 text-xs text-green-600">
+                                  Complete · {new Date(asset.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* Full Session checkpoint */}
+          {phase === 'checkpoint' && session && (
+            <div className="flex flex-1 overflow-hidden">
+              {/* Completed asset content */}
+              <div className="flex-1 overflow-y-auto border-r border-gray-200 p-8">
+                {(() => {
+                  const assets = session.generatedFiles?.assets ?? []
+                  const currentIdx = session.currentAsset ?? 0
+                  const currentAsset = assets[currentIdx]
+                  return (
+                    <div className="max-w-2xl">
+                      <div className="mb-4 flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500">
+                          <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <h2 className="text-base font-bold text-gray-900">
+                          {currentAsset ? `${currentAsset.num} ${currentAsset.name} — Generated` : 'Asset Generated'}
+                        </h2>
+                      </div>
+                      {currentAsset?.content ? (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50">
+                          <div className="max-h-[60vh] overflow-y-auto p-6">
+                            <pre className="whitespace-pre-wrap font-mono text-[11px] text-gray-700 leading-relaxed">
+                              {currentAsset.content}
+                            </pre>
+                          </div>
+                          <div className="border-t border-gray-200 px-4 py-2">
+                            <button
+                              onClick={() => currentAsset && downloadAsset(currentAsset)}
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              Download {currentAsset.name} (.{currentAsset.ext})
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400">Content loading…</p>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
-              <div>
-                <p className="text-lg font-semibold text-gray-900">Asset generation coming soon</p>
-                <p className="mt-1 text-sm text-gray-500 max-w-md">
-                  Session created. Confirm the intake JSON is correct before asset generation is built.
-                </p>
+
+              {/* Sparring checkpoint panel */}
+              <div className="w-80 shrink-0 flex flex-col border-l border-gray-200 bg-gray-50">
+                <div className="flex-1 overflow-y-auto p-5">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Sparring Checkpoint</p>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <p className="text-sm text-blue-900 leading-relaxed whitespace-pre-line">
+                      {session.generatedFiles?.checkpointQuestions ?? ''}
+                    </p>
+                  </div>
+                  <div className="mt-4">
+                    <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                      Notes or edit requests (optional)
+                    </label>
+                    <textarea
+                      value={approveNotes}
+                      onChange={e => setApproveNotes(e.target.value)}
+                      rows={3}
+                      placeholder="e.g. Shorten the differentiators section, add more case study detail…"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 placeholder-gray-400 focus:border-blue-400 focus:outline-none resize-none"
+                    />
+                  </div>
+                </div>
+                <div className="shrink-0 border-t border-gray-200 p-4 flex flex-col gap-2">
+                  <button
+                    onClick={() => void approveCheckpoint()}
+                    disabled={approving}
+                    className={cn(
+                      'w-full rounded-lg py-2.5 text-sm font-semibold text-white transition-colors',
+                      approving ? 'cursor-not-allowed bg-blue-300' : 'bg-blue-500 hover:bg-blue-600',
+                    )}
+                  >
+                    {approving ? 'Approving…' : 'Approve → Next Asset'}
+                  </button>
+                  <button
+                    onClick={() => void cancelGeneration()}
+                    disabled={cancelling}
+                    className="w-full rounded-lg border border-gray-200 py-2 text-xs text-gray-500 hover:bg-gray-100 transition-colors"
+                  >
+                    {cancelling ? 'Cancelling…' : 'Cancel generation'}
+                  </button>
+                </div>
               </div>
-              <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-6 py-4 text-left max-w-lg w-full">
-                <p className="text-xs font-semibold text-gray-600 mb-3">Files that will be generated:</p>
-                <div className="flex flex-col gap-1.5">
-                  {ASSETS.map((a) => (
-                    <div key={a.index} className="flex items-center gap-2 text-xs text-gray-600">
-                      <span className="font-mono text-[10px] text-gray-400 w-6">{a.num}</span>
-                      <span className="font-medium">{a.name}</span>
-                      <span className="ml-auto text-gray-400 uppercase text-[10px]">.{a.ext}</span>
+            </div>
+          )}
+
+          {/* Delivery */}
+          {phase === 'delivery' && session && (
+            <div className="flex-1 overflow-y-auto p-8">
+              <div className="max-w-3xl mx-auto">
+                <div className="mb-6 flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-green-500">
+                    <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">All 8 assets ready</h2>
+                    <p className="text-sm text-gray-500">{clientName} {verticalName} GTM Kit</p>
+                  </div>
+                </div>
+
+                {/* Consistency issues */}
+                {(session.generatedFiles?.consistencyIssues ?? []).length > 0 && (
+                  <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+                    <p className="mb-2 text-sm font-semibold text-amber-800">Consistency checks flagged {session.generatedFiles.consistencyIssues!.length} issue{session.generatedFiles.consistencyIssues!.length > 1 ? 's' : ''}</p>
+                    <ul className="flex flex-col gap-1">
+                      {session.generatedFiles.consistencyIssues!.map((issue, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-amber-700">
+                          <span className="mt-0.5 shrink-0">⚠</span>
+                          <span>{issue}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Download grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  {(session.generatedFiles?.assets ?? []).map((asset) => (
+                    <div
+                      key={asset.index}
+                      className={cn(
+                        'flex items-center justify-between rounded-xl border px-4 py-3',
+                        asset.status === 'complete' ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-50',
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{asset.num} {asset.name}</p>
+                        <p className="text-[10px] uppercase text-gray-400">.{asset.ext} · markdown</p>
+                      </div>
+                      <button
+                        onClick={() => downloadAsset(asset)}
+                        disabled={asset.status !== 'complete'}
+                        className={cn(
+                          'ml-3 shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                          asset.status === 'complete'
+                            ? 'bg-[#a200ee] text-white hover:bg-[#8800cc]'
+                            : 'cursor-not-allowed bg-gray-200 text-gray-400',
+                        )}
+                      >
+                        Download
+                      </button>
                     </div>
                   ))}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {ASSETS.map((a) => (
-                    <code key={a.index} className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] text-gray-600">
-                      {filename(a)}
-                    </code>
-                  ))}
-                </div>
+
+                {/* Download all hint */}
+                <p className="mt-4 text-center text-xs text-gray-400">
+                  Files are named: {clientName} {verticalName} Kit - 01 Brochure.md etc.
+                </p>
               </div>
             </div>
           )}

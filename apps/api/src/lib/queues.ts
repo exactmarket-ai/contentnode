@@ -283,3 +283,19 @@ export function getBoxVersionScanQueue(): Queue<BoxVersionScanJobData> {
   }
   return boxVersionScanQueue
 }
+
+export const QUEUE_KIT_GENERATION = 'kit-generation'
+
+export interface KitGenerationJobData {
+  sessionId: string
+  agencyId: string
+  assetIndex: number
+}
+
+let kitGenerationQueue: Queue<KitGenerationJobData> | null = null
+export function getKitGenerationQueue(): Queue<KitGenerationJobData> {
+  if (!kitGenerationQueue) {
+    kitGenerationQueue = new Queue<KitGenerationJobData>(QUEUE_KIT_GENERATION, { connection: getBullMQConnection() })
+  }
+  return kitGenerationQueue
+}
