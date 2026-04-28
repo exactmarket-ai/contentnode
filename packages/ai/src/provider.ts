@@ -117,6 +117,11 @@ async function callAnthropic(config: ModelConfig, prompt: string, images?: Image
 // OpenAI
 // ─────────────────────────────────────────────────────────────────────────────
 
+// o1/o3/o4 reasoning models and GPT-5.x use max_completion_tokens instead of max_tokens
+function usesMaxCompletionTokens(model: string): boolean {
+  return /^o\d/i.test(model) || /gpt-5/i.test(model)
+}
+
 async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelResult> {
   const apiKey = config.api_key_ref ? resolveApiKey(config.api_key_ref) : (process.env.OPENAI_API_KEY ?? '')
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
@@ -127,10 +132,15 @@ async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelRes
     { role: 'user', content: prompt },
   ]
 
+  const tokenLimit = config.max_tokens ?? 4096
+  const tokenParam = usesMaxCompletionTokens(config.model)
+    ? { max_completion_tokens: tokenLimit }
+    : { max_tokens: tokenLimit }
+
   const response = await client.chat.completions.create({
     model: config.model,
     messages,
-    max_tokens: config.max_tokens ?? 4096,
+    ...tokenParam,
     ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
   })
 
