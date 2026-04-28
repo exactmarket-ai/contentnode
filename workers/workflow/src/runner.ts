@@ -49,6 +49,8 @@ import { SceneParserExecutor } from './executors/sceneParser.js'
 import { FramesConfigExecutor } from './executors/framesConfig.js'
 import { StoryboardComposerExecutor } from './executors/storyboardComposer.js'
 import { PdfAssemblerExecutor } from './executors/pdfAssembler.js'
+import { StoryboardFrameGenExecutor } from './executors/storyboardFrameGen.js'
+import { StoryboardPdfBuilderExecutor } from './executors/storyboardPdfBuilder.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -152,8 +154,10 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'source:video-script-reader':    VideoScriptReaderExecutor,
   'logic:scene-parser':            SceneParserExecutor,
   'logic:frames-config':           FramesConfigExecutor,
+  'logic:storyboard-frame-gen':    StoryboardFrameGenExecutor,
   'logic:storyboard-composer':     StoryboardComposerExecutor,
   'output:pdf-assembler':          PdfAssemblerExecutor,
+  'output:storyboard-pdf-builder': StoryboardPdfBuilderExecutor,
 }
 
 async function loadTranscriptText(sessionId: string): Promise<string | null> {

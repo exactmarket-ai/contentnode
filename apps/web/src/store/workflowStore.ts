@@ -197,7 +197,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   // Video Storyboard pipeline
   {
     type: 'source', subtype: 'video-script-reader',
-    label: 'Video Script Reader', description: 'Load a video script from a GTM Kit session or upstream input',
+    label: 'Video Script Reader', description: 'Load a video script from a GTM Kit session or upstream text input',
     category: 'video', icon: 'FileVideo',
     defaultConfig: { subtype: 'video-script-reader', source: 'passthrough', kitSessionId: '', assetIndex: 5 },
   },
@@ -208,21 +208,33 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     defaultConfig: { subtype: 'scene-parser' },
   },
   {
+    type: 'logic', subtype: 'storyboard-frame-gen',
+    label: 'Frame Generator', description: 'Generate AI images for every scene using GPT Image 2 (1–4 frames per scene)',
+    category: 'video', icon: 'Image',
+    defaultConfig: { subtype: 'storyboard-frame-gen', framesPerScene: 1, clientName: '', verticalName: '' },
+  },
+  {
+    type: 'output', subtype: 'storyboard-pdf-builder',
+    label: 'Storyboard PDF', description: 'Render all scenes to a branded PDF storyboard and upload to storage',
+    category: 'video', icon: 'BookMarked',
+    defaultConfig: { subtype: 'storyboard-pdf-builder', clientName: '', verticalName: '', version: 'v1', filename: '' },
+  },
+  {
     type: 'logic', subtype: 'frames-config',
-    label: 'Frames Config', description: 'Set how many storyboard frames to generate per scene (1–4)',
+    label: 'Frames Config', description: 'Set how many storyboard frames to generate per scene (1–4) — legacy node',
     category: 'video', icon: 'LayoutGrid',
     defaultConfig: { subtype: 'frames-config', framesPerScene: 1 },
   },
   {
     type: 'logic', subtype: 'storyboard-composer',
-    label: 'Storyboard Composer', description: 'Render a storyboard page to PDF using scene data and brand colors',
+    label: 'Storyboard Composer', description: 'Render a single storyboard page to PDF — use Storyboard PDF for full pipelines',
     category: 'video', icon: 'PanelLeft',
     defaultConfig: { subtype: 'storyboard-composer', clientName: '', verticalName: '' },
   },
   {
     type: 'output', subtype: 'pdf-assembler',
-    label: 'PDF Assembler', description: 'Combine storyboard pages into a single downloadable PDF',
-    category: 'video', icon: 'BookMarked',
+    label: 'PDF Assembler', description: 'Combine individual PDF page buffers into one file — use Storyboard PDF for full pipelines',
+    category: 'video', icon: 'FileText',
     defaultConfig: { subtype: 'pdf-assembler', filename: '' },
   },
   {
