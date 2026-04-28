@@ -1,8 +1,14 @@
 FROM --platform=linux/amd64 node:20-alpine
 
-# bust Railway cache 2026-04-25
-RUN apk upgrade --no-cache && apk add --no-cache openssl ffmpeg font-dejavu
+# bust Railway cache 2026-04-28
+RUN apk upgrade --no-cache && apk add --no-cache \
+    openssl ffmpeg font-dejavu \
+    chromium nss freetype harfbuzz ca-certificates ttf-freefont
 RUN corepack enable pnpm
+
+# Tell Puppeteer to use the system Chromium — skip downloading its own binary
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /app
 
