@@ -5,6 +5,7 @@
  */
 
 import puppeteer, { type Browser } from 'puppeteer'
+import { existsSync } from 'node:fs'
 import type { SceneObject } from './executors/sceneParser.js'
 import type { DocStyle } from './kitGenerator.js'
 
@@ -14,11 +15,21 @@ import type { DocStyle } from './kitGenerator.js'
 
 let sharedBrowser: Browser | null = null
 
+function resolveChromiumPath(): string | undefined {
+  const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH
+  if (fromEnv && existsSync(fromEnv)) return fromEnv
+  const candidates = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable']
+  return candidates.find(p => existsSync(p))
+}
+
 export async function getSharedBrowser(): Promise<Browser> {
   if (!sharedBrowser || !sharedBrowser.connected) {
+    const executablePath = resolveChromiumPath()
+    console.log(`[storyboard] launching Chromium at: ${executablePath ?? '(puppeteer default)'}`)
     sharedBrowser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      executablePath,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     })
   }
   return sharedBrowser
