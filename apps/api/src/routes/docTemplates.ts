@@ -471,9 +471,10 @@ export async function docTemplateRoutes(app: FastifyInstance) {
 
   // POST /:id/fill — fill template with variable values, return binary .docx
   app.post('/:id/fill', async (req, reply) => {
+    try {
     const { agencyId } = req.auth
     const { id } = req.params as { id: string }
-    const body = req.body as { variables?: Record<string, string>; filename?: string }
+    const body = (req.body ?? {}) as { variables?: Record<string, string>; filename?: string }
 
     const template = await prisma.docTemplate.findFirst({ where: { id, agencyId } })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
@@ -618,6 +619,11 @@ export async function docTemplateRoutes(app: FastifyInstance) {
         ?? (err instanceof Error ? err.message : String(err))
       console.error('[docTemplates/fill] render failed:', detail)
       return reply.code(422).send({ error: 'Template rendering failed', detail })
+    }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[docTemplates/fill] unhandled error:', msg, err)
+      return reply.code(500).send({ error: 'Fill failed', detail: msg })
     }
   })
 
