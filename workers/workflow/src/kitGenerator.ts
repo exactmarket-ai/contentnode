@@ -624,6 +624,19 @@ Every version's final CTA must use the exact URL from primary_cta.url. If primar
     // 07 Web Page Copy
     `Using the intake JSON provided, generate web page copy in markdown format for a vertical landing page.
 
+CRITICAL RULES:
+1. CTA TEXT: Button and link labels must NEVER include audience descriptions, targeting metadata, or stage language. Only clean labels: "[Book a Demo]", "[Get Started]", "[See How It Works]", "[Download]", "[View]". If primary_cta.name is a clean label use it — otherwise rewrite it to be clean.
+2. PLATFORM-AGNOSTIC LANGUAGE in all public-facing sections. Replace: "Monday.com Integration" → "PM Tool Integration"; "Box Integration" → "File Delivery Integration"; "GPTZero, Originality.ai, Copyleaks" → "configurable AI detection services"; "Monday status changes" → "status changes in your PM tool"; "Claude, GPT-5, Ollama" → "leading AI models". Never name specific third-party vendors in public copy.
+3. 3-BOX BODIES: Exactly ONE sentence, maximum 15 words. No conjunctions that extend it. No second sentence.
+4. SERVICE CARDS: One sentence only.
+
+## Cover
+
+# [vertical.name] Web Page Copy
+**Client:** [vertical.client_name]
+**URL:** /[slugify vertical.name]/
+Draft v1
+
 ## Page Metadata
 - **URL:** /[slugify vertical.name]/
 - **Title tag:** [vertical.taglines[0] | vertical.client_name] (max 60 chars)
@@ -633,8 +646,8 @@ Every version's final CTA must use the exact URL from primary_cta.url. If primar
 **Headline:** [vertical.taglines[0]]
 **Sub-headline:** [derived from vertical.positioning_statement — 1 sentence, active voice]
 **Benefit pills:** [differentiators[0].label] | [differentiators[1].label] | [differentiators[2].label]
-**CTA 1:** [primary_cta.name] → [primary_cta.url]
-**CTA 2:** See how it works ↓
+**CTA 1:** [primary_cta.name — clean label only, no audience description] → [primary_cta.url]
+**CTA 2:** [See How It Works] ↓
 
 ## Intro
 **Sub-heading:** [derived from market_narrative — 1 sentence]
@@ -642,36 +655,73 @@ Every version's final CTA must use the exact URL from primary_cta.url. If primar
 **Intro callout:** 2-sentence paragraph derived from vertical.positioning_statement and market_narrative
 
 ## 3-Box Treatment
-[3 boxes — MAXIMUM 2 LINES EACH. Derive from top 3 differentiators[]. Bold title + max 1 sentence.]
+[Exactly 3 boxes. Each box: bold headline + exactly ONE sentence of max 15 words. Derive from top 3 differentiators[]. No second sentence. No exceptions.]
+
+### Box 1
+**[differentiators[0].label]**
+[ONE sentence, max 15 words, derived from differentiators[0].description]
+
+### Box 2
+**[differentiators[1].label]**
+[ONE sentence, max 15 words, derived from differentiators[1].description]
+
+### Box 3
+**[differentiators[2].label]**
+[ONE sentence, max 15 words, derived from differentiators[2].description]
 
 ## CTA Banner
-[primary_cta.name] — [primary_cta.description]
-→ [primary_cta.url]
+**[primary_cta.name — clean label]**
+[primary_cta.description — 1 sentence max]
+→ [[primary_cta.name]] [primary_cta.url]
 
 ## Solution Stack
 Group services by pillar from service_stack[]. Each service card:
-**[service.service]** — [service.what_it_delivers — ONE SENTENCE MAXIMUM]
+**[service.service]** — [service.what_it_delivers — ONE SENTENCE MAXIMUM. No specific tool names.]
 
 ## Segments
-[One card per segment from segments[]. Each card: segment.name as bold title, then ONE SENTENCE ONLY — the segment.core_pain framed as active tension. No exceptions.]
+[One card per segment from segments[]. Format each card exactly as below:]
+
+### [segments[N].name]
+*[segments[N].buyer_titles joined with " · " — if buyer_titles empty, derive: "Head of [function] · VP [function]"]*
+[segments[N].core_pain framed as active tension — ONE SENTENCE ONLY]
+**ContentNode delivers:** [3–4 relevant capability names from service_stack[], comma-separated, no sentences]
 
 ## Case Studies
-[2 cards from case_studies[]. Each: client_profile, headline_stat, outcomes (2 sentences max)]
+[Always show exactly 2 structured cards. Use real data from case_studies[] if available. If case_studies[] is empty or has fewer than 2 entries, fill remaining cards with the placeholder structure below. Never show a plain notice or skip this section.]
+
+### [case_studies[0].client_profile if available, else "[Segment] Engagement"]
+**Situation:** [case_studies[0].situation if available, else "[Case study to be added]"]
+**What We Delivered:** [case_studies[0].what_we_delivered if available, else "[Case study to be added]"]
+**Outcome:** [case_studies[0].headline_stat if available, else "[Case study to be added]"]
+[[View Full Case Study →]]
+
+### [case_studies[1].client_profile if available, else "[Segment] Engagement"]
+**Situation:** [case_studies[1].situation if available, else "[Case study to be added]"]
+**What We Delivered:** [case_studies[1].what_we_delivered if available, else "[Case study to be added]"]
+**Outcome:** [case_studies[1].headline_stat if available, else "[Case study to be added]"]
+[[View Full Case Study →]]
 
 ## Resources
-*eBook* — [vertical.name] [vertical.client_name] eBook → download
-*Brochure* — [vertical.name] [vertical.client_name] Brochure → download
-[ONLY these two items in the resources section]
+
+### eBOOK
+**[vertical.name] [vertical.client_name] eBook**
+[One sentence: what insight or framework the eBook delivers, derived from market_narrative]
+[[Download]]
+
+### BROCHURE
+**[vertical.name] [vertical.client_name] Brochure**
+[One sentence: what the brochure covers, derived from positioning_statement]
+[[View]]
 
 ## Why Us
-Stats bar from proof_points[].
+[Stats bar using proof_points[]. Format each as: **[proof_points[N].stat]** [proof_points[N].label]. Render as a horizontal row separated by · . If proof_points[] is empty, use 3 placeholder blocks: **[Stat]** [Label to be added] · **[Stat]** [Label to be added] · **[Stat]** [Label to be added]. NO technical architecture copy — no BullMQ, no PostgreSQL, no named AI models, no named integrations.]
 
 ## Final CTA
-[primary_cta.name]
-[primary_cta.description]
-→ [primary_cta.url]
+**[primary_cta.name — clean label only]**
+[primary_cta.description — 1 sentence]
+→ [[primary_cta.name]] [primary_cta.url]
 
-ENFORCE: Segment cards = 1 sentence only. Service cards = 1 sentence only. 3-box items = max 2 lines. Resources = eBook and Brochure only.`,
+ENFORCE: CTA labels = clean text only, zero audience metadata. 3-box bodies = 1 sentence max 15 words. Segment cards = buyer titles + 1-sentence tension + ContentNode delivers list. Case studies = always 2 structured cards. Resources = eBOOK card + BROCHURE card only. Why Us = proof point stats bar, no tech jargon. Zero specific third-party tool names in public copy.`,
 
     // 08 Internal Brief
     `Using the intake JSON provided, generate an internal GTM launch brief in markdown format.
