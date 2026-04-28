@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, assetUrl } from '@/lib/api'
 import { downloadKit, type DocStyle } from '@/lib/kitDownload'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -477,7 +477,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
 
   const downloadStoryboard = () => {
     if (!session) return
-    window.open(`/api/v1/kit-sessions/${session.id}/storyboard/download`, '_blank')
+    window.open(assetUrl(`/api/v1/kit-sessions/${session.id}/storyboard/download`), '_blank')
   }
 
   const reexportAsset = async (asset: AssetRecord) => {
