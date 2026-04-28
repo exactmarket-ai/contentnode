@@ -283,13 +283,6 @@ function validateIntake(intake: ReturnType<typeof mapFrameworkToIntake>): Valida
   }
 
   const caseStudiesWithOutcomes = intake.case_studies.filter((c) => c.outcomes.trim())
-  if (caseStudiesWithOutcomes.length < 2) {
-    errors.push({
-      field: 'case_studies',
-      message: `Section 09: At least 2 case studies with outcomes are required (found ${caseStudiesWithOutcomes.length})`,
-      blocking: true,
-    })
-  }
 
   const publicCases = intake.case_studies.filter((c) => c.outcomes.trim())
   const unapproved = publicCases.filter((c) => !c.approved_for_use)
