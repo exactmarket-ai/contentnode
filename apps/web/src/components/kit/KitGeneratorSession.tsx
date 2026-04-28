@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+import { downloadKit } from '@/lib/kitDownload'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,14 +65,14 @@ interface IntakeResponse {
 // ── Asset manifest ────────────────────────────────────────────────────────────
 
 const ASSETS = [
-  { index: 0, num: '01', name: 'Brochure',              ext: 'md' },
-  { index: 1, num: '02', name: 'eBook',                 ext: 'html' },
-  { index: 2, num: '03', name: 'Sales Cheat Sheet',     ext: 'html' },
-  { index: 3, num: '04', name: 'BDR Emails',            ext: 'md' },
-  { index: 4, num: '05', name: 'Customer Deck',         ext: 'md' },
-  { index: 5, num: '06', name: 'Video Script',          ext: 'md' },
-  { index: 6, num: '07', name: 'Web Page Copy',         ext: 'md' },
-  { index: 7, num: '08', name: 'Internal Brief',        ext: 'md' },
+  { index: 0, num: '01', name: 'Brochure',          ext: 'docx' },
+  { index: 1, num: '02', name: 'eBook',             ext: 'html' },
+  { index: 2, num: '03', name: 'Sales Cheat Sheet', ext: 'html' },
+  { index: 3, num: '04', name: 'BDR Emails',        ext: 'docx' },
+  { index: 4, num: '05', name: 'Customer Deck',     ext: 'pptx' },
+  { index: 5, num: '06', name: 'Video Script',      ext: 'docx' },
+  { index: 6, num: '07', name: 'Web Page Copy',     ext: 'docx' },
+  { index: 7, num: '08', name: 'Internal Brief',    ext: 'docx' },
 ]
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -387,17 +388,9 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
     }
   }
 
-  const downloadAsset = (asset: AssetRecord) => {
+  const downloadAsset = async (asset: AssetRecord) => {
     if (!asset.content) return
-    const blob = new Blob([asset.content], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${clientName} ${verticalName} Kit - ${asset.num} ${asset.name}.${asset.ext}`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    await downloadKit({ ...asset, content: asset.content }, clientName, verticalName)
   }
 
   // Close with escape
@@ -628,7 +621,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                           index: i,
                           name: ['Brochure','eBook','Sales Cheat Sheet','BDR Emails','Customer Deck','Video Script','Web Page Copy','Internal Brief'][i],
                           num: ['01','02','03','04','05','06','07','08'][i],
-                          ext: ['md','html','html','md','md','md','md','md'][i],
+                          ext: ['docx','html','html','docx','pptx','docx','docx','docx'][i],
                           status: 'pending' as const,
                         }))).map((asset) => (
                           <div
@@ -840,7 +833,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900 truncate">{asset.num} {asset.name}</p>
-                        <p className="text-[10px] uppercase text-gray-400">.{asset.ext} · markdown</p>
+                        <p className="text-[10px] uppercase text-gray-400">.{asset.ext}</p>
                       </div>
                       <button
                         onClick={() => downloadAsset(asset)}
@@ -860,7 +853,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
 
                 {/* Download all hint */}
                 <p className="mt-4 text-center text-xs text-gray-400">
-                  Files are named: {clientName} {verticalName} Kit - 01 Brochure.md etc.
+                  Files are named: {clientName} {verticalName} Kit - 01 Brochure.docx etc.
                 </p>
               </div>
             </div>

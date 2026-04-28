@@ -25,14 +25,14 @@ export interface GeneratedFiles {
 }
 
 export const ASSET_DEFINITIONS: Omit<AssetRecord, 'status'>[] = [
-  { index: 0, name: 'Brochure',           num: '01', ext: 'md'   },
+  { index: 0, name: 'Brochure',           num: '01', ext: 'docx' },
   { index: 1, name: 'eBook',              num: '02', ext: 'html' },
   { index: 2, name: 'Sales Cheat Sheet',  num: '03', ext: 'html' },
-  { index: 3, name: 'BDR Emails',         num: '04', ext: 'md'   },
-  { index: 4, name: 'Customer Deck',      num: '05', ext: 'md'   },
-  { index: 5, name: 'Video Script',       num: '06', ext: 'md'   },
-  { index: 6, name: 'Web Page Copy',      num: '07', ext: 'md'   },
-  { index: 7, name: 'Internal Brief',     num: '08', ext: 'md'   },
+  { index: 3, name: 'BDR Emails',         num: '04', ext: 'docx' },
+  { index: 4, name: 'Customer Deck',      num: '05', ext: 'pptx' },
+  { index: 5, name: 'Video Script',       num: '06', ext: 'docx' },
+  { index: 6, name: 'Web Page Copy',      num: '07', ext: 'docx' },
+  { index: 7, name: 'Internal Brief',     num: '08', ext: 'docx' },
 ]
 
 export function initAssets(): AssetRecord[] {
@@ -76,7 +76,7 @@ function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>)
 5. **Why Us**: each differentiator from differentiators[] as a single bullet. One line per differentiator. No paragraphs.
 6. **Proof points**: stats from proof_points[] as a callout block
 7. **Case studies**: two cards from case_studies[0] and case_studies[1]. Each card: client_profile | situation (2 sentences max) | engagement (2 sentences max) | outcomes (2 sentences max). Omit any "Read the full story" rows.
-8. **Back cover CTA**: primary_cta.name as headline, primary_cta.description as body, primary_cta.url as action link.
+8. **Back cover CTA**: primary_cta.name as headline, primary_cta.description as body, then the exact URL from primary_cta.url on its own line as plain text. IMPORTANT: Substitute the actual URL value from the intake JSON — do not output "primary_cta.url" as a literal string.
 
 Enforce all copy length rules. Output clean markdown only.`,
 
@@ -86,12 +86,12 @@ Enforce all copy length rules. Output clean markdown only.`,
 Structure and requirements:
 - CSS: define --color-primary, --color-dark, --color-accent CSS variables at :root. Use professional dark navy (#1a2744) for dark sections and accent (#0070f3) for highlights.
 - Navigation bar: vertical name on left, 5 section links on right (The Landscape, In Practice, What We Do, Why Us, Talk to Us)
-- Cover section: dark background (#1a2744), large headline from vertical.taglines[0], 3 stats from statistics[] in a row
+- Cover section: dark background (#1a2744), large headline using the exact verbatim text of vertical.taglines[0] (copy character-for-character), 3 stats from statistics[] in a row
 - Section 1 — The Landscape: 4-stat grid (stat + label + source), challenge rows with colored service pillar pills (one row per challenge from challenges[]), regulatory cards from regulatory_frameworks[]
 - Section 2 — In Practice: 2 case study cards from case_studies[] — client_profile, situation, outcomes, headline_stat
 - Section 3 — What We Do: 4 pillar bands from pillars[], each with value_prop and key_services bullet list and matching proof point from proof_points[]
 - Section 4 — Why Us: differentiator cards from differentiators[], proof strip with stats from proof_points[]
-- Section 5 — Talk to Us: split CTA block — left side: primary_cta.name + primary_cta.description + CTA button linking to primary_cta.url; right side: relevant stat
+- Section 5 — Talk to Us: split CTA block — left side: primary_cta.name + primary_cta.description + CTA button linking to the actual URL from primary_cta.url (substitute the real URL from the intake JSON, also show it as visible plain text beneath the button); right side: relevant stat
 - Sources footnote: numbered list of all stat sources from statistics[].map(s => s.source + ' (' + s.year + ')')
 - Footer: vertical.client_name, vertical.name, document_control.document_version if available
 
@@ -112,7 +112,7 @@ Requirements:
   3. Regulatory context table from regulatory_frameworks[]: columns = Framework | Our Capability | Sales Note
   4. 2 case study cards from case_studies[]
   5. Proof points from proof_points[] and key stats from statistics[]
-  6. CTA block: 3 scripted versions of the primary ask (different lengths: 1 sentence, 2 sentences, 3 sentences) based on primary_cta
+  6. CTA block: 3 scripted versions of the primary ask (different lengths: 1 sentence, 2 sentences, 3 sentences) based on primary_cta. Every version must end with the exact URL from primary_cta.url as a plain-text standalone line. Substitute the actual URL value from the intake JSON — never output the field path name.
 
 Output complete valid HTML only.`,
 
@@ -141,12 +141,12 @@ One email block per segment from segments[], plus one AI/Innovation email for al
 ---
 [Email body — MAXIMUM 5 LINES. Count lines carefully. Trim immediately if over 6 lines. Each line = one sentence or one short thought. No long paragraphs.]
 
-**CTA:** [primary assessment offer] → [primary_cta.url]
+**CTA:** [primary assessment offer] → [the actual URL from primary_cta.url in the intake JSON]
 
 ---
 [customization note in brackets]
 
-ENFORCE: No email body may exceed 6 lines. Count before writing. Every email must end with the primary CTA pointing to primary_cta.url.`,
+ENFORCE: No email body may exceed 6 lines. Count before writing. Every email CTA line must contain the actual URL value from primary_cta.url as plain text — never output "primary_cta.url" as a literal string.`,
 
     // 05 Customer Deck
     `Using the intake JSON provided, generate a customer presentation in markdown format structured as slides. Use ## Slide N: [Title] as the header for each slide.
@@ -192,7 +192,7 @@ Stats strip from proof_points[]. Below: 6 differentiator cards from differentiat
 4 paths color-coded by scenario. Derive paths from regulatory_frameworks[] and segments[]. Each path: scenario name, trigger condition, entry point/CTA.
 
 ## Slide 13: Closing
-Primary tagline (vertical.taglines[0]), primary_cta block, proof_points[] as closing stats.
+Exact text of vertical.taglines[0], primary_cta.name and primary_cta.description, then the actual URL from primary_cta.url as a plain-text standalone line (substitute the real URL value from the intake JSON — never output the field path name), plus proof_points[] as closing stats.
 
 ENFORCE: Every statistic must have a source citation on its slide. Flag [UNSOURCED] next to any stat without a source.`,
 
@@ -351,6 +351,23 @@ CRITICAL FORMATTING RULES:
   return base + instructions[assetIndex]
 }
 
+// Indices of HTML assets — strip tags before substring checks so entity-encoded
+// content or href attributes don't cause false negatives
+const HTML_ASSET_INDICES = new Set([1, 2])
+
+function stripHtmlForCheck(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, ' ')           // remove tags
+    .replace(/&amp;/g, 'and')
+    .replace(/&[a-z]+;/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function searchable(a: AssetRecord): string {
+  if (!a.content) return ''
+  return HTML_ASSET_INDICES.has(a.index) ? stripHtmlForCheck(a.content) : a.content
+}
+
 function runConsistencyChecks(assets: AssetRecord[], intake: Record<string, unknown>): string[] {
   const issues: string[] = []
   const vertical = (intake.vertical ?? {}) as Record<string, unknown>
@@ -359,6 +376,7 @@ function runConsistencyChecks(assets: AssetRecord[], intake: Record<string, unkn
   const whatNotLines = (vertical.what_we_are_not as string[] | undefined) ?? []
 
   if (primaryCtaUrl) {
+    // Check raw content for URL (href attributes in HTML also contain it)
     const missing = assets
       .filter(a => a.content && !a.content.includes(primaryCtaUrl))
       .map(a => a.name)
@@ -368,10 +386,11 @@ function runConsistencyChecks(assets: AssetRecord[], intake: Record<string, unkn
   }
 
   if (taglines[0]) {
-    const tag = taglines[0].substring(0, 25)
+    // Use 15-char prefix; strip HTML for eBook/Sales Cheat Sheet before comparing
+    const tag = taglines[0].substring(0, 15)
     const taglineAssets = [0, 1, 4, 6]
     const missing = taglineAssets
-      .filter(i => assets[i]?.content && !assets[i].content!.includes(tag))
+      .filter(i => assets[i]?.content && !searchable(assets[i]).includes(tag))
       .map(i => assets[i].name)
     if (missing.length > 0) {
       issues.push(`Primary tagline not detected in: ${missing.join(', ')}`)
@@ -380,7 +399,7 @@ function runConsistencyChecks(assets: AssetRecord[], intake: Record<string, unkn
 
   if (whatNotLines.length > 0 && assets[7]?.content) {
     const sample = whatNotLines[0].substring(0, 20)
-    if (!assets[7].content!.includes(sample)) {
+    if (!searchable(assets[7]).includes(sample)) {
       issues.push(`"What we are NOT" language may be missing or paraphrased in Internal Brief — verify verbatim language`)
     }
   }
