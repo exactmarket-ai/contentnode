@@ -3614,7 +3614,7 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
     id: 'video-storyboard-generator',
     name: 'Video Storyboard Generator',
     description:
-      'Paste or connect a video script with a markdown storyboard table, generate AI images for every scene via GPT Image 2, and assemble a branded PDF storyboard with cover page, timecodes, on-screen text, and animation notes.',
+      'Connect a GTM Kit video script (or paste markdown directly), generate AI images for every scene via GPT Image 2, and assemble a branded PDF storyboard with cover page, timecodes, on-screen text, and animation notes.',
     category: 'video',
     icon: 'Film',
     nodes: [
@@ -3623,13 +3623,13 @@ Return ONLY the rewritten text. No preamble, no explanation.`,
         type: 'source',
         position: { x: 80, y: 200 },
         data: {
-          label: 'Video Script',
-          subtype: 'text-input',
+          label: 'Video Script Reader',
+          subtype: 'video-script-reader',
           config: {
-            subtype: 'text-input',
-            text: '',
-            placeholder:
-              'Paste your video script here. Must include a ## Version A or ## Version B heading followed by a pipe-table with Scene | Time | On-Screen Text | Voiceover | Imagery Suggestion columns.',
+            subtype: 'video-script-reader',
+            source: 'kit_session',
+            kitSessionId: '',
+            assetIndex: 5,
           },
         },
       },

@@ -28,6 +28,7 @@ import { ReviewMinerConfig } from './config/source/ReviewMinerConfig'
 import { SeoIntentConfig } from './config/source/SeoIntentConfig'
 import { AudienceSignalConfig } from './config/source/AudienceSignalConfig'
 import { WrikeSourceConfig } from './config/source/WrikeSourceConfig'
+import { VideoScriptReaderConfig } from './config/source/VideoScriptReaderConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -114,6 +115,8 @@ function NodeConfigForm({
         return <VideoUploadConfig config={config} onChange={onChange} />
       if (subtype === 'text-input')
         return <TextInputConfig config={config} onChange={onChange} />
+      if (subtype === 'video-script-reader')
+        return <VideoScriptReaderConfig config={config} onChange={onChange} />
       if (subtype === 'api-fetch')
         return <ApiFetchConfig config={config} onChange={onChange} />
       if (subtype === 'web-scrape')

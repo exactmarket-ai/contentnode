@@ -64,7 +64,7 @@ export interface NodeRunStatus {
 
 // ─── Node palette definition (used by NodePalette + node factories) ───────────
 
-export type NodeCategory = 'source' | 'logic' | 'output' | 'media' | 'insight' | 'canvas'
+export type NodeCategory = 'source' | 'logic' | 'output' | 'media' | 'video' | 'insight' | 'canvas'
 
 export interface PaletteNodeDef {
   type: string         // matches executor registry key prefix

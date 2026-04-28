@@ -42,7 +42,7 @@ const sortedByLabel = (nodes: PaletteNodeDef[]) =>
   [...nodes].sort((a, b) => a.label.localeCompare(b.label))
 
 // Category display order — Output listed after Media
-const CATEGORY_ORDER: NodeCategory[] = ['source', 'logic', 'media', 'output']
+const CATEGORY_ORDER: NodeCategory[] = ['source', 'logic', 'media', 'video', 'output']
 
 // Number of nodes shown when a category section is collapsed
 const COLLAPSED_PREVIEW = 3
@@ -57,7 +57,7 @@ function writeCollapsed(cats: Set<NodeCategory>) {
 }
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
-  source: 'Source', logic: 'Logic', output: 'Output', media: 'Media', insight: 'Insight', canvas: 'Canvas',
+  source: 'Source', logic: 'Logic', output: 'Output', media: 'Media', video: 'Video', insight: 'Insight', canvas: 'Canvas',
 }
 
 const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
@@ -65,6 +65,7 @@ const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPE
   logic:   NODE_SPEC['ai-model'],
   output:  NODE_SPEC['transform'],
   media:   NODE_SPEC['media'],
+  video:   NODE_SPEC['media'],
   insight: NODE_SPEC['ai-model'],
   canvas:  NODE_SPEC['input'],
 }
@@ -77,6 +78,7 @@ const CATEGORY_TOOLBAR_ICONS: Record<string, IconComponent> = {
   logic:  Icons.GitBranch,
   output: Icons.Share2,
   media:  Icons.Film,
+  video:  Icons.Clapperboard,
 }
 
 // ─── PaletteItem ──────────────────────────────────────────────────────────────
