@@ -1153,13 +1153,25 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   ]
   s08Blocks.forEach(({ heading, value }, i) => {
     if (!value?.trim()) return
+    const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
+    const divider = { style: BorderStyle.SINGLE, size: 1, color: 'D0D6E4' }
     children.push(new Paragraph({
       children: [new TextRun({ text: heading, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: i === 0 ? 0 : 160, after: 60 },
     }))
-    children.push(new Paragraph({
-      children: [new TextRun({ text: value.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
-      spacing: { before: 0, after: 80 },
+    children.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [new TableRow({
+        children: [new TableCell({
+          shading: { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' },
+          borders: { top: none, bottom: divider, left: none, right: none },
+          margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({
+            children: [new TextRun({ text: value.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
+          })],
+        })],
+      })],
+      borders: { top: none, bottom: none, left: none, right: none },
     }))
   })
 
