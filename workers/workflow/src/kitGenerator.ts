@@ -781,142 +781,194 @@ Every version's final CTA must use the exact URL from primary_cta.url. If primar
 
 ════════════════════════════════════════════
 SEGMENT COUNT RULE — NON-NEGOTIABLE:
-Count how many items are in segments[]. Output EXACTLY that many ### segment cards in ## Segments — one card per segment, in order. Do NOT stop at 2. Do NOT skip any segment.
-Examples: segments[] has 5 items → output 5 ### cards. segments[] has 3 items → output 3 ### cards.
-
+Count segments[]. Output EXACTLY that many segment blocks in ## Segments — one per segment, in order.
 URL RULE: If primary_cta.url is empty, null, or "na", write [URL] — never write "na".
+STAT BAR RULE: Stats for the visual strip MUST start with a number or symbol (%, $, ~, <, >). If a stat is word-based (e.g., "vCISO-Led"), keep it as a plain bullet instead.
 
 ════════════════════════════════════════════
-CRITICAL RULES:
-1. CTA TEXT: Only clean labels: "[Book a Demo]", "[Get Started]", "[See How It Works]", "[Download]", "[View]". No audience descriptions, no targeting metadata.
-2. PLATFORM-AGNOSTIC LANGUAGE: "Monday.com" → "your PM tool", "Box" → "your file delivery platform", "GPTZero/Originality.ai/Copyleaks" → "configurable AI detection", "Claude/GPT-5/Ollama" → "leading AI models". No specific vendor names.
-3. 3-BOX HEADINGS: 3-5 words maximum — punchy, no filler.
-4. 3-BOX BODIES: Exactly ONE sentence, maximum 15 words. No second sentence.
-5. SERVICE CARDS: ONE sentence, 15 words maximum. No vendor names.
-6. SOLUTION STACK: MAXIMUM 4 service cards per pillar. Prioritize the most important services.
-7. STATS BAR FORMAT: Output as bullet lines — NEVER as a markdown table or inline text. Use exactly this format:
-   - **[stat value]** | [2-4 word label] | [Source, Year]
+COPY RULES:
+- 3-box headings: 3–5 words — match the benefit pills from hero exactly
+- 3-box body: ONE sentence, maximum 15 words
+- Service card descriptions: ONE sentence, maximum 20 words, no vendor names
+- Segment core pain: ONE sentence, active tension, no passive constructions
+- [vertical.client_name] delivers: 3–5 pipe-separated service names, no descriptions
+- NEVER write "ContentNode delivers:" — always use "[vertical.client_name] delivers:"
+- Platform-agnostic: "leading AI models", no specific tool names in public copy
+
+════════════════════════════════════════════
 
 ────────────────────────────────────────────
 ## Cover
-**[vertical.name] Web Page Copy**
 [vertical.client_name]
-URL: /[slugify vertical.name]/
-Draft v1
+[vertical.name] + [short compliance label from regulatory_frameworks[0].name, e.g. "HIPAA"]
+Web Page Copy
+[primary_cta.url base domain if available, else "[vertical.client_name slug].com/[vertical slug]"]  ·  Draft v1  ·  [current year from document metadata]
 
 ────────────────────────────────────────────
 ## Page Metadata
-- **URL:** /[slugify vertical.name]/
-- **Title tag:** [vertical.taglines[0] | vertical.client_name] (max 60 chars)
-- **Meta description:** [1 sentence from vertical.positioning_statement] (max 155 chars)
+
+**Page URL**
+[full page URL from primary_cta.url base + /[vertical slug], e.g. nexustek.com/healthcare]
+
+**Page title tag**
+[Service 1 + Service 2 for [vertical.name] | [vertical.client_name] — max 60 chars. Use primary service names from pillars[].]
+
+**Meta description**
+[vertical.positioning_statement adapted to 1 sentence, max 155 chars. Describes what [vertical.client_name] provides, for whom, and the primary benefit.]
 
 ────────────────────────────────────────────
-## Hero
-**Headline:** [vertical.taglines[0]]
-**Sub-headline:** [derived from vertical.positioning_statement — 1 sentence, active voice]
-**Benefit pills:** [differentiators[0].label] | [differentiators[1].label] | [differentiators[2].label]
-**CTA 1:** [primary_cta.name — clean label] → [primary_cta.url or [URL] if empty]
-**CTA 2:** [See How It Works] ↓
+## Hero Section
+
+# [HERO HEADLINE IN ALL CAPS. ENDS WITH A PERIOD. Derived from vertical.taglines[0] — short, punchy, consequence-first. Max 6 words. Example: "IT THAT KEEPS HEALTHCARE RUNNING."]
+[Sub-headline — 1 sentence derived from vertical.positioning_statement. Lowercase, active voice, names the service combination and the "without [trade-off]" clause.]
+
+[Three benefit pill labels in brackets on one line — these become the 3-box headings below. Derive from the 3 core capabilities or differentiators most relevant to this vertical.]
+[[Pill 1]]  [[Pill 2]]  [[Pill 3]]
+
+CTA buttons:
+[[primary_cta.name]]  [[See Client Stories]]
+
+**[Secondary sub-heading — "Where [X], [Y], and [Z] Converge" derived from the 3 pillars or differentiators. 6–10 words.]**
+[1 sentence expanding the secondary sub-heading — who this is built for, from [icp] context.]
+
+*[EYEBROW CALLOUT IN ALL CAPS — 4–6 words that sum up the brand promise. Derive from vertical.positioning_statement or brand_voice. Example: "MEET THE MOMENT WITH CONFIDENCE"]*
 
 ────────────────────────────────────────────
-## Intro
-**Sub-heading:** [derived from market_narrative — 1 sentence]
-Output 4 stat lines in EXACTLY this bullet format (no table headers, no Stat/Label/Source column labels):
-- **[statistics[0].stat]** | [statistics[0].label — 2-4 words] | [statistics[0].source, year]
-- **[statistics[1].stat]** | [statistics[1].label — 2-4 words] | [statistics[1].source, year]
-- **[statistics[2].stat]** | [statistics[2].label — 2-4 words] | [statistics[2].source, year]
-- **[statistics[3].stat]** | [statistics[3].label — 2-4 words] | [statistics[3].source, year]
-**Intro callout:** 2-sentence paragraph derived from vertical.positioning_statement and market_narrative
+## Stats
+
+[4 stat lines in bullet format. Stats starting with a number or symbol render as visual boxes:]
+- **[statistics[0].stat]** | [statistics[0].label — 3–6 words including context] | [statistics[0].source]
+- **[statistics[1].stat]** | [statistics[1].label — 3–6 words] | [statistics[1].source]
+- **[statistics[2].stat]** | [statistics[2].label — 3–6 words] | [statistics[2].source]
+- **[statistics[3].stat]** | [statistics[3].label — 3–6 words] | [statistics[3].source]
+
+[INTRO CALLOUT IN ALL CAPS — 1 sentence, uppercase. Derived from market_narrative: who [vertical.client_name] serves and what operational realities they address. Example: "FROM PHYSICIAN GROUPS TO HEALTH SYSTEMS, WE ADDRESS THE OPERATIONAL REALITIES OF MID-MARKET HEALTHCARE."]
 
 ────────────────────────────────────────────
 ## 3-Box Treatment
-[Exactly 3 boxes. Heading: 3-5 words max. Body: ONE sentence, max 15 words. No second sentence.]
 
-### Box 1
-**[differentiators[0].label — 3-5 words max]**
-[ONE sentence, max 15 words, derived from differentiators[0].description]
+[EXACTLY 3 boxes. Heading = the EXACT benefit pill label used in hero. Body = ONE sentence, max 15 words, drawn from challenges[] or differentiators[]. NO second sentence.]
 
-### Box 2
-**[differentiators[1].label — 3-5 words max]**
-[ONE sentence, max 15 words, derived from differentiators[1].description]
+### [Pill 1 label — exact match]
+[ONE sentence. Max 15 words. Consequence of the problem + how [vertical.client_name] solves it.]
 
-### Box 3
-**[differentiators[2].label — 3-5 words max]**
-[ONE sentence, max 15 words, derived from differentiators[2].description]
+### [Pill 2 label — exact match]
+[ONE sentence. Max 15 words.]
+
+### [Pill 3 label — exact match]
+[ONE sentence. Max 15 words.]
 
 ────────────────────────────────────────────
 ## CTA Banner
-**[primary_cta.name — clean label]**
-[primary_cta.description — 1 sentence max]
-→ [[primary_cta.name]] [primary_cta.url or [URL] if empty]
+
+**[vertical.name] IT + [primary_cta.name]**
+[primary_cta.description — 2 sentences. Sentence 1: what it maps/covers. Sentence 2: format — time required, no commitment required.]
+[[Get Started]]
 
 ────────────────────────────────────────────
 ## Solution Stack
-Group services by pillar from service_stack[]. MAXIMUM 4 service cards per pillar.
 
-### [pillar 1 name]
-- **[service name]** — [ONE SENTENCE, max 15 words. No vendor names.]
-[add up to 3 more service cards — maximum 4 total per pillar]
+**[One bold headline for this section — e.g., "The Full IT Stack. One Partner."]**
+[1 sentence: [count of pillars[]] service pillars through [vertical.client_name]'s delivery model — built for [icp context].]
 
-### [pillar 2 name]
-[same format — maximum 4 service cards]
+[For each pillar in pillars[] — output as a ### heading followed by service cards. MAXIMUM 4 service cards per pillar. Each service card format:]
 
-[continue for each pillar — maximum 4 service cards per pillar]
+### [pillar name]
 
-────────────────────────────────────────────
-## Segments
-[Count segments[] first. Output EXACTLY that many ### cards in order:]
+**[pillar name]**
+[Service name from service_stack[] matching this pillar]
+[Description — 1–2 sentences. Named capabilities. No generic statements.]
 
-### [segments[0].name]
-*[segments[0].buyer_titles joined with " · " — if empty, derive: "Head of [function] · VP [function]"]*
-[segments[0].core_pain framed as active tension — ONE SENTENCE ONLY]
-**ContentNode delivers:** [3-4 relevant capability names from service_stack[], pipe-separated, no descriptions]
+**[pillar name]**
+[Next service name]
+[Description — 1–2 sentences.]
 
-[REPEAT for every remaining segment — all must be present]
+[continue — max 4 services per pillar]
 
 ────────────────────────────────────────────
-## Case Studies
-[Always show exactly 2 structured cards. Use case_studies[] if available; fill with placeholder if fewer than 2.]
+## Segments Section
 
-### [case_studies[0].client_profile if available, else "[Segment] Engagement"]
-**Situation:** [case_studies[0].situation if available, else "[Case study to be added]"]
-**What We Delivered:** [case_studies[0].what_we_delivered if available, else "[Case study to be added]"]
-**Outcome:** [case_studies[0].headline_stat if available, else "[Case study to be added]"]
-[[View Full Case Study →]]
+**Built for Every [vertical.name] Segment**
+[1 sentence: from [smallest segment type] to [largest segment type] — one partner, right-sized for every [icp.company_size or "mid-market"] [vertical.name] organisation.]
 
-### [case_studies[1].client_profile if available, else "[Segment] Engagement"]
-**Situation:** [case_studies[1].situation if available, else "[Case study to be added]"]
-**What We Delivered:** [case_studies[1].what_we_delivered if available, else "[Case study to be added]"]
-**Outcome:** [case_studies[1].headline_stat if available, else "[Case study to be added]"]
-[[View Full Case Study →]]
+[EXACTLY one block per segment in segments[], in order. Do NOT skip any. Format:]
+
+**SEGMENT [N]**
+### [segments[N].name]
+*[segments[N].buyer_titles joined with " · " — if empty, derive the most relevant titles for this segment type]*
+[segments[N].core_pain framed as operational consequence — ONE SENTENCE ONLY. Lead with the gap or risk, not the feature.]
+**[vertical.client_name] delivers:**  [3–5 relevant service names from service_stack[], pipe-separated, no descriptions]
+
+────────────────────────────────────────────
+## Case Studies Section
+
+**Proven in [vertical.name]**
+
+[Always output EXACTLY 2 case study blocks. Use case_studies[] data if available; use structured placeholder if fewer than 2 entries.]
+
+*CASE STUDY*
+### [case_studies[0].client_profile | "[Segment type] | [Service type] Engagement" if empty]
+
+**The situation**
+[case_studies[0].situation — 2–3 sentences on who they are and the problem they faced. If empty: "Case study to be added — contact marketing."]
+
+**What [vertical.client_name] delivered**
+[case_studies[0].engagement — 2–3 sentences on what was delivered. If empty: "—"]
+
+[If case_studies[0] has a quote or headline_stat: output it as a blockquote]
+> [case_studies[0].headline_stat or quote — 1 sentence. If both present, use the quote.]
+
+[[View Full Case Study →]]  [case_studies[0].url if available, else omit URL]
+
+*CASE STUDY*
+### [case_studies[1].client_profile | second placeholder if missing]
+
+**The situation**
+[case_studies[1].situation or placeholder]
+
+**What [vertical.client_name] delivered**
+[case_studies[1].engagement or "—"]
+
+[If case_studies[1] has headline_stat or quote: blockquote it]
+
+[[View Full Case Study →]]  [case_studies[1].url if available]
 
 ────────────────────────────────────────────
 ## Resources
 
-### eBOOK
-**[vertical.name] [vertical.client_name] eBook**
-[One sentence: what insight the eBook delivers, derived from market_narrative]
+Explore the full [vertical.name] GTM kit.
+
+**eBOOK**
+[Short punchy title for the eBook — derived from vertical.taglines[] or market_narrative. Not "[vertical.name] [vertical.client_name] eBook". Example: "IT that keeps care moving"]
+[1 sentence: what the eBook helps the reader do or understand — specific to this vertical.]
 [[Download]]
 
-### BROCHURE
-**[vertical.name] [vertical.client_name] Brochure**
-[One sentence: what the brochure covers, derived from positioning_statement]
+**BROCHURE**
+[Short punchy title for the brochure — derived from positioning_statement or differentiators[]. Example: "Secure IT. Uninterrupted Care."]
+[1 sentence: what the brochure covers — service pillars, challenges, case studies.]
 [[View]]
 
 ────────────────────────────────────────────
-## Why Us
-Output as bullet lines in EXACTLY this format (visual strip — no inline text, no dot separators):
-- **[proof_points[0].stat]** | [proof_points[0].label — 2-4 words]
-- **[proof_points[1].stat]** | [proof_points[1].label — 2-4 words]
-[continue for ALL proof_points[]. If proof_points[] is empty, use 3 placeholder lines: - **[Stat]** | Label to be added]
+## Why [vertical.client_name]
+
+[ALL proof_points[] as visual strip bullet lines. Format — stats starting with a number render as visual boxes:]
+- **[proof_points[0].stat]** | [proof_points[0].context — 3–5 words]
+- **[proof_points[1].stat]** | [proof_points[1].context — 3–5 words]
+[continue for ALL proof_points[]. If proof_points[] is empty, use 4 lines: - **[Stat]** | [Label — fill before launch]]
 
 ────────────────────────────────────────────
 ## Final CTA
-**[primary_cta.name — clean label only]**
-[primary_cta.description — 1 sentence]
-→ [[primary_cta.name]] [primary_cta.url or [URL] if empty]
 
-ENFORCE: All segment cards present — count matches segments[]. Stats bar = bullet lines only. Why Us = bullet lines only. Solution stack = max 4 cards per pillar. 3-box headings = 3-5 words. No "na" anywhere. No vendor names in public copy.`,
+# [Question headline — "Ready to [verb] [desired outcome]?" Derived from vertical.positioning_statement or brand_voice. Ends with "?". Example: "Ready to Put IT to Work for Your Patients?"]
+[P1 — 1–2 sentences on what happens in the first conversation. Draw from primary_cta.description — how [vertical.client_name] starts: understanding the environment, where risk exists, where fastest impact is.]
+
+[[primary_cta.name]]  [[View All Services]]
+
+────────────────────────────────────────────
+## Back Cover
+[vertical.client_name]
+[VERTICAL.NAME IN CAPS] + [COMPLIANCE LABEL IN CAPS]  |  WEB PAGE COPY  |  DRAFT V1
+Confidential — Internal Use Only  ·  [vertical.client_name] Marketing  ·  [current year from document metadata]`,
 
     // 08 Internal Brief
     `Using the intake JSON provided, generate an internal GTM launch brief in markdown format.
