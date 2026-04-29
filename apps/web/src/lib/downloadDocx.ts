@@ -1145,14 +1145,27 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §08 Messaging Framework ─────────────────────────────────────────────────
   const s08 = SECTIONS.find((s) => s.num === '08')!
   children.push(...sb('08', s08.short, s08.subtitle, s08.usedIn))
-  ft([
-    { label: 'Problems (2-3 sentences)', value: fw.s08.problems },
-    { label: 'Solution (2-3 sentences)', value: fw.s08.solution },
-    { label: 'Outcomes (2-3 sentences)', value: fw.s08.outcomes },
-  ])
+
+  const s08Blocks: Array<{ heading: string; value: string | null | undefined }> = [
+    { heading: 'Problems (2-3 sentences)', value: fw.s08.problems },
+    { heading: 'Solution (2-3 sentences)', value: fw.s08.solution },
+    { heading: 'Outcomes (2-3 sentences)', value: fw.s08.outcomes },
+  ]
+  s08Blocks.forEach(({ heading, value }, i) => {
+    if (!value?.trim()) return
+    children.push(new Paragraph({
+      children: [new TextRun({ text: heading, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: i === 0 ? 0 : 160, after: 60 },
+    }))
+    ft([{ label: heading, value }])
+  })
 
   const vpRows = fw.s08.valuePropTable.filter((r) => r.pillar?.trim() || r.meaning?.trim() || r.proofPoint?.trim())
   if (vpRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Value Proposition by Pillar', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     children.push(st(
       ['Pillar', 'For This Vertical, This Means…', 'Proof Point', 'Citation'],
       vpRows.map((r) => [r.pillar, r.meaning, r.proofPoint, r.citation]),
