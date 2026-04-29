@@ -922,110 +922,102 @@ ENFORCE: All segment cards present — count matches segments[]. Stats bar = bul
     `Using the intake JSON provided, generate an internal GTM launch brief in markdown format.
 
 CRITICAL RULES:
-- PLATFORM-AGNOSTIC: Never name specific third-party tools anywhere in this document. Use "your PM tool", "your file delivery platform", "your CRM", "leading AI models", "configurable detection services" instead of Monday.com, Box, Salesforce, GPTZero, Claude, etc.
-- NO AUDIENCE METADATA in CTAs or anywhere else. CTAs show only clean labels.
-- NO DATE-SPECIFIC urgency (no "end of 2025", no year references for forward-looking claims).
-
-# INTERNAL USE ONLY
+- This is an internal sales enablement document for [vertical.client_name]'s own sales and BDR teams.
+- Write about [vertical.client_name]'s services, segments, and offer as the subject matter — this is their kit.
+- NEVER mention ContentNode, BullMQ, PostgreSQL, or any internal tooling. This is not about the platform.
+- NO DATE-SPECIFIC forward-looking urgency (no "by end of [year]"). Use present-tense regulatory pressure.
 
 ## Cover
-
-# [vertical.name] GTM Launch Brief
-**Client:** [vertical.client_name]
-**Internal Use Only · Sales + Marketing**
-Prepared by: [document_control.marketing_contact if available, else "Marketing Team"]
+[The renderer generates the title block automatically — this section is skipped. Leave it empty.]
 
 ## Send Note
-**To:** Sales Team + BDR Team
-**Subject:** [vertical.name] Kit Ready — [vertical.client_name] — Action Required
+For marketing to send to sales and company
 
-## Opening
-The [vertical.name] GTM kit is ready. [1 sentence non-dated urgency framing based on regulatory_frameworks[] — e.g. "With [regulation] enforcement accelerating, the window for differentiated positioning is now." Do NOT include any specific year or "end of [year]" language.]
+Subject line: [vertical.name] + [short compliance label, e.g. "HIPAA"] GTM kit — everything you need to start conversations today
+
+Great news — the full [vertical.name] + [compliance label] GTM kit is ready.
+
+[2–3 sentences contextualising why this vertical matters right now. Draw from market_narrative and regulatory_frameworks[]. Name the gap: the prospect's obligations vs. what their internal team can sustain. This is the emotional case for prioritising the vertical — write it as a peer communicating to reps, not a marketing brief. No year-specific urgency.]
 
 ## Why This Vertical, Why Now
 
-[4-cell visual impact bar — render as a 4-column table, NO shading on data rows:]
+[4-cell stat boxes — output as a EXACTLY 2-row table with 4 columns. Row 1 = stat values. Row 2 = stat labels with source. Use statistics[0–3].]
 | **[statistics[0].stat]** | **[statistics[1].stat]** | **[statistics[2].stat]** | **[statistics[3].stat]** |
 |---|---|---|---|
 | [statistics[0].label] · [statistics[0].source] | [statistics[1].label] · [statistics[1].source] | [statistics[2].label] · [statistics[2].source] | [statistics[3].label] · [statistics[3].source] |
 
-[1 compact urgency paragraph (3-4 sentences max) drawing from regulatory_frameworks[] and market_narrative. No year references. No database terminology. No specific vendor names.]
+[1 urgency paragraph, 2–3 sentences. Name the specific regulatory driver from regulatory_frameworks[] — what is changing, what it now requires, and why mid-market providers in this vertical have a gap. No year references. No generic "the compliance landscape is evolving" language — be specific.]
 
 ## What's in the Kit
 
-2-column table only — NO shading, NO background colors, simple borders:
-| Asset | What It Is + How to Use It |
-|-------|---------------------------|
-| Messaging Framework | Core positioning, messaging pillars, and objection responses — the foundation for all other assets |
-| 01 Brochure | Leave-behind for discovery and qualification meetings |
-| 02 eBook | Gated thought-leadership asset; use in nurture sequences and post-meeting follow-up |
-| 03 Sales Cheat Sheet | Rep quick-reference — objection handling, CTA scripts, regulatory context |
-| 04 BDR Call Scripts & Emails | Cold outreach sequences with call scripts and email copy; ready to send |
-| 05 Customer Deck | Client-facing presentation for evaluation and proposal meetings |
-| 06 Video Script | Video content for LinkedIn, YouTube, and website hero — two cuts (60s and 90s) |
-| 07 Web Page Copy | Vertical landing page copy; hand to web team with brand guidelines |
-| 08 Internal Brief | This document — distribute to sales and BDR teams at kit launch |
+[Intro line: "Eight assets, ready to use across cold outreach, discovery, proposals, and [relevant channel from icp or market context]."]
+
+| ASSET | WHAT IT IS + HOW TO USE IT |
+|---|---|
+| Messaging Framework | The strategic foundation — positioning, segment callouts for all [count of segments[]] [vertical.name] sub-segments, objection handling, proof points, and brand voice guidance. Read this first. |
+| Sales Cheat Sheet | Two-page desk reference — ICP by segment, buyer personas, lead hooks, pain-to-solution mapping, [count of objections[]] objections with responses, qualifying questions, regulatory context, and [count of case_studies[]] case studies with 'when to use' tags. |
+| BDR Call Scripts + Emails | [count of segments[]]-segment call script table and [count of segments[] + 1] personalised prospecting emails — [comma-separated list of segment names from segments[]] and AI governance. Ready to personalise and send. |
+| Customer Deck | [count of pillars[] + 4]-slide sales presentation for discovery and proposal conversations. Market pressure, compliance context, [count of pillars[]] service pillars, [count of case_studies[]] case studies, and a clear [primary_cta.name] CTA. |
+| Brochure | Print and digital leave-behind. [count of challenges[]] challenges, [count of pillars[]] service pillars, [count of differentiators[]] differentiators, and [count of case_studies[]] case studies. Pairs with the deck or stands alone. |
+| eBook | [Synthesise a short title from vertical.taglines[]] — The [icp.company_size or "mid-market"] [vertical.name] provider's guide to [top 2–3 themes from pillars[]]. Use as a lead magnet, email nurture attachment, or LinkedIn content. |
+| Video Script | 60-second and 90-second storyboards with on-screen text, imagery direction, and a full voiceover script. Built for LinkedIn organic, paid social, and BDR email embeds. |
+| Web Page Copy | Full copy for [primary_cta.url domain if available, else "[vertical.client_name].com/[vertical slug]"] — hero, three-box benefits, solution stack, all [count of segments[]] segments, [count of case_studies[]] case studies, and resources slider. Hand off to web team at launch. |
 
 ## Where to Start
 
-2-column table — simple borders, NO shading:
-| Sales Team | BDR Team |
-|------------|----------|
-| 1. [ONE imperative action, max 15 words] | 1. [ONE imperative action, max 15 words] |
-| 2. [ONE imperative action, max 15 words] | 2. [ONE imperative action, max 15 words] |
-| 3. [ONE imperative action, max 15 words] | 3. [ONE imperative action, max 15 words] |
-| 4. [ONE imperative action, max 15 words] | 4. [ONE imperative action, max 15 words] |
-| 5. [ONE imperative action, max 15 words] | 5. [ONE imperative action, max 15 words] |
+If You're in Sales
+- [Imperative action 1 — what to read first and why. Name the specific asset.]
+- [Imperative action 2 — specific personalisation step with the BDR doc or cheat sheet]
+- [Imperative action 3 — which asset to attach to intro emails]
+- [Imperative action 4 — what to use for discovery and proposal calls]
+- [Imperative action 5 — the primary CTA rule: lead every conversation with primary_cta.name, never a full pitch]
 
-Each cell = one imperative verb phrase only. No conjunctions. No explanatory sentences. Examples: "Lead with the eBook in discovery follow-up." / "Send Email 1 within 24 hours of trigger."
+If You Are in BDR / Outbound
+- [Imperative action 1 — start with the BDR emails, personalise the brackets]
+- [Imperative action 2 — video use for email engagement]
+- [Imperative action 3 — which cheat sheet section to open compliance conversations with]
+- [Imperative action 4 — where to drive CTA traffic and what the offer is]
+- [Imperative action 5 — a specific value-add attachment for mid-funnel nurture]
 
-## Primary CTA
+## The [primary_cta.name] — Your Primary CTA
 
-> **[primary_cta.name — clean label only, no audience description]**
-> [primary_cta.description — 1 sentence]
-> → [primary_cta.url]
->
-> Client win: [case_studies[0].headline_stat from case_studies[0].client_profile if available, else "[Add client win here: segment, problem, ContentNode workflow used, measurable result]"]
+Every asset drives one conversion: the [primary_cta.name].
 
-## Compliance Angle
+[2–3 sentences on what the assessment covers — draw from primary_cta.description and regulatory_frameworks[]. Name the specific frameworks it maps against. State the format: time required, no commitment. Write it as a sales tool, not a product description.]
 
-[Exactly 3–4 sentences covering these four points — one sentence each:]
-1. Data isolation: [one sentence on multi-tenant data isolation architecture — no database names]
-2. Agency-owned keys: [one sentence on agency retaining ownership of all AI provider credentials]
-3. SOC 2: [one sentence on current SOC 2 status — if not certified, say "pursuing" or "in progress"]
-4. What we don't claim: [one sentence — we do not provide legal counsel or guarantee regulatory compliance]
+[If case_studies[] has data: Write a 2–3 sentence vignette about case_studies[0] — who they were (client_profile + situation), what [vertical.client_name] did (engagement), and the key outcome (outcomes or headline_stat). If there is a quote in case_studies[0], include it verbatim as a blockquote: > "[quote text]" — [quote attribution if available, else "Client"]]
 
-## Key Messages
+## The [regulatory_frameworks[0].name] Angle — Don't Miss This
 
-[5 messages. Each message rendered as a blockquote block — bold headline + exactly one sentence. Simple border, white background. Use blockquote syntax (>) for each.]
+[2–3 sentences on the specific regulatory urgency angle for this vertical. What is [regulatory_frameworks[0].name] requiring now that it didn't before? What are most mid-market providers in this vertical missing? How does [vertical.client_name]'s offer close that specific gap? Be concrete — name the controls (e.g. MFA, encryption, continuous monitoring). This is the urgency trigger reps should use to move "we'll look at it later" to "we need to act now."]
 
-> **[Message 1 headline]**
-> [One sentence. No specific tool names.]
+## Key Messages to Land in Every Conversation
 
-> **[Message 2 headline]**
-> [One sentence. No specific tool names.]
+[5 key messages. Each = a bold short headline (3–6 words) followed by a paragraph of 2–3 sentences. Derive from vertical.taglines[], vertical.positioning_statement, differentiators[], and primary_cta. Write each as something a rep can internalise and repeat, not marketing copy.]
 
-> **[Message 3 headline]**
-> [One sentence. No specific tool names.]
+**[Message 1 headline — derived from vertical.taglines[0] or core positioning: the patient/client outcome]**
+[2–3 sentences explaining why this headline is the emotional anchor for every segment — clinical/operational consequence, not an IT outcome.]
 
-> **ContentNode fits inside existing workflows.**
-> ContentNode triggers from status changes in your PM tool, delivers finished files to your file delivery stack, and writes asset links back automatically — the client's experience never changes.
+**[Message 2 headline — mid-market complexity vs. enterprise IT gap]**
+[2–3 sentences on why the prospect's obligations exceed their internal team's capacity — reference icp.company_size context and the gap that [vertical.client_name] closes.]
 
-> **[Message 5 headline]**
-> [One sentence. No specific tool names.]
+**[Message 3 headline — compliance positioning: implement, not certify]**
+[2–3 sentences on what [vertical.client_name] does vs. doesn't do. What controls they implement and manage. The positioning boundary that protects every conversation.]
 
-## Non-Negotiable
+**[Message 4 headline — full stack / single partner differentiation, derived from pillars[]]**
+[2–3 sentences on the [count of pillars[]] pillars and how they integrate through [vertical.client_name]'s delivery model. What separates them from point solution vendors and generic MSPs.]
 
-> ⚠ **What We Are NOT:**
-> [List VERBATIM from vertical.what_we_are_not[]. Every line exactly as written. Do not paraphrase. Do not reorder. Do not add or remove words.]
+**[Message 5 headline — the CTA is the door, not the pitch]**
+[2–3 sentences on primary_cta.name as the right first ask. Low friction, high value. Never open with a full managed services pitch.]
 
-CRITICAL FORMATTING RULES:
-- Key messages = blockquote blocks (>) only — one per message, no numbered list, no shading
-- Asset table = exactly 2 columns: Asset | What It Is + How to Use It
-- Where to Start = max 15 words per cell, imperative only
-- Non-negotiable = verbatim copy from what_we_are_not[]
-- Zero specific third-party tool names anywhere in document
-- Zero audience targeting metadata anywhere in document`
+## One Non-Negotiable
+
+Never claim [vertical.client_name] [list verbatim from vertical.what_we_are_not[] — join with ", " and end with a period]. These are the positioning boundaries in the Messaging Framework — they protect every conversation and set the right client expectations from the start.
+
+## Back Cover
+[vertical.client_name]
+[VERTICAL.NAME IN CAPS] + [COMPLIANCE LABEL IN CAPS]  |  GTM LAUNCH BRIEF  |  INTERNAL USE ONLY
+[vertical.client_name] Marketing  ·  [current year from document metadata]`
   ]
 
   return base + instructions[assetIndex]
