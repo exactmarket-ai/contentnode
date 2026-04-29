@@ -1073,6 +1073,16 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                             {reexporting === asset.index ? '…' : '↻'}
                           </button>
                         )}
+                        {asset.status === 'complete' && asset.content && (
+                          <a
+                            href={`data:text/plain;charset=utf-8,${encodeURIComponent(asset.content)}`}
+                            download={`${asset.num}-${asset.name.replace(/ /g, '-').toLowerCase()}-content.txt`}
+                            title="Download raw content for preview script"
+                            className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-400 hover:bg-gray-50 transition-colors"
+                          >
+                            raw
+                          </a>
+                        )}
                         {ENABLE_KIT_EDIT && asset.status === 'complete' && (
                           <button
                             onClick={() => openEdit(asset)}

@@ -1,10 +1,16 @@
 /**
- * Standalone brochure preview script — NexusTek Healthcare sample data.
- * Run: pnpm tsx scripts/preview-brochure.ts
- * Output: ~/Downloads/preview-brochure-YYYY-MM-DD.docx
+ * Kit asset preview script — renders any kit asset to ~/Downloads without AI.
  *
- * Purpose: iterate on brochure layout/renderer (kitDownload.ts buildBrochureDocxBlob)
- * without triggering a 20-minute AI generation run.
+ * Usage:
+ *   pnpm tsx scripts/preview-brochure.ts                          # NexusTek brochure sample
+ *   pnpm tsx scripts/preview-brochure.ts <content-file.txt>       # brochure with your content
+ *   pnpm tsx scripts/preview-brochure.ts <content-file.txt> <index>  # specific asset (0-7)
+ *
+ * To get your content: click the "raw" button next to any asset in the Kit delivery screen.
+ * Save the downloaded .txt file, then pass the path here.
+ *
+ * Asset indexes: 0=Brochure, 1=eBook, 2=Cheat Sheet, 3=BDR Emails,
+ *                4=Customer Deck, 5=Video Script, 6=Web Page Copy, 7=Internal Brief
  */
 
 import {
@@ -641,19 +647,181 @@ const NEXUSTEK_STYLE: DocStyle = {
   includePageNumbers: true,
 }
 
+// ── Generic DOCX builder (Node-compatible markdownToDocxBlob) ─────────────────
+
+async function buildGenericDocxBuffer(
+  markdown: string,
+  docStyle: DocStyle,
+  assetName: string,
+  clientName: string,
+  verticalName: string,
+): Promise<Buffer> {
+  const primaryHex   = hexNoHash(docStyle.primaryColor)
+  const secondaryHex = hexNoHash(docStyle.secondaryColor)
+  const bodyColor    = '1A1A14'
+  const bodyFont     = docStyle.bodyFont
+  const headFont     = docStyle.headingFont
+
+  // Check for embedded ## Cover section
+  const rawSections = markdown.split(/^(?=## )/m)
+  let coverChildren: (Paragraph | Table)[] = []
+  let bodyMarkdown = markdown
+
+  if (rawSections.length > 0 && /^## Cover\b/i.test(rawSections[0])) {
+    // Generic cover from embedded section (Node-compatible: no logo)
+    const coverLines = rawSections[0].split('\n').slice(1).filter(l => l.trim())
+    const primary = hexNoHash(docStyle.primaryColor)
+    const secondary = hexNoHash(docStyle.secondaryColor)
+    const items: Paragraph[] = [new Paragraph({ spacing: { before: 1440 }, children: [] })]
+    let count = 0
+    for (const raw of coverLines) {
+      const text = sanitize(raw.replace(/\*\*/g, '').replace(/^\*|\*$/g, '').trim())
+      if (!text) continue
+      if (count === 0) items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text, font: headFont, size: 52, bold: true, color: 'FFFFFF' })] }))
+      else if (count === 1) {
+        items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text, font: headFont, size: 40, bold: false, color: 'FFFFFF' })] }))
+        items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: '─────', font: bodyFont, size: 24, color: secondary })] }))
+      } else {
+        items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text, font: bodyFont, size: 18, color: 'AAAAAA' })] }))
+      }
+      count++
+    }
+    const nilBorder = { style: BorderStyle.NIL } as const
+    coverChildren = [new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: nilBorder, bottom: nilBorder, left: nilBorder, right: nilBorder, insideHorizontal: nilBorder, insideVertical: nilBorder },
+      rows: [new TableRow({
+        height: { value: convertInchesToTwip(9.5), rule: HeightRule.EXACT },
+        children: [new TableCell({ shading: { fill: primary, type: ShadingType.SOLID, color: primary }, children: items })],
+      })],
+    })]
+    bodyMarkdown = rawSections.slice(1).join('')
+  } else if (docStyle.includeCoverPage && assetName) {
+    // Standard cover page (Node-compatible: no logo)
+    const primary = hexNoHash(docStyle.primaryColor)
+    const coverItems: Paragraph[] = [
+      new Paragraph({ spacing: { before: 1440 }, children: [] }),
+      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 240 }, children: [new TextRun({ text: assetName, font: headFont, size: 56, bold: true, color: 'FFFFFF' })] }),
+      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: `${verticalName} · ${clientName}`, font: headFont, size: 28, color: 'DDDDDD' })] }),
+    ]
+    if (docStyle.agencyName || docStyle.footerText) {
+      coverItems.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 720 }, children: [new TextRun({ text: [docStyle.agencyName, docStyle.footerText].filter(Boolean).join('  ·  '), font: bodyFont, size: 18, color: 'AAAAAA' })] }))
+    }
+    coverChildren = [new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
+      rows: [new TableRow({
+        height: { value: convertInchesToTwip(9.5), rule: HeightRule.EXACT },
+        children: [new TableCell({ shading: { fill: primary, type: ShadingType.SOLID, color: primary }, children: coverItems })],
+      })],
+    })]
+  }
+
+  const STAT_BAR_LINE_RE = /^[-*] \*\*[\d$€£¥%#][^*]*\*\*.*\|/
+  const lines = bodyMarkdown.split('\n')
+  const children: (Paragraph | Table)[] = []
+  let tableLines: string[] = []
+  let statBarLines: string[] = []
+
+  function flushStatBar() {
+    if (!statBarLines.length) return
+    if (statBarLines.length >= 2) children.push(buildStatBar(statBarLines, docStyle))
+    else for (const l of statBarLines) children.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(l.slice(2), bodyFont, 22, bodyColor) }))
+    statBarLines = []
+  }
+  function flushTable() {
+    if (!tableLines.length) return
+    const dataRows = tableLines.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
+    if (dataRows.length) children.push(buildStyledTable(tableLines, docStyle))
+    tableLines = []
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('|')) { flushStatBar(); tableLines.push(line); continue }
+    flushTable()
+    if (STAT_BAR_LINE_RE.test(line)) { statBarLines.push(line); continue }
+    flushStatBar()
+    if      (line.startsWith('# '))    children.push(new Paragraph({ style: 'Heading1', children: [new TextRun(sanitize(line.slice(2)))] }))
+    else if (line.startsWith('## '))   children.push(new Paragraph({ style: 'Heading2', children: [new TextRun(sanitize(line.slice(3)))] }))
+    else if (line.startsWith('### '))  children.push(new Paragraph({ style: 'Heading3', children: [new TextRun(sanitize(line.slice(4)))] }))
+    else if (line.startsWith('#### ')) children.push(new Paragraph({ style: 'Heading4', children: [new TextRun(sanitize(line.slice(5)))] }))
+    else if (/^[-*] /.test(line))      children.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
+    else if (line.startsWith('> '))    children.push(new Paragraph({ indent: { left: 720 }, children: parseInlineRuns(line.slice(2), bodyFont, 22, bodyColor) }))
+    else if (/^---+$|^===+$/.test(line.trim())) children.push(buildHRule(docStyle.primaryColor))
+    else if (line.trim() === '')        children.push(new Paragraph({}))
+    else                               children.push(new Paragraph({ children: parseInlineRuns(line, bodyFont, 22, bodyColor) }))
+  }
+  flushTable()
+  flushStatBar()
+
+  const showFooter = docStyle.includePageNumbers || !!docStyle.agencyName || !!docStyle.footerText
+  const footers = showFooter ? { default: buildFooterElement(docStyle) } : undefined
+
+  const doc = new Document({
+    styles: {
+      paragraphStyles: [
+        { id: 'Normal',   name: 'Normal',   run: { font: bodyFont, size: 22, color: bodyColor } },
+        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 48, bold: true, color: primaryHex }, paragraph: { spacing: { before: 240, after: 160 } } },
+        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 36, bold: true, color: primaryHex }, paragraph: { spacing: { before: 200, after: 120 } } },
+        { id: 'Heading3', name: 'Heading 3', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 28, bold: true, color: secondaryHex }, paragraph: { spacing: { before: 160, after: 80 } } },
+        { id: 'Heading4', name: 'Heading 4', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: headFont, size: 24, bold: true, color: primaryHex }, paragraph: { spacing: { before: 120, after: 60 } } },
+      ],
+    },
+    numbering: {
+      config: [{ reference: 'default-numbering', levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: convertInchesToTwip(0.5), hanging: convertInchesToTwip(0.25) } } } }] }],
+    },
+    sections: [
+      ...(coverChildren.length ? [{ properties: { type: SectionType.NEXT_PAGE }, children: coverChildren }] : []),
+      { ...(footers ? { footers } : {}), children },
+    ],
+  })
+
+  return Buffer.from(await Packer.toBuffer(doc))
+}
+
+// ── Asset manifest ────────────────────────────────────────────────────────────
+
+const ASSET_META = [
+  { index: 0, num: '01', name: 'Brochure',          ext: 'docx' },
+  { index: 1, num: '02', name: 'eBook',             ext: 'html' },
+  { index: 2, num: '03', name: 'Sales Cheat Sheet', ext: 'html' },
+  { index: 3, num: '04', name: 'BDR Emails',        ext: 'docx' },
+  { index: 4, num: '05', name: 'Customer Deck',     ext: 'pptx' },
+  { index: 5, num: '06', name: 'Video Script',      ext: 'docx' },
+  { index: 6, num: '07', name: 'Web Page Copy',     ext: 'docx' },
+  { index: 7, num: '08', name: 'Internal Brief',    ext: 'docx' },
+]
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 async function main() {
-  const date = new Date().toISOString().slice(0, 10)
-  const outPath = path.join(os.homedir(), 'Downloads', `preview-brochure-${date}.docx`)
+  const contentFile = process.argv[2]
+  const assetIndex  = process.argv[3] ? parseInt(process.argv[3], 10) : 0
 
-  console.log('Building brochure preview…')
-  const buf = await buildBrochureBuffer(
-    NEXUSTEK_BROCHURE,
-    NEXUSTEK_STYLE,
-    'NexusTek Healthcare',
-    'Healthcare',
-  )
+  const asset = ASSET_META[assetIndex] ?? ASSET_META[0]
+  const date  = new Date().toISOString().slice(0, 10)
+  const outName = `preview-${asset.num}-${asset.name.replace(/ /g, '-').toLowerCase()}-${date}.docx`
+  const outPath = path.join(os.homedir(), 'Downloads', outName)
+
+  const markdown = contentFile
+    ? fs.readFileSync(path.resolve(contentFile), 'utf8')
+    : NEXUSTEK_BROCHURE
+
+  if (contentFile) {
+    console.log(`Using content from: ${contentFile}`)
+  } else {
+    console.log('Using NexusTek sample content (pass a content file to use real data)')
+  }
+
+  console.log(`Building ${asset.num} ${asset.name} preview…`)
+
+  let buf: Buffer
+  if (asset.index === 0) {
+    buf = await buildBrochureBuffer(markdown, NEXUSTEK_STYLE, 'NexusTek Healthcare', 'Healthcare')
+  } else {
+    buf = await buildGenericDocxBuffer(markdown, NEXUSTEK_STYLE, asset.name, 'NexusTek Healthcare', 'Healthcare')
+  }
+
   fs.writeFileSync(outPath, buf)
   console.log(`✓ Saved: ${outPath}`)
 }
