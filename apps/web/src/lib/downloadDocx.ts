@@ -997,6 +997,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('02', s02.short, s02.subtitle, s02.usedIn))
 
   children.push(new Paragraph({
+    children: [new TextRun({ text: 'USED IN: Brochure · Sales Cheat Sheet · BDR Emails · Customer Deck · Web Page', size: 18, color: '6b7280', italics: true })],
+    spacing: { before: 0, after: 80 },
+  }))
+  children.push(new Paragraph({
     children: [new TextRun({ text: 'Primary Target Profile', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
     spacing: { before: 0, after: 60 },
   }))
@@ -1013,7 +1017,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (buyerRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Primary Buyer Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `List each sub-segment with the key buyer, their core pain, and the best entry point for ${clientName}.`, size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(st(
       ['Segment', 'Primary Buyer', 'Core Pain', 'Entry Point'],
@@ -1025,7 +1033,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (fw.s02.secondaryTargets?.trim()) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Secondary Targets', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Adjacent organizations or adjacent roles who share similar pressures. One paragraph.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     ft([{ label: 'Secondary Targets', value: fw.s02.secondaryTargets }])
   }
