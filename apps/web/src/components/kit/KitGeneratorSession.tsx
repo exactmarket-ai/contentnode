@@ -1001,12 +1001,20 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                             Generate Storyboard
                           </button>
                         ) : storyboard.status === 'complete' ? (
-                          <button
-                            onClick={downloadStoryboard}
-                            className="shrink-0 rounded-lg bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
-                          >
-                            Download PDF
-                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => setShowFramesModal(true)}
+                              className="rounded-lg border border-purple-300 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors"
+                            >
+                              Regenerate
+                            </button>
+                            <button
+                              onClick={downloadStoryboard}
+                              className="rounded-lg bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
+                            >
+                              Download PDF
+                            </button>
+                          </div>
                         ) : storyboard.status === 'error' ? (
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-red-600">{storyboard.error ?? 'Generation failed'}</span>
