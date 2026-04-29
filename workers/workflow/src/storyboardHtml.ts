@@ -15,7 +15,9 @@ import type { DocStyle } from './kitGenerator.js'
 
 let sharedBrowser: Browser | null = null
 
-function resolveChromiumPath(): string | undefined {
+export const CHROMIUM_LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+
+export function resolveChromiumPath(): string | undefined {
   const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH
   if (fromEnv && existsSync(fromEnv)) return fromEnv
   const candidates = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable']
@@ -29,7 +31,7 @@ export async function getSharedBrowser(): Promise<Browser> {
     sharedBrowser = await puppeteer.launch({
       headless: true,
       executablePath,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      args: CHROMIUM_LAUNCH_ARGS,
     })
   }
   return sharedBrowser

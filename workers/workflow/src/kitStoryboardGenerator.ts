@@ -3,7 +3,8 @@ import { prisma } from '@contentnode/database'
 import { uploadBuffer, downloadBuffer } from '@contentnode/storage'
 import type { DocStyle } from './kitGenerator.js'
 import { parseScenes, type SceneObject } from './executors/sceneParser.js'
-import { getSharedBrowser, closeSharedBrowser, buildStoryboardPageHtml, buildStoryboardCoverHtml } from './storyboardHtml.js'
+import puppeteer from 'puppeteer'
+import { resolveChromiumPath, CHROMIUM_LAUNCH_ARGS, buildStoryboardPageHtml, buildStoryboardCoverHtml } from './storyboardHtml.js'
 import type { Job } from 'bullmq'
 import {
   QUEUE_STORYBOARD_SCENE,
@@ -165,12 +166,12 @@ export async function runStoryboardJob(job: Job<StoryboardJobData>): Promise<voi
   const verticalName = session.vertical?.name ?? 'Vertical'
   const date        = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-  const browser   = await getSharedBrowser()
+  const browser   = await puppeteer.launch({ headless: true, executablePath: resolveChromiumPath(), args: CHROMIUM_LAUNCH_ARGS })
   const coverPage = await browser.newPage()
   await coverPage.setContent(buildStoryboardCoverHtml({ clientName, verticalName, version: 'v1', date, docStyle }), { waitUntil: 'networkidle0' })
   const coverBuf  = await coverPage.pdf({ width: '1400px', height: '1050px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
   await coverPage.close()
-  await closeSharedBrowser()
+  await browser.close()
 
   const coverKey = `storyboards/${agencyId}/${sessionId}/cover.pdf`
   await uploadBuffer(coverKey, Buffer.from(coverBuf), 'application/pdf')
@@ -246,20 +247,24 @@ export async function runStoryboardSceneJob(job: Job<StoryboardSceneJobData>): P
     frameUrls.push(dataUrl)
   }
 
-  // Render single-page PDF
-  const browser = await getSharedBrowser()
+  // Render single-page PDF — private browser per scene (avoids shared-browser races)
+  const browser = await puppeteer.launch({ headless: true, executablePath: resolveChromiumPath(), args: CHROMIUM_LAUNCH_ARGS })
   const page    = await browser.newPage()
-  await page.setContent(
-    buildStoryboardPageHtml({ scene, frameImageUrls: frameUrls, docStyle, clientName, verticalName }),
-    { waitUntil: 'networkidle0' },
-  )
-  const buf = await page.pdf({ width: '1400px', height: '1050px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
-  await page.close()
-  await closeSharedBrowser()
+  let buf: Uint8Array
+  try {
+    await page.setContent(
+      buildStoryboardPageHtml({ scene, frameImageUrls: frameUrls, docStyle, clientName, verticalName }),
+      { waitUntil: 'networkidle0' },
+    )
+    buf = await page.pdf({ width: '1400px', height: '1050px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
+  } finally {
+    await page.close().catch(() => {})
+    await browser.close().catch(() => {})
+  }
 
   // Upload page PDF
-  const paddedNum    = String(sceneNumber).padStart(2, '0')
-  const pageKey      = `storyboards/${agencyId}/${sessionId}/scenes/scene-${paddedNum}.pdf`
+  const paddedNum = String(sceneNumber).padStart(2, '0')
+  const pageKey   = `storyboards/${agencyId}/${sessionId}/scenes/scene-${paddedNum}.pdf`
   await uploadBuffer(pageKey, Buffer.from(buf), 'application/pdf')
 
   // Mark scene complete and check if we're the last one
