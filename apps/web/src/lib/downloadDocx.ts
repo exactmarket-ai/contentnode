@@ -1476,7 +1476,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (campaignThemeRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Campaign Theme Suggestions', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: '2-4 campaign names with a one-sentence description of what each campaign is for.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(st(
       ['Campaign Name', 'Description'],
