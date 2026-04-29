@@ -45,6 +45,7 @@ const updateClientBody = createClientBody.partial().extend({
   requireOffline: z.boolean().optional(),
   isOrgClient: z.boolean().optional(),
   boxFolderId: z.string().nullable().optional(),
+  googleDriveFolderId: z.string().nullable().optional(),
   mondayBoardId: z.string().nullable().optional(),
 })
 
@@ -808,6 +809,7 @@ export async function clientRoutes(app: FastifyInstance) {
         ...(parsed.data.requireOffline !== undefined ? { requireOffline: parsed.data.requireOffline } : {}),
         ...(parsed.data.isOrgClient !== undefined ? { isOrgClient: parsed.data.isOrgClient } : {}),
         ...(parsed.data.boxFolderId !== undefined ? { boxFolderId: parsed.data.boxFolderId } : {}),
+        ...(parsed.data.googleDriveFolderId !== undefined ? { googleDriveFolderId: parsed.data.googleDriveFolderId } : {}),
         ...(parsed.data.mondayBoardId !== undefined ? { mondayBoardId: parsed.data.mondayBoardId } : {}),
       },
     })

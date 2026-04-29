@@ -44,9 +44,12 @@ export interface WorkflowMeta {
   mondaySubItemBoardId?: string | null
   /** PM routing — Box project folder to create run subfolders inside */
   boxProjectFolderId?: string | null
+  /** PM routing — Google Drive project folder to create run subfolders inside */
+  googleDriveProjectFolderId?: string | null
   /** Client-level PM connections (read from client record, not editable here) */
   clientMondayBoardId?: string | null
   clientBoxFolderId?: string | null
+  clientGoogleDriveFolderId?: string | null
 }
 
 export interface NodeRunStatus {

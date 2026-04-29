@@ -63,6 +63,7 @@ import { startBoxVersionScanWorker } from './boxVersionScanner.js'
 import { processKitGenerationJob } from './kitGenerator.js'
 import { runStoryboardJob, runStoryboardSceneJob, runStoryboardAssembleJob } from './kitStoryboardGenerator.js'
 import { QUEUE_KIT_GENERATION, QUEUE_STORYBOARD_GENERATION, QUEUE_STORYBOARD_SCENE, QUEUE_STORYBOARD_ASSEMBLE, type KitGenerationJobData, type StoryboardJobData, type StoryboardSceneJobData, type StoryboardAssembleJobData } from './queues.js'
+import { renewExpiringChannels } from './googleDriveChannelRenewal.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -495,6 +496,25 @@ const boxVersionSweepWorker = createWorker(
   1,
 )
 
+// ── google-drive channel renewal — runs every 6 hours ────────────────────────
+const QUEUE_GDRIVE_RENEWAL = 'gdrive-channel-renewal'
+const gdriveRenewalQueue   = createQueue(QUEUE_GDRIVE_RENEWAL)
+await gdriveRenewalQueue.add(
+  'renew',
+  {},
+  {
+    jobId: 'gdrive-renewal-singleton',
+    repeat: { every: 6 * 60 * 60_000 },
+    removeOnComplete: { count: 5 },
+    removeOnFail: { count: 5 },
+  }
+)
+const gdriveRenewalWorker = createWorker(
+  QUEUE_GDRIVE_RENEWAL,
+  async () => { await renewExpiringChannels() },
+  1,
+)
+
 // ── file-cleanup — runs once per day ─────────────────────────────────────────
 const QUEUE_FILE_CLEANUP = 'file-cleanup'
 const fileCleanupQueue = createQueue(QUEUE_FILE_CLEANUP)
@@ -542,6 +562,7 @@ async function shutdown() {
     storyboardSceneWorker.close(),
     storyboardAssembleWorker.close(),
     boxVersionSweepWorker.close(),
+    gdriveRenewalWorker.close(),
     fileCleanupWorker.close(),
   ])
   process.exit(0)

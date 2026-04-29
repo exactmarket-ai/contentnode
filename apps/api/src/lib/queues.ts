@@ -120,13 +120,15 @@ export interface BoxDiffJobData {
   clientId:       string
   runId:          string | null
   stakeholderId:  string | null
-  boxFileId:      string
+  boxFileId:      string | null   // null for Google Drive sourced diffs
+  driveFileId?:   string | null
   mondayItemId:   string | null
   originalText:   string
   editedText:     string
   attributedTo:   string   // 'stakeholder' | 'employee' | 'unknown_external'
   editorEmail:    string | null
   filename:       string
+  documentType?:  string | null
 }
 
 export interface BoxVersionScanJobData {

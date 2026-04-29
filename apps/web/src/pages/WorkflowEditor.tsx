@@ -118,7 +118,7 @@ export function WorkflowEditor() {
           animated: false,
         }))
         const defaultAssignee = data.defaultAssignee as { id: string; name: string | null } | null
-        const clientData = data.client as { id?: string; name?: string; mondayBoardId?: string | null; boxFolderId?: string | null } | null
+        const clientData = data.client as { id?: string; name?: string; mondayBoardId?: string | null; boxFolderId?: string | null; googleDriveFolderId?: string | null } | null
         store.setWorkflow({
           id: data.id as string,
           name: data.name as string,
@@ -135,8 +135,10 @@ export function WorkflowEditor() {
           mondayGroupId: (data.mondayGroupId as string | null) ?? null,
           mondayGroupName: (data.mondayGroupName as string | null) ?? null,
           boxProjectFolderId: (data.boxProjectFolderId as string | null) ?? null,
+          googleDriveProjectFolderId: (data.googleDriveProjectFolderId as string | null) ?? null,
           clientMondayBoardId: clientData?.mondayBoardId ?? null,
           clientBoxFolderId: clientData?.boxFolderId ?? null,
+          clientGoogleDriveFolderId: clientData?.googleDriveFolderId ?? null,
         })
         // Set nodes/edges directly — do NOT go through onNodesChange (which marks the
         // graph dirty). Reset canvasTool and selection so reopening feels fresh.

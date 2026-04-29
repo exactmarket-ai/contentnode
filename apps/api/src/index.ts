@@ -52,12 +52,14 @@ import { notificationsRoutes }  from './routes/notifications.js'
 import { contentGeneratorRoutes } from './routes/contentGenerator.js'
 import { wrikeIntegrationRoutes }  from './routes/integrations/wrike.js'
 import { mondayIntegrationRoutes } from './routes/integrations/monday.js'
-import { boxIntegrationRoutes }    from './routes/integrations/box.js'
-import { pipelineRoutes }         from './routes/pipeline.js'
-import { deliverablesRoutes }     from './routes/deliverables.js'
-import { myWorkRoutes }           from './routes/myWork.js'
-import { boxFileWebhookRoutes }   from './routes/webhooks/boxFile.js'
-import { imagePromptRoutes }      from './routes/imagePrompts.js'
+import { boxIntegrationRoutes }          from './routes/integrations/box.js'
+import { googleDriveIntegrationRoutes }  from './routes/integrations/googleDrive.js'
+import { pipelineRoutes }               from './routes/pipeline.js'
+import { deliverablesRoutes }           from './routes/deliverables.js'
+import { myWorkRoutes }                 from './routes/myWork.js'
+import { boxFileWebhookRoutes }         from './routes/webhooks/boxFile.js'
+import { googleDriveWebhookRoutes }     from './routes/webhooks/googleDrive.js'
+import { imagePromptRoutes }            from './routes/imagePrompts.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -180,13 +182,15 @@ await app.register(notificationsRoutes,      { prefix: '/api/v1/notifications' }
 await app.register(contentGeneratorRoutes,   { prefix: '/api/v1/content-generator' })
 await app.register(wrikeIntegrationRoutes,   { prefix: '/api/v1/integrations/wrike' })
 await app.register(mondayIntegrationRoutes,  { prefix: '/api/v1/integrations/monday' })
-await app.register(boxIntegrationRoutes,     { prefix: '/api/v1/integrations/box' })
-await app.register(pipelineRoutes,           { prefix: '/api/v1/pipeline' })
-await app.register(deliverablesRoutes,       { prefix: '/api/v1/deliverables' })
-await app.register(myWorkRoutes,             { prefix: '/api/v1/my-work' })
-await app.register(kitSessionRoutes,         { prefix: '/api/v1/kit-sessions' })
-// Box webhook — public (no auth), verified by HMAC signature
-await app.register(boxFileWebhookRoutes,     { prefix: '/api/v1/webhooks/box-file' })
+await app.register(boxIntegrationRoutes,          { prefix: '/api/v1/integrations/box' })
+await app.register(googleDriveIntegrationRoutes,  { prefix: '/api/v1/integrations/google-drive' })
+await app.register(pipelineRoutes,                { prefix: '/api/v1/pipeline' })
+await app.register(deliverablesRoutes,            { prefix: '/api/v1/deliverables' })
+await app.register(myWorkRoutes,                  { prefix: '/api/v1/my-work' })
+await app.register(kitSessionRoutes,              { prefix: '/api/v1/kit-sessions' })
+// Storage webhooks — public (no auth), verified by respective secrets
+await app.register(boxFileWebhookRoutes,          { prefix: '/api/v1/webhooks/box-file' })
+await app.register(googleDriveWebhookRoutes,      { prefix: '/api/v1/webhooks/google-drive' })
 await app.register(imagePromptRoutes,        { prefix: '/api/v1/image-prompts' })
 
 // ── Start ─────────────────────────────────────────────────────────────────

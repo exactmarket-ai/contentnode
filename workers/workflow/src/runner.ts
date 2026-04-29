@@ -59,6 +59,7 @@ import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
 import { enqueuePMAgentJob } from './pmAgent.js'
 import { deliverRunToBox, deliverImageToBox, ensureBoxSubfolder } from './boxDelivery.js'
+import { deliverRunToGoogleDrive, deliverImageToGoogleDrive, ensureGoogleDriveSubfolder } from './googleDriveDelivery.js'
 import { writeFileUrlToMonday, setMondayStatus, clearMondayCache } from './mondayWriteback.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1413,6 +1414,183 @@ export class WorkflowRunner {
             }
           }
         })().catch((err) => console.error('[runner] Box delivery block failed:', err))
+      }
+
+      // ── Google Drive delivery — parallel to Box, fires when gdrive project folder configured ──
+      if (finalStatus === 'completed' && workflow.clientId) {
+        const wfRecord  = workflow as unknown as Record<string, unknown>
+        const runRecord = run as unknown as Record<string, unknown>
+        const clientObj = wfRecord.client as Record<string, unknown> | undefined
+
+        const gdriveProjectFolderId = (wfRecord.googleDriveProjectFolderId as string | undefined) ?? null
+
+        if (gdriveProjectFolderId) {
+          const reviewerIds = (run.reviewerIds as string[]) ?? []
+          const dateStr     = new Date().toISOString().slice(0, 10)
+          const runTopic    = (runRecord.topic as string | undefined)?.trim() ?? ''
+          const clientName  = (clientObj?.name as string | undefined) ?? ''
+          const projectName = (wfRecord.name as string | undefined)?.trim() ?? ''
+          const version     = run.itemVersion ?? 1
+
+          const slugify = (s: string) =>
+            s.replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '-')
+
+          const buildFilename = (docTitle: string, ext: string) => {
+            const segments = [
+              slugify(clientName),
+              slugify(projectName),
+              slugify(runTopic),
+              slugify(docTitle),
+              dateStr,
+              `v${version}`,
+            ].filter(Boolean)
+            return segments.join('-') + `.${ext}`
+          }
+
+          const mondayItemId  = (runRecord.mondayItemId as string | undefined)
+            ?? (runInput.mondayItemId as string | undefined)
+            ?? (wfRecord.mondayGroupId as string | undefined) ?? null
+          const mondayBoardId = (runRecord.mondayBoardId as string | undefined)
+            ?? (runInput.mondayBoardId as string | undefined)
+            ?? (clientObj?.mondayBoardId as string | undefined) ?? null
+          const mondaySubItemId      = (runRecord.mondaySubItemId as string | undefined)
+            ?? (runInput.mondaySubItemId as string | undefined) ?? null
+          const mondaySubItemBoardId = (runInput.mondaySubItemBoardId as string | undefined) ?? null
+          const mondaySubItemName    = (runInput.mondaySubItemName as string | undefined) ?? null
+          const mondayWriteItemId    = mondaySubItemId ?? mondayItemId
+          const mondayWriteBoardId   = mondaySubItemId ? (mondaySubItemBoardId ?? mondayBoardId) : mondayBoardId
+
+          // Get stakeholder email for file sharing
+          const stakeholderEmail: string | null = reviewerIds[0]
+            ? await prisma.stakeholder.findUnique({
+                where: { id: reviewerIds[0] },
+                select: { email: true },
+              }).then((s) => s?.email ?? null).catch((): null => null)
+            : null
+
+          ;(async () => {
+            // Create per-run subfolder inside the project folder
+            const runFolderName = [slugify(mondaySubItemName ?? ''), slugify(runTopic), dateStr].filter(Boolean).join('-') || dateStr
+            let effectiveGdriveFolderId = gdriveProjectFolderId
+            try {
+              effectiveGdriveFolderId = await ensureGoogleDriveSubfolder(this.agencyId, gdriveProjectFolderId, runFolderName)
+            } catch (err) {
+              console.error('[runner] Failed to create Drive run folder:', err)
+            }
+
+            const writeMonday = async (driveUrl: string) => {
+              if (!mondayWriteItemId || !mondayWriteBoardId) return
+              // Reuse per-node Monday column config from output nodes
+              const outputNodes = workflow.nodes.filter((n) => n.type === 'output')
+              const anyCol = outputNodes
+                .map((n) => ((n.config ?? {}) as Record<string, unknown>).delivery_monday_column as string | undefined)
+                .find((c) => c?.trim())
+              if (anyCol) {
+                await writeFileUrlToMonday({
+                  agencyId:    this.agencyId,
+                  boardId:     mondayWriteBoardId,
+                  itemId:      mondayWriteItemId,
+                  columnTitle: anyCol,
+                  url:         driveUrl,
+                }).catch((err) => console.error('[runner] Monday Drive URL writeback failed:', err))
+              }
+            }
+
+            const outputNodes = workflow.nodes.filter((n) => n.type === 'output')
+            let anyDelivered  = false
+
+            for (const node of outputNodes) {
+              const nodeOutput = runOutput.nodeStatuses[node.id]?.output as Record<string, unknown> | undefined
+              if (!nodeOutput) continue
+
+              const cfg     = (node.config ?? {}) as Record<string, unknown>
+              const subtype = cfg.subtype as string | undefined
+              const label   = (cfg.label as string | undefined) ?? (cfg.output_type as string | undefined) ?? subtype ?? node.id
+
+              const isMedia = subtype === 'image-generation' || subtype === 'video-generation'
+                || subtype === 'voice-output' || subtype === 'music-generation'
+              if (isMedia) {
+                if (subtype === 'image-generation') {
+                  const assets = (nodeOutput.assets as Array<{ storageKey?: string }>) ?? []
+                  for (let i = 0; i < assets.length; i++) {
+                    const sk = assets[i]?.storageKey
+                    if (!sk) continue
+                    const imgFilename = assets.length > 1
+                      ? buildFilename(`${label}-${i + 1}`, 'png')
+                      : buildFilename(label || 'image', 'png')
+                    try {
+                      const url = await deliverImageToGoogleDrive({
+                        agencyId:        this.agencyId,
+                        clientId:        workflow.clientId!,
+                        runId:           this.workflowRunId,
+                        stakeholderId:   reviewerIds[0] ?? null,
+                        folderId:        effectiveGdriveFolderId,
+                        storageKey:      sk,
+                        filename:        imgFilename,
+                        mondayItemId,
+                        stakeholderEmail,
+                      })
+                      await writeMonday(url)
+                    } catch (err) {
+                      console.error(`[runner] Drive image delivery failed for ${imgFilename}:`, err)
+                    }
+                  }
+                }
+                continue
+              }
+
+              const rawContent = nodeOutput.content ?? nodeOutput.outputText ?? nodeOutput.humanizedContent ?? nodeOutput.text
+              if (!rawContent || typeof rawContent !== 'string') continue
+
+              anyDelivered = true
+              const fmt      = (cfg.format as string | undefined) ?? 'docx'
+              const ext      = fmt === 'txt' ? 'txt' : 'docx'
+              const mimeType = ext === 'docx'
+                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : 'text/plain'
+
+              try {
+                const url = await deliverRunToGoogleDrive({
+                  agencyId:        this.agencyId,
+                  clientId:        workflow.clientId!,
+                  runId:           this.workflowRunId,
+                  stakeholderId:   reviewerIds[0] ?? null,
+                  folderId:        effectiveGdriveFolderId,
+                  filename:        buildFilename(label || 'output', ext),
+                  content:         rawContent,
+                  mimeType,
+                  mondayItemId,
+                  stakeholderEmail,
+                })
+                await writeMonday(url)
+              } catch (err) {
+                console.error(`[runner] Drive text delivery failed for node ${node.id}:`, err)
+              }
+            }
+
+            if (!anyDelivered) {
+              const finalOut = runOutput.finalOutput as { content?: unknown } | undefined
+              const text     = typeof finalOut?.content === 'string' ? finalOut.content : JSON.stringify(finalOut?.content ?? '')
+              try {
+                const url = await deliverRunToGoogleDrive({
+                  agencyId:        this.agencyId,
+                  clientId:        workflow.clientId!,
+                  runId:           this.workflowRunId,
+                  stakeholderId:   reviewerIds[0] ?? null,
+                  folderId:        effectiveGdriveFolderId,
+                  filename:        buildFilename(workflow.name || 'output', 'docx'),
+                  content:         text,
+                  mimeType:        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  mondayItemId,
+                  stakeholderEmail,
+                })
+                await writeMonday(url)
+              } catch (err) {
+                console.error('[runner] Drive fallback delivery failed:', err)
+              }
+            }
+          })().catch((err) => console.error('[runner] Google Drive delivery block failed:', err))
+        }
       }
     }
   }

@@ -28,6 +28,7 @@ const updateWorkflowBody = z.object({
   mondayGroupId: z.string().nullable().optional(),
   mondayGroupName: z.string().nullable().optional(),
   boxProjectFolderId: z.string().nullable().optional(),
+  googleDriveProjectFolderId: z.string().nullable().optional(),
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,9 +167,10 @@ export async function workflowRoutes(app: FastifyInstance) {
         ...(parsed.data.mondayGroupId !== undefined ? { mondayGroupId: parsed.data.mondayGroupId } : {}),
         ...(parsed.data.mondayGroupName !== undefined ? { mondayGroupName: parsed.data.mondayGroupName } : {}),
         ...(parsed.data.boxProjectFolderId !== undefined ? { boxProjectFolderId: parsed.data.boxProjectFolderId } : {}),
+        ...(parsed.data.googleDriveProjectFolderId !== undefined ? { googleDriveProjectFolderId: parsed.data.googleDriveProjectFolderId } : {}),
       },
       include: {
-        client: { select: { id: true, name: true, slug: true, mondayBoardId: true, boxFolderId: true } },
+        client: { select: { id: true, name: true, slug: true, mondayBoardId: true, boxFolderId: true, googleDriveFolderId: true } },
         defaultAssignee: { select: { id: true, name: true, avatarStorageKey: true } },
         _count: { select: { runs: true } },
       },

@@ -74,6 +74,7 @@ model Agency {
   skillSessionTemplates          SkillSessionTemplate[]
   frameworkRevisions             FrameworkRevision[]
   boxFileTrackings               BoxFileTracking[]
+  googleDriveFileTrackings       GoogleDriveFileTracking[]
   humanizerSignals               HumanizerSignal[]
   stakeholderPreferenceProfiles  StakeholderPreferenceProfile[]
   clientPreferenceProfiles       ClientPreferenceProfile[]
@@ -217,11 +218,13 @@ model Client {
   clientVerticalBrainAttachments ClientVerticalBrainAttachment[]
   brainContext       String?  @db.Text @map("brain_context")
   boxFolderId        String?  @map("box_folder_id")    // Box folder ID for this client's root folder
+  googleDriveFolderId String? @map("google_drive_folder_id") // Google Drive folder ID for this client's root folder
   mondayBoardId      String?  @map("monday_board_id")  // Monday board ID for this client (for Board→Client mapping)
   docStyle           ClientDocStyle?
   leadershipMembers  LeadershipMember[]
   frameworkRevisions FrameworkRevision[]
   boxFileTrackings   BoxFileTracking[]
+  googleDriveFileTrackings GoogleDriveFileTracking[]
   humanizerSignals   HumanizerSignal[]
   programs            Program[]
   programContentPacks ProgramContentPack[]
@@ -473,6 +476,7 @@ model Stakeholder {
   transcriptSegments   TranscriptSegment[]
   deliverableAccess    DeliverableAccess[]
   boxFileTrackings     BoxFileTracking[]
+  googleDriveFileTrackings GoogleDriveFileTracking[]
   humanizerSignals     HumanizerSignal[]
   preferenceProfile    StakeholderPreferenceProfile?
   principles           StakeholderPrinciple[]
@@ -539,7 +543,8 @@ model Workflow {
   itemName         String?   @map("item_name")
   mondayGroupId    String?   @map("monday_group_id")
   mondayGroupName  String?   @map("monday_group_name")
-  boxProjectFolderId String? @map("box_project_folder_id")
+  boxProjectFolderId          String? @map("box_project_folder_id")
+  googleDriveProjectFolderId  String? @map("google_drive_project_folder_id")
   isTemplate       Boolean   @default(false) @map("is_template")
   templateCategory String?   @map("template_category")
   templateDescription String? @map("template_description")
@@ -768,6 +773,8 @@ model WorkflowRun {
   deliveredAt              DateTime? @map("delivered_at")
   deliveryBoxFileId        String?   @map("delivery_box_file_id")   // Box file ID of the authoritative delivered version
   deliveredBoxFolderId     String?   @map("delivered_box_folder_id") // Box folder ID where the file was delivered (denorm for version scoring)
+  deliveryGoogleDriveFileId   String? @map("delivery_google_drive_file_id")   // Google Drive file ID of the delivered version
+  deliveredGoogleDriveFolderId String? @map("delivered_google_drive_folder_id")
   deliveredContentHash     String?   @map("delivered_content_hash")  // SHA-256 of the exact text delivered to Box (not source hash)
   isArchived               Boolean   @default(false) @map("is_archived") // true = iteration run, hidden from Reviews by default
 
@@ -785,6 +792,7 @@ model WorkflowRun {
   job               Job?                  @relation(fields: [jobId], references: [id])
   comments          Comment[]
   boxFileTrackings  BoxFileTracking[]
+  googleDriveFileTrackings GoogleDriveFileTracking[]
   humanizerSignals  HumanizerSignal[]
 
   @@index([agencyId])
@@ -2282,6 +2290,40 @@ model BoxFileTracking {
   @@index([clientId])
   @@index([runId])
   @@map("box_file_trackings")
+}
+
+// ─────────────────────────────────────────────
+// GoogleDriveFileTracking — links a Google Drive file to a WorkflowRun so
+// push-channel notifications can be routed back to the right run/client/stakeholder.
+// Channels expire every ≤7 days — the channel renewal cron refreshes them.
+// ─────────────────────────────────────────────
+model GoogleDriveFileTracking {
+  id              String    @id @default(cuid())
+  agencyId        String    @map("agency_id")
+  clientId        String    @map("client_id")
+  runId           String    @map("run_id")
+  stakeholderId   String?   @map("stakeholder_id")
+  driveFileId     String    @unique @map("drive_file_id")
+  driveWebhookChannelId String? @map("drive_webhook_channel_id")  // Google push channel ID
+  driveWebhookResourceId String? @map("drive_webhook_resource_id") // returned by Drive on channel registration
+  channelExpiry   DateTime? @map("channel_expiry")                 // when the push channel expires
+  driveFolderId   String    @map("drive_folder_id")
+  filename        String
+  originalTextKey String?   @map("original_text_key")
+  mondayItemId    String?   @map("monday_item_id")
+  revisionCount   Int       @default(0) @map("revision_count")
+  lastVersionAt   DateTime? @map("last_version_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  agency      Agency       @relation(fields: [agencyId],      references: [id], onDelete: Cascade)
+  client      Client       @relation(fields: [clientId],      references: [id], onDelete: Cascade)
+  run         WorkflowRun  @relation(fields: [runId],         references: [id], onDelete: Cascade)
+  stakeholder Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@index([runId])
+  @@map("google_drive_file_trackings")
 }
 
 // ─────────────────────────────────────────────

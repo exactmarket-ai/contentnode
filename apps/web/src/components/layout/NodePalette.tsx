@@ -204,6 +204,7 @@ function ProjectIndicator() {
   const [loading, setLoading] = useState(false)
   const [boxUrl, setBoxUrl] = useState('')
   const [noBoxWarning, setNoBoxWarning] = useState(false)
+  const [gdriveUrl, setGdriveUrl] = useState('')
   const [subitems, setSubitems] = useState<Array<{ id: string; name: string; boardId: string }>>([])
   const [subitemsLoading, setSubitemsLoading] = useState(false)
 
@@ -242,6 +243,14 @@ function ProjectIndicator() {
     else if (id.includes('box.com/folder/')) setBoxUrl(id)
     else setBoxUrl('')
   }, [workflow.boxProjectFolderId])
+
+  // Sync Google Drive folder URL from store on mount/change
+  useEffect(() => {
+    const id = workflow.googleDriveProjectFolderId ?? ''
+    if (!id) { setGdriveUrl(''); return }
+    if (id.includes('drive.google.com')) setGdriveUrl(id)
+    else setGdriveUrl(`https://drive.google.com/drive/folders/${id}`)
+  }, [workflow.googleDriveProjectFolderId])
 
   const saveProject = (mondayGroupId: string | null, mondayGroupName: string | null, folderId: string | null) => {
     setWorkflow({ mondayGroupId, mondayGroupName, boxProjectFolderId: folderId })
@@ -303,6 +312,27 @@ function ProjectIndicator() {
       apiFetch(`/api/v1/workflows/${wfId}`, {
         method: 'PATCH',
         body: JSON.stringify({ boxProjectFolderId: folderId }),
+      }).catch(() => {})
+    }
+  }
+
+  const parseGdriveFolderId = (url: string): string => {
+    const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/)
+    if (m) return m[1]
+    if (/^[a-zA-Z0-9_-]{25,}$/.test(url.trim())) return url.trim()
+    return ''
+  }
+
+  const handleGdriveUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setGdriveUrl(val)
+    const folderId = parseGdriveFolderId(val) || null
+    const wfId = useWorkflowStore.getState().workflow.id
+    setWorkflow({ googleDriveProjectFolderId: folderId })
+    if (wfId) {
+      apiFetch(`/api/v1/workflows/${wfId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ googleDriveProjectFolderId: folderId }),
       }).catch(() => {})
     }
   }
@@ -410,6 +440,21 @@ function ProjectIndicator() {
           )}
         </div>
       )}
+
+      {/* Google Drive project folder — always shown so it can be set independently of Box */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#b4b2a9' }}>Google Drive Folder</p>
+        <input
+          type="text"
+          className="w-full rounded-md border border-border px-2.5 py-1 text-[11px] outline-none focus:ring-1 focus:ring-ring"
+          placeholder="https://drive.google.com/drive/folders/…"
+          value={gdriveUrl}
+          onChange={handleGdriveUrlChange}
+        />
+        {gdriveUrl && !parseGdriveFolderId(gdriveUrl) && (
+          <p className="text-[10px] text-red-500 mt-0.5">Paste a Google Drive folder URL or folder ID.</p>
+        )}
+      </div>
     </div>
   )
 }

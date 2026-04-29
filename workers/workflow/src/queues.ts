@@ -173,7 +173,8 @@ export interface BoxDiffJobData {
   clientId:       string
   runId:          string | null
   stakeholderId:  string | null
-  boxFileId:      string
+  boxFileId:      string | null   // null for Google Drive sourced diffs
+  driveFileId?:   string | null   // set for Google Drive sourced diffs
   mondayItemId:   string | null
   originalText:   string
   editedText:     string
