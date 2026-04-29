@@ -1059,7 +1059,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
       children: [new TextRun({ text: 'Additional Context / Supporting Data', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: 160, after: 60 },
     }))
-    ft([{ label: 'Additional Context', value: fw.s03.additionalContext }])
+    children.push(gtmSingleCellTable(fw.s03.additionalContext!, bodyFont))
   }
   children.push(gtmSpacer())
 
