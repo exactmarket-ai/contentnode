@@ -327,6 +327,14 @@ Full spec is in docs/contentnode-spec-v4.md
    low-stakes tasks (prompt suggestions, short labels).
 5. **Do not touch working code to fix a data problem.** Diagnose first, ask if unsure.
 
+## Protected files — verify before every push
+Each entry below is a file that is easy to break silently and hard to catch without manual
+verification. Before pushing any change to these files, complete the listed check.
+
+| File | What breaks silently | Verification required before push |
+|------|---------------------|-----------------------------------|
+| `apps/web/src/lib/downloadDocx.ts` | Adjacent `Table` elements merge in Word with no paragraph between them. Cell padding inconsistency if `margins` is omitted from any `TableCell`. Instruction text / headings disappear if the surrounding `if` block condition changes. | Download the GTM Framework DOCX from the UI and open it. Confirm all 18 sections present, no tables merged, padding consistent. |
+
 ## Current session
 - MVP running in production on Railway (API + worker) + Vercel (web).
 - Security audit completed 2026-04-12. Two findings: Docker root user, axios CVE in sendgrid.
