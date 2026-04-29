@@ -742,6 +742,7 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
   const pcts = widths ?? headers.map(() => Math.floor(100 / totalCols))
   const b = GTM_BORDER
 
+  const cellMargins = { top: 100, bottom: 100, left: 120, right: 120 }
   const headerRow = new TableRow({
     tableHeader: true,
     children: headers.map((h, i) =>
@@ -749,9 +750,10 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
         width: { size: pcts[i], type: WidthType.PERCENTAGE },
         shading: { type: ShadingType.SOLID, color: primaryColor, fill: primaryColor },
         borders: { top: b, bottom: b, left: b, right: b },
+        margins: cellMargins,
         children: [new Paragraph({
           children: [new TextRun({ text: h, bold: true, size: 19, color: 'FFFFFF' })],
-          spacing: { before: 80, after: 80 },
+          spacing: { before: 0, after: 0 },
         })],
       })
     ),
@@ -766,9 +768,10 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
             ? { type: ShadingType.SOLID, color: 'F4F6FB', fill: 'F4F6FB' }
             : { type: ShadingType.SOLID, color: 'FFFFFF', fill: 'FFFFFF' },
           borders: { top: b, bottom: b, left: b, right: b },
+          margins: cellMargins,
           children: [new Paragraph({
             children: [new TextRun({ text: cell ?? '', size: 19, color: '1e293b' })],
-            spacing: { before: 72, after: 72, line: 276 },
+            spacing: { before: 0, after: 0, line: 276 },
           })],
         })
       ),
