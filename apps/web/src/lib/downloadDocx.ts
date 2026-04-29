@@ -904,7 +904,7 @@ function gtmSpacer(): Paragraph {
 }
 
 function gtmPageBreak(): Paragraph {
-  return new Paragraph({ children: [new PageBreak()] })
+  return new Paragraph({ pageBreakBefore: true, spacing: { before: 0, after: 0 }, children: [] })
 }
 
 export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string, docStyle?: DocStyleConfig): Promise<void> {
