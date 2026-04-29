@@ -1169,7 +1169,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('06', `Why ${clientName}`, s06.subtitle, s06.usedIn))
   children.push(new Paragraph({
     children: [new TextRun({ text: 'Differentiators Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-    spacing: { before: 0, after: 60 },
+    spacing: { before: 0, after: 40 },
+  }))
+  children.push(new Paragraph({
+    children: [new TextRun({ text: '6-8 differentiators specific to this vertical. Generic company-wide proof points go in Section 09.', size: 19, color: '374151', italics: true })],
+    spacing: { before: 0, after: 80 },
   }))
   const filledDiff = fw.s06.differentiators.filter((d) => d.label?.trim() || d.position?.trim())
   if (filledDiff.length > 0) {
@@ -1206,17 +1210,20 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const s08 = SECTIONS.find((s) => s.num === '08')!
   children.push(...sb('08', s08.short, s08.subtitle, s08.usedIn))
 
-  const s08Blocks: Array<{ heading: string; value: string | null | undefined }> = [
-    { heading: 'Problems (2-3 sentences)', value: fw.s08.problems },
-    { heading: 'Solution (2-3 sentences)', value: fw.s08.solution },
-    { heading: 'Outcomes (2-3 sentences)', value: fw.s08.outcomes },
+  const s08Blocks: Array<{ heading: string; value: string | null | undefined; instruction: string }> = [
+    { heading: 'Problems (2-3 sentences)', value: fw.s08.problems, instruction: `The overarching problem statement for this vertical. This is the 'before' state.` },
+    { heading: 'Solution (2-3 sentences)', value: fw.s08.solution, instruction: `How ${clientName} solves the problem. High-level — not a service list.` },
+    { heading: 'Outcomes (2-3 sentences)', value: fw.s08.outcomes, instruction: `What the client achieves after working with ${clientName}. The 'after' state.` },
   ]
-  s08Blocks.forEach(({ heading, value }, i) => {
+  s08Blocks.forEach(({ heading, value, instruction }, i) => {
     if (!value?.trim()) return
-    const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
     children.push(new Paragraph({
       children: [new TextRun({ text: heading, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: i === 0 ? 0 : 160, after: 60 },
+      spacing: { before: i === 0 ? 0 : 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: instruction, size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(gtmSingleCellTable(value, bodyFont))
   })
@@ -1243,7 +1250,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (filledProofPoints.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: `${clientName} Company-Wide Proof Points`, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 0, after: 60 },
+      spacing: { before: 0, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'These are standard across all verticals — update if numbers have changed.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     const t = gtmFieldTable(filledProofPoints.map((pp) => ({
       label: pp.source?.trim() ? `[${pp.source}]` : 'Proof Point',
