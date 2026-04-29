@@ -330,10 +330,14 @@ Full spec is in docs/contentnode-spec-v4.md
 ## Protected files — verify before every push
 Each entry below is a file that is easy to break silently and hard to catch without manual
 verification. Before pushing any change to these files, complete the listed check.
+**This has happened before** — there is already a `revert: restore GTM Framework downloadDocx.ts
+to pre-session state` in git history. The file breaks during large multi-feature sessions
+(e.g. Kit Generator build) even when it is not the primary target. Check it any session
+where `apps/web/src/lib/` is touched.
 
-| File | What breaks silently | Verification required before push |
-|------|---------------------|-----------------------------------|
-| `apps/web/src/lib/downloadDocx.ts` | Adjacent `Table` elements merge in Word with no paragraph between them. Cell padding inconsistency if `margins` is omitted from any `TableCell`. Instruction text / headings disappear if the surrounding `if` block condition changes. | Download the GTM Framework DOCX from the UI and open it. Confirm all 18 sections present, no tables merged, padding consistent. |
+| File | What breaks silently | Known risk sessions | Verification required before push |
+|------|---------------------|--------------------|------------------------------------|
+| `apps/web/src/lib/downloadDocx.ts` | Adjacent `Table` elements merge in Word with no paragraph between them. Cell padding disappears if `margins` is omitted from any `TableCell`. Section headings/instruction text vanish if surrounding `if` conditions change. | Kit Generator build; any session adding new DOCX features or touching shared lib utilities. | Download the GTM Framework DOCX from the UI and open it. Confirm all 18 sections present, no tables merged, padding consistent, instruction text visible under headings. |
 
 ## Current session
 - MVP running in production on Railway (API + worker) + Vercel (web).
