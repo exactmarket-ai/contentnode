@@ -890,6 +890,7 @@ The [vertical.name] GTM kit is ready. [1 sentence non-dated urgency framing base
 2-column table only — NO shading, NO background colors, simple borders:
 | Asset | What It Is + How to Use It |
 |-------|---------------------------|
+| Messaging Framework | Core positioning, messaging pillars, and objection responses — the foundation for all other assets |
 | 01 Brochure | Leave-behind for discovery and qualification meetings |
 | 02 eBook | Gated thought-leadership asset; use in nurture sequences and post-meeting follow-up |
 | 03 Sales Cheat Sheet | Rep quick-reference — objection handling, CTA scripts, regulatory context |

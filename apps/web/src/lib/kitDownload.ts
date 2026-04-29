@@ -1,7 +1,7 @@
 import {
   Document, Packer, Paragraph, TextRun, AlignmentType,
   Table, TableRow, TableCell, WidthType,
-  Footer, PageNumber,
+  Footer, Header, PageNumber,
   ShadingType, HeightRule, BorderStyle, SectionType,
   ImageRun, convertInchesToTwip,
 } from 'docx'
@@ -1214,6 +1214,150 @@ function injectDocStyleIntoHtml(html: string, docStyle: DocStyle): string {
   return result
 }
 
+// ── Internal Brief specialized renderer ────────────────────────────────────────
+
+export async function buildInternalBriefDocxBlob(
+  markdown: string,
+  docStyle: DocStyle,
+  clientName: string,
+  verticalName: string,
+): Promise<Blob> {
+  const DARK_NAVY    = '092648'
+  const BRAND_BLUE   = '2E74B5'
+  const STAT_BLUE    = '3358FF'
+  const MID_GRAY     = '4A5A72'
+  const HEAD_NAVY    = '1C3557'
+  const CELL_TEXT    = 'AABBD0'
+  const BORDER_LIGHT = 'D0D6E4'
+  const hf           = 'Arial'
+  const bf           = docStyle.bodyFont || 'Arial'
+  const bodyColor    = '1A1A14'
+  const currentYear  = new Date().getFullYear()
+
+  const body: (Paragraph | Table)[] = []
+
+  // ── Title block ────────────────────────────────────────────────────────────
+  body.push(new Paragraph({ spacing: { before: 0, after: 60 }, children: [new TextRun({ text: clientName, font: hf, size: 56, bold: true, color: DARK_NAVY })] }))
+  body.push(new Paragraph({ spacing: { before: 0, after: 60 }, children: [new TextRun({ text: verticalName, font: hf, size: 28, bold: true, color: BRAND_BLUE })] }))
+  body.push(new Paragraph({ spacing: { before: 0, after: 60 }, children: [new TextRun({ text: 'GTM Launch Brief', font: hf, size: 40, bold: true, color: DARK_NAVY })] }))
+  body.push(new Paragraph({ spacing: { before: 0, after: 120 }, children: [new TextRun({ text: `Internal Use Only · Sales + Marketing · ${currentYear}`, font: bf, size: 22, color: MID_GRAY })] }))
+  body.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, color: STAT_BLUE, size: 6, space: 1 } }, spacing: { after: 240 }, children: [] }))
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function ibHeading(text: string): Paragraph {
+    return new Paragraph({
+      spacing: { before: 400, after: 160 },
+      border: { bottom: { style: BorderStyle.SINGLE, color: BORDER_LIGHT, size: 3, space: 6 } },
+      children: [new TextRun({ text: sanitize(text), font: hf, size: 36, bold: true, color: HEAD_NAVY })],
+    })
+  }
+
+  function buildStatBoxes(tableLines: string[]): Table {
+    const dataRows = tableLines.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
+    const stats  = (dataRows[0] ?? '').split('|').slice(1, -1).map(c => c.replace(/\*\*/g, '').trim())
+    const labels = (dataRows[1] ?? '').split('|').slice(1, -1).map(c => c.trim())
+    while (stats.length < 4) stats.push('–')
+    while (labels.length < 4) labels.push('')
+    const cb = { style: BorderStyle.SINGLE, size: 4, color: BORDER_LIGHT }
+    return new Table({
+      width: { size: 9360, type: WidthType.DXA },
+      borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: cb, insideVertical: cb },
+      rows: [new TableRow({
+        children: stats.map((stat, i) => new TableCell({
+          width: { size: 2340, type: WidthType.DXA },
+          margins: { top: 160, bottom: 160, left: 120, right: 120 },
+          shading: { fill: DARK_NAVY, type: ShadingType.CLEAR, color: DARK_NAVY },
+          children: [
+            new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: stat, font: hf, size: 28, bold: true, color: STAT_BLUE })] }),
+            new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: labels[i] ?? '', font: bf, size: 22, color: CELL_TEXT })] }),
+          ],
+        })),
+      })],
+    })
+  }
+
+  function renderLines(lines: string[]) {
+    let tbl: string[] = []
+    const flush = () => {
+      if (!tbl.length) return
+      const dr = tbl.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
+      if (dr.length) body.push(buildStyledTable(tbl, docStyle))
+      tbl = []
+    }
+    for (const line of lines) {
+      if (line.startsWith('|')) { tbl.push(line); continue }
+      flush()
+      if      (/^#{1,6} /.test(line)) { /* section headings handled by routing */ }
+      else if (/^[-*] /.test(line))   body.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(line.slice(2), bf, 22, bodyColor) }))
+      else if (line.startsWith('> ')) body.push(new Paragraph({ indent: { left: 720 }, children: parseInlineRuns(line.slice(2), bf, 22, bodyColor) }))
+      else if (/^---+$|^===+$/.test(line.trim())) body.push(buildHRule(docStyle.primaryColor))
+      else if (line.trim() === '')    body.push(new Paragraph({}))
+      else                           body.push(new Paragraph({ children: parseInlineRuns(line, bf, 22, bodyColor) }))
+    }
+    flush()
+  }
+
+  // ── Parse sections ─────────────────────────────────────────────────────────
+  const stripped = markdown.replace(/^(?:# [^\n]*\n?)+/m, '').trim()
+  const sections = stripped.split(/^(?=## )/m).filter(s => s.trim()).map(s => {
+    const lines = s.split('\n')
+    const m = lines[0].match(/^## (.+)/)
+    return { name: (m ? m[1] : '').trim().toLowerCase(), title: m ? m[1].trim() : '', lines: lines.slice(1) }
+  })
+
+  for (const { name, title, lines } of sections) {
+    if (name === 'cover') continue
+
+    body.push(ibHeading(title))
+
+    if (name.includes('why this') || name.includes('why now')) {
+      // Stat table first, then narrative
+      const tblLines: string[] = []
+      const rest: string[] = []
+      for (const line of lines) {
+        if (line.startsWith('|')) tblLines.push(line)
+        else rest.push(line)
+      }
+      if (tblLines.length) { body.push(buildStatBoxes(tblLines)); body.push(new Paragraph({})) }
+      renderLines(rest)
+    } else {
+      renderLines(lines)
+    }
+  }
+
+  // ── Header ─────────────────────────────────────────────────────────────────
+  const docHeader = new Header({
+    children: [new Paragraph({
+      border: { bottom: { style: BorderStyle.SINGLE, color: STAT_BLUE, size: 6, space: 4 } },
+      spacing: { after: 80 },
+      children: [
+        new TextRun({ text: clientName, font: hf, size: 18, bold: true, color: DARK_NAVY }),
+        new TextRun({ text: `  |  ${verticalName}  |  GTM Launch Brief`, font: hf, size: 18, color: MID_GRAY }),
+      ],
+    })],
+  })
+
+  // ── Footer (tab stop layout — never a table) ────────────────────────────────
+  const docFooter = new Footer({
+    children: [new Paragraph({
+      tabStops: [{ type: 'right' as const, position: 9026 }],
+      border: { top: { style: BorderStyle.SINGLE, color: BORDER_LIGHT, size: 6, space: 4 } },
+      children: [
+        new TextRun({ text: `${clientName} ${verticalName}  |  Internal Use Only`, font: hf, size: 16, italics: true, color: MID_GRAY }),
+        new TextRun({ text: '\tPage ', font: hf, size: 16, color: MID_GRAY }),
+        new TextRun({ children: [PageNumber.CURRENT], font: hf, size: 16, color: MID_GRAY }),
+      ],
+    })],
+  })
+
+  const doc = new Document({
+    styles: { paragraphStyles: [{ id: 'Normal', name: 'Normal', run: { font: bf, size: 22, color: bodyColor } }] },
+    sections: [{ headers: { default: docHeader }, footers: { default: docFooter }, children: body }],
+  })
+
+  return Packer.toBlob(doc)
+}
+
 // ── Main download entry point ──────────────────────────────────────────────────
 
 export async function downloadKit(
@@ -1232,8 +1376,9 @@ export async function downloadKit(
   } else if (asset.ext === 'pptx') {
     blob = await markdownToPptxBlob(asset.content, style)
   } else if (asset.ext === 'docx' && asset.index === 0) {
-    // Brochure uses a specialized section-aware renderer
     blob = await buildBrochureDocxBlob(asset.content, style, clientName, verticalName)
+  } else if (asset.ext === 'docx' && asset.index === 7) {
+    blob = await buildInternalBriefDocxBlob(asset.content, style, clientName, verticalName)
   } else {
     blob = await markdownToDocxBlob(asset.content, style, {
       assetName: asset.name,
