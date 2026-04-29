@@ -1404,7 +1404,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (fw.s16.ctaSequencing?.trim()) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'CTA Sequencing Notes', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Describe how the CTAs should chain together — what does each asset lead to next?', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(gtmSingleCellTable(fw.s16.ctaSequencing, bodyFont))
   }
