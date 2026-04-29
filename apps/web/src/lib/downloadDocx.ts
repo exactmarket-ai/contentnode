@@ -1039,7 +1039,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     children: [new TextRun({ text: 'Market Pressure Narrative', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
     spacing: { before: 0, after: 60 },
   }))
-  ft([{ label: 'Market Pressure Narrative', value: fw.s03.marketPressureNarrative }])
+  if (fw.s03.marketPressureNarrative?.trim()) children.push(gtmSingleCellTable(fw.s03.marketPressureNarrative, bodyFont))
 
   const statRows = fw.s03.statsTable.filter((r) => r.stat?.trim() || r.context?.trim() || r.source?.trim())
   if (statRows.length > 0) {
