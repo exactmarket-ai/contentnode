@@ -37,24 +37,24 @@ const DraftContext = createContext<DraftContextValue>({
 // ── Section definitions ──────────────────────────────────────────────────────
 
 export const SECTIONS = [
-  { num: '01', short: 'Vertical Overview',              usedIn: '' },
-  { num: '02', short: 'Customer Definition + Profile',  usedIn: '' },
-  { num: '03', short: 'Market Pressures + Stats',       usedIn: 'Brochure · eBook · Deck · Web Page · BDR Email 1' },
-  { num: '04', short: 'Core Challenges',                usedIn: 'Brochure · eBook · Deck · Web Page · BDR Emails' },
-  { num: '05', short: 'Solutions + Service Stack',      usedIn: 'Brochure · eBook · Cheat Sheet · Deck · Web Page · Video Script' },
-  { num: '06', short: 'Why [Client]',                   usedIn: 'Brochure · Cheat Sheet · Deck · Web Page · BDR Emails' },
-  { num: '07', short: 'Segments + Buyer Profiles',      usedIn: 'Cheat Sheet · BDR Emails · Deck speaker notes' },
-  { num: '08', short: 'Messaging Framework',            usedIn: 'All 8 assets' },
-  { num: '09', short: 'Proof Points + Case Studies',    usedIn: 'Brochure · BDR Emails · Web Page · Video Script · eBook' },
-  { num: '10', short: 'Objection Handling',             usedIn: 'Cheat Sheet · BDR Emails · Deck speaker notes' },
-  { num: '11', short: 'Brand Voice Examples',           usedIn: 'All 8 assets — tonal guardrail' },
-  { num: '12', short: 'Competitive Differentiation',    usedIn: 'Cheat Sheet · BDR Emails · Deck' },
-  { num: '13', short: 'Customer Quotes + Testimonials', usedIn: 'eBook · Brochure · Deck · Web Page' },
-  { num: '14', short: 'Campaign Themes + Asset Mapping', usedIn: 'Campaign planning' },
-  { num: '15', short: 'Frequently Asked Questions',     usedIn: 'eBook · BDR Email sequence · Cheat Sheet' },
-  { num: '16', short: 'Content Funnel Mapping',         usedIn: 'All 8 assets — sequencing and CTA alignment' },
-  { num: '17', short: 'Regulatory + Compliance',        usedIn: 'Brochure · eBook · Deck · Cheat Sheet · BDR Email 3' },
-  { num: '18', short: 'CTAs + Next Steps',              usedIn: 'All 8 assets' },
+  { num: '01', short: 'Vertical Overview',               subtitle: 'The foundation — who this vertical is, what it covers, and how this document should be used',      usedIn: '' },
+  { num: '02', short: 'Customer Definition + Profile',   subtitle: 'Who we are targeting — primary and secondary',                                                    usedIn: '' },
+  { num: '03', short: 'Market Pressures + Stats',        subtitle: 'The urgency case — data that makes the business case undeniable',                                 usedIn: 'Brochure · eBook · Deck · Web Page · BDR Email 1' },
+  { num: '04', short: 'Core Challenges',                 subtitle: 'The 5-8 IT-related challenges that create the sales opportunity',                                  usedIn: 'Brochure · eBook · Deck · Web Page · BDR Emails' },
+  { num: '05', short: 'Solutions + Service Stack',       subtitle: 'How [Client]\'s services map to this vertical\'s needs',                                          usedIn: 'Brochure · eBook · Cheat Sheet · Deck · Web Page · Video Script' },
+  { num: '06', short: 'Why [Client]',                    subtitle: 'Vertical-specific differentiators and proof of fit',                                               usedIn: 'Brochure · Cheat Sheet · Deck · Web Page · BDR Emails' },
+  { num: '07', short: 'Segments + Buyer Profiles',       subtitle: 'Sub-segment specific framing for sales and marketing',                                             usedIn: 'Cheat Sheet · BDR Emails · Deck speaker notes' },
+  { num: '08', short: 'Messaging Framework',             subtitle: 'The core narrative: problems, solution, outcomes, value by pillar',                                usedIn: 'All 8 assets' },
+  { num: '09', short: 'Proof Points + Case Studies',     subtitle: 'Company-wide stats and vertical-specific client results',                                          usedIn: 'Brochure · BDR Emails · Web Page · Video Script · eBook' },
+  { num: '10', short: 'Objection Handling',              subtitle: 'Sales responses to the most common pushback in this vertical',                                     usedIn: 'Cheat Sheet · BDR Emails · Deck speaker notes' },
+  { num: '11', short: 'Brand Voice Examples',            subtitle: 'Sounds like / doesn\'t sound like examples for this vertical',                                     usedIn: 'All 8 assets — tonal guardrail' },
+  { num: '12', short: 'Competitive Differentiation',     subtitle: 'How [Client] differs from specific alternatives in this vertical',                                 usedIn: 'Cheat Sheet · BDR Emails · Deck' },
+  { num: '13', short: 'Customer Quotes + Testimonials',  subtitle: 'Real or paraphrased voice-of-customer for use in assets',                                          usedIn: 'eBook · Brochure · Deck · Web Page' },
+  { num: '14', short: 'Campaign Themes + Asset Mapping', subtitle: 'How campaign themes map to specific assets',                                                       usedIn: 'Campaign planning' },
+  { num: '15', short: 'Frequently Asked Questions',      subtitle: 'Real prospect questions from discovery calls',                                                     usedIn: 'eBook · BDR Email sequence · Cheat Sheet' },
+  { num: '16', short: 'Content Funnel Mapping',          subtitle: 'Which assets serve which stage of the buyer journey',                                              usedIn: 'All 8 assets — sequencing and CTA alignment' },
+  { num: '17', short: 'Regulatory + Compliance',         subtitle: 'Frameworks that create urgency and shape the sales conversation',                                  usedIn: 'Brochure · eBook · Deck · Cheat Sheet · BDR Email 3' },
+  { num: '18', short: 'CTAs + Next Steps',               subtitle: 'The entry points — how every conversation ends and what comes next',                              usedIn: 'All 8 assets' },
 ]
 
 // ── GTM variable mapper — produces {varId: value} for docxtemplater fill ─────
@@ -290,7 +290,7 @@ export type FrameworkData = ReturnType<typeof defaultFramework>
 
 // ── Helper: section completion status ────────────────────────────────────────
 
-function getSectionStatus(fw: FrameworkData, num: string): 'complete' | 'in-progress' | 'not-started' {
+export function getSectionStatus(fw: FrameworkData, num: string): 'complete' | 'in-progress' | 'not-started' {
   const sKey = `s${num}` as keyof FrameworkData
   const sec = fw[sKey] as Record<string, unknown> | undefined
   if (!sec) return 'not-started'
