@@ -124,7 +124,16 @@ function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>,
       (docStyle.agencyName ? `Agency name for footer and navigation: "${docStyle.agencyName}" — include this in the footer and nav bar.\n` : '') +
       (docStyle.footerText ? `Footer tagline: "${docStyle.footerText}" — include this in the document footer section.\n` : '') +
       `\n`
-    : ''
+    : docStyle && !HTML_ASSET_INDICES.has(assetIndex)
+      ? [
+          `BRAND CONTEXT — apply to content only (no CSS/HTML):\n`,
+          docStyle.agencyName ? `- Agency name: "${docStyle.agencyName}" — use in the brand footer signature line at the bottom of the document.\n` : '',
+          docStyle.footerText ? `- Footer tagline: "${docStyle.footerText}" — use as the closing brand line.\n` : '',
+          `- Primary brand colour: ${docStyle.primaryColor} (for your reference — applied by the design renderer)\n`,
+          `- Secondary brand colour: ${docStyle.secondaryColor} (for your reference — applied by the design renderer)\n`,
+          `\n`,
+        ].join('')
+      : ''
 
   const metaPreamble = docStyle
     ? `Document metadata:\n- Agency name: "${docStyle.agencyName || 'Your Agency'}"\n- Current year: ${new Date().getFullYear()}\n- URL placeholder rule: If any url field is empty, null, or "na", write [URL] as the placeholder — never write "na" into the document.\n\n`
@@ -134,82 +143,99 @@ function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>,
 
   const instructions = [
     // 01 Brochure
-    `Using the intake JSON provided, generate a professional B2B brochure in markdown. Output EXACTLY the sections below in this order, with the exact ## headers shown. No other sections. No HTML tags of any kind — no <br>, <strong>, <div>, or any other tag.
+    `Using the intake JSON provided, generate a professional B2B brochure in markdown. Output EXACTLY the sections below in this order, with the exact ## headers shown. No other sections. No HTML tags of any kind.
 
 ════════════════════════════════════════════
-COPY LENGTH ENFORCEMENT — NON-NEGOTIABLE:
-• Pillar value props: 12 WORDS MAXIMUM. Count every word. Trim mercilessly.
-  ✓ CORRECT: "Clinical systems that stay available." (5 words)
-  ✓ CORRECT: "Built for healthcare's threat environment." (5 words)
-  ✗ WRONG: "Our managed security operations center provides 24×7 monitoring, detection, and response across cloud and on-premises environments." (16 words — too long)
-• Service list items: NAME ONLY — zero descriptions after the name.
-  ✓ CORRECT: "- Endpoint Protection"
-  ✗ WRONG: "- Endpoint Protection — covering all devices across your environment"
-• Why Us bullets: 15 WORDS MAXIMUM. Lead with the differentiator. Cut after the first sentence.
-  ✓ CORRECT: "**24×7 NOC** — 99.9% uptime SLA with round-the-clock monitoring."
-  ✗ WRONG: "**24×7 NOC** — Our network operations center provides round-the-clock monitoring with a guaranteed 99.9% uptime SLA, staffed by certified engineers who escalate within 15 minutes."
+COPY LENGTH RULES — NON-NEGOTIABLE:
+• Pillar value props: 12 WORDS MAXIMUM — one punchy sentence.
+  ✓ "Clinical systems that stay available."
+  ✓ "Built for healthcare's threat environment."
+  ✗ "Our managed security operations center provides 24×7 monitoring across cloud and on-premises." (too long)
+• Service bullets: SHORT DESCRIPTIVE PHRASE — max 8 words. Include a 1–3 word qualifier that makes it specific. No full sentences. No dash-explanations longer than 3 words.
+  ✓ "MDR + 24/7 SOC monitoring and response"
+  ✓ "HIPAA-aligned Tier 4/5 Private Cloud"
+  ✓ "DRaaS with tested recovery procedures"
+  ✗ "Endpoint Protection" (too bare — add what makes it relevant)
+  ✗ "AI Email Security — stops phishing before clinical inboxes reach staff" (too long after the dash)
+• Why Us bullets: ONE complete sentence, 15–25 words. Plain prose — NO bold label prefix, NO "**label** —" format.
+  ✓ "One partner covers the full compliance stack — Security Assessments, HIPAA-aligned cloud, MDR, DRaaS, and vCISO under a single contract."
+  ✗ "**Full Stack** — One partner covers the full compliance stack." (wrong format)
 ════════════════════════════════════════════
 
 ## Cover
-[vertical.taglines[0] — copy character-for-character from the intake, no quotes, no formatting, plain text only]
+[vertical.taglines[0] — copy character-for-character from the intake, no quotes, plain text only]
 [vertical.positioning_statement — one sentence, no quotes]
 [vertical.name]
 
 ## Stats Bar
-Output exactly 4 lines, one per statistic from statistics[]. Each line must follow this format exactly:
-- **[stat value]** | [short label] | [source, year]
+Output exactly 4 lines, one per statistic from statistics[]. Format exactly:
+- **[stat value]** | [short label — what the stat describes, 4–7 words] | [source, year]
 
 ## Challenges
-| Challenge | Our Response | Service Pillar |
+| Challenge | [vertical.client_name] Solution | Service Pillar |
 |---|---|---|
-[One row per challenge from challenges[]. Challenge = name only. Our Response = one short sentence from solution. Service Pillar = service_pillar value. Do NOT add any row where all cells are empty, "na", or placeholder text.]
+[One row per challenge from challenges[]. Challenge = challenge name only. Solution = one short sentence drawn from the challenge.solution field. Service Pillar = service_pillar value. Skip any row where all cells are "na" or empty.]
 
-## Four Pillars
-[For each of the 4 pillars from pillars[], output this block — no tables, no HTML:]
+## What We Deliver
+[For each pillar from pillars[], output this block — no tables, no HTML:]
 ### [pillar.name]
-[pillar.value_prop trimmed to 12 WORDS MAXIMUM — one sentence only. If the original is longer, cut it. See enforcement rules above.]
-- [key_service_1 name — name only, no description]
-- [key_service_2 name — name only, no description]
-- [key_service_3 name — name only, no description]
+[pillar.value_prop trimmed to 12 WORDS MAXIMUM]
+- [key_service_1 as short descriptive phrase, max 8 words — add a specific qualifier from the intake]
+- [key_service_2 as short descriptive phrase, max 8 words]
+- [key_service_3 as short descriptive phrase, max 8 words]
+- [key_service_4 if present, max 8 words]
+- [key_service_5 if present, max 8 words]
 
 [blank line between pillars]
 
-## Why Us
-[One bullet per differentiator from differentiators[]. Format: - **[label]** — [position, 15 WORDS MAXIMUM — one sentence only, lead with the differentiator, cut everything after the first sentence. See enforcement rules above.]]
+## Why [vertical.client_name]
+[One sentence framing why this section matters — draw from market_position or brand_voice.differentiators context. E.g. "There are a lot of managed IT providers. Here's what makes [client_name] different for [vertical.name] specifically."]
+
+[One bullet per differentiator from differentiators[]. Each bullet is a PLAIN COMPLETE SENTENCE — no bold label, no "**label** —" prefix. 15–25 words. Lead with the proof or outcome, not the feature name.]
 
 ## Proof Points Strip
-[ALL entries from proof_points[] — output every one, do not limit to 4. Up to 6 maximum. Format:]
-- **[stat]** | [label]
-[If proof_points[] has fewer than 6 entries, supplement with: "~6 years" | "avg. client relationship" and "30 years" | "IT services experience" as defaults if they are not already present.]
+[ALL entries from proof_points[] — every one, up to 6 maximum. Format:]
+- **[stat]** | [label] | [sub-label if present]
+[Supplement if fewer than 6: add "~6 years" | "avg. client relationship" and "30 years" | "IT services experience" if not already present.]
 
-## Case Studies
-### [case_studies[0].client_profile — use actual value, never "na"]
-**Who they are:** [1 sentence — use real data from case_studies[0].situation]
-**Challenge:** [situation — 1–2 sentences]
-**What we delivered:** [engagement — 1–2 sentences]
-**Outcome:** [outcomes — 1–2 sentences, quantified where possible]
+## In Practice
+### [case_studies[0].client_profile — never "na"]
+**Who they are:** [1 sentence from situation — describe the organisation]
+**The challenge:** [situation — 1–2 sentences on the problem they faced]
+**What [vertical.client_name] did:** [engagement — 2–3 sentences on what was delivered]
+**The outcome:** [outcomes — 1–2 sentences, quantified wherever possible]
+[If case_studies[0].quote is present and not "na": "[quote text]" — [speaker_role or "Client"]]
 
 ### [case_studies[1].client_profile or "Case Study Pending" if missing — never "na"]
 **Who they are:** [1 sentence or "Contact your team to add a second case study."]
-**Challenge:** [real data or "—"]
-**What we delivered:** [real data or "—"]
-**Outcome:** [real data or "—"]
+**The challenge:** [real data or "—"]
+**What [vertical.client_name] did:** [real data or "—"]
+**The outcome:** [real data or "—"]
+[If case_studies[1].quote is present and not "na": "[quote text]" — [speaker_role or "Client"]]
 
-## Back Cover
+## Where Do You Start?
+[1–2 sentence intro drawn from primary_cta context or market_pressure_narrative — where most prospects come from, what prompts them to act.]
+
 **[primary_cta.name]**
-[primary_cta.description — 1–2 sentences]
-[REQUIRED: output the ACTUAL URL from primary_cta.url — you MUST substitute the real value here. Never write the literal text "primary_cta.url". If the URL is https://example.com/consult then write https://example.com/consult.]
-- → [first entry from secondary_ctas[] if available, otherwise: "Book a discovery call"]
-- → [second entry from secondary_ctas[] if available, otherwise: "Download the Healthcare eBook"]
-- → [document_control.marketing_contact if available, otherwise: "Contact your account team"]
+[primary_cta.description — 1–2 sentences, what they get, no commitment language]
+[REQUIRED: the ACTUAL URL from primary_cta.url — substitute the real value. Never write "primary_cta.url" literally.]
+
+Other entry points:
+[For each entry in secondary_ctas[]: [name] — [short description, 5–8 words]: [url]]
+[If secondary_ctas[] is empty, output:]
+- Book a discovery call — 30 minutes, no pitch: [primary_cta.url]
+- Download the [vertical.name] guide: [URL]
+
+[Agency name from BRAND CONTEXT above if provided, otherwise vertical.client_name] | [root domain from primary_cta.url]
+[Footer tagline from BRAND CONTEXT if provided, otherwise vertical.service_line_summary or list of main pillars separated by · ]
 
 RULES:
 - No HTML tags anywhere.
-- No markdown tables in the Four Pillars section.
-- Bold only using **double asterisks**.
-- Platform-agnostic language — no specific tool names (no "Monday.com", "Box", "Salesforce", "HubSpot"). Use "your project management stack", "your delivery workflow" instead.
-- Every case study outcome must be specific and quantified where possible.
-- Back cover URL must be the real substituted URL value.`,
+- No markdown tables outside Challenges.
+- Bold only via **double asterisks**.
+- Platform-agnostic: no "Monday.com", "Box", "Salesforce", "HubSpot" — use generic terms.
+- Every case study outcome must be specific and quantified where the data exists.
+- All URLs must be real substituted values from the intake — never placeholder text.`,
 
     // 02 eBook
     `Using the intake JSON provided, generate a complete standalone eBook as a single valid HTML document.

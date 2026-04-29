@@ -734,23 +734,23 @@ export async function buildBrochureDocxBlob(
       body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Challenges We Solve')] }))
       renderGeneric(lines)
       body.push(new Paragraph({}))
-    } else if (name.includes('pillar')) {
-      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Our Four Pillars')] }))
+    } else if (name.includes('pillar') || name.includes('deliver')) {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('What We Deliver')] }))
       body.push(buildPillars2x2(lines, docStyle))
       body.push(new Paragraph({}))
     } else if (name.includes('why')) {
-      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Why Us')] }))
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun(sanitize(name))] }))
       renderGeneric(lines)
       body.push(new Paragraph({}))
     } else if (name.includes('proof')) {
       body.push(buildHRule(docStyle.primaryColor))
       body.push(buildProofStrip(lines, docStyle))
       body.push(new Paragraph({}))
-    } else if (name.includes('case')) {
-      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('Client Stories')] }))
+    } else if (name.includes('case') || name.includes('practice')) {
+      body.push(new Paragraph({ style: 'Heading2', children: [new TextRun('In Practice')] }))
       body.push(...buildCaseStudies(lines, docStyle))
       body.push(new Paragraph({}))
-    } else if (name.includes('back cover') || name.includes('back') || name.includes('cta')) {
+    } else if (name.includes('back cover') || name.includes('back') || name.includes('cta') || name.includes('start')) {
       body.push(buildHRule(docStyle.primaryColor))
       body.push(...buildBackCoverCta(lines, docStyle))
     } else {
