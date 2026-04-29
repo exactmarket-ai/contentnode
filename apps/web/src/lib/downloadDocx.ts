@@ -1346,7 +1346,13 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
       [18, 30, 30, 22],
     ))
   }
-  ft([{ label: 'CTA Sequencing Notes', value: fw.s16.ctaSequencing }])
+  if (fw.s16.ctaSequencing?.trim()) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'CTA Sequencing Notes', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
+    ft([{ label: 'CTA Sequencing Notes', value: fw.s16.ctaSequencing }])
+  }
   children.push(gtmSpacer())
 
   // ── §17 Regulatory + Compliance ─────────────────────────────────────────────
@@ -1360,7 +1366,13 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
       [25, 30, 20, 25],
     ))
   }
-  ft([{ label: 'Regulatory Sales Note', value: fw.s17.regulatorySalesNote }])
+  if (fw.s17.regulatorySalesNote?.trim()) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Regulatory Sales Note', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
+    ft([{ label: 'Regulatory Sales Note', value: fw.s17.regulatorySalesNote }])
+  }
   children.push(gtmSpacer())
 
   // ── §18 CTAs + Next Steps ────────────────────────────────────────────────────
