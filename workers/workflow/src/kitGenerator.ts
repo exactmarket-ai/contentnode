@@ -475,82 +475,102 @@ Output complete valid HTML only.`,
 SEGMENT COUNT RULE — NON-NEGOTIABLE:
 Count how many items are in segments[]. Output EXACTLY that many email blocks in Email Sequences — one block per segment, in order. Then add exactly ONE final AI/Innovation email.
 
-Examples:
   segments[] has 4 items → 4 segment email blocks + 1 AI email = 5 total
   segments[] has 3 items → 3 segment email blocks + 1 AI email = 4 total
 
 Do NOT stop early. Do NOT skip any segment. Count first, then write every block.
 
 ════════════════════════════════════════════
-CRITICAL RULES:
-- Platform-agnostic language everywhere: "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "GPTZero" → "your AI detection tool". No specific tool names.
-- Never include audience targeting metadata inside email bodies.
-- Email body: 4-5 LINES MAXIMUM. One sentence per line. No paragraphs.
-- CTA: write [Link] as the placeholder — nothing else. No URL, no "primary_cta.url".
+EMAIL BODY RULES — NON-NEGOTIABLE:
+- NEVER open with a salutation. No "Hi [Name]", no "Dear [Name]", no greeting of any kind. Start immediately with the first line of copy.
+- 4-5 LINES MAXIMUM. One sentence per line. No paragraphs.
+- Weave in a specific statistic from statistics[] in at least one line.
+- Final line before [Link]: name the specific service or offer (e.g. "NexusTek gives practices like yours 24/7 security monitoring, HIPAA-aligned infrastructure, and a tested recovery plan — under a single fixed monthly fee.")
+- CTA placeholder: write [Link] — nothing else. No URL, no "primary_cta.url".
+- NEVER include audience targeting metadata inside the email body.
+- Platform-agnostic language: no specific tool names. "your PM tool", "your file delivery stack", etc.
+
+════════════════════════════════════════════
 
 ────────────────────────────────────────────
 ## Cover
-**[vertical.name] BDR Call Scripts & Email Sequences**
-[vertical.client_name]
+BDR Call Scripts and Email Sequences
+[vertical.name] · [vertical.client_name]
 [exact count of segments[]] Segments · [exact count of segments[] + 1] Email Sequences
 Internal Use Only
 
 ────────────────────────────────────────────
 ## Contents
-Table with 2 columns: Segment | Subject Line
-One row per segment email block (in order), plus one row for the AI/Innovation email.
+| Segment | Subject Line |
+|---|---|
+[One row per segment email in order, then one row for the AI email]
 
 ────────────────────────────────────────────
 ## How to Use
-Single short paragraph only — no bullet lists, no bracket-type documentation:
-"Personalise every [customize with...] bracket before sending. Subject lines and conversation starters work without customisation but specificity improves response rates. The primary CTA is the same in every email — never pitch a full managed services engagement on cold outreach."
+Personalize every [customize with...] bracket before sending. Subject lines and conversation starters work without customization but specificity improves response rates. The primary CTA is the same in every email — never pitch a full managed services engagement on cold outreach.
 
 ────────────────────────────────────────────
 ## Call Scripts
-Table with exactly 4 columns:
-# | Segment (subject line in smaller text below the segment name) | Conversation Starters (all 3 in one cell, numbered 1. 2. 3., each 1-2 sentences) | Voicemail Script (2-3 sentences max)
-
-One row per segment from segments[]. Use segments[].lead_hook as the basis for Starter 1.
+| # | Segment | Conversation Starters | Voicemail Script |
+|---|---|---|---|
+[One row per segment. Segment cell = segment name, then *(subject line)* in italics on the next line within the cell. Conversation Starters = three starters numbered 1. 2. 3. in one cell. Each starter is 1-3 sentences, opens with a situation question or observation grounded in segment.key_pressures or statistics[]. Use segment.lead_hook as the basis for Starter 1. Voicemail = 2-3 sentences, complete script "Hi [Name], this is [Your Name] from [vertical.client_name]. [1 sentence on who you work with and the core gap]. [Closing: I'd like to / sending you a note]."]
 
 ────────────────────────────────────────────
 ## Email Sequences
 
-Repeat the following block for EVERY segment in segments[], then add the AI block at the end:
+Repeat EXACTLY the following block for EVERY segment in segments[], in order. Then add the AI block.
 
-**[Segment Name from segments[]]**
-**Subject:** [specific value-focused subject line]
-**Preview:** [1 sentence — the hook]
----
-[Email body — 4-5 LINES MAXIMUM. One sentence per line. No audience metadata.]
+FORMAT FOR EACH SEGMENT BLOCK — copy this structure exactly, substituting values:
 
-[Link]
-[One short closing question: "Worth 30 minutes?" or "Want to see it?"]
+[Synthesized audience profile line — one sentence describing who this segment is: segment.name + types of organisations that fit + company size from icp.company_size + defining characteristic (e.g. "no dedicated internal security function"). Example: "Mid-market outpatient and ambulatory care providers: physician groups, specialty clinics, community health centers — 50 to 500 employees, no dedicated internal security function."]
 
----
-*[customize with: specific challenge, company name, recent trigger event]*
+Subject: [subject line — event-driven or stat-led, specific to this segment's core pain]
 
-After all segment blocks, add this final block:
+Preview: [1 sentence — the hook that expands the subject line]
 
-**AI-Forward Outreach (All Segments)**
-**Subject:** [AI-specific subject line]
-**Preview:** [AI-focused hook]
----
-[Email body — 4-5 LINES MAXIMUM]
+
+[Line 1 — Open with the consequence or scenario from segment.lead_hook. A question or a direct operational scenario. No salutation.]
+[Line 2 — Introduce the broader pattern or statistic from statistics[] that validates line 1.]
+[Line 3 — Name a specific financial or operational cost using statistics[] or challenges[]. Concrete figure if available.]
+[Line 4 — Introduce vertical.client_name and the specific service combination that solves lines 1-3. Name the services. One sentence.]
 
 [Link]
-[closing question]
 
----
-*[customize with: specific AI initiative, company name]*
+[Closing question — one short question: "Worth 30 minutes to see what your current exposure looks like?" or similar.]
+
+
+*Customize with: [2-3 specific personalization suggestions — recent event at similar org, specific technology in use, recent regulatory enforcement activity in the prospect's region]*
+
+────────────────────────────────────────────
+After all segment blocks, add this AI block:
+
+AI-Forward Outreach (All Segments)
+
+Subject: [AI-specific subject line — references a specific time cost or productivity gap]
+
+Preview: [AI hook — names the governance or deployment barrier]
+
+
+[Line 1 — Open with a specific time statistic about AI admin burden or similar from statistics[]. No salutation.]
+[Line 2 — Name the reason AI pilots stall for this vertical (governance, PHI, compliance infrastructure).]
+[Line 3 — Name vertical.client_name's AI readiness or assessment service specifically.]
+[Line 4 — Describe the outcome the prospect gets — productivity gain without the PHI risk.]
+
+[Link]
+
+[Closing question]
+
+
+*Customize with: [specific AI initiative underway, administrative bottleneck identified in discovery, company name]*
 
 ────────────────────────────────────────────
 ## Back Cover
 **[vertical.client_name] — [vertical.name]**
-*BDR Call Scripts & Email Sequences*
+*BDR Call Scripts and Email Sequences*
 
 INTERNAL USE ONLY — Not for Distribution
 
-[Agency name from document metadata] · Version 1.0 · [Current year from document metadata]`,
+[vertical.client_name] · Version 1.0 · [current year from document metadata]`,
 
     // 05 Customer Deck
     `Using the intake JSON provided, generate a 14-slide customer-facing presentation in markdown format. Use ## Slide N: [Title] as the header for each slide.
