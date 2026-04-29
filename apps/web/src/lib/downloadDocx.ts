@@ -1069,27 +1069,48 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   const filledPillars = fw.s05.pillars.filter((p) => p.pillar?.trim() || p.valueProp?.trim() || p.keyServices?.trim())
   if (filledPillars.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Four Solution Pillars — Vertical Positioning', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 60 },
+    }))
     children.push(st(
       ['Pillar', 'Vertical Value Prop', 'Key Services', 'Relevant To'],
       filledPillars.map((p) => [p.pillar ?? '', p.valueProp ?? '', p.keyServices ?? '', p.relevantTo ?? '']),
       [20, 35, 30, 15],
     ))
-    children.push(new Paragraph({ spacing: { after: 80 } }))
   }
 
   const serviceRows = fw.s05.serviceStack.filter((r) => r.service?.trim() || r.whatItDelivers?.trim())
   if (serviceRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Full Service Stack — Mapped to Vertical Needs', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     children.push(st(
       ['Service', 'Regulatory Domain', 'What It Delivers in This Vertical', 'Priority'],
       serviceRows.map((r) => [r.service, r.regulatoryDomain ?? '', r.whatItDelivers, r.priority]),
       [22, 18, 45, 15],
     ))
   }
+
+  const platformName = fw.s01.platformName?.trim()
+  const platformBenefit = fw.s01.platformBenefit?.trim()
+  if (platformName || platformBenefit) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `${platformName || '[Product]'} Platform — Vertical Context`, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
+    ft([{ label: `${platformName || '[Product]'} Platform`, value: platformBenefit }])
+  }
   children.push(gtmSpacer())
 
   // ── §06 Why [clientName] ────────────────────────────────────────────────────
   const s06 = SECTIONS.find((s) => s.num === '06')!
   children.push(...sb('06', `Why ${clientName}`, s06.subtitle, s06.usedIn))
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'Differentiators Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+    spacing: { before: 0, after: 60 },
+  }))
   const filledDiff = fw.s06.differentiators.filter((d) => d.label?.trim() || d.position?.trim())
   if (filledDiff.length > 0) {
     const t = gtmFieldTable(filledDiff.map((d, i) => ({
