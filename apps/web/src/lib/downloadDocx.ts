@@ -1116,7 +1116,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const platformName = fw.s01.platformName?.trim()
   const platformBenefit = fw.s01.platformBenefit?.trim()
   if (platformBenefit) {
-    children.push(new Paragraph({ spacing: { before: 160, after: 60 } }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `${platformName || '[Product]'} Platform — Vertical Context`, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     children.push(gtmSingleCellTable(platformBenefit, bodyFont))
   }
   children.push(gtmSpacer())
