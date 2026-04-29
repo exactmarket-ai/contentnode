@@ -121,9 +121,16 @@ function buildStyledTable(tableLines: string[], docStyle: DocStyle): Table {
   const primary    = hexNoHash(docStyle.primaryColor)
   const altRow     = tint(docStyle.secondaryColor, 0.1)
   const borderCol  = tint(docStyle.primaryColor, 0.3)
-  const dataRows   = tableLines.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
   const bodyFont   = docStyle.bodyFont
   const bodySize   = 22 // 11pt in half-points
+  // Filter out: (1) separator rows  (2) data rows where every cell is empty / "na" / "–" (stray placeholders)
+  const dataRows   = tableLines
+    .filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
+    .filter((l, idx) => {
+      if (idx === 0) return true // always keep header
+      const cells = l.split('|').slice(1, -1).map(c => c.trim().toLowerCase())
+      return !cells.every(c => !c || c === 'na' || c === '—' || c === '-' || c === '–' || c === '\\-')
+    })
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -517,28 +524,32 @@ function buildBackCoverCta(lines: string[], docStyle: DocStyle): (Paragraph | Ta
   return elements
 }
 
-/** Brochure-specific cover: client name large + tagline + vertical name */
+/** Brochure-specific cover: client name large + tagline + vertical name on primary-color background */
 async function buildBrochureCoverSection(
   docStyle: DocStyle,
   tagline: string,
   clientName: string,
   verticalName: string,
 ): Promise<(Paragraph | Table)[]> {
-  const primary = hexNoHash(docStyle.primaryColor)
+  const primary   = hexNoHash(docStyle.primaryColor)
+  const secondary = hexNoHash(docStyle.secondaryColor)
+  // Strip any surrounding quotes the model may have added
+  const cleanTagline = tagline.replace(/^["'"'"']+|["'"'"']+$/g, '').trim()
   const items: Paragraph[] = []
 
+  // Agency logo or name — upper area
   if (docStyle.logoDataUrl) {
     const logoType = imageTypeFromDataUrl(docStyle.logoDataUrl)
     let placed = false
     if (logoType) {
       const dims = await getImageDimensions(docStyle.logoDataUrl)
       if (dims && dims.h > 0) {
-        const TARGET_H = 50
+        const TARGET_H = 54
         const targetW = Math.round(TARGET_H * (dims.w / dims.h))
         try {
           items.push(new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 480, after: 320 },
+            spacing: { before: 560, after: 400 },
             children: [new ImageRun({ data: dataUrlToArrayBuffer(docStyle.logoDataUrl), type: logoType, transformation: { width: targetW, height: TARGET_H } })],
           }))
           placed = true
@@ -546,19 +557,47 @@ async function buildBrochureCoverSection(
       }
     }
     if (!placed && docStyle.agencyName) {
-      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 480, after: 320 }, children: [new TextRun({ text: docStyle.agencyName, font: docStyle.headingFont, size: 32, bold: true, color: 'FFFFFF' })] }))
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 560, after: 400 }, children: [new TextRun({ text: docStyle.agencyName, font: docStyle.headingFont, size: 32, bold: true, color: 'FFFFFF' })] }))
     }
   } else {
-    items.push(new Paragraph({ spacing: { before: 960 }, children: [] }))
+    items.push(new Paragraph({ spacing: { before: 1200 }, children: [] }))
   }
 
-  items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text: sanitize(clientName), font: docStyle.headingFont, size: 64, bold: true, color: 'FFFFFF' })] }))
-  if (tagline) items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: sanitize(tagline), font: docStyle.headingFont, size: 32, color: 'DDDDDD' })] }))
-  items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [new TextRun({ text: sanitize(verticalName), font: docStyle.bodyFont, size: 24, color: 'AAAAAA' })] }))
+  // Client name — large and prominent
+  items.push(new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 200 },
+    children: [new TextRun({ text: sanitize(clientName), font: docStyle.headingFont, size: 80, bold: true, color: 'FFFFFF' })],
+  }))
 
+  // Accent divider line (simulated with a highlighted text run)
+  items.push(new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 200 },
+    children: [new TextRun({ text: '─────', font: docStyle.bodyFont, size: 24, color: secondary })],
+  }))
+
+  // Tagline — display size, not body text
+  if (cleanTagline) {
+    items.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 180 },
+      children: [new TextRun({ text: sanitize(cleanTagline), font: docStyle.headingFont, size: 40, bold: false, color: 'FFFFFF' })],
+    }))
+  }
+
+  // Vertical name as a label
+  items.push(new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 0 },
+    children: [new TextRun({ text: sanitize(verticalName).toUpperCase(), font: docStyle.bodyFont, size: 22, color: 'AAAAAA' })],
+  }))
+
+  // NIL borders so Word renders zero table lines — more absolute than NONE
+  const nilBorder = { style: BorderStyle.NIL } as const
   return [new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
+    borders: { top: nilBorder, bottom: nilBorder, left: nilBorder, right: nilBorder, insideHorizontal: nilBorder, insideVertical: nilBorder },
     rows: [new TableRow({
       height: { value: convertInchesToTwip(9.5), rule: HeightRule.EXACT },
       children: [new TableCell({ shading: { fill: primary, type: ShadingType.SOLID, color: primary }, children: items })],
@@ -588,7 +627,7 @@ export async function buildBrochureDocxBlob(
   })
 
   const coverSection = sections.find(s => s.name === 'cover')
-  const coverTagline = coverSection?.lines.find(l => l.trim())?.trim() ?? ''
+  const coverTagline = (coverSection?.lines.find(l => l.trim())?.trim() ?? '').replace(/^["'"'"']+|["'"'"']+$/g, '').trim()
 
   const body: (Paragraph | Table)[] = []
 

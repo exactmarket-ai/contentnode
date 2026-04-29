@@ -132,9 +132,23 @@ function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>,
     // 01 Brochure
     `Using the intake JSON provided, generate a professional B2B brochure in markdown. Output EXACTLY the sections below in this order, with the exact ## headers shown. No other sections. No HTML tags of any kind — no <br>, <strong>, <div>, or any other tag.
 
+════════════════════════════════════════════
+COPY LENGTH ENFORCEMENT — NON-NEGOTIABLE:
+• Pillar value props: 12 WORDS MAXIMUM. Count every word. Trim mercilessly.
+  ✓ CORRECT: "Clinical systems that stay available." (5 words)
+  ✓ CORRECT: "Built for healthcare's threat environment." (5 words)
+  ✗ WRONG: "Our managed security operations center provides 24×7 monitoring, detection, and response across cloud and on-premises environments." (16 words — too long)
+• Service list items: NAME ONLY — zero descriptions after the name.
+  ✓ CORRECT: "- Endpoint Protection"
+  ✗ WRONG: "- Endpoint Protection — covering all devices across your environment"
+• Why Us bullets: 15 WORDS MAXIMUM. Lead with the differentiator. Cut after the first sentence.
+  ✓ CORRECT: "**24×7 NOC** — 99.9% uptime SLA with round-the-clock monitoring."
+  ✗ WRONG: "**24×7 NOC** — Our network operations center provides round-the-clock monitoring with a guaranteed 99.9% uptime SLA, staffed by certified engineers who escalate within 15 minutes."
+════════════════════════════════════════════
+
 ## Cover
-[vertical.taglines[0] — copy verbatim, one line]
-[vertical.positioning_statement — one sentence]
+[vertical.taglines[0] — copy character-for-character from the intake, no quotes, no formatting, plain text only]
+[vertical.positioning_statement — one sentence, no quotes]
 [vertical.name]
 
 ## Stats Bar
@@ -144,50 +158,54 @@ Output exactly 4 lines, one per statistic from statistics[]. Each line must foll
 ## Challenges
 | Challenge | Our Response | Service Pillar |
 |---|---|---|
-[One row per challenge from challenges[]. Challenge = name only. Our Response = derived from solution. Service Pillar = service_pillar value.]
+[One row per challenge from challenges[]. Challenge = name only. Our Response = one short sentence from solution. Service Pillar = service_pillar value. Do NOT add any row where all cells are empty, "na", or placeholder text.]
 
 ## Four Pillars
 [For each of the 4 pillars from pillars[], output this block — no tables, no HTML:]
 ### [pillar.name]
-[pillar.value_prop — one sentence]
-- [key_service 1]
-- [key_service 2]
-- [key_service 3]
+[pillar.value_prop trimmed to 12 WORDS MAXIMUM — one sentence only. If the original is longer, cut it. See enforcement rules above.]
+- [key_service_1 name — name only, no description]
+- [key_service_2 name — name only, no description]
+- [key_service_3 name — name only, no description]
 
 [blank line between pillars]
 
 ## Why Us
-[One bullet per differentiator from differentiators[]. Format: - **[label]** — [position, one sentence max]]
+[One bullet per differentiator from differentiators[]. Format: - **[label]** — [position, 15 WORDS MAXIMUM — one sentence only, lead with the differentiator, cut everything after the first sentence. See enforcement rules above.]]
 
 ## Proof Points Strip
-[Exactly 4 lines from proof_points[]. Format:]
+[ALL entries from proof_points[] — output every one, do not limit to 4. Up to 6 maximum. Format:]
 - **[stat]** | [label]
+[If proof_points[] has fewer than 6 entries, supplement with: "~6 years" | "avg. client relationship" and "30 years" | "IT services experience" as defaults if they are not already present.]
 
 ## Case Studies
-### [case_studies[0].client_profile]
-**Who they are:** [1 sentence]
-**Challenge:** [situation — 1-2 sentences]
-**What we delivered:** [engagement — 1-2 sentences]
-**Outcome:** [outcomes — 1-2 sentences]
+### [case_studies[0].client_profile — use actual value, never "na"]
+**Who they are:** [1 sentence — use real data from case_studies[0].situation]
+**Challenge:** [situation — 1–2 sentences]
+**What we delivered:** [engagement — 1–2 sentences]
+**Outcome:** [outcomes — 1–2 sentences, quantified where possible]
 
-### [case_studies[1].client_profile or placeholder if missing]
-**Who they are:** [1 sentence or "Case study pending — contact your team"]
-**Challenge:** [—]
-**What we delivered:** [—]
-**Outcome:** [—]
+### [case_studies[1].client_profile or "Case Study Pending" if missing — never "na"]
+**Who they are:** [1 sentence or "Contact your team to add a second case study."]
+**Challenge:** [real data or "—"]
+**What we delivered:** [real data or "—"]
+**Outcome:** [real data or "—"]
 
 ## Back Cover
 **[primary_cta.name]**
-[primary_cta.description — 1-2 sentences]
-[the actual URL value from primary_cta.url — substitute the real value from the intake JSON]
+[primary_cta.description — 1–2 sentences]
+[REQUIRED: output the ACTUAL URL from primary_cta.url — you MUST substitute the real value here. Never write the literal text "primary_cta.url". If the URL is https://example.com/consult then write https://example.com/consult.]
+- → [first entry from secondary_ctas[] if available, otherwise: "Book a discovery call"]
+- → [second entry from secondary_ctas[] if available, otherwise: "Download the Healthcare eBook"]
+- → [document_control.marketing_contact if available, otherwise: "Contact your account team"]
 
 RULES:
-- No HTML tags. No <br>, <strong>, <div>, or any other HTML anywhere.
+- No HTML tags anywhere.
 - No markdown tables in the Four Pillars section.
 - Bold only using **double asterisks**.
-- Platform-agnostic language throughout — do not name specific tools (no "Monday.com", "Box", "Salesforce", "HubSpot" etc.). Say "your project management stack" or "your existing delivery workflow" instead.
+- Platform-agnostic language — no specific tool names (no "Monday.com", "Box", "Salesforce", "HubSpot"). Use "your project management stack", "your delivery workflow" instead.
 - Every case study outcome must be specific and quantified where possible.
-- Back cover URL must be the real URL value from primary_cta.url in the intake JSON.`,
+- Back cover URL must be the real substituted URL value.`,
 
     // 02 eBook
     `Using the intake JSON provided, generate a complete standalone eBook as a single valid HTML document.
