@@ -395,28 +395,22 @@ function buildStatBar(lines: string[], docStyle: DocStyle): Table {
     })
   while (parsed.length < 4) parsed.push({ val: '–', label: '', source: '' })
 
-  const primary  = hexNoHash(docStyle.primaryColor)
-  const divider  = tint(docStyle.primaryColor, 0.2)
+  const primary   = hexNoHash(docStyle.primaryColor)
+  const secondary = hexNoHash(docStyle.secondaryColor)
   const hf = docStyle.headingFont
   const bf = docStyle.bodyFont
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: {
-      top:              { style: BorderStyle.SINGLE, size: 6, color: primary },
-      bottom:           { style: BorderStyle.SINGLE, size: 6, color: primary },
-      left:             noBorder(),
-      right:            noBorder(),
-      insideHorizontal: noBorder(),
-      insideVertical:   { style: BorderStyle.SINGLE, size: 2, color: divider },
-    },
+    borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
     rows: [new TableRow({
       children: parsed.map(s => new TableCell({
-        margins: { top: 160, bottom: 160, left: 120, right: 120 },
+        shading: { fill: primary, type: ShadingType.SOLID, color: primary },
+        margins: { top: 200, bottom: 200, left: 140, right: 140 },
         children: [
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.val), font: hf, size: 48, bold: true, color: primary })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.label), font: bf, size: 22 })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.source), font: bf, size: 18, italics: true, color: '6B7280' })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.val), font: hf, size: 40, bold: true, color: secondary })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.label), font: bf, size: 20, color: 'FFFFFF' })] }),
+          ...(s.source ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(s.source), font: bf, size: 16, italics: true, color: 'CCCCCC' })] })] : []),
         ],
       })),
     })],
@@ -482,7 +476,7 @@ function buildPillars2x2(lines: string[], docStyle: DocStyle): Table {
   })
 }
 
-/** Dark-background proof strip: primaryColor fill, large white stat + label per cell */
+/** Dark-background proof strip: primaryColor fill, secondary-colored stat + white label per cell */
 function buildProofStrip(lines: string[], docStyle: DocStyle): Table {
   const parsed = lines
     .filter(l => /^[-*] /.test(l))
@@ -493,7 +487,8 @@ function buildProofStrip(lines: string[], docStyle: DocStyle): Table {
     })
   if (!parsed.length) return buildStatBar([], docStyle)
 
-  const primary  = hexNoHash(docStyle.primaryColor)
+  const primary   = hexNoHash(docStyle.primaryColor)
+  const secondary = hexNoHash(docStyle.secondaryColor)
   const hf = docStyle.headingFont
   const bf = docStyle.bodyFont
 
@@ -505,8 +500,8 @@ function buildProofStrip(lines: string[], docStyle: DocStyle): Table {
         shading: { fill: primary, type: ShadingType.SOLID, color: primary },
         margins: { top: 200, bottom: 200, left: 120, right: 120 },
         children: [
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(p.val), font: hf, size: 48, bold: true, color: 'FFFFFF' })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(p.label), font: bf, size: 20, color: 'DDDDDD' })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(p.val), font: hf, size: 32, bold: true, color: secondary })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sanitize(p.label), font: bf, size: 18, color: 'FFFFFF' })] }),
         ],
       })),
     })],
@@ -523,52 +518,70 @@ function buildCaseStudies(lines: string[], docStyle: DocStyle): (Paragraph | Tab
       cur = { title: line.slice(4).trim(), fields: [] }
     } else if (cur) {
       const m = line.match(/^\*\*([^*]+):\*\*\s*(.*)/)
-      if (m) cur.fields.push({ key: m[1].trim(), value: m[2].trim() })
+      if (m) {
+        cur.fields.push({ key: m[1].trim(), value: m[2].trim() })
+      } else if (line.trim() && cur.fields.length > 0) {
+        cur.fields[cur.fields.length - 1].value += ' ' + line.trim()
+      }
     }
   }
   if (cur) blocks.push(cur)
   const placeholder = {
-    title: 'Case study pending',
+    title: 'Case Study Pending',
     fields: [
-      { key: 'Who they are', value: 'Contact your team to add a case study.' },
-      { key: 'Challenge', value: '—' },
+      { key: 'Who they are', value: 'Contact your team to add verified client profile details.' },
+      { key: 'The challenge', value: '—' },
       { key: 'What we delivered', value: '—' },
-      { key: 'Outcome', value: '—' },
+      { key: 'The outcome', value: '—' },
     ],
   }
   while (blocks.length < 2) blocks.push(placeholder)
 
   const primary   = hexNoHash(docStyle.primaryColor)
-  const borderCol = tint(docStyle.primaryColor, 0.3)
-  const altFill   = tint(docStyle.secondaryColor, 0.05)
-  const hf = docStyle.headingFont
+  const borderCol = tint(docStyle.primaryColor, 0.25)
   const bf = docStyle.bodyFont
+  const hf = docStyle.headingFont
 
-  const buildCard = (b: typeof blocks[0]): TableCell => new TableCell({
-    shading: { fill: altFill, type: ShadingType.SOLID, color: altFill },
-    margins: { top: 160, bottom: 160, left: 160, right: 160 },
-    borders: {
-      top:    { style: BorderStyle.SINGLE, size: 6, color: primary },
-      bottom: { style: BorderStyle.SINGLE, size: 2, color: borderCol },
-      left:   { style: BorderStyle.SINGLE, size: 2, color: borderCol },
-      right:  { style: BorderStyle.SINGLE, size: 2, color: borderCol },
-    },
-    children: [
-      new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: sanitize(b.title), font: hf, size: 24, bold: true, color: primary })] }),
-      ...b.fields.flatMap(f => [
-        new Paragraph({ spacing: { before: 80, after: 20 }, children: [new TextRun({ text: sanitize(f.key) + ':', font: bf, size: 20, bold: true })] }),
-        new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: sanitize(f.value), font: bf, size: 20 })] }),
-      ]),
-    ],
-  })
+  const result: (Paragraph | Table)[] = []
 
-  return [
-    new Table({
+  for (const block of blocks) {
+    result.push(new Paragraph({
+      spacing: { before: 280, after: 120 },
+      children: [new TextRun({ text: sanitize(block.title), font: hf, size: 26, bold: true, color: '1A1A14' })],
+    }))
+    result.push(new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       borders: { top: noBorder(), bottom: noBorder(), left: noBorder(), right: noBorder(), insideHorizontal: noBorder(), insideVertical: noBorder() },
-      rows: [new TableRow({ children: [buildCard(blocks[0]), buildCard(blocks[1])] })],
-    }),
-  ]
+      rows: block.fields.map(f => new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 28, type: WidthType.PERCENTAGE },
+            margins: { top: 120, bottom: 120, left: 140, right: 140 },
+            borders: {
+              top:    { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+              left:   { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+              right:  noBorder(),
+            },
+            children: [new Paragraph({ children: [new TextRun({ text: sanitize(f.key), font: bf, size: 20, bold: true, color: primary })] })],
+          }),
+          new TableCell({
+            margins: { top: 120, bottom: 120, left: 140, right: 140 },
+            borders: {
+              top:    { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+              left:   noBorder(),
+              right:  { style: BorderStyle.SINGLE, size: 4, color: borderCol },
+            },
+            children: [new Paragraph({ children: [new TextRun({ text: sanitize(f.value), font: bf, size: 20 })] })],
+          }),
+        ],
+      })),
+    }))
+    result.push(new Paragraph({}))
+  }
+
+  return result
 }
 
 /** Dark CTA box with URL + optional secondary bullet list */
