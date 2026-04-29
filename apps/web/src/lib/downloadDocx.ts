@@ -1388,6 +1388,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const funnelRows = fw.s16.funnelStages.filter((r) => r.assets?.trim() || r.primaryCTA?.trim() || r.buyerState?.trim())
   if (funnelRows.length > 0) {
     children.push(new Paragraph({
+      children: [new TextRun({ text: 'Mapping assets to funnel stages ensures CTAs point to the right next step. A brochure CTA should not point to a contract — it should point to an assessment.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
+    }))
+    children.push(new Paragraph({
       children: [new TextRun({ text: 'Funnel Stage Map', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: 0, after: 60 },
     }))
