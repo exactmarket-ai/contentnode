@@ -1340,6 +1340,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('16', s16.short, s16.subtitle, s16.usedIn))
   const funnelRows = fw.s16.funnelStages.filter((r) => r.assets?.trim() || r.primaryCTA?.trim() || r.buyerState?.trim())
   if (funnelRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Funnel Stage Map', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 60 },
+    }))
     children.push(st(
       ['Funnel Stage', 'Assets at This Stage', 'Primary CTA From This Stage', 'Buyer State'],
       funnelRows.map((r) => [r.stage, r.assets, r.primaryCTA, r.buyerState]),
@@ -1347,11 +1351,26 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     ))
   }
   if (fw.s16.ctaSequencing?.trim()) {
+    const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
+    const divider = { style: BorderStyle.SINGLE, size: 1, color: 'D0D6E4' }
     children.push(new Paragraph({
       children: [new TextRun({ text: 'CTA Sequencing Notes', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: 160, after: 60 },
     }))
-    ft([{ label: 'CTA Sequencing Notes', value: fw.s16.ctaSequencing }])
+    children.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [new TableRow({
+        children: [new TableCell({
+          shading: { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' },
+          borders: { top: none, bottom: divider, left: none, right: none },
+          margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({
+            children: [new TextRun({ text: fw.s16.ctaSequencing.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
+          })],
+        })],
+      })],
+      borders: { top: none, bottom: none, left: none, right: none },
+    }))
   }
   children.push(gtmSpacer())
 
