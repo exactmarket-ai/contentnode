@@ -194,7 +194,7 @@ export async function runStoryboardJob(job: Job<StoryboardJobData>): Promise<voi
     await getAssembleQueue().add(
       'assemble',
       { sessionId, agencyId },
-      { removeOnComplete: { count: 20 }, removeOnFail: { count: 10 } },
+      { jobId: `assemble-${sessionId}`, removeOnComplete: { count: 20 }, removeOnFail: { count: 10 } },
     )
   }
 }
@@ -267,17 +267,23 @@ export async function runStoryboardSceneJob(job: Job<StoryboardSceneJobData>): P
   const pageKey   = `storyboards/${agencyId}/${sessionId}/scenes/scene-${paddedNum}.pdf`
   await uploadBuffer(pageKey, Buffer.from(buf), 'application/pdf')
 
-  // Mark scene complete and check if we're the last one
-  const updated = await patchScene(sessionId, sceneNumber, { status: 'complete', pageStorageKey: pageKey })
+  // Mark scene complete
+  await patchScene(sessionId, sceneNumber, { status: 'complete', pageStorageKey: pageKey })
   console.log(`[storyboard-scene] scene ${sceneNumber} complete → ${pageKey}`)
 
-  const allDone = updated.scenes.every(s => s.status === 'complete')
+  // Fresh DB read — avoid race condition when multiple scenes complete simultaneously
+  const { storyboard: fresh } = await getStoryboard(sessionId)
+  const allDone = fresh.scenes.length > 0
+    && fresh.scenes.every(s => s.status === 'complete' && s.pageStorageKey)
+    && !fresh.pdfStorageKey
+
   if (allDone) {
-    console.log(`[storyboard-scene] all scenes done — enqueueing assembly`)
+    console.log(`[storyboard-scene] all ${fresh.scenes.length} scenes confirmed complete — enqueueing assembly`)
+    // Fixed jobId deduplicates if two scenes complete simultaneously and both try to trigger
     await getAssembleQueue().add(
       'assemble',
       { sessionId, agencyId },
-      { removeOnComplete: { count: 20 }, removeOnFail: { count: 10 } },
+      { jobId: `assemble-${sessionId}`, removeOnComplete: { count: 20 }, removeOnFail: { count: 10 } },
     )
   }
 }

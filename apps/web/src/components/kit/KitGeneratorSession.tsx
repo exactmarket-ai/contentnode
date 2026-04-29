@@ -475,7 +475,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ framesPerScene }),
       })
-      setStoryboard({ status: 'pending', framesPerScene, totalScenes: 0, completedScenes: 0, startedAt: new Date().toISOString() })
+      setStoryboard({ status: 'pending', framesPerScene, totalScenes: 0, completedScenes: 0, scenes: [], startedAt: new Date().toISOString() })
       setShowFramesModal(false)
     } catch {
       setLoadError('Failed to start storyboard generation.')
@@ -1035,21 +1035,6 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                           >
                             Generate Storyboard
                           </button>
-                        ) : storyboard.status === 'complete' ? (
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              onClick={() => setShowFramesModal(true)}
-                              className="rounded-lg border border-purple-300 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors"
-                            >
-                              Regenerate
-                            </button>
-                            <button
-                              onClick={downloadStoryboard}
-                              className="rounded-lg bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
-                            >
-                              Download PDF
-                            </button>
-                          </div>
                         ) : storyboard.status === 'error' ? (
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-red-600">{storyboard.error ?? 'Generation failed'}</span>
@@ -1062,13 +1047,23 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-purple-700 font-medium">
-                              {storyboard.status === 'pending' ? 'Queued…' : `${storyboard.completedScenes} / ${storyboard.totalScenes || '?'} scenes`}
-                            </span>
-                            <svg className="h-4 w-4 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                            </svg>
+                            {storyboard.status === 'generating' || storyboard.status === 'pending' ? (
+                              <>
+                                <span className="text-xs text-purple-700 font-medium">
+                                  {storyboard.status === 'pending' ? 'Queued…' : `${storyboard.completedScenes} / ${storyboard.totalScenes || '?'} scenes`}
+                                </span>
+                                <svg className="h-4 w-4 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                </svg>
+                              </>
+                            ) : null}
+                            <button
+                              onClick={() => setShowFramesModal(true)}
+                              className="rounded-lg border border-purple-300 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors"
+                            >
+                              Regenerate
+                            </button>
                           </div>
                         )}
                       </div>
@@ -1108,6 +1103,26 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                               )}
                             </div>
                           ))}
+                          {/* Assembled / combined PDF row */}
+                          <div className="flex items-center justify-between px-3 py-2 bg-purple-50">
+                            <span className="text-xs font-semibold text-purple-900">Combined PDF</span>
+                            {storyboard.pdfStorageKey ? (
+                              <button
+                                onClick={() => void downloadStoryboard()}
+                                className="text-[10px] font-semibold text-purple-700 hover:text-purple-900 transition-colors"
+                              >
+                                Download all
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-purple-300 flex items-center gap-1">
+                                <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                </svg>
+                                Assembling…
+                              </span>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
