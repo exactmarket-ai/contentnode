@@ -59,6 +59,30 @@ function tint(color: string, opacity: number): string {
   return [rr, gg, bb].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase()
 }
 
+// Blend two hex colors: t=0 → c1, t=1 → c2
+function lerpHex(c1: string, c2: string, t: number): string {
+  const h = (s: string) => s.replace('#', '').toUpperCase()
+  const rgb = (s: string): [number, number, number] => {
+    const c = h(s)
+    return [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)]
+  }
+  const [r1,g1,b1] = rgb(c1)
+  const [r2,g2,b2] = rgb(c2)
+  return [r1*(1-t)+r2*t, g1*(1-t)+g2*t, b1*(1-t)+b2*t]
+    .map(v => Math.round(v).toString(16).padStart(2,'0')).join('').toUpperCase()
+}
+
+// Add brightness to a hex color (amount 0–1)
+function lighten(hex: string, amount: number): string {
+  const c = hex.replace('#', '').toUpperCase()
+  const r = parseInt(c.slice(0,2),16), g = parseInt(c.slice(2,4),16), b = parseInt(c.slice(4,6),16)
+  return [
+    Math.min(255, Math.round(r + (255-r)*amount)),
+    Math.min(255, Math.round(g + (255-g)*amount)),
+    Math.min(255, Math.round(b + (255-b)*amount)),
+  ].map(v => v.toString(16).padStart(2,'0')).join('').toUpperCase()
+}
+
 // ── Image helpers ──────────────────────────────────────────────────────────────
 
 function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
@@ -929,234 +953,357 @@ function parseStatLine(line: string): { stat: string; label: string; source: str
 export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = DEFAULT_STYLE): Promise<Blob> {
   const { default: PptxGenJS } = await import('pptxgenjs')
   const prs = new PptxGenJS()
-  prs.layout = 'LAYOUT_WIDE'
+  prs.layout = 'LAYOUT_WIDE'  // 13.33" × 7.5"
 
-  const primary    = docStyle.primaryColor
-  const secondary  = docStyle.secondaryColor ?? '#4A90D9'
-  const headFont   = docStyle.headingFont
-  const bodyFont   = docStyle.bodyFont
-  const titleColor = primary.replace('#', '')
-  const accentHex  = secondary.replace('#', '')
+  const primary   = docStyle.primaryColor
+  const secondary = docStyle.secondaryColor ?? '#4A90D9'
+  const pri       = hexNoHash(primary)
+  const sec       = hexNoHash(secondary)
+  const headFont  = docStyle.headingFont
+  const bodyFont  = docStyle.bodyFont
 
-  // Compute logo placement once: height fixed at 0.4", width from natural aspect ratio.
-  // If dimensions cannot be determined, logoW is null and we fall back to agency name text.
-  const LOGO_H = 0.4 // inches
+  // 4 accent colors derived from brand palette (cycled across cards)
+  const cardAccents = [sec, lerpHex(secondary, primary, 0.45), pri, lerpHex(primary, '#000000', 0.25)]
+
+  const LOGO_H = 0.4
   let pptxLogoW: number | null = null
   if (docStyle.logoDataUrl) {
     const dims = await getImageDimensions(docStyle.logoDataUrl)
-    if (dims && dims.h > 0) {
-      pptxLogoW = parseFloat((LOGO_H * (dims.w / dims.h)).toFixed(3))
+    if (dims && dims.h > 0) pptxLogoW = parseFloat((LOGO_H * (dims.w / dims.h)).toFixed(3))
+  }
+
+  type Slide = ReturnType<typeof prs.addSlide>
+
+  function addLogo(slide: Slide) {
+    if (docStyle.logoDataUrl && pptxLogoW !== null) {
+      try {
+        const lx = parseFloat(Math.max(0, 13.33 - pptxLogoW - 0.3).toFixed(3))
+        slide.addImage({ data: docStyle.logoDataUrl, x: lx, y: 6.95, w: pptxLogoW, h: LOGO_H })
+      } catch { /* skip */ }
+    } else if (docStyle.agencyName) {
+      slide.addText(docStyle.agencyName, { x: 10.5, y: 6.95, w: 2.5, h: 0.35, fontSize: 7, color: '999999', fontFace: bodyFont, align: 'right' })
     }
   }
 
-  // Helper: add branded top bar + title — used by all content slides
-  function addSlideHeader(slide: ReturnType<typeof prs.addSlide>, title: string) {
+  function whiteHeader(slide: Slide, title: string, subtitle?: string) {
     slide.background = { color: 'FFFFFF' }
-    slide.addShape(prs.ShapeType.rect, {
-      x: 0, y: 0, w: '100%', h: 0.11,
-      fill: { color: titleColor },
-      line: { color: titleColor, width: 0 },
-    })
-    slide.addText(sanitize(title), {
-      x: 0.4, y: 0.18, w: 10.5, h: 0.75,
-      fontSize: 22, bold: true, color: titleColor, fontFace: headFont,
-    })
+    slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.09, fill: { color: sec }, line: { color: sec, width: 0 } })
+    slide.addText(sanitize(title), { x: 0.4, y: 0.15, w: 10.5, h: 0.72, fontSize: 22, bold: true, color: pri, fontFace: headFont })
+    if (subtitle) slide.addText(sanitize(subtitle), { x: 0.4, y: 0.87, w: 12.13, h: 0.4, fontSize: 11, color: '5F6B80', fontFace: bodyFont, wrap: true })
   }
 
-  // Helper: stat card grid — renders 3-4 stat cards as a 2×2 (or 1×3) visual grid
-  function renderStatCards(
-    slide: ReturnType<typeof prs.addSlide>,
-    cards: { stat: string; label: string; source: string }[],
-    narrativeLines: string[],
-  ) {
-    const cols = cards.length <= 2 ? cards.length : 2
-    const rows = Math.ceil(cards.length / cols)
-    const cardW = cols === 2 ? 5.8 : 8.0
-    const cardH = rows === 1 ? 2.2 : 1.85
-    const startX = cols === 2 ? 0.4 : 2.67
-    const startY = 1.05
-    const gapX = cols === 2 ? 0.95 : 0
-    const gapY = 0.2
+  function darkAccentBars(slide: Slide) {
+    slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.13, fill: { color: sec }, line: { color: sec, width: 0 } })
+    slide.addShape(prs.ShapeType.rect, { x: 0, y: 7.37, w: '100%', h: 0.13, fill: { color: sec }, line: { color: sec, width: 0 } })
+  }
 
-    cards.forEach((card, i) => {
-      const col = i % cols
-      const row = Math.floor(i / cols)
-      const x = startX + col * (cardW + gapX)
-      const y = startY + row * (cardH + gapY)
+  // ── Layout detection ───────────────────────────────────────────────────────
+  function detectLayout(idx: number, total: number, bodyLines: string[]): string {
+    if (idx === 0) return 'cover'
+    if (idx === total - 1) return 'closing'
+    const ne = bodyLines.filter(l => l.trim())
+    if (ne.some(l => l.includes(' | ') && !l.startsWith('#'))) return 'casestudy'
+    if (ne.some(l => l.includes('→'))) return 'ctapaths'
+    if (ne.filter(l => parseStatLine(l) !== null).length >= 3) return 'stats'
+    if (ne.filter(l => /^[-*]\s*\*\*[^*]+\*\*\s*[—–-][^)]+[·•]/.test(l)).length >= 4) return 'challenges'
+    const boldHdrs = ne.filter(l => /^\*\*[^*]+\*\*\s*$/.test(l.trim()))
+    if (boldHdrs.length >= 2) {
+      const hasPillar = ne.some((l, i) => {
+        if (!/^\*\*[^*]+\*\*\s*$/.test(l.trim())) return false
+        const nxt = ne[i + 1]
+        return nxt && !/^[-*]/.test(nxt) && !/^\*\*/.test(nxt)
+      })
+      return hasPillar ? 'pillars' : 'frameworks'
+    }
+    if (ne[0] && /\*\*[^*]+\*\*[^·•]+[·•]/.test(ne[0])) return 'whyus'
+    const f = ne[0] ?? ''
+    if (!f.startsWith('-') && !f.startsWith('*') && !f.startsWith('#') && f.trim() &&
+        ne.slice(1).some(l => /^[-*]\s*\*\*/.test(l))) return 'deepdive'
+    return 'bullets'
+  }
 
-      slide.addShape(prs.ShapeType.rect, {
-        x, y, w: cardW, h: cardH,
-        fill: { color: 'F3F4F6' },
-        line: { color: 'E5E7EB', width: 0.5 },
-      })
-      // Large stat number
-      slide.addText(sanitize(card.stat), {
-        x: x + 0.18, y: y + 0.15, w: cardW - 0.36, h: cardH * 0.5,
-        fontSize: rows === 1 ? 38 : 32, bold: true, color: titleColor, fontFace: headFont,
-        valign: 'middle',
-      })
-      // Label
-      slide.addText(sanitize(card.label), {
-        x: x + 0.18, y: y + cardH * 0.58, w: cardW - 0.36, h: cardH * 0.26,
-        fontSize: 11, color: '374151', fontFace: bodyFont, wrap: true,
-      })
-      // Source
-      if (card.source) {
-        slide.addText(sanitize(card.source), {
-          x: x + 0.18, y: y + cardH * 0.83, w: cardW - 0.36, h: cardH * 0.17,
-          fontSize: 9, color: '9CA3AF', fontFace: bodyFont,
-        })
+  // ── Renderers ──────────────────────────────────────────────────────────────
+
+  function renderCover(slide: Slide, title: string, body: string[]) {
+    slide.background = { color: pri }
+    darkAccentBars(slide)
+    slide.addText(sanitize(title), { x: 0.6, y: 1.6, w: 12.13, h: 2.5, fontSize: 40, bold: true, color: 'FFFFFF', fontFace: headFont, align: 'center', valign: 'middle', wrap: true })
+    const subs = body.filter(l => l.trim()).map(l => l.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim())
+    if (subs[0]) slide.addText(sanitize(subs[0]), { x: 1.0, y: 3.85, w: 11.33, h: 0.7, fontSize: 16, color: 'DDDDDD', fontFace: bodyFont, align: 'center', valign: 'middle', wrap: true })
+    if (subs[1]) slide.addText(sanitize(subs[1]), { x: 1.0, y: 4.65, w: 11.33, h: 0.45, fontSize: 12, color: 'AAAAAA', fontFace: bodyFont, align: 'center' })
+    addLogo(slide)
+  }
+
+  function renderClosing(slide: Slide, title: string, body: string[]) {
+    slide.background = { color: pri }
+    darkAccentBars(slide)
+    slide.addText(sanitize(title), { x: 0.6, y: 0.8, w: 12.13, h: 2.0, fontSize: 36, bold: true, color: 'FFFFFF', fontFace: headFont, align: 'center', valign: 'middle', wrap: true })
+    let oy = 3.1
+    body.filter(l => l.trim()).slice(0, 5).forEach(l => {
+      const raw = l.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').replace(/\*\*/g, '').trim()
+      const isCta = /→|http|www\./.test(raw)
+      slide.addText(sanitize(raw), { x: 0.6, y: oy, w: 12.13, h: 0.55, fontSize: 13, color: isCta ? sec : 'DDDDDD', fontFace: bodyFont, align: 'center', wrap: true })
+      oy += 0.58
+    })
+    addLogo(slide)
+  }
+
+  function renderStats(slide: Slide, title: string, body: string[]) {
+    slide.background = { color: pri }
+    slide.addText(sanitize(title), { x: 0.4, y: 0.22, w: 12.53, h: 0.6, fontSize: 22, bold: true, color: 'FFFFFF', fontFace: headFont })
+    const stats = body.filter(l => parseStatLine(l) !== null).slice(0, 4)
+    const narr = body.filter(l => l.trim() && !parseStatLine(l) && !l.startsWith('#')).map(l => l.replace(/^[-*> ]+/, '').trim()).join(' ')
+    if (narr) slide.addText(sanitize(narr), { x: 0.4, y: 0.9, w: 12.53, h: 0.42, fontSize: 11, color: 'AABBCC', fontFace: bodyFont, wrap: true })
+    const gX = 0.25, gY = 0.22, cW = (12.53 - gX) / 2, cH = (5.45 - gY) / 2, sY = 1.42
+    stats.forEach((line, i) => {
+      const p = parseStatLine(line)!
+      const col = i % 2, row = Math.floor(i / 2)
+      const cx = 0.4 + col * (cW + gX), cy = sY + row * (cH + gY)
+      const acc = cardAccents[i % 4]
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: cH, fill: { color: lighten(pri, 0.12) }, line: { color: lighten(pri, 0.2), width: 0.5 } })
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: 0.12, h: cH, fill: { color: acc }, line: { color: acc, width: 0 } })
+      slide.addText(sanitize(p.stat), { x: cx + 0.25, y: cy + 0.2, w: cW - 0.35, h: cH * 0.52, fontSize: 40, bold: true, color: 'FFFFFF', fontFace: headFont, valign: 'middle' })
+      slide.addText(sanitize(p.label), { x: cx + 0.25, y: cy + cH * 0.6, w: cW - 0.35, h: cH * 0.24, fontSize: 11, color: 'AABBCC', fontFace: bodyFont, wrap: true })
+      if (p.source) slide.addText(sanitize(p.source), { x: cx + 0.25, y: cy + cH * 0.84, w: cW - 0.35, h: cH * 0.16, fontSize: 9, color: '778899', fontFace: bodyFont })
+    })
+    addLogo(slide)
+  }
+
+  function renderChallenges(slide: Slide, title: string, body: string[]) {
+    slide.background = { color: pri }
+    slide.addText(sanitize(title), { x: 0.4, y: 0.15, w: 12.53, h: 0.6, fontSize: 22, bold: true, color: 'FFFFFF', fontFace: headFont })
+    const items = body.filter(l => /^[-*]\s*\*\*[^*]+\*\*/.test(l)).slice(0, 6).map(l => {
+      const m = l.match(/^[-*]\s*\*\*([^*]+)\*\*\s*[—–-]\s*([^·•]+?)(?:\s*[·•]\s*(.+))?$/)
+      return m ? { name: m[1].trim(), desc: m[2].trim(), pillar: m[3]?.trim() ?? '' } : null
+    }).filter(Boolean) as { name: string; desc: string; pillar: string }[]
+    const gap = 0.22, cW = (12.53 - gap * 2) / 3, cH = (7.25 - 0.88 - gap) / 2
+    items.forEach((ch, i) => {
+      const cx = 0.4 + (i % 3) * (cW + gap), cy = 0.88 + Math.floor(i / 3) * (cH + gap)
+      const acc = cardAccents[i % 4]
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: cH, fill: { color: lighten(pri, 0.12) }, line: { color: lighten(pri, 0.2), width: 0.5 } })
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: 0.08, fill: { color: acc }, line: { color: acc, width: 0 } })
+      slide.addText(sanitize(ch.name), { x: cx + 0.18, y: cy + 0.15, w: cW - 0.28, h: 0.5, fontSize: 14, bold: true, color: 'FFFFFF', fontFace: headFont })
+      slide.addText(sanitize(ch.desc), { x: cx + 0.18, y: cy + 0.72, w: cW - 0.28, h: cH - 1.1, fontSize: 11, color: 'AABBCC', fontFace: bodyFont, wrap: true, valign: 'top' })
+      if (ch.pillar) slide.addText(sanitize(ch.pillar), { x: cx + 0.18, y: cy + cH - 0.42, w: cW - 0.28, h: 0.35, fontSize: 9, color: sec, fontFace: bodyFont })
+    })
+    addLogo(slide)
+  }
+
+  function renderFrameworks(slide: Slide, title: string, body: string[]) {
+    const sub = body.find(l => !l.startsWith('**') && !l.startsWith('-') && l.trim() && !l.startsWith('#'))
+    whiteHeader(slide, title, sub)
+    const blocks: { name: string; bullets: string[] }[] = []
+    let cur: { name: string; bullets: string[] } | null = null
+    for (const l of body) {
+      const hm = l.trim().match(/^\*\*([^*]+)\*\*\s*$/)
+      if (hm) { if (cur) blocks.push(cur); cur = { name: hm[1].trim(), bullets: [] } }
+      else if (cur && /^[-*] /.test(l)) cur.bullets.push(l.replace(/^[-*] /, '').replace(/\*\*/g, '').trim())
+    }
+    if (cur) blocks.push(cur)
+    const cY = sub ? 1.35 : 1.05, gap = 0.22, cW = (12.53 - gap) / 2, cH = (7.25 - cY - gap) / 2
+    blocks.slice(0, 4).forEach((b, i) => {
+      const cx = 0.4 + (i % 2) * (cW + gap), cy = cY + Math.floor(i / 2) * (cH + gap)
+      const acc = cardAccents[i % 4]
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: cH, fill: { color: 'F0F2FA' }, line: { color: 'E2E6F0', width: 0.5 } })
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: 0.1, h: cH, fill: { color: acc }, line: { color: acc, width: 0 } })
+      slide.addText(sanitize(b.name), { x: cx + 0.22, y: cy + 0.15, w: cW - 0.32, h: 0.48, fontSize: 14, bold: true, color: pri, fontFace: headFont })
+      if (b.bullets.length) {
+        const bItems = b.bullets.slice(0, 4).map(bt => ({ text: sanitize(bt), options: { bullet: true as const, color: '374151' as string, fontFace: bodyFont } }))
+        slide.addText(bItems, { x: cx + 0.22, y: cy + 0.7, w: cW - 0.32, h: cH - 0.85, fontSize: 11, valign: 'top', wrap: true })
       }
     })
-
-    // Narrative below the grid
-    if (narrativeLines.length > 0) {
-      const narrativeY = startY + rows * (cardH + gapY) + 0.15
-      const narrativeText = narrativeLines.map(l => l.replace(/^[-*]\s*/, '').trim()).join(' ')
-      slide.addText(sanitize(narrativeText), {
-        x: 0.4, y: narrativeY, w: 12.5, h: 7.5 - narrativeY - 0.5,
-        fontSize: 12, color: '4B5563', fontFace: bodyFont, wrap: true,
-      })
-    }
+    addLogo(slide)
   }
 
-  const slideBlocks = markdown.split(/(?=^## Slide \d+:)/m).filter(b => b.trim())
+  function renderPillars(slide: Slide, title: string, body: string[]) {
+    whiteHeader(slide, title)
+    const blocks: { name: string; valueProp: string; services: string[] }[] = []
+    let cur: { name: string; valueProp: string; services: string[] } | null = null
+    for (const l of body) {
+      const hm = l.trim().match(/^\*\*([^*]+)\*\*\s*$/)
+      if (hm) { if (cur) blocks.push(cur); cur = { name: hm[1].trim(), valueProp: '', services: [] } }
+      else if (cur && /^[-*] /.test(l)) cur.services.push(l.replace(/^[-*] /, '').replace(/\*\*/g, '').trim())
+      else if (cur && l.trim() && !cur.valueProp) cur.valueProp = l.replace(/\*\*/g, '').trim()
+    }
+    if (cur) blocks.push(cur)
+    const gap = 0.22, cW = (12.53 - gap) / 2, cH = (7.25 - 1.05 - gap) / 2
+    blocks.slice(0, 4).forEach((b, i) => {
+      const cx = 0.4 + (i % 2) * (cW + gap), cy = 1.05 + Math.floor(i / 2) * (cH + gap)
+      const bg = cardAccents[i % 4]
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: cH, fill: { color: bg }, line: { color: bg, width: 0 } })
+      slide.addText(sanitize(b.name.toUpperCase()), { x: cx + 0.22, y: cy + 0.18, w: cW - 0.35, h: 0.36, fontSize: 11, bold: true, color: 'FFFFFF', fontFace: headFont })
+      if (b.valueProp) slide.addText(sanitize(b.valueProp), { x: cx + 0.22, y: cy + 0.58, w: cW - 0.35, h: 0.75, fontSize: 12, color: 'DDDDDD', fontFace: bodyFont, wrap: true })
+      if (b.services.length) {
+        const sItems = b.services.slice(0, 4).map(s => ({ text: `• ${sanitize(s)}`, options: { color: 'CCCCCC' as string, fontFace: bodyFont, fontSize: 10 as const } }))
+        slide.addText(sItems, { x: cx + 0.22, y: cy + 1.42, w: cW - 0.35, h: cH - 1.62, valign: 'top', wrap: true })
+      }
+    })
+    addLogo(slide)
+  }
 
-  if (!slideBlocks.length) {
-    const slide = prs.addSlide()
-    slide.background = { color: 'FFFFFF' }
-    slide.addText(sanitize(markdown.substring(0, 800)), { x: 0.4, y: 0.5, w: 12.2, h: 6, fontSize: 12, fontFace: bodyFont, valign: 'top', wrap: true })
+  function renderDeepDive(slide: Slide, title: string, body: string[]) {
+    const ne = body.filter(l => l.trim())
+    const subH = ne[0]?.replace(/^[-*#> ]+/, '').trim() ?? ''
+    const bullets = ne.slice(1).filter(l => /^[-*]/.test(l)).slice(0, 4)
+    slide.background = { color: pri }
+    slide.addText(sanitize(title.toUpperCase()), { x: 0.4, y: 0.22, w: 6.0, h: 0.55, fontSize: 18, bold: true, color: sec, fontFace: headFont })
+    if (subH) slide.addText(sanitize(subH), { x: 0.4, y: 0.88, w: 12.53, h: 0.72, fontSize: 24, bold: true, color: 'FFFFFF', fontFace: headFont, wrap: true })
+    const feats = bullets.map(b => {
+      const m = b.match(/^[-*]\s*\*\*([^*]+)\*\*\s*[—–-]\s*(.+)$/)
+      return m ? { title: m[1].trim(), desc: m[2].trim() } : { title: '', desc: b.replace(/^[-*]\s*/, '').replace(/\*\*/g, '').trim() }
+    })
+    if (feats.length) {
+      const cols = feats.length <= 3 ? feats.length : 4, gap = 0.2
+      const cW = (12.53 - gap * (cols - 1)) / cols, cH = 7.25 - 1.85 - 0.25
+      feats.forEach((f, i) => {
+        const cx = 0.4 + i * (cW + gap), cy = 1.85
+        slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: cH, fill: { color: lighten(pri, 0.12) }, line: { color: lighten(pri, 0.2), width: 0.5 } })
+        slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: 0.08, h: cH, fill: { color: sec }, line: { color: sec, width: 0 } })
+        if (f.title) slide.addText(sanitize(f.title), { x: cx + 0.18, y: cy + 0.18, w: cW - 0.28, h: 0.55, fontSize: 13, bold: true, color: 'FFFFFF', fontFace: headFont, wrap: true })
+        slide.addText(sanitize(f.desc), { x: cx + 0.18, y: cy + (f.title ? 0.82 : 0.22), w: cW - 0.28, h: cH - (f.title ? 1.0 : 0.4), fontSize: 11, color: 'AABBCC', fontFace: bodyFont, wrap: true, valign: 'top' })
+      })
+    }
+    addLogo(slide)
+  }
+
+  function renderWhyUs(slide: Slide, title: string, body: string[]) {
+    whiteHeader(slide, title)
+    const ne = body.filter(l => l.trim())
+    const statsLine = ne[0] ?? ''
+    const statsMatches = [...statsLine.matchAll(/\*\*([^*]+)\*\*\s*([^·•*]+)/g)]
+    if (statsMatches.length) {
+      const items = statsMatches.slice(0, 5).map(m => ({ stat: m[1].trim(), label: m[2].trim().replace(/[·•,]$/, '').trim() }))
+      const bW = Math.min(2.4, (12.53 - 0.6) / items.length - 0.15)
+      items.forEach((s, i) => {
+        const bx = 0.4 + i * (bW + 0.18)
+        slide.addShape(prs.ShapeType.rect, { x: bx, y: 1.05, w: bW, h: 0.72, fill: { color: tint(secondary, 0.1) }, line: { color: tint(secondary, 0.3), width: 0.5 } })
+        slide.addText(sanitize(s.stat), { x: bx + 0.05, y: 1.08, w: bW - 0.1, h: 0.39, fontSize: 17, bold: true, color: sec, fontFace: headFont, align: 'center' })
+        slide.addText(sanitize(s.label), { x: bx + 0.05, y: 1.47, w: bW - 0.1, h: 0.28, fontSize: 8, color: '5F6B80', fontFace: bodyFont, align: 'center' })
+      })
+    }
+    const diffs = ne.slice(1).filter(l => /^[-*]\s*\*\*/.test(l)).slice(0, 6)
+    const gap = 0.2, cW = (12.53 - gap) / 2, cH = 0.9
+    diffs.forEach((d, i) => {
+      const m = d.match(/^[-*]\s*\*\*([^*]+)\*\*\s*[—–-]\s*(.+)$/)
+      const label = m ? m[1].trim() : '', desc = m ? m[2].trim() : d.replace(/^[-*]\s*/, '').replace(/\*\*/g, '').trim()
+      const cx = 0.4 + (i % 2) * (cW + gap), cy = 1.92 + Math.floor(i / 2) * (cH + 0.14)
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: cH, fill: { color: 'F0F2FA' }, line: { color: 'E2E6F0', width: 0.5 } })
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: 0.1, h: cH, fill: { color: sec }, line: { color: sec, width: 0 } })
+      const items = label
+        ? [{ text: `${sanitize(label)}  `, options: { bold: true, color: pri, fontFace: headFont, fontSize: 12 as const } }, { text: sanitize(desc), options: { bold: false, color: '374151', fontFace: bodyFont, fontSize: 11 as const } }]
+        : [{ text: sanitize(desc), options: { bold: false, color: '374151', fontFace: bodyFont, fontSize: 11 as const } }]
+      slide.addText(items, { x: cx + 0.22, y: cy + 0.12, w: cW - 0.32, h: cH - 0.24, valign: 'middle', wrap: true, fontSize: 11 })
+    })
+    addLogo(slide)
+  }
+
+  function renderCaseStudy(slide: Slide, title: string, body: string[]) {
+    whiteHeader(slide, title)
+    const pipeLines = body.filter(l => l.includes('|') && l.trim())
+    let headers = ['Situation', 'What We Delivered', 'Outcomes']
+    const hRow = pipeLines.find(l => /\*\*/.test(l))
+    if (hRow) {
+      const pts = hRow.split('|').map(p => p.replace(/\*\*/g, '').replace(/^[-*·\s]+/, '').trim()).filter(Boolean)
+      if (pts.length >= 3) headers = pts.slice(0, 3)
+    }
+    const cols3: [string[], string[], string[]] = [[], [], []]
+    pipeLines.filter(l => !/^\s*\*\*/.test(l)).forEach(l => {
+      const parts = l.split(' | ').map(p => p.replace(/^[-*·\s]+/, '').replace(/·?\s*$/, '').replace(/\*\*/g, '').trim()).filter(Boolean)
+      if (parts.length >= 3) { cols3[0].push(parts[0]); cols3[1].push(parts[1]); cols3[2].push(parts[2]) }
+    })
+    const gap = 0.25, cW = (12.53 - gap * 2) / 3, hH = 0.55, cY = 1.1, bodyH = 7.25 - cY - hH - 0.15
+    const accs = [sec, cardAccents[1], cardAccents[2]]
+    headers.forEach((h, col) => {
+      const cx = 0.4 + col * (cW + gap)
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cY, w: cW, h: hH, fill: { color: accs[col] ?? sec }, line: { color: accs[col] ?? sec, width: 0 } })
+      slide.addText(sanitize(h), { x: cx + 0.15, y: cY + 0.07, w: cW - 0.2, h: hH - 0.14, fontSize: 13, bold: true, color: 'FFFFFF', fontFace: headFont, valign: 'middle' })
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cY + hH, w: cW, h: bodyH, fill: { color: 'F5F7FA' }, line: { color: 'E2E6F0', width: 0.5 } })
+      cols3[col].slice(0, 4).forEach((txt, ri) => {
+        slide.addText(`• ${sanitize(txt)}`, { x: cx + 0.15, y: cY + hH + 0.15 + ri * 1.35, w: cW - 0.25, h: 1.2, fontSize: 11, color: '374151', fontFace: bodyFont, wrap: true, valign: 'top' })
+      })
+    })
+    addLogo(slide)
+  }
+
+  function renderCtaPaths(slide: Slide, title: string, body: string[]) {
+    const sub = body.find(l => !l.startsWith('-') && !l.startsWith('*') && l.trim() && !l.startsWith('#'))
+    whiteHeader(slide, title, sub)
+    const paths: { name: string; trigger: string; cta: string; url: string }[] = []
+    let cur: typeof paths[0] | null = null
+    for (const l of body) {
+      if (/^[-*]\s*\*\*[^*]+\*\*/.test(l) && !l.includes('→')) {
+        if (cur) paths.push(cur)
+        const m = l.match(/^[-*]\s*\*\*([^*]+)\*\*\s*[—–-]\s*(.+)$/)
+        cur = { name: m ? m[1].trim() : '', trigger: m ? m[2].trim() : '', cta: '', url: '' }
+      } else if (l.includes('→') && cur) {
+        const m = l.trim().match(/→\s*([^—–]+?)(?:\s*[—–]\s*(.+))?$/)
+        if (m) { cur.cta = m[1].trim(); cur.url = m[2]?.trim() ?? '' }
+      }
+    }
+    if (cur) paths.push(cur)
+    const sY = sub ? 1.38 : 1.08, gap = 0.22, cW = (12.53 - gap) / 2, cH = sub ? 2.45 : 2.7
+    paths.slice(0, 4).forEach((p, i) => {
+      const cx = 0.4 + (i % 2) * (cW + gap), cy = sY + Math.floor(i / 2) * (cH + gap)
+      const acc = cardAccents[i % 4]
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: cH, fill: { color: 'F5F7FA' }, line: { color: 'E2E6F0', width: 0.5 } })
+      slide.addShape(prs.ShapeType.rect, { x: cx, y: cy, w: cW, h: 0.09, fill: { color: acc }, line: { color: acc, width: 0 } })
+      slide.addText(sanitize(p.name), { x: cx + 0.18, y: cy + 0.18, w: cW - 0.28, h: 0.52, fontSize: 14, bold: true, color: pri, fontFace: headFont, wrap: true })
+      if (p.trigger) slide.addText(sanitize(p.trigger), { x: cx + 0.18, y: cy + 0.76, w: cW - 0.28, h: 0.7, fontSize: 11, color: '5F6B80', fontFace: bodyFont, wrap: true })
+      if (p.cta) {
+        const ctaY = cy + cH - 0.65
+        slide.addShape(prs.ShapeType.rect, { x: cx + 0.18, y: ctaY, w: cW - 0.36, h: 0.45, fill: { color: acc }, line: { color: acc, width: 0 } })
+        slide.addText(`${sanitize(p.cta)}${p.url ? `  ·  ${sanitize(p.url)}` : ''}`, { x: cx + 0.18, y: ctaY, w: cW - 0.36, h: 0.45, fontSize: 10, bold: true, color: 'FFFFFF', fontFace: headFont, align: 'center', valign: 'middle' })
+      }
+    })
+    addLogo(slide)
+  }
+
+  function renderBullets(slide: Slide, title: string, body: string[]) {
+    whiteHeader(slide, title)
+    const items = body.filter(l => l.trim() && !l.startsWith('#')).map(l => {
+      const isBullet = /^[-*] /.test(l)
+      const raw = sanitize(isBullet ? l.slice(2) : l).trim()
+      if (raw.includes('**')) {
+        return raw.split(/\*\*/).map((part, pi) => ({ text: part, options: { bullet: isBullet && pi === 0, bold: pi % 2 === 1, color: '1A1A14' as string, fontFace: bodyFont } }))
+      }
+      return [{ text: raw, options: { bullet: isBullet, bold: false, color: '1A1A14' as string, fontFace: bodyFont } }]
+    }).flat()
+    if (items.length) slide.addText(items, { x: 0.4, y: 1.05, w: 12.53, h: 6.0, fontSize: 13, valign: 'top', wrap: true })
+    addLogo(slide)
+  }
+
+  // ── Parse and render ──────────────────────────────────────────────────────
+  const blocks = markdown.split(/(?=^## Slide \d+:)/m).filter(b => b.trim())
+
+  if (!blocks.length) {
+    const sl = prs.addSlide()
+    sl.background = { color: 'FFFFFF' }
+    sl.addText(sanitize(markdown.substring(0, 800)), { x: 0.4, y: 0.5, w: 12.2, h: 6, fontSize: 12, fontFace: bodyFont, valign: 'top', wrap: true })
   } else {
-    slideBlocks.forEach((block, blockIdx) => {
-      const titleMatch = block.match(/^## Slide \d+:\s*(.+)/)
-      const title = titleMatch ? titleMatch[1].trim() : ''
-      const bodyLines = block.split('\n').slice(1).filter(l => l.trim() && !l.startsWith('##'))
-
-      const isCover   = blockIdx === 0
-      const isDivider = title.toLowerCase().includes('section') || bodyLines.length === 0
-      const isClosing = blockIdx > 0 && bodyLines.length > 0 &&
-        !bodyLines.some(l => /^[-*] /.test(l)) === false &&
-        title.length > 10 // closing slide has a long tagline title
-
+    blocks.forEach((block, idx) => {
+      const tm = block.match(/^## Slide \d+:\s*(.+)/)
+      const title = tm ? tm[1].trim() : ''
+      const bodyLines = block.split('\n').slice(1)
+      const layout = detectLayout(idx, blocks.length, bodyLines)
       const slide = prs.addSlide()
-
-      if (isCover || isDivider) {
-        slide.background = { color: primary.replace('#', '') }
-
-        if (isCover) {
-          // Always render a rich cover — use body lines if present, fall back gracefully
-          slide.addText(sanitize(title), {
-            x: 0.6, y: 1.5, w: 12.1, h: 2.0,
-            fontSize: 40, bold: true, color: 'FFFFFF', fontFace: headFont,
-            align: 'center', valign: 'middle', wrap: true,
-          })
-          const subtitleRaw = bodyLines[0]?.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim() ?? ''
-          if (subtitleRaw) {
-            slide.addText(sanitize(subtitleRaw), {
-              x: 1.0, y: 3.65, w: 11.33, h: 0.75,
-              fontSize: 17, bold: false, color: 'DDDDDD', fontFace: bodyFont,
-              align: 'center', valign: 'middle', wrap: true,
-            })
-          }
-          const clientRaw = bodyLines[1]?.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim() ?? ''
-          if (clientRaw) {
-            slide.addText(sanitize(clientRaw), {
-              x: 1.0, y: 4.55, w: 11.33, h: 0.5,
-              fontSize: 13, bold: false, color: 'AAAAAA', fontFace: bodyFont,
-              align: 'center', valign: 'middle',
-            })
-          }
-          // Accent bar
-          slide.addShape(prs.ShapeType.rect, {
-            x: 0, y: 7.12, w: '100%', h: 0.15,
-            fill: { color: accentHex },
-            line: { color: accentHex, width: 0 },
-          })
-        } else {
-          slide.addText(sanitize(title), {
-            x: 0.4, y: 3.0, w: 12.2, h: 1.2,
-            fontSize: 28, bold: true, color: 'FFFFFF', fontFace: headFont,
-            align: 'center', valign: 'middle',
-          })
-        }
-      } else if (isClosing) {
-        // Closing slide: dark background like cover
-        slide.background = { color: primary.replace('#', '') }
-        slide.addText(sanitize(title), {
-          x: 0.6, y: 1.2, w: 12.1, h: 1.8,
-          fontSize: 38, bold: true, color: 'FFFFFF', fontFace: headFont,
-          align: 'center', valign: 'middle', wrap: true,
-        })
-        const bodyText = bodyLines.map(l => l.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim()).filter(Boolean)
-        bodyText.forEach((line, i) => {
-          slide.addText(sanitize(line), {
-            x: 1.0, y: 3.2 + i * 0.62, w: 11.33, h: 0.55,
-            fontSize: 13, color: i === 0 ? 'DDDDDD' : 'AAAAAA', fontFace: bodyFont,
-            align: 'center',
-          })
-        })
-        slide.addShape(prs.ShapeType.rect, {
-          x: 0, y: 7.12, w: '100%', h: 0.15,
-          fill: { color: accentHex },
-          line: { color: accentHex, width: 0 },
-        })
-      } else {
-        addSlideHeader(slide, title)
-
-        if (bodyLines.length) {
-          // Detect stat-card layout: 3+ bullet lines starting with **[number/stat]**
-          const statCards = bodyLines
-            .slice(0, 4)
-            .map(l => parseStatLine(l))
-          const validCards = statCards.filter((c): c is NonNullable<typeof c> => c !== null)
-
-          if (validCards.length >= 3) {
-            renderStatCards(slide, validCards, bodyLines.slice(validCards.length))
-          } else {
-            const textItems = bodyLines.map(l => {
-              const isBullet = /^[-*] /.test(l)
-              const raw = sanitize(isBullet ? l.slice(2) : l).trim()
-              // Handle **bold text** — keep bold markers for inline bold
-              const hasBoldMarkers = raw.includes('**')
-              if (hasBoldMarkers) {
-                const parts = raw.split(/\*\*/)
-                return parts.map((part, pi) => ({
-                  text: part,
-                  options: {
-                    bullet: isBullet && pi === 0,
-                    bold: pi % 2 === 1,
-                    color: '1A1A14' as string,
-                    fontFace: bodyFont,
-                  },
-                }))
-              }
-              return [{
-                text: raw,
-                options: { bullet: isBullet, bold: false, color: '1A1A14' as string, fontFace: bodyFont },
-              }]
-            }).flat()
-            slide.addText(textItems, { x: 0.4, y: 1.05, w: 12.2, h: 5.65, fontSize: 13, valign: 'top', wrap: true })
-          }
-        }
-      }
-
-      // Logo (aspect-ratio preserved) or agency name text fallback in bottom-right corner
-      if (docStyle.logoDataUrl && pptxLogoW !== null) {
-        try {
-          const lx = parseFloat(Math.max(0, 13.33 - pptxLogoW - 0.3).toFixed(3))
-          slide.addImage({ data: docStyle.logoDataUrl, x: lx, y: 6.85, w: pptxLogoW, h: LOGO_H })
-        } catch { /* skip on error */ }
-      } else if (docStyle.agencyName) {
-        slide.addText(docStyle.agencyName, {
-          x: 10.5, y: 6.9, w: 2.5, h: 0.35,
-          fontSize: 7, color: 'AAAAAA', fontFace: bodyFont, align: 'right',
-        })
+      switch (layout) {
+        case 'cover':       renderCover(slide, title, bodyLines); break
+        case 'closing':     renderClosing(slide, title, bodyLines); break
+        case 'stats':       renderStats(slide, title, bodyLines); break
+        case 'challenges':  renderChallenges(slide, title, bodyLines); break
+        case 'frameworks':  renderFrameworks(slide, title, bodyLines); break
+        case 'pillars':     renderPillars(slide, title, bodyLines); break
+        case 'deepdive':    renderDeepDive(slide, title, bodyLines); break
+        case 'whyus':       renderWhyUs(slide, title, bodyLines); break
+        case 'casestudy':   renderCaseStudy(slide, title, bodyLines); break
+        case 'ctapaths':    renderCtaPaths(slide, title, bodyLines); break
+        default:            renderBullets(slide, title, bodyLines)
       }
     })
   }
 
-  const buffer = await prs.write({ outputType: 'arraybuffer' }) as ArrayBuffer
-  return new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
+  const ab = await prs.write({ outputType: 'arraybuffer' }) as ArrayBuffer
+  return new Blob([ab], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
 }
 
 // ── HTML branding injection ────────────────────────────────────────────────────
@@ -1227,9 +1374,6 @@ export async function buildBdrEmailsDocxBlob(
   const hf         = docStyle.headingFont
   const bf         = docStyle.bodyFont
   const bodyColor  = '1A1A14'
-  const labelBg    = primary
-  const subjectBg  = tint(docStyle.primaryColor, 0.06)
-  const previewBg  = tint(docStyle.primaryColor, 0.03)
   const borderCol  = 'E0DEDA'
   const mutedColor = '6B7280'
   const cb = { style: BorderStyle.SINGLE, size: 4, color: borderCol } as const
@@ -1243,30 +1387,12 @@ export async function buildBdrEmailsDocxBlob(
   ): (Paragraph | Table)[] {
     const elements: (Paragraph | Table)[] = []
 
-    // Table 1: Email N header row — full-width single cell, e0deda borders
-    elements.push(new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: nb },
-      rows: [new TableRow({
-        children: [new TableCell({
-          shading: { fill: primary, type: ShadingType.SOLID, color: primary },
-          margins: { top: 120, bottom: 120, left: 200, right: 200 },
-          children: [new Paragraph({
-            children: [
-              ...(emailNum !== null ? [
-                new TextRun({ text: `Email ${emailNum}  `, font: hf, size: 26, bold: true, color: secondary }),
-              ] : []),
-              new TextRun({ text: sanitize(segmentName), font: hf, size: 22, bold: false, color: 'DDDDDD' }),
-            ],
-          })],
-        })],
-      })],
-    }))
+    // Page break — each email starts on its own page (no-op for the first email at section start)
+    elements.push(new Paragraph({ pageBreakBefore: true, children: [] }))
 
-    // Extract subject line, preview text, and body lines
+    // Parse subject/preview first so subject line can appear in header
     let subjectLine = ''
     let previewText = ''
-    let subjectFromStandalone = false
     const bodyLines: string[] = []
 
     for (const line of lines) {
@@ -1282,34 +1408,64 @@ export async function buildBdrEmailsDocxBlob(
       const filtered: string[] = []
       for (const line of bodyLines) {
         if (/^#+\s*Subject(?:\s+Line)?$/i.test(line.trim())) { nextIsSubject = true; continue }
-        if (nextIsSubject && line.trim()) { subjectLine = sanitize(line.trim()); nextIsSubject = false; subjectFromStandalone = true; continue }
+        if (nextIsSubject && line.trim()) { subjectLine = sanitize(line.trim()); nextIsSubject = false; continue }
         filtered.push(line)
       }
-      if (subjectFromStandalone) bodyLines.splice(0, bodyLines.length, ...filtered)
+      if (subjectLine) bodyLines.splice(0, bodyLines.length, ...filtered)
     }
 
-    // Table 2: Subject Line + Preview Text in one table, separated by e0deda insideHorizontal
+    // Table 1: Email N header — dark background, segment name bold white, subject line italic subtitle
+    const headerParas: Paragraph[] = [
+      new Paragraph({
+        children: [
+          ...(emailNum !== null ? [new TextRun({ text: `Email ${emailNum}  `, font: hf, size: 26, bold: true, color: secondary })] : []),
+          new TextRun({ text: sanitize(segmentName), font: hf, size: 26, bold: true, color: 'FFFFFF' }),
+        ],
+      }),
+    ]
+    if (subjectLine) {
+      headerParas.push(new Paragraph({
+        children: [new TextRun({ text: sanitize(subjectLine), font: bf, size: 22, italics: true, color: 'AABBCC' })],
+      }))
+    }
+    elements.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: nb },
+      rows: [new TableRow({
+        children: [new TableCell({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          shading: { fill: primary, type: ShadingType.SOLID, color: primary },
+          margins: { top: 120, bottom: 120, left: 200, right: 200 },
+          children: headerParas,
+        })],
+      })],
+    }))
+
+    // Separator paragraph — prevents Word from merging the two adjacent tables
+    elements.push(new Paragraph({ spacing: { before: 0, after: 0 }, children: [] }))
+
+    // Table 2: Subject Line + Preview Text — white backgrounds, bold dark labels, e0deda borders
     const metaRows: TableRow[] = []
     if (subjectLine) {
       metaRows.push(new TableRow({
         children: [
-          new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'SUBJECT LINE', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
-          new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: subjectBg, type: ShadingType.SOLID, color: subjectBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: parseInlineRuns(subjectLine, hf, 22, bodyColor) })] }),
+          new TableCell({ width: { size: 25, type: WidthType.PERCENTAGE }, shading: { fill: 'FFFFFF', type: ShadingType.SOLID, color: 'FFFFFF' }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'Subject Line', font: hf, size: 20, bold: true, color: bodyColor })] })] }),
+          new TableCell({ width: { size: 75, type: WidthType.PERCENTAGE }, shading: { fill: 'FFFFFF', type: ShadingType.SOLID, color: 'FFFFFF' }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: parseInlineRuns(subjectLine, bf, 20, bodyColor) })] }),
         ],
       }))
     }
     if (previewText) {
       metaRows.push(new TableRow({
         children: [
-          new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'PREVIEW TEXT', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
-          new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: previewBg, type: ShadingType.SOLID, color: previewBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, italics: true, color: mutedColor })] })] }),
+          new TableCell({ width: { size: 25, type: WidthType.PERCENTAGE }, shading: { fill: 'FFFFFF', type: ShadingType.SOLID, color: 'FFFFFF' }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'Preview Text', font: hf, size: 20, bold: true, color: bodyColor })] })] }),
+          new TableCell({ width: { size: 75, type: WidthType.PERCENTAGE }, shading: { fill: 'FFFFFF', type: ShadingType.SOLID, color: 'FFFFFF' }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, color: mutedColor })] })] }),
         ],
       }))
     }
     if (metaRows.length) {
       elements.push(new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: { top: nb, bottom: cb, left: cb, right: cb, insideHorizontal: cb, insideVertical: cb },
+        borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: cb, insideVertical: cb },
         rows: metaRows,
       }))
     }
@@ -1320,20 +1476,11 @@ export async function buildBdrEmailsDocxBlob(
       if (!line.trim()) {
         elements.push(new Paragraph({ spacing: { after: 60 }, children: [] }))
       } else if (/^\[.+\]$/.test(line.trim())) {
-        // [Link] or [CTA link] placeholder — render as a tinted box
-        const nb2 = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
-        elements.push(new Table({
-          width: { size: 40, type: WidthType.PERCENTAGE },
-          borders: { top: nb2, bottom: nb2, left: nb2, right: nb2, insideHorizontal: nb2, insideVertical: nb2 },
-          rows: [new TableRow({
-            children: [new TableCell({
-              shading: { fill: secondary, type: ShadingType.SOLID, color: secondary },
-              margins: { top: 80, bottom: 80, left: 160, right: 160 },
-              children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: line.trim().replace(/^\[|\]$/g, ''), font: hf, size: 20, bold: true, color: 'FFFFFF' })] })],
-            })],
-          })],
+        // Standalone placeholder [Link], [Sign off], etc. — plain italic text
+        elements.push(new Paragraph({
+          spacing: { after: 80 },
+          children: [new TextRun({ text: line.trim(), font: bf, size: 22, italics: true, color: secondary })],
         }))
-        elements.push(new Paragraph({ spacing: { after: 60 }, children: [] }))
       } else {
         elements.push(new Paragraph({
           spacing: { after: 80 },
@@ -1416,17 +1563,15 @@ export async function buildBdrEmailsDocxBlob(
     }
 
     if (name.includes('how to use') || name.includes('usage') || name.includes('instructions')) {
-      // Callout box
       const calloutBg = tint(docStyle.secondaryColor, 0.08)
-      const calloutBorder = { style: BorderStyle.SINGLE, size: 3, color: secondary } as const
       const text = lines.filter(l => l.trim()).join(' ')
       if (text) {
-        const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
         body.push(new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
-          borders: { top: calloutBorder, bottom: nb, left: calloutBorder, right: nb, insideHorizontal: nb, insideVertical: nb },
+          borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: nb },
           rows: [new TableRow({
             children: [new TableCell({
+              width: { size: 100, type: WidthType.PERCENTAGE },
               shading: { fill: calloutBg, type: ShadingType.SOLID, color: calloutBg },
               margins: { top: 120, bottom: 120, left: 200, right: 200 },
               children: [
