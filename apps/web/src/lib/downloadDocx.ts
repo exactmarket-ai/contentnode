@@ -765,7 +765,7 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
         new TableCell({
           width: { size: pcts[i] ?? pcts[pcts.length - 1], type: WidthType.PERCENTAGE },
           shading: ri % 2 === 1
-            ? { type: ShadingType.SOLID, color: 'f8fafc', fill: 'f8fafc' }
+            ? { type: ShadingType.SOLID, color: 'F4F6FB', fill: 'F4F6FB' }
             : { type: ShadingType.SOLID, color: 'FFFFFF', fill: 'FFFFFF' },
           borders: { top: none, bottom: divider, left: none, right: none },
           children: [new Paragraph({
@@ -788,68 +788,70 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
 }
 
 /** Two-cell section header matching NexusTek template:
- *  left cell = primary (blue) with number, right cell = secondary (navy) with title + subtitle */
+ *  Row 1: left=primary(blue) with number | right=secondary(navy) with title+subtitle
+ *  Row 2 (when usedIn set): full-width navy USED IN bar (columnSpan 2) */
 function gtmSectionBlock(
   num: string, title: string, subtitle: string, usedIn: string,
   primaryHex: string, secondaryHex: string, headingFont: string,
 ): (Paragraph | Table)[] {
   const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
-  const result: (Paragraph | Table)[] = []
+  const internalDivider = { style: BorderStyle.SINGLE, size: 2, color: 'FFFFFF' }
 
-  result.push(new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [new TableRow({
-      children: [
-        new TableCell({
-          width: { size: 13, type: WidthType.PERCENTAGE },
-          shading: { type: ShadingType.SOLID, color: primaryHex, fill: primaryHex },
-          borders: { top: none, bottom: none, left: none, right: none },
-          margins: { top: 80, bottom: 80, left: 120, right: 120 },
-          children: [new Paragraph({
-            children: [new TextRun({ text: num, bold: true, size: 24, color: 'FFFFFF', font: { name: headingFont } })],
-            alignment: AlignmentType.CENTER,
-          })],
-        }),
-        new TableCell({
-          width: { size: 87, type: WidthType.PERCENTAGE },
-          shading: { type: ShadingType.SOLID, color: secondaryHex, fill: secondaryHex },
-          borders: { top: none, bottom: none, left: none, right: none },
-          margins: { top: 60, bottom: 60, left: 160, right: 120 },
-          children: [
-            new Paragraph({
-              children: [new TextRun({ text: title, bold: true, size: 24, color: 'FFFFFF', font: { name: headingFont } })],
-              spacing: { after: subtitle ? 40 : 0 },
-            }),
-            ...(subtitle ? [new Paragraph({
-              children: [new TextRun({ text: subtitle, size: 18, color: 'AABBCC' })],
-              spacing: { after: 0 },
-            })] : []),
-          ],
-        }),
-      ],
-    })],
-    borders: { top: none, bottom: none, left: none, right: none },
-  }))
+  const headerRow = new TableRow({
+    children: [
+      new TableCell({
+        width: { size: 18, type: WidthType.PERCENTAGE },
+        shading: { type: ShadingType.SOLID, color: primaryHex, fill: primaryHex },
+        borders: { top: none, bottom: none, left: none, right: none },
+        margins: { top: 120, bottom: 120, left: 160, right: 160 },
+        children: [new Paragraph({
+          children: [new TextRun({ text: num, bold: true, size: 28, color: 'FFFFFF', font: { name: headingFont } })],
+          alignment: AlignmentType.CENTER,
+        })],
+      }),
+      new TableCell({
+        width: { size: 82, type: WidthType.PERCENTAGE },
+        shading: { type: ShadingType.SOLID, color: secondaryHex, fill: secondaryHex },
+        borders: { top: none, bottom: none, left: none, right: none },
+        margins: { top: 100, bottom: 100, left: 180, right: 140 },
+        children: [
+          new Paragraph({
+            children: [new TextRun({ text: title, bold: true, size: 24, color: 'FFFFFF', font: { name: headingFont } })],
+            spacing: { after: subtitle ? 60 : 0 },
+          }),
+          ...(subtitle ? [new Paragraph({
+            children: [new TextRun({ text: subtitle, size: 18, color: 'C5CCDB', italics: true })],
+            spacing: { after: 0 },
+          })] : []),
+        ],
+      }),
+    ],
+  })
+
+  const rows: TableRow[] = [headerRow]
 
   if (usedIn) {
-    result.push(new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [new TableRow({
-        children: [new TableCell({
-          shading: { type: ShadingType.SOLID, color: secondaryHex, fill: secondaryHex },
-          borders: { top: none, bottom: none, left: none, right: none },
-          margins: { top: 56, bottom: 56, left: 160, right: 120 },
-          children: [new Paragraph({
-            children: [new TextRun({ text: `USED IN: ${usedIn}`, size: 17, color: 'FFFFFF', bold: true })],
-          })],
+    rows.push(new TableRow({
+      children: [new TableCell({
+        columnSpan: 2,
+        shading: { type: ShadingType.SOLID, color: secondaryHex, fill: secondaryHex },
+        borders: { top: internalDivider, bottom: none, left: none, right: none },
+        margins: { top: 60, bottom: 60, left: 180, right: 140 },
+        children: [new Paragraph({
+          children: [new TextRun({ text: `USED IN: ${usedIn}`, size: 17, color: 'B0BAC9', bold: false })],
         })],
       })],
-      borders: { top: none, bottom: none, left: none, right: none },
     }))
   }
 
-  result.push(new Paragraph({ spacing: { after: 80 } }))
-  return result
+  return [
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows,
+      borders: { top: none, bottom: none, left: none, right: none },
+    }),
+    new Paragraph({ spacing: { after: 100 } }),
+  ]
 }
 
 /** 2-column field table matching NexusTek template: label | value, alternating EAEDF4/FFFFFF */
@@ -924,22 +926,22 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── Document header (no cover page — matches NexusTek template) ─────────────
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: clientName, bold: true, size: 52, color: '222222', font: { name: headingFont } })],
-      spacing: { before: 0, after: 80 },
+      children: [new TextRun({ text: clientName, bold: true, size: 60, color: '092648', font: { name: headingFont } })],
+      spacing: { before: 0, after: 100 },
     }),
     new Paragraph({
-      children: [new TextRun({ text: `${verticalName} Messaging Framework`, bold: true, size: 44, color: '222222', font: { name: headingFont } })],
-      spacing: { after: 60 },
+      children: [new TextRun({ text: `${verticalName} Messaging Framework`, bold: true, size: 48, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { after: 80 },
     }),
     new Paragraph({
-      children: [new TextRun({ text: `Confidential: For Internal ${clientName} Use Only`, size: 18, color: '888888', italics: true, font: { name: bodyFont } })],
-      spacing: { after: 240 },
+      children: [new TextRun({ text: `Confidential: For Internal ${clientName} Use Only`, size: 19, color: '7A8499', italics: true, font: { name: bodyFont } })],
+      spacing: { after: 300 },
     }),
   )
 
   // ── Document Completion Tracker ──────────────────────────────────────────────
   children.push(new Paragraph({
-    children: [new TextRun({ text: 'DOCUMENT COMPLETION TRACKER', bold: true, size: 18, color: primaryHex, font: { name: headingFont }, characterSpacing: 40 })],
+    children: [new TextRun({ text: 'DOCUMENT COMPLETION TRACKER', bold: true, size: 18, color: '7A8499', font: { name: headingFont }, characterSpacing: 60 })],
     spacing: { after: 80 },
   }))
   const trackerRows = SECTIONS.map((sec) => {
@@ -1321,6 +1323,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     },
     sections: [
       {
+        properties: {
+          page: {
+            margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 },
+          },
+        },
         headers: {
           default: new Header({
             children: [
