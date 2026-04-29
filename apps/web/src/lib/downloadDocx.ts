@@ -1458,7 +1458,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (ctaRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Primary CTAs Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 0, after: 60 },
+      spacing: { before: 0, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: '3-4 CTAs in order of preference. Each should have a clear description, target audience, and the trigger condition that makes it the right offer.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(st(
       ['CTA Name', 'Description', 'Target Audience / Trigger', 'Asset(s) Where This Appears'],
