@@ -1213,6 +1213,15 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     children.push(new Paragraph({ spacing: { after: 80 } }))
   }
 
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'Vertical-Specific Case Studies', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+    spacing: { before: 160, after: 40 },
+  }))
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'Provide 2 case studies. Use real engagements — anonymize if needed. These are the most-used proof points in the brochure, deck, BDR emails, and cheat sheet.', size: 19, color: '374151', italics: true })],
+    spacing: { before: 0, after: 80 },
+  }))
+
   fw.s09.caseStudies.forEach((cs, i) => {
     if (!cs.clientProfile?.trim() && !cs.situation?.trim() && !cs.outcomes?.trim()) return
     const t = gtmFieldTable([
