@@ -635,6 +635,113 @@ https://nexustekhealthcare.com/assessment
 - Implementation timelines: 90 days to first value milestone
 `
 
+// ── Sample content — NexusTek BDR Emails ─────────────────────────────────────
+
+const NEXUSTEK_BDR_EMAILS = `
+## Cover
+Call Scripts and Emails
+NexusTek Healthcare
+BDR Outreach · 5 Segments · 6 Email Sequences
+Internal Use Only
+
+## How to Use
+Personalise every [customize with...] bracket before sending. Subject lines and conversation starters are written to work without customisation, but specificity always improves response rates. The Security Assessment is the call to action in every sequence — never pitch a full engagement on cold outreach.
+
+## Contents
+- Call Scripts — Subject lines, conversation starters, and voicemail scripts for all five segments
+- Email 1 — Physician groups and multi-specialty practices
+- Email 2 — Community hospitals and regional health systems
+- Email 3 — Outpatient and ambulatory care centres
+- Email 4 — Diagnostic labs and imaging centres
+- Email 5 — Telehealth and remote care providers
+- Email 6 — AI governance — all segments
+
+## Call Scripts
+| # | Email / Segment | Conversation Starters | Voicemail Script |
+|---|----------------|----------------------|-----------------|
+| 1 | Physician groups + multi-specialty | 1. "How are you currently managing IT support across your practice?" 2. "If your EHR went offline today during patient hours, what would happen?" 3. "When your cyber insurance came up for renewal, were there controls you couldn't evidence?" | Hi [First Name], this is [Name] from NexusTek — I sent you a note about managed IT and cybersecurity for physician groups. I'll follow up by email, or call me at [phone] to connect sooner. |
+| 2 | Community hospitals + health systems | 1. "How is your internal IT team structured — what security monitoring can you sustain continuously?" 2. "If your team was handling an active incident, what happens to compliance documentation?" 3. "When did you last complete a documented risk analysis against HIPAA Security Rule requirements?" | Hi [First Name], this is [Name] from NexusTek — I reached out about Co-Managed IT and cybersecurity for community hospitals. I'll send a follow-up note, or reach me at [phone] to talk directly. |
+| 3 | Outpatient + ambulatory care | 1. "How many sites are you running, and is your IT environment consistent across all of them?" 2. "What does a system outage during operating hours actually cost you?" 3. "Has system downtime affected a full clinical day in the last 12 months?" | Hi [First Name], this is [Name] from NexusTek — I sent you a note about managed IT for outpatient care. I'll follow up by email, or call me at [phone] to connect sooner. |
+| 4 | Diagnostic labs + imaging | 1. "How are you managing patching across your PACS systems and imaging workstations?" 2. "If ransomware encrypted your imaging system, what's your recovery plan?" 3. "What does your backup posture look like specifically for imaging data and PACS availability?" | Hi [First Name], this is [Name] from NexusTek — I reached out about managed IT and disaster recovery for diagnostic labs. Over 83% of imaging devices run outdated software. I'll send a follow-up note. |
+| 5 | Telehealth + remote care | 1. "How are you managing security across clinician devices and sessions?" 2. "What does your email security and credential protection look like today?" 3. "If a clinician account was compromised, how quickly would you know?" | Hi [First Name], this is [Name] from NexusTek — I sent you a note about cybersecurity for telehealth providers. Phishing targeting clinician credentials is the primary breach vector. I'll follow up by email. |
+
+## Email 1 — Physician groups + multi-specialty practices
+
+**Subject Line:** If your EHR went down during afternoon appointments
+**Preview Text:** System downtime during patient hours has an immediate cost.
+
+Hi [First Name],
+
+If your EHR went offline during afternoon appointments today, what would happen — and who handles the response?
+
+Most practices we work with are carrying HIPAA obligations with one or two people managing IT alongside clinical ops, billing, and compliance. Cyber insurance renewals are making that gap increasingly visible.
+
+NexusTek provides managed IT, cybersecurity, and HIPAA-aligned infrastructure for physician groups as a single fixed-cost partner. The entry point is a no-cost Security Assessment — maps your current posture against HIPAA requirements, no commitment required.
+
+[Book your Security Assessment]
+
+Worth 20 minutes?
+
+Best,
+[Sign off]
+
+## Email 2 — Community hospitals + regional health systems
+
+**Subject Line:** Your IT team keeps the lights on. Who covers security when an incident hits?
+**Preview Text:** Most healthcare IT teams keep operations running. The gap is sustained security and compliance coverage.
+
+Hi [First Name],
+
+When your IT team is managing an active infrastructure incident, what happens to security monitoring and HIPAA compliance documentation at the same time?
+
+For most community hospitals, the honest answer is: those things slip. Not because no one cares — because one team can't cover everything continuously.
+
+NexusTek's Co-Managed IT works alongside your existing team, covering 24/7 SOC monitoring, patch governance, and compliance documentation. Your team keeps the strategic work. We cover the rest.
+
+[Schedule a brief conversation]
+
+Best,
+[Sign off]
+
+## Email 3 — Outpatient + ambulatory care centres
+
+**Subject Line:** One hour of downtime during a full schedule
+**Preview Text:** For ambulatory care, system availability is a clinical operations metric.
+
+Hi [First Name],
+
+If your scheduling and clinical documentation systems went down for one hour during a full operating day, what would that cost in cancelled procedures, rescheduled patients, and staff time?
+
+For multi-site ambulatory networks, IT that accumulated through growth tends to be uneven across locations — and the cost of an outage compounds fast.
+
+NexusTek provides managed IT and cybersecurity that keeps clinical systems available during operating hours across every site.
+
+[Available to compare approaches?]
+
+Best,
+[Sign off]
+
+## Email 6 — AI governance — all segments
+
+**Subject Line:** The problem with AI in healthcare isn't AI — it's the missing governance layer
+**Preview Text:** 57% of healthcare orgs say admin automation is their biggest AI opportunity. Most can't deploy it safely.
+
+Hi [First Name],
+
+57% of healthcare organisations say reducing administrative burdens through AI is their biggest opportunity. Most have already explored it — and most hit the same wall: compliance teams blocking deployment because there's no governed layer between clinical data and the AI tools.
+
+NexusTek's Secure AI Platform provides governed access to leading AI models inside a HIPAA-aligned boundary — ePHI never reaches an unmanaged third-party system. Governance built in from day one.
+
+The AI Readiness Assessment identifies your highest-value use cases and what needs to close before safe deployment.
+
+[Request the AI Readiness Assessment]
+
+Worth a conversation?
+
+Best,
+[Sign off]
+`
+
 const NEXUSTEK_STYLE: DocStyle = {
   primaryColor: '#092648',
   secondaryColor: '#3358FF',
@@ -792,6 +899,186 @@ const ASSET_META = [
   { index: 7, num: '08', name: 'Internal Brief',    ext: 'docx' },
 ]
 
+// ── BDR Emails builder (Node-compatible) ─────────────────────────────────────
+
+async function buildBdrEmailsBuffer(
+  markdown: string,
+  docStyle: DocStyle,
+  clientName: string,
+  verticalName: string,
+): Promise<Buffer> {
+  const primary    = hexNoHash(docStyle.primaryColor)
+  const secondary  = hexNoHash(docStyle.secondaryColor)
+  const hf         = docStyle.headingFont
+  const bf         = docStyle.bodyFont
+  const bodyColor  = '1A1A14'
+  const labelBg    = primary
+  const subjectBg  = tint(docStyle.primaryColor, 0.06)
+  const previewBg  = tint(docStyle.primaryColor, 0.03)
+  const borderCol  = tint(docStyle.primaryColor, 0.25)
+  const mutedColor = '6B7280'
+
+  function buildEmailBlock(lines: string[], emailNum: number | null, segmentName: string): (Paragraph | Table)[] {
+    const elements: (Paragraph | Table)[] = []
+    const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
+
+    elements.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: nb, bottom: nb, left: nb, right: nb, insideHorizontal: nb, insideVertical: nb },
+      rows: [new TableRow({
+        children: [new TableCell({
+          shading: { fill: primary, type: ShadingType.SOLID, color: primary },
+          margins: { top: 120, bottom: 120, left: 200, right: 200 },
+          children: [new Paragraph({
+            children: [
+              ...(emailNum !== null ? [new TextRun({ text: `Email ${emailNum}  `, font: hf, size: 26, bold: true, color: secondary })] : []),
+              new TextRun({ text: sanitize(segmentName), font: hf, size: 22, bold: false, color: 'DDDDDD' }),
+            ],
+          })],
+        })],
+      })],
+    }))
+
+    let subjectLine = ''
+    let previewText = ''
+    const bodyLines: string[] = []
+    for (const line of lines) {
+      const subM = line.match(/^\*\*Subject(?:\s+Line)?[:\*]*\*\*\s*(.+)/i)
+      const preM = line.match(/^\*\*Preview(?:\s+Text)?[:\*]*\*\*\s*(.+)/i)
+      if (subM) { subjectLine = subM[1].replace(/\*\*/g, '').trim(); continue }
+      if (preM) { previewText = preM[1].replace(/\*\*/g, '').trim(); continue }
+      bodyLines.push(line)
+    }
+
+    if (subjectLine) {
+      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
+      elements.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
+        rows: [new TableRow({
+          children: [
+            new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'SUBJECT LINE', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
+            new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: subjectBg, type: ShadingType.SOLID, color: subjectBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: parseInlineRuns(subjectLine, hf, 22, bodyColor) })] }),
+          ],
+        })],
+      }))
+    }
+
+    if (previewText) {
+      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
+      elements.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: { top: nb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
+        rows: [new TableRow({
+          children: [
+            new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'PREVIEW TEXT', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
+            new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: previewBg, type: ShadingType.SOLID, color: previewBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, italics: true, color: mutedColor })] })] }),
+          ],
+        })],
+      }))
+    }
+
+    elements.push(new Paragraph({ spacing: { before: 200, after: 0 }, children: [] }))
+    for (const line of bodyLines) {
+      if (!line.trim()) {
+        elements.push(new Paragraph({ spacing: { after: 60 }, children: [] }))
+      } else if (/^\[.+\]$/.test(line.trim())) {
+        elements.push(new Table({
+          width: { size: 40, type: WidthType.PERCENTAGE },
+          borders: { top: nb, bottom: nb, left: nb, right: nb, insideHorizontal: nb, insideVertical: nb },
+          rows: [new TableRow({ children: [new TableCell({ shading: { fill: secondary, type: ShadingType.SOLID, color: secondary }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: line.trim().replace(/^\[|\]$/g, ''), font: hf, size: 20, bold: true, color: 'FFFFFF' })] })] })] })],
+        }))
+        elements.push(new Paragraph({ spacing: { after: 60 }, children: [] }))
+      } else {
+        elements.push(new Paragraph({ spacing: { after: 80 }, children: parseInlineRuns(line, bf, 24, bodyColor) }))
+      }
+    }
+    elements.push(new Paragraph({ spacing: { before: 200, after: 0 }, border: { bottom: { style: BorderStyle.SINGLE, size: 3, color: borderCol, space: 4 } }, children: [] }))
+    return elements
+  }
+
+  const rawSections = markdown.split(/^(?=## )/m).filter(s => s.trim())
+  const sections = rawSections.map(s => {
+    const lines = s.split('\n')
+    const m = lines[0].match(/^## (.+)/)
+    return { name: (m ? m[1] : '').trim().toLowerCase(), title: m ? m[1].trim() : '', lines: lines.slice(1) }
+  })
+
+  // Cover (Node-compatible — no logo)
+  const coverSection = sections.find(s => s.name === 'cover')
+  const coverItems: Paragraph[] = [new Paragraph({ spacing: { before: 1200 }, children: [] })]
+  const coverLines = (coverSection?.lines ?? []).filter(l => l.trim())
+  coverLines.forEach((raw, i) => {
+    const text = sanitize(raw.replace(/\*\*/g, '').trim())
+    if (i === 0) coverItems.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text, font: hf, size: 52, bold: true, color: 'FFFFFF' })] }))
+    else if (i === 1) {
+      coverItems.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text, font: hf, size: 40, bold: false, color: 'FFFFFF' })] }))
+      coverItems.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: '─────', font: bf, size: 24, color: secondary })] }))
+    } else {
+      coverItems.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text, font: bf, size: i === 2 ? 22 : 18, color: i === 2 ? 'CCCCCC' : 'AAAAAA' })] }))
+    }
+  })
+  const nilB = { style: BorderStyle.NIL } as const
+  const coverChildren = [new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: nilB, bottom: nilB, left: nilB, right: nilB, insideHorizontal: nilB, insideVertical: nilB },
+    rows: [new TableRow({ height: { value: convertInchesToTwip(9.5), rule: HeightRule.EXACT }, children: [new TableCell({ shading: { fill: primary, type: ShadingType.SOLID, color: primary }, children: coverItems })] })],
+  })]
+
+  const body: (Paragraph | Table)[] = []
+
+  function renderGenericLines(lines: string[]) {
+    let tbl: string[] = []
+    const flush = () => { if (!tbl.length) return; const dr = tbl.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim())); if (dr.length) body.push(buildStyledTable(tbl, docStyle)); tbl = [] }
+    for (const line of lines) {
+      if (line.startsWith('|')) { tbl.push(line); continue }
+      flush()
+      if (/^[-*] /.test(line)) body.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(line.slice(2), bf, 22, bodyColor) }))
+      else if (line.trim() === '') body.push(new Paragraph({}))
+      else body.push(new Paragraph({ spacing: { after: 80 }, children: parseInlineRuns(line, bf, 22, bodyColor) }))
+    }
+    flush()
+  }
+
+  for (const { name, title, lines } of sections) {
+    if (name === 'cover') continue
+    const emailMatch = name.match(/^email\s+(\d+)(?:\s*[—\-–:]\s*(.+))?/)
+    if (emailMatch) {
+      const num = parseInt(emailMatch[1], 10)
+      const segment = emailMatch[2]?.trim() ?? title.replace(/^email\s+\d+\s*[—\-–:]\s*/i, '').trim()
+      body.push(...buildEmailBlock(lines, num, segment))
+      continue
+    }
+    if (name.includes('how to use') || name.includes('usage')) {
+      const calloutBg = tint(docStyle.secondaryColor, 0.08)
+      const text = lines.filter(l => l.trim()).join(' ')
+      if (text) {
+        const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
+        const cb = { style: BorderStyle.SINGLE, size: 3, color: secondary } as const
+        body.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: { top: cb, bottom: nb, left: cb, right: nb, insideHorizontal: nb, insideVertical: nb }, rows: [new TableRow({ children: [new TableCell({ shading: { fill: calloutBg, type: ShadingType.SOLID, color: calloutBg }, margins: { top: 120, bottom: 120, left: 200, right: 200 }, children: [new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: 'How to use', font: hf, size: 20, bold: true, color: secondary })] }), new Paragraph({ children: parseInlineRuns(text, bf, 20, '4A5568') })] })] })] }))
+        body.push(new Paragraph({}))
+      }
+      continue
+    }
+    body.push(new Paragraph({ spacing: { before: 320, after: 160 }, border: { bottom: { style: BorderStyle.SINGLE, color: borderCol, size: 4, space: 6 } }, children: [new TextRun({ text: sanitize(title), font: hf, size: 32, bold: true, color: primary })] }))
+    renderGenericLines(lines)
+    body.push(new Paragraph({}))
+  }
+
+  const docHeader = new Footer({ children: [new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, color: secondary, size: 6, space: 4 } }, spacing: { after: 80 }, children: [new TextRun({ text: `${sanitize(clientName)}  |  ${sanitize(verticalName)}  |  BDR Call Scripts and Emails`, font: hf, size: 18, bold: true, color: primary })] })] })
+  const docFooter = new Footer({ children: [new Paragraph({ tabStops: [{ type: 'right' as const, position: 9026 }], border: { top: { style: BorderStyle.SINGLE, color: borderCol, size: 4, space: 4 } }, children: [new TextRun({ text: `${sanitize(clientName)}  |  Call Scripts and Emails  |  Internal Use Only`, font: hf, size: 16, italics: true, color: mutedColor }), new TextRun({ text: '\t', font: hf, size: 16 }), new TextRun({ children: [PageNumber.CURRENT], font: hf, size: 16, color: mutedColor })] })] })
+
+  const doc = new Document({
+    styles: { paragraphStyles: [{ id: 'Normal', name: 'Normal', run: { font: bf, size: 22, color: bodyColor } }] },
+    sections: [
+      { properties: { type: SectionType.NEXT_PAGE }, children: coverChildren },
+      { footers: { default: docFooter }, children: body },
+    ],
+  })
+
+  return Buffer.from(await Packer.toBuffer(doc))
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 async function main() {
@@ -803,11 +1090,16 @@ async function main() {
   const outName = `preview-${asset.num}-${asset.name.replace(/ /g, '-').toLowerCase()}-${date}.docx`
   const outPath = path.join(os.homedir(), 'Downloads', outName)
 
-  const markdown = contentFile
-    ? fs.readFileSync(path.resolve(contentFile), 'utf8')
-    : NEXUSTEK_BROCHURE
+  const defaultContent: Record<number, string> = {
+    0: NEXUSTEK_BROCHURE,
+    3: NEXUSTEK_BDR_EMAILS,
+  }
 
-  if (contentFile) {
+  const markdown = contentFile && contentFile !== ''
+    ? fs.readFileSync(path.resolve(contentFile), 'utf8')
+    : (defaultContent[assetIndex] ?? NEXUSTEK_BROCHURE)
+
+  if (contentFile && contentFile !== '') {
     console.log(`Using content from: ${contentFile}`)
   } else {
     console.log('Using NexusTek sample content (pass a content file to use real data)')
@@ -818,6 +1110,8 @@ async function main() {
   let buf: Buffer
   if (asset.index === 0) {
     buf = await buildBrochureBuffer(markdown, NEXUSTEK_STYLE, 'NexusTek Healthcare', 'Healthcare')
+  } else if (asset.index === 3) {
+    buf = await buildBdrEmailsBuffer(markdown, NEXUSTEK_STYLE, 'NexusTek Healthcare', 'Healthcare')
   } else {
     buf = await buildGenericDocxBuffer(markdown, NEXUSTEK_STYLE, asset.name, 'NexusTek Healthcare', 'Healthcare')
   }

@@ -1214,6 +1214,315 @@ function injectDocStyleIntoHtml(html: string, docStyle: DocStyle): string {
   return result
 }
 
+// ── BDR Emails specialized renderer ───────────────────────────────────────────
+
+export async function buildBdrEmailsDocxBlob(
+  markdown: string,
+  docStyle: DocStyle,
+  clientName: string,
+  verticalName: string,
+): Promise<Blob> {
+  const primary    = hexNoHash(docStyle.primaryColor)
+  const secondary  = hexNoHash(docStyle.secondaryColor)
+  const hf         = docStyle.headingFont
+  const bf         = docStyle.bodyFont
+  const bodyColor  = '1A1A14'
+  const labelBg    = primary                             // dark label bg (same as primary)
+  const subjectBg  = tint(docStyle.primaryColor, 0.06)  // very light tint for subject value
+  const previewBg  = tint(docStyle.primaryColor, 0.03)  // even lighter for preview
+  const borderCol  = tint(docStyle.primaryColor, 0.25)
+  const mutedColor = '6B7280'
+
+  // ── Email block builder ──────────────────────────────────────────────────────
+  function buildEmailBlock(
+    lines: string[],
+    emailNum: number | null,
+    segmentName: string,
+  ): (Paragraph | Table)[] {
+    const elements: (Paragraph | Table)[] = []
+    const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
+
+    // Section header bar (primary color)
+    elements.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: nb, bottom: nb, left: nb, right: nb, insideHorizontal: nb, insideVertical: nb },
+      rows: [new TableRow({
+        children: [new TableCell({
+          shading: { fill: primary, type: ShadingType.SOLID, color: primary },
+          margins: { top: 120, bottom: 120, left: 200, right: 200 },
+          children: [new Paragraph({
+            children: [
+              ...(emailNum !== null ? [
+                new TextRun({ text: `Email ${emailNum}  `, font: hf, size: 26, bold: true, color: secondary }),
+              ] : []),
+              new TextRun({ text: sanitize(segmentName), font: hf, size: 22, bold: false, color: 'DDDDDD' }),
+            ],
+          })],
+        })],
+      })],
+    }))
+
+    // Extract subject line, preview text, and body lines
+    let subjectLine = ''
+    let previewText = ''
+    let subjectFromStandalone = false
+    const bodyLines: string[] = []
+
+    // First pass: find labeled fields (**Subject Line:** xxx)
+    for (const line of lines) {
+      const subM = line.match(/^\*\*Subject(?:\s+Line)?[:\*]*\*\*\s*(.+)/i)
+      const preM = line.match(/^\*\*Preview(?:\s+Text)?[:\*]*\*\*\s*(.+)/i)
+      if (subM)       { subjectLine = subM[1].replace(/\*\*/g, '').trim(); continue }
+      if (preM)       { previewText = preM[1].replace(/\*\*/g, '').trim(); continue }
+      bodyLines.push(line)
+    }
+
+    // Second pass: if subject wasn't in a labeled field, check for standalone "Subject Line" heading
+    if (!subjectLine) {
+      let nextIsSubject = false
+      const filtered: string[] = []
+      for (const line of bodyLines) {
+        if (/^#+\s*Subject(?:\s+Line)?$/i.test(line.trim())) { nextIsSubject = true; continue }
+        if (nextIsSubject && line.trim()) { subjectLine = sanitize(line.trim()); nextIsSubject = false; subjectFromStandalone = true; continue }
+        filtered.push(line)
+      }
+      if (subjectFromStandalone) bodyLines.splice(0, bodyLines.length, ...filtered)
+    }
+
+    // Subject Line box (2-cell: label | value)
+    if (subjectLine) {
+      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
+      elements.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
+        rows: [new TableRow({
+          children: [
+            new TableCell({
+              width: { size: 22, type: WidthType.PERCENTAGE },
+              shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg },
+              margins: { top: 100, bottom: 100, left: 160, right: 160 },
+              children: [new Paragraph({ children: [new TextRun({ text: 'SUBJECT LINE', font: hf, size: 18, bold: true, color: 'AABBCC' })] })],
+            }),
+            new TableCell({
+              width: { size: 78, type: WidthType.PERCENTAGE },
+              shading: { fill: subjectBg, type: ShadingType.SOLID, color: subjectBg },
+              margins: { top: 100, bottom: 100, left: 160, right: 160 },
+              children: [new Paragraph({ children: parseInlineRuns(subjectLine, hf, 22, bodyColor) })],
+            }),
+          ],
+        })],
+      }))
+    }
+
+    // Preview Text box (2-cell: label | value)
+    if (previewText) {
+      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
+      elements.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: { top: nb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
+        rows: [new TableRow({
+          children: [
+            new TableCell({
+              width: { size: 22, type: WidthType.PERCENTAGE },
+              shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg },
+              margins: { top: 80, bottom: 80, left: 160, right: 160 },
+              children: [new Paragraph({ children: [new TextRun({ text: 'PREVIEW TEXT', font: hf, size: 18, bold: true, color: 'AABBCC' })] })],
+            }),
+            new TableCell({
+              width: { size: 78, type: WidthType.PERCENTAGE },
+              shading: { fill: previewBg, type: ShadingType.SOLID, color: previewBg },
+              margins: { top: 80, bottom: 80, left: 160, right: 160 },
+              children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, italics: true, color: mutedColor })] })],
+            }),
+          ],
+        })],
+      }))
+    }
+
+    // Email body
+    elements.push(new Paragraph({ spacing: { before: 200, after: 0 }, children: [] }))
+    for (const line of bodyLines) {
+      if (!line.trim()) {
+        elements.push(new Paragraph({ spacing: { after: 60 }, children: [] }))
+      } else if (/^\[.+\]$/.test(line.trim())) {
+        // [Link] or [CTA link] placeholder — render as a tinted box
+        const nb2 = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
+        elements.push(new Table({
+          width: { size: 40, type: WidthType.PERCENTAGE },
+          borders: { top: nb2, bottom: nb2, left: nb2, right: nb2, insideHorizontal: nb2, insideVertical: nb2 },
+          rows: [new TableRow({
+            children: [new TableCell({
+              shading: { fill: secondary, type: ShadingType.SOLID, color: secondary },
+              margins: { top: 80, bottom: 80, left: 160, right: 160 },
+              children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: line.trim().replace(/^\[|\]$/g, ''), font: hf, size: 20, bold: true, color: 'FFFFFF' })] })],
+            })],
+          })],
+        }))
+        elements.push(new Paragraph({ spacing: { after: 60 }, children: [] }))
+      } else {
+        elements.push(new Paragraph({
+          spacing: { after: 80 },
+          children: parseInlineRuns(line, bf, 24, bodyColor),
+        }))
+      }
+    }
+
+    // Bottom separator
+    elements.push(new Paragraph({
+      spacing: { before: 200, after: 0 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 3, color: borderCol, space: 4 } },
+      children: [],
+    }))
+
+    return elements
+  }
+
+  // ── Parse sections ────────────────────────────────────────────────────────────
+  const rawSections = markdown.split(/^(?=## )/m).filter(s => s.trim())
+  const sections = rawSections.map(s => {
+    const lines = s.split('\n')
+    const m = lines[0].match(/^## (.+)/)
+    return { name: (m ? m[1] : '').trim().toLowerCase(), title: m ? m[1].trim() : '', lines: lines.slice(1) }
+  })
+
+  const coverSection = sections.find(s => s.name === 'cover')
+  const coverTagline = coverSection?.lines.find(l => l.trim())?.trim() ?? 'Call Scripts and Emails'
+  const coverChildren = coverSection
+    ? await buildMarkdownCoverSection(coverSection.lines, docStyle)
+    : await buildCoverSection(docStyle, 'BDR Call Scripts and Emails', clientName, verticalName)
+
+  const body: (Paragraph | Table)[] = []
+
+  function renderGenericLines(lines: string[]) {
+    let tableLines: string[] = []
+    const flush = () => {
+      if (!tableLines.length) return
+      const dr = tableLines.filter(l => !/^\|[\s\-:|]+\|$/.test(l.trim()))
+      if (dr.length) body.push(buildStyledTable(tableLines, docStyle))
+      tableLines = []
+    }
+    for (const line of lines) {
+      if (line.startsWith('|')) { tableLines.push(line); continue }
+      flush()
+      if      (line.startsWith('# '))    body.push(new Paragraph({ spacing: { before: 200, after: 100 }, children: [new TextRun({ text: sanitize(line.slice(2)), font: hf, size: 36, bold: true, color: primary })] }))
+      else if (line.startsWith('## '))   body.push(new Paragraph({ spacing: { before: 160, after: 80  }, children: [new TextRun({ text: sanitize(line.slice(3)), font: hf, size: 28, bold: true, color: primary })] }))
+      else if (line.startsWith('### '))  body.push(new Paragraph({ spacing: { before: 120, after: 60  }, children: [new TextRun({ text: sanitize(line.slice(4)), font: hf, size: 24, bold: true, color: secondary })] }))
+      else if (/^[-*] /.test(line))      body.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(line.slice(2), bf, 22, bodyColor) }))
+      else if (line.startsWith('> '))    body.push(new Paragraph({ indent: { left: 720 }, children: parseInlineRuns(line.slice(2), bf, 22, bodyColor) }))
+      else if (/^---+$|^===+$/.test(line.trim())) body.push(buildHRule(docStyle.primaryColor))
+      else if (line.trim() === '')        body.push(new Paragraph({}))
+      else                               body.push(new Paragraph({ spacing: { after: 80 }, children: parseInlineRuns(line, bf, 22, bodyColor) }))
+    }
+    flush()
+  }
+
+  for (const { name, title, lines } of sections) {
+    if (name === 'cover') continue
+
+    // Email N — Segment Name
+    const emailMatch = name.match(/^email\s+(\d+)(?:\s*[—\-–:]\s*(.+))?/)
+    if (emailMatch) {
+      const num = parseInt(emailMatch[1], 10)
+      const segment = emailMatch[2]?.trim() ?? title.replace(/^email\s+\d+\s*[—\-–:]\s*/i, '').trim()
+      body.push(...buildEmailBlock(lines, num, segment))
+      continue
+    }
+
+    if (name.includes('call script')) {
+      // Section heading for call scripts
+      body.push(new Paragraph({
+        spacing: { before: 320, after: 160 },
+        border: { bottom: { style: BorderStyle.SINGLE, color: borderCol, size: 4, space: 6 } },
+        children: [new TextRun({ text: sanitize(title), font: hf, size: 32, bold: true, color: primary })],
+      }))
+      renderGenericLines(lines)
+      body.push(new Paragraph({}))
+      continue
+    }
+
+    if (name.includes('how to use') || name.includes('usage') || name.includes('instructions')) {
+      // Callout box
+      const calloutBg = tint(docStyle.secondaryColor, 0.08)
+      const calloutBorder = { style: BorderStyle.SINGLE, size: 3, color: secondary } as const
+      const text = lines.filter(l => l.trim()).join(' ')
+      if (text) {
+        const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
+        body.push(new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: { top: calloutBorder, bottom: nb, left: calloutBorder, right: nb, insideHorizontal: nb, insideVertical: nb },
+          rows: [new TableRow({
+            children: [new TableCell({
+              shading: { fill: calloutBg, type: ShadingType.SOLID, color: calloutBg },
+              margins: { top: 120, bottom: 120, left: 200, right: 200 },
+              children: [
+                new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: 'How to use', font: hf, size: 20, bold: true, color: secondary })] }),
+                new Paragraph({ children: parseInlineRuns(text, bf, 20, '4A5568') }),
+              ],
+            })],
+          })],
+        }))
+        body.push(new Paragraph({}))
+      }
+      continue
+    }
+
+    // Contents / TOC — render as two-column list
+    if (name.includes('content') || name.includes('table of content')) {
+      body.push(new Paragraph({
+        spacing: { before: 200, after: 100 },
+        children: [new TextRun({ text: 'Contents', font: hf, size: 28, bold: true, color: primary })],
+      }))
+      renderGenericLines(lines)
+      body.push(new Paragraph({}))
+      continue
+    }
+
+    // Everything else
+    body.push(new Paragraph({
+      spacing: { before: 320, after: 160 },
+      border: { bottom: { style: BorderStyle.SINGLE, color: borderCol, size: 4, space: 6 } },
+      children: [new TextRun({ text: sanitize(title), font: hf, size: 32, bold: true, color: primary })],
+    }))
+    renderGenericLines(lines)
+    body.push(new Paragraph({}))
+  }
+
+  // ── Header ────────────────────────────────────────────────────────────────────
+  const docHeader = new Header({
+    children: [new Paragraph({
+      border: { bottom: { style: BorderStyle.SINGLE, color: secondary, size: 6, space: 4 } },
+      spacing: { after: 80 },
+      children: [
+        new TextRun({ text: sanitize(clientName), font: hf, size: 18, bold: true, color: primary }),
+        new TextRun({ text: `  |  ${sanitize(verticalName)}  |  BDR Call Scripts and Emails`, font: hf, size: 18, color: mutedColor }),
+      ],
+    })],
+  })
+
+  // ── Footer ────────────────────────────────────────────────────────────────────
+  const docFooter = new Footer({
+    children: [new Paragraph({
+      tabStops: [{ type: 'right' as const, position: 9026 }],
+      border: { top: { style: BorderStyle.SINGLE, color: borderCol, size: 4, space: 4 } },
+      children: [
+        new TextRun({ text: `${sanitize(clientName)}  |  Call Scripts and Emails  |  Internal Use Only`, font: hf, size: 16, italics: true, color: mutedColor }),
+        new TextRun({ text: '\t', font: hf, size: 16 }),
+        new TextRun({ children: [PageNumber.CURRENT], font: hf, size: 16, color: mutedColor }),
+      ],
+    })],
+  })
+
+  const doc = new Document({
+    styles: { paragraphStyles: [{ id: 'Normal', name: 'Normal', run: { font: bf, size: 22, color: bodyColor } }] },
+    sections: [
+      { properties: { type: SectionType.NEXT_PAGE }, children: coverChildren },
+      { headers: { default: docHeader }, footers: { default: docFooter }, children: body },
+    ],
+  })
+
+  return Packer.toBlob(doc)
+}
+
 // ── Internal Brief specialized renderer ────────────────────────────────────────
 
 export async function buildInternalBriefDocxBlob(
@@ -1377,6 +1686,8 @@ export async function downloadKit(
     blob = await markdownToPptxBlob(asset.content, style)
   } else if (asset.ext === 'docx' && asset.index === 0) {
     blob = await buildBrochureDocxBlob(asset.content, style, clientName, verticalName)
+  } else if (asset.ext === 'docx' && asset.index === 3) {
+    blob = await buildBdrEmailsDocxBlob(asset.content, style, clientName, verticalName)
   } else if (asset.ext === 'docx' && asset.index === 7) {
     blob = await buildInternalBriefDocxBlob(asset.content, style, clientName, verticalName)
   } else {
