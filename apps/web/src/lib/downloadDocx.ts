@@ -1049,7 +1049,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   children.push(new Paragraph({
     children: [new TextRun({ text: 'Market Pressure Narrative', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-    spacing: { before: 0, after: 60 },
+    spacing: { before: 0, after: 40 },
+  }))
+  children.push(new Paragraph({
+    children: [new TextRun({ text: '2-3 sentences describing the macro pressures facing this vertical right now. This becomes the opening of the brochure and eBook introduction.', size: 19, color: '374151', italics: true })],
+    spacing: { before: 0, after: 80 },
   }))
   if (fw.s03.marketPressureNarrative?.trim()) children.push(gtmSingleCellTable(fw.s03.marketPressureNarrative, bodyFont))
 
@@ -1057,7 +1061,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (statRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Key Statistics', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: '4-6 stats that make the urgency undeniable. Include the source and year for every stat. These appear in the brochure stats bar, eBook opening, deck slide 2, and BDR email 1.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(st(
       ['Stat', 'Context / Label', 'Source', 'Year'],
@@ -1069,7 +1077,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (fw.s03.additionalContext?.trim()) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Additional Context / Supporting Data', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Any additional market sizing, analyst forecasts, or contextual data worth including. Include sources.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(gtmSingleCellTable(fw.s03.additionalContext!, bodyFont))
   }
@@ -1078,6 +1090,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §04 Core Challenges ─────────────────────────────────────────────────────
   const s04 = SECTIONS.find((s) => s.num === '04')!
   children.push(...sb('04', s04.short, s04.subtitle, s04.usedIn))
+  children.push(new Paragraph({
+    children: [new TextRun({ text: `Format guidance: Each challenge should: (1) name the pain, (2) explain why it exists in this vertical, (3) describe the business consequence, (4) map to a ${clientName} service pillar.`, size: 19, color: '374151', italics: true })],
+    spacing: { before: 0, after: 80 },
+  }))
   fw.s04.challenges.forEach((ch, i) => {
     if (!ch.name?.trim() && !ch.whyExists?.trim() && !ch.consequence?.trim() && !ch.solution?.trim()) return
     const label = ch.name?.trim() ? `Challenge ${i + 1} — ${ch.name}` : `Challenge ${i + 1}`
@@ -1103,7 +1119,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (filledPillars.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Four Solution Pillars — Vertical Positioning', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 0, after: 60 },
+      spacing: { before: 0, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'For each pillar, write the vertical-specific value proposition (not the generic company-wide description).', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(st(
       ['Pillar', 'Vertical Value Prop', 'Key Services', 'Relevant To'],
@@ -1116,7 +1136,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (serviceRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Full Service Stack — Mapped to Vertical Needs', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `List every ${clientName} service relevant to this vertical. For each, describe what it delivers in this vertical's specific context.`, size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(st(
       ['Service', 'Regulatory Domain', 'What It Delivers in This Vertical', 'Priority'],
@@ -1130,7 +1154,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (platformBenefit) {
     children.push(new Paragraph({
       children: [new TextRun({ text: `${platformName || '[Product]'} Platform — Vertical Context`, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `How does ${platformName || '[Product]'} specifically benefit this vertical? What operational outcomes does it enable?`, size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     children.push(gtmSingleCellTable(platformBenefit, bodyFont))
   }
