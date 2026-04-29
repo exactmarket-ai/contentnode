@@ -1246,6 +1246,14 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('10', s10.short, s10.subtitle, s10.usedIn))
   const filledObj = fw.s10.objections.filter((o) => o.objection?.trim() || o.response?.trim())
   if (filledObj.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Objection Handling Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: '6-8 most common objections in this vertical. Include the follow-up question or next action.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
+    }))
     children.push(st(
       ['Objection', 'Sales Response', 'Follow-Up Question / Action'],
       filledObj.map((o) => [o.objection ?? '', o.response ?? '', o.followUp ?? '']),
