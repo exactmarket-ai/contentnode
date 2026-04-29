@@ -1238,6 +1238,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §11 Brand Voice Examples ─────────────────────────────────────────────────
   const s11 = SECTIONS.find((s) => s.num === '11')!
   children.push(...sb('11', s11.short, s11.subtitle, s11.usedIn))
+
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'Voice Characteristics for This Vertical', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+    spacing: { before: 0, after: 60 },
+  }))
   ft([
     { label: 'Tone target', value: fw.s11.toneTarget },
     { label: 'Vocabulary level', value: fw.s11.vocabularyLevel },
@@ -1247,6 +1252,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   const filledGood = fw.s11.goodExamples.filter((e) => e.text?.trim())
   if (filledGood.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Sounds Like — Good Examples', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     const t = gtmFieldTable(filledGood.map((e, i) => ({ label: `Sounds like ${i + 1}`, value: e.text })))
     if (t) children.push(t)
     children.push(new Paragraph({ spacing: { after: 80 } }))
@@ -1254,6 +1263,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   const filledBad = fw.s11.badExamples.filter((e) => e.bad?.trim() || e.whyWrong?.trim())
   if (filledBad.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Does NOT Sound Like — Bad Examples', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     children.push(st(
       ['Does NOT Sound Like', 'Why Wrong / Correction'],
       filledBad.map((e) => [e.bad ?? '', e.whyWrong ?? '']),
