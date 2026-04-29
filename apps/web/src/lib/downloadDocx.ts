@@ -6,7 +6,7 @@ import {
 } from 'docx'
 import { stripMarkdown } from './utils'
 import type { FrameworkData } from '@/pages/ClientFrameworkTab'
-import { SECTIONS, getSectionStatus } from '@/pages/ClientFrameworkTab'
+import { SECTIONS } from '@/pages/ClientFrameworkTab'
 // ── Doc style ─────────────────────────────────────────────────────────────────
 
 export interface DocStyleConfig {
@@ -788,8 +788,8 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
   })
 }
 
-/** GTM section heading — primary color text, subtitle, thin accent line underneath. */
-function gtmSectionHeading(num: string, title: string, subtitle: string, usedIn: string, addPageBreak: boolean, primaryColor = GTM_PURPLE): (Paragraph | Table)[] {
+/** GTM section heading — primary color text, thin accent line underneath. */
+function gtmSectionHeading(num: string, title: string, usedIn: string, addPageBreak: boolean, primaryColor = GTM_PURPLE): (Paragraph | Table)[] {
   const items: Paragraph[] = []
   if (addPageBreak) {
     items.push(new Paragraph({ pageBreakBefore: true, spacing: { after: 0 } }))
@@ -798,18 +798,10 @@ function gtmSectionHeading(num: string, title: string, subtitle: string, usedIn:
     new Paragraph({
       children: [new TextRun({ text: `${num}  ${title}`, bold: true, size: 28, color: primaryColor })],
       heading: HeadingLevel.HEADING_1,
-      spacing: { before: 280, after: subtitle ? 48 : (usedIn ? 60 : 140) },
+      spacing: { before: 280, after: usedIn ? 60 : 140 },
       border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: 'e2e8f0' } },
     })
   )
-  if (subtitle) {
-    items.push(
-      new Paragraph({
-        children: [new TextRun({ text: subtitle, size: 17, color: '64748b', italics: true })],
-        spacing: { after: usedIn ? 48 : 120 },
-      })
-    )
-  }
   if (usedIn) {
     items.push(
       new Paragraph({
@@ -860,8 +852,8 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const footerAgencyName = style.agencyName ?? 'ContentNode AI'
   const footerText = style.footerText ?? 'Confidential'
   // Bound helpers that close over primaryHex so every heading/table uses the client's brand color
-  const sh = (num: string, title: string, subtitle: string, usedIn: string, addPageBreak: boolean) =>
-    gtmSectionHeading(num, title, subtitle, usedIn, addPageBreak, primaryHex)
+  const sh = (num: string, title: string, usedIn: string, addPageBreak: boolean) =>
+    gtmSectionHeading(num, title, usedIn, addPageBreak, primaryHex)
   const st = (headers: string[], rows: string[][], widths?: number[]) =>
     styledTable(headers, rows, widths, primaryHex)
   void secondaryHex // reserved for future secondary-color use
@@ -886,17 +878,27 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     }
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: clientName.toUpperCase(), bold: true, size: 22, color: secondaryHex || primaryHex, font: { name: headingFont }, characterSpacing: 80 })],
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 120 },
-      }),
-      new Paragraph({
-        children: [new TextRun({ text: `${verticalName} Messaging Framework`, bold: true, size: 56, color: primaryHex, font: { name: headingFont } })],
+        children: [new TextRun({ text: 'GTM FRAMEWORK', bold: true, size: 72, color: primaryHex, font: { name: headingFont } })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 160 },
       }),
       new Paragraph({
-        children: [new TextRun({ text: `Confidential: For Internal ${clientName} Use Only  ·  ${dateStr}`, size: 18, color: '94a3b8', italics: true, font: { name: bodyFont } })],
+        children: [new TextRun({ text: clientName, bold: true, size: 36, color: '111111', font: { name: headingFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 80 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: `Confidential: For Internal ${clientName} Use Only`, size: 18, color: '94a3b8', italics: true, font: { name: bodyFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: verticalName, size: 28, color: '94a3b8', font: { name: bodyFont } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: dateStr, size: 20, color: '94a3b8', font: { name: bodyFont } })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 600 },
       }),
@@ -907,30 +909,9 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     )
   }
 
-  // ── Document Completion Tracker ─────────────────────────────────────────────
-  children.push(new Paragraph({ pageBreakBefore: true, spacing: { after: 0 } }))
-  children.push(
-    new Paragraph({
-      children: [new TextRun({ text: 'DOCUMENT COMPLETION TRACKER', bold: true, size: 22, color: primaryHex, font: { name: headingFont }, characterSpacing: 60 })],
-      spacing: { before: 200, after: 140 },
-    })
-  )
-  const trackerRows = SECTIONS.map((sec) => {
-    const status = getSectionStatus(fw, sec.num)
-    const statusLabel = status === 'complete' ? 'Complete' : status === 'in-progress' ? 'In Progress' : '—'
-    return [
-      `${sec.num} — ${sec.short.replace('[Client]', clientName)}`,
-      fw.sectionOwners?.[sec.num] ?? '',
-      statusLabel,
-      fw.sectionNotes?.[sec.num] ?? '',
-    ]
-  })
-  children.push(st(['SECTION', 'OWNER', 'STATUS', 'NOTES'], trackerRows, [48, 15, 12, 25]))
-  children.push(gtmSpacer())
-
   // ── §01 Vertical Overview ───────────────────────────────────────────────────
   const s01 = SECTIONS.find((s) => s.num === '01')!
-  children.push(...sh('01', s01.short, s01.subtitle, s01.usedIn, true))
+  children.push(...sh('01', s01.short, s01.usedIn, true))
   children.push(...gtmArea('Positioning Statement', fw.s01.positioningStatement))
   children.push(...gtmArea('Tagline Options', fw.s01.taglineOptions))
   children.push(...gtmArea('How to Use', fw.s01.howToUse))
@@ -938,7 +919,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §02 Customer Definition + Profile ──────────────────────────────────────
   const s02 = SECTIONS.find((s) => s.num === '02')!
-  children.push(...sh('02', s02.short, s02.subtitle, s02.usedIn, true))
+  children.push(...sh('02', s02.short, s02.usedIn, true))
   children.push(...gtmField('Industry', fw.s02.industry))
   children.push(...gtmField('Company Size', fw.s02.companySize))
   children.push(...gtmField('Geography', fw.s02.geography))
@@ -960,7 +941,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §03 Market Pressures + Stats ────────────────────────────────────────────
   const s03 = SECTIONS.find((s) => s.num === '03')!
-  children.push(...sh('03', s03.short, s03.subtitle, s03.usedIn, true))
+  children.push(...sh('03', s03.short, s03.usedIn, true))
   children.push(...gtmArea('Market Pressure Narrative', fw.s03.marketPressureNarrative))
 
   const statRows = fw.s03.statsTable.filter((r) => r.stat?.trim() || r.context?.trim() || r.source?.trim())
@@ -977,7 +958,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §04 Core Challenges ─────────────────────────────────────────────────────
   const s04 = SECTIONS.find((s) => s.num === '04')!
-  children.push(...sh('04', s04.short, s04.subtitle, s04.usedIn, true))
+  children.push(...sh('04', s04.short, s04.usedIn, true))
   fw.s04.challenges.forEach((ch, i) => {
     if (!ch.name?.trim() && !ch.whyExists?.trim() && !ch.consequence?.trim() && !ch.solution?.trim()) return
     if (ch.name?.trim()) children.push(gtmSubHeading(`Challenge ${i + 1}: ${ch.name}`))
@@ -990,7 +971,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §05 Solutions + Service Stack ───────────────────────────────────────────
   const s05 = SECTIONS.find((s) => s.num === '05')!
-  children.push(...sh('05', s05.short, s05.subtitle.replace('[Client]', clientName), s05.usedIn, true))
+  children.push(...sh('05', s05.short, s05.usedIn, true))
   fw.s05.pillars.forEach((p, i) => {
     if (!p.pillar?.trim() && !p.valueProp?.trim() && !p.keyServices?.trim()) return
     children.push(gtmSubHeading(p.pillar?.trim() ? `Pillar ${i + 1}: ${p.pillar}` : `Pillar ${i + 1}`))
@@ -1012,7 +993,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §06 Why [clientName] ────────────────────────────────────────────────────
   const s06 = SECTIONS.find((s) => s.num === '06')!
-  children.push(...sh('06', `Why ${clientName}`, s06.subtitle, s06.usedIn, true))
+  children.push(...sh('06', `Why ${clientName}`, s06.usedIn, true))
   fw.s06.differentiators.forEach((d, i) => {
     if (!d.label?.trim() && !d.position?.trim()) return
     if (d.label?.trim()) children.push(gtmSubHeading(`${i + 1}. ${d.label}`))
@@ -1022,7 +1003,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §07 Segments + Buyer Profiles ───────────────────────────────────────────
   const s07 = SECTIONS.find((s) => s.num === '07')!
-  children.push(...sh('07', s07.short, s07.subtitle, s07.usedIn, true))
+  children.push(...sh('07', s07.short, s07.usedIn, true))
   fw.s07.segments.forEach((seg, i) => {
     if (!seg.name?.trim() && !seg.primaryBuyerTitles?.trim() && !seg.whatIsDifferent?.trim()) return
     children.push(gtmSubHeading(seg.name?.trim() ? `Segment ${i + 1}: ${seg.name}` : `Segment ${i + 1}`))
@@ -1035,7 +1016,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §08 Messaging Framework ─────────────────────────────────────────────────
   const s08 = SECTIONS.find((s) => s.num === '08')!
-  children.push(...sh('08', s08.short, s08.subtitle, s08.usedIn, true))
+  children.push(...sh('08', s08.short, s08.usedIn, true))
   children.push(...gtmArea('Problems', fw.s08.problems))
   children.push(...gtmArea('Solution', fw.s08.solution))
   children.push(...gtmArea('Outcomes', fw.s08.outcomes))
@@ -1053,7 +1034,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §09 Proof Points + Case Studies ─────────────────────────────────────────
   const s09 = SECTIONS.find((s) => s.num === '09')!
-  children.push(...sh('09', s09.short, s09.subtitle, s09.usedIn, true))
+  children.push(...sh('09', s09.short, s09.usedIn, true))
 
   const filledProofPoints = fw.s09.proofPoints.filter((p) => p.text?.trim())
   if (filledProofPoints.length > 0) {
@@ -1082,7 +1063,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §10 Objection Handling ──────────────────────────────────────────────────
   const s10 = SECTIONS.find((s) => s.num === '10')!
-  children.push(...sh('10', s10.short, s10.subtitle, s10.usedIn, true))
+  children.push(...sh('10', s10.short, s10.usedIn, true))
   fw.s10.objections.forEach((obj, i) => {
     if (!obj.objection?.trim() && !obj.response?.trim()) return
     children.push(gtmSubHeading(`Objection ${i + 1}`))
@@ -1093,7 +1074,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §11 Brand Voice Examples ─────────────────────────────────────────────────
   const s11 = SECTIONS.find((s) => s.num === '11')!
-  children.push(...sh('11', s11.short, s11.subtitle, s11.usedIn, true))
+  children.push(...sh('11', s11.short, s11.usedIn, true))
   children.push(...gtmField('Tone Target', fw.s11.toneTarget))
   children.push(...gtmField('Vocabulary Level', fw.s11.vocabularyLevel))
   children.push(...gtmField('Sentence Style', fw.s11.sentenceStyle))
@@ -1125,7 +1106,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §12 Competitive Differentiation ─────────────────────────────────────────
   const s12 = SECTIONS.find((s) => s.num === '12')!
-  children.push(...sh('12', s12.short, s12.subtitle.replace('[Client]', clientName), s12.usedIn, true))
+  children.push(...sh('12', s12.short, s12.usedIn, true))
 
   const compRows = fw.s12.competitors.filter((r) => r.type?.trim() || r.positioning?.trim() || r.counter?.trim())
   if (compRows.length > 0) {
@@ -1139,7 +1120,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §13 Customer Quotes + Testimonials ──────────────────────────────────────
   const s13 = SECTIONS.find((s) => s.num === '13')!
-  children.push(...sh('13', s13.short, s13.subtitle, s13.usedIn, true))
+  children.push(...sh('13', s13.short, s13.usedIn, true))
   fw.s13.quotes.forEach((q, i) => {
     if (!q.quoteText?.trim() && !q.attribution?.trim()) return
     children.push(gtmSubHeading(`Quote ${i + 1}${q.attribution?.trim() ? ' — ' + q.attribution : ''}`))
@@ -1156,7 +1137,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §14 Campaign Themes + Asset Mapping ─────────────────────────────────────
   const s14 = SECTIONS.find((s) => s.num === '14')!
-  children.push(...sh('14', s14.short, s14.subtitle, s14.usedIn, true))
+  children.push(...sh('14', s14.short, s14.usedIn, true))
 
   const campaignRows = fw.s14.campaigns.filter((r) => r.theme?.trim() || r.targetAudience?.trim() || r.primaryAssets?.trim())
   if (campaignRows.length > 0) {
@@ -1170,7 +1151,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §15 FAQs ────────────────────────────────────────────────────────────────
   const s15 = SECTIONS.find((s) => s.num === '15')!
-  children.push(...sh('15', s15.short, s15.subtitle, s15.usedIn, true))
+  children.push(...sh('15', s15.short, s15.usedIn, true))
   fw.s15.faqs.forEach((faq, i) => {
     if (!faq.question?.trim() && !faq.answer?.trim()) return
     children.push(new Paragraph({
@@ -1188,7 +1169,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §16 Content Funnel Mapping ───────────────────────────────────────────────
   const s16 = SECTIONS.find((s) => s.num === '16')!
-  children.push(...sh('16', s16.short, s16.subtitle, s16.usedIn, true))
+  children.push(...sh('16', s16.short, s16.usedIn, true))
 
   const funnelRows = fw.s16.funnelStages.filter((r) => r.assets?.trim() || r.primaryCTA?.trim() || r.buyerState?.trim())
   if (funnelRows.length > 0) {
@@ -1203,7 +1184,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §17 Regulatory + Compliance ─────────────────────────────────────────────
   const s17 = SECTIONS.find((s) => s.num === '17')!
-  children.push(...sh('17', s17.short, s17.subtitle, s17.usedIn, true))
+  children.push(...sh('17', s17.short, s17.usedIn, true))
 
   const regRows = fw.s17.regulations.filter((r) => r.requirement?.trim() || r.capability?.trim() || r.servicePillar?.trim())
   if (regRows.length > 0) {
@@ -1218,7 +1199,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   // ── §18 CTAs + Next Steps ────────────────────────────────────────────────────
   const s18 = SECTIONS.find((s) => s.num === '18')!
-  children.push(...sh('18', s18.short, s18.subtitle, s18.usedIn, true))
+  children.push(...sh('18', s18.short, s18.usedIn, true))
 
   const ctaRows = fw.s18.ctas.filter((r) => r.ctaName?.trim() || r.description?.trim())
   if (ctaRows.length > 0) {
