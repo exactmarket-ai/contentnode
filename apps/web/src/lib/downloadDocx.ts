@@ -735,14 +735,12 @@ export async function downloadAssessmentDocx(data: AssessmentExport, clientName:
 
 const GTM_NAVY = '092648'
 
-/** Creates a clean styled table. Header row uses solid primary color with white text.
- *  Data rows alternate subtle off-white. No outer borders — thin row dividers only. */
+const GTM_BORDER = { style: BorderStyle.SINGLE, size: 4, color: 'e0deda' }
+
 function styledTable(headers: string[], rows: string[][], widths?: number[], primaryColor = GTM_NAVY): Table {
   const totalCols = headers.length
   const pcts = widths ?? headers.map(() => Math.floor(100 / totalCols))
-
-  const none  = { style: BorderStyle.NONE,   size: 0, color: 'auto' }
-  const divider = { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' }
+  const b = GTM_BORDER
 
   const headerRow = new TableRow({
     tableHeader: true,
@@ -750,7 +748,7 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
       new TableCell({
         width: { size: pcts[i], type: WidthType.PERCENTAGE },
         shading: { type: ShadingType.SOLID, color: primaryColor, fill: primaryColor },
-        borders: { top: none, bottom: none, left: none, right: none },
+        borders: { top: b, bottom: b, left: b, right: b },
         children: [new Paragraph({
           children: [new TextRun({ text: h, bold: true, size: 19, color: 'FFFFFF' })],
           spacing: { before: 80, after: 80 },
@@ -767,7 +765,7 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
           shading: ri % 2 === 1
             ? { type: ShadingType.SOLID, color: 'F4F6FB', fill: 'F4F6FB' }
             : { type: ShadingType.SOLID, color: 'FFFFFF', fill: 'FFFFFF' },
-          borders: { top: none, bottom: divider, left: none, right: none },
+          borders: { top: b, bottom: b, left: b, right: b },
           children: [new Paragraph({
             children: [new TextRun({ text: cell ?? '', size: 19, color: '1e293b' })],
             spacing: { before: 72, after: 72, line: 276 },
@@ -777,9 +775,8 @@ function styledTable(headers: string[], rows: string[][], widths?: number[], pri
     })
   )
 
-  // Cast needed: docx types omit insideH/insideV but the runtime supports them
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tableBorders = new TableBorders({ top: none, bottom: none, left: none, right: none, insideH: divider, insideV: none } as any) as any
+  const tableBorders = new TableBorders({ top: b, bottom: b, left: b, right: b, insideH: b, insideV: b } as any) as any
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [headerRow, ...dataRows],
@@ -861,9 +858,8 @@ function gtmFieldTable(
 ): Table | null {
   const rows = items.filter((f) => f.value?.trim())
   if (!rows.length) return null
-
-  const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
-  const divider = { style: BorderStyle.SINGLE, size: 1, color: 'D0D6E4' }
+  const b = GTM_BORDER
+  const pad = { top: 80, bottom: 80, left: 120, right: 120 }
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -875,8 +871,8 @@ function gtmFieldTable(
             shading: i % 2 === 0
               ? { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' }
               : { type: ShadingType.SOLID, color: 'FFFFFF', fill: 'FFFFFF' },
-            borders: { top: none, bottom: divider, left: none, right: none },
-            margins: { top: 80, bottom: 80, left: 120, right: 80 },
+            borders: { top: b, bottom: b, left: b, right: b },
+            margins: pad,
             children: [new Paragraph({
               children: [new TextRun({ text: item.label, bold: true, size: 20, color: '222222' })],
             })],
@@ -886,8 +882,8 @@ function gtmFieldTable(
             shading: i % 2 === 0
               ? { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' }
               : { type: ShadingType.SOLID, color: 'FFFFFF', fill: 'FFFFFF' },
-            borders: { top: none, bottom: divider, left: none, right: none },
-            margins: { top: 80, bottom: 80, left: 120, right: 80 },
+            borders: { top: b, bottom: b, left: b, right: b },
+            margins: pad,
             children: [new Paragraph({
               children: [new TextRun({ text: item.value!.trim(), size: 20, color: '222222' })],
             })],
@@ -895,7 +891,28 @@ function gtmFieldTable(
         ],
       })
     ),
-    borders: { top: none, bottom: none, left: none, right: none },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    borders: new TableBorders({ top: b, bottom: b, left: b, right: b, insideH: b, insideV: b } as any) as any,
+  })
+}
+
+function gtmSingleCellTable(text: string, bodyFont: string): Table {
+  const b = GTM_BORDER
+  const pad = { top: 80, bottom: 80, left: 120, right: 120 }
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [new TableRow({
+      children: [new TableCell({
+        shading: { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' },
+        borders: { top: b, bottom: b, left: b, right: b },
+        margins: pad,
+        children: [new Paragraph({
+          children: [new TextRun({ text: text.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
+        })],
+      })],
+    })],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    borders: new TableBorders({ top: b, bottom: b, left: b, right: b } as any) as any,
   })
 }
 
@@ -1154,25 +1171,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   s08Blocks.forEach(({ heading, value }, i) => {
     if (!value?.trim()) return
     const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
-    const divider = { style: BorderStyle.SINGLE, size: 1, color: 'D0D6E4' }
     children.push(new Paragraph({
       children: [new TextRun({ text: heading, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: i === 0 ? 0 : 160, after: 60 },
     }))
-    children.push(new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [new TableRow({
-        children: [new TableCell({
-          shading: { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' },
-          borders: { top: none, bottom: divider, left: none, right: none },
-          margins: { top: 80, bottom: 80, left: 120, right: 120 },
-          children: [new Paragraph({
-            children: [new TextRun({ text: value.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
-          })],
-        })],
-      })],
-      borders: { top: none, bottom: none, left: none, right: none },
-    }))
+    children.push(gtmSingleCellTable(value, bodyFont))
   })
 
   const vpRows = fw.s08.valuePropTable.filter((r) => r.pillar?.trim() || r.meaning?.trim() || r.proofPoint?.trim())
@@ -1351,26 +1354,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     ))
   }
   if (fw.s16.ctaSequencing?.trim()) {
-    const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
-    const divider = { style: BorderStyle.SINGLE, size: 1, color: 'D0D6E4' }
     children.push(new Paragraph({
       children: [new TextRun({ text: 'CTA Sequencing Notes', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: 160, after: 60 },
     }))
-    children.push(new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [new TableRow({
-        children: [new TableCell({
-          shading: { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' },
-          borders: { top: none, bottom: divider, left: none, right: none },
-          margins: { top: 80, bottom: 80, left: 120, right: 120 },
-          children: [new Paragraph({
-            children: [new TextRun({ text: fw.s16.ctaSequencing.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
-          })],
-        })],
-      })],
-      borders: { top: none, bottom: none, left: none, right: none },
-    }))
+    children.push(gtmSingleCellTable(fw.s16.ctaSequencing, bodyFont))
   }
   children.push(gtmSpacer())
 
@@ -1390,22 +1378,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
       children: [new TextRun({ text: 'Regulatory Sales Note', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: 160, after: 60 },
     }))
-    const none = { style: BorderStyle.NONE, size: 0, color: 'auto' }
-    const divider = { style: BorderStyle.SINGLE, size: 1, color: 'D0D6E4' }
-    children.push(new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [new TableRow({
-        children: [new TableCell({
-          shading: { type: ShadingType.SOLID, color: 'EAEDF4', fill: 'EAEDF4' },
-          borders: { top: none, bottom: divider, left: none, right: none },
-          margins: { top: 80, bottom: 80, left: 120, right: 120 },
-          children: [new Paragraph({
-            children: [new TextRun({ text: fw.s17.regulatorySalesNote!.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
-          })],
-        })],
-      })],
-      borders: { top: none, bottom: none, left: none, right: none },
-    }))
+    children.push(gtmSingleCellTable(fw.s17.regulatorySalesNote!, bodyFont))
   }
   children.push(gtmSpacer())
 
