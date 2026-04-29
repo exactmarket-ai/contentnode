@@ -1157,7 +1157,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
       children: [new TextRun({ text: heading, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
       spacing: { before: i === 0 ? 0 : 160, after: 60 },
     }))
-    ft([{ label: heading, value }])
+    children.push(new Paragraph({
+      children: [new TextRun({ text: value.trim(), size: 20, color: '222222', font: { name: bodyFont } })],
+      spacing: { before: 0, after: 80 },
+    }))
   })
 
   const vpRows = fw.s08.valuePropTable.filter((r) => r.pillar?.trim() || r.meaning?.trim() || r.proofPoint?.trim())
