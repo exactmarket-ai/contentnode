@@ -915,16 +915,18 @@ async function buildBdrEmailsBuffer(
   const labelBg    = primary
   const subjectBg  = tint(docStyle.primaryColor, 0.06)
   const previewBg  = tint(docStyle.primaryColor, 0.03)
-  const borderCol  = tint(docStyle.primaryColor, 0.25)
+  const borderCol  = 'E0DEDA'
   const mutedColor = '6B7280'
+  const cb = { style: BorderStyle.SINGLE, size: 4, color: borderCol } as const
+  const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
 
   function buildEmailBlock(lines: string[], emailNum: number | null, segmentName: string): (Paragraph | Table)[] {
     const elements: (Paragraph | Table)[] = []
-    const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
 
+    // Table 1: Email N header — full-width, e0deda borders
     elements.push(new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: { top: nb, bottom: nb, left: nb, right: nb, insideHorizontal: nb, insideVertical: nb },
+      borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: nb },
       rows: [new TableRow({
         children: [new TableCell({
           shading: { fill: primary, type: ShadingType.SOLID, color: primary },
@@ -950,31 +952,29 @@ async function buildBdrEmailsBuffer(
       bodyLines.push(line)
     }
 
+    // Table 2: Subject Line + Preview Text together — e0deda borders, insideHorizontal divider
+    const metaRows: TableRow[] = []
     if (subjectLine) {
-      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
-      elements.push(new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
-        rows: [new TableRow({
-          children: [
-            new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'SUBJECT LINE', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
-            new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: subjectBg, type: ShadingType.SOLID, color: subjectBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: parseInlineRuns(subjectLine, hf, 22, bodyColor) })] }),
-          ],
-        })],
+      metaRows.push(new TableRow({
+        children: [
+          new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'SUBJECT LINE', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
+          new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: subjectBg, type: ShadingType.SOLID, color: subjectBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: parseInlineRuns(subjectLine, hf, 22, bodyColor) })] }),
+        ],
       }))
     }
-
     if (previewText) {
-      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
+      metaRows.push(new TableRow({
+        children: [
+          new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'PREVIEW TEXT', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
+          new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: previewBg, type: ShadingType.SOLID, color: previewBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, italics: true, color: mutedColor })] })] }),
+        ],
+      }))
+    }
+    if (metaRows.length) {
       elements.push(new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: { top: nb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
-        rows: [new TableRow({
-          children: [
-            new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'PREVIEW TEXT', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
-            new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: previewBg, type: ShadingType.SOLID, color: previewBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, italics: true, color: mutedColor })] })] }),
-          ],
-        })],
+        borders: { top: nb, bottom: cb, left: cb, right: cb, insideHorizontal: cb, insideVertical: cb },
+        rows: metaRows,
       }))
     }
 

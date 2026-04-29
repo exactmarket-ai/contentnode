@@ -1227,11 +1227,13 @@ export async function buildBdrEmailsDocxBlob(
   const hf         = docStyle.headingFont
   const bf         = docStyle.bodyFont
   const bodyColor  = '1A1A14'
-  const labelBg    = primary                             // dark label bg (same as primary)
-  const subjectBg  = tint(docStyle.primaryColor, 0.06)  // very light tint for subject value
-  const previewBg  = tint(docStyle.primaryColor, 0.03)  // even lighter for preview
-  const borderCol  = tint(docStyle.primaryColor, 0.25)
+  const labelBg    = primary
+  const subjectBg  = tint(docStyle.primaryColor, 0.06)
+  const previewBg  = tint(docStyle.primaryColor, 0.03)
+  const borderCol  = 'E0DEDA'
   const mutedColor = '6B7280'
+  const cb = { style: BorderStyle.SINGLE, size: 4, color: borderCol } as const
+  const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
 
   // ── Email block builder ──────────────────────────────────────────────────────
   function buildEmailBlock(
@@ -1240,12 +1242,11 @@ export async function buildBdrEmailsDocxBlob(
     segmentName: string,
   ): (Paragraph | Table)[] {
     const elements: (Paragraph | Table)[] = []
-    const nb = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const
 
-    // Section header bar (primary color)
+    // Table 1: Email N header row — full-width single cell, e0deda borders
     elements.push(new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: { top: nb, bottom: nb, left: nb, right: nb, insideHorizontal: nb, insideVertical: nb },
+      borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: nb },
       rows: [new TableRow({
         children: [new TableCell({
           shading: { fill: primary, type: ShadingType.SOLID, color: primary },
@@ -1268,16 +1269,14 @@ export async function buildBdrEmailsDocxBlob(
     let subjectFromStandalone = false
     const bodyLines: string[] = []
 
-    // First pass: find labeled fields (**Subject Line:** xxx)
     for (const line of lines) {
       const subM = line.match(/^\*\*Subject(?:\s+Line)?[:\*]*\*\*\s*(.+)/i)
       const preM = line.match(/^\*\*Preview(?:\s+Text)?[:\*]*\*\*\s*(.+)/i)
-      if (subM)       { subjectLine = subM[1].replace(/\*\*/g, '').trim(); continue }
-      if (preM)       { previewText = preM[1].replace(/\*\*/g, '').trim(); continue }
+      if (subM)  { subjectLine = subM[1].replace(/\*\*/g, '').trim(); continue }
+      if (preM)  { previewText = preM[1].replace(/\*\*/g, '').trim(); continue }
       bodyLines.push(line)
     }
 
-    // Second pass: if subject wasn't in a labeled field, check for standalone "Subject Line" heading
     if (!subjectLine) {
       let nextIsSubject = false
       const filtered: string[] = []
@@ -1289,53 +1288,29 @@ export async function buildBdrEmailsDocxBlob(
       if (subjectFromStandalone) bodyLines.splice(0, bodyLines.length, ...filtered)
     }
 
-    // Subject Line box (2-cell: label | value)
+    // Table 2: Subject Line + Preview Text in one table, separated by e0deda insideHorizontal
+    const metaRows: TableRow[] = []
     if (subjectLine) {
-      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
-      elements.push(new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: { top: cb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
-        rows: [new TableRow({
-          children: [
-            new TableCell({
-              width: { size: 22, type: WidthType.PERCENTAGE },
-              shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg },
-              margins: { top: 100, bottom: 100, left: 160, right: 160 },
-              children: [new Paragraph({ children: [new TextRun({ text: 'SUBJECT LINE', font: hf, size: 18, bold: true, color: 'AABBCC' })] })],
-            }),
-            new TableCell({
-              width: { size: 78, type: WidthType.PERCENTAGE },
-              shading: { fill: subjectBg, type: ShadingType.SOLID, color: subjectBg },
-              margins: { top: 100, bottom: 100, left: 160, right: 160 },
-              children: [new Paragraph({ children: parseInlineRuns(subjectLine, hf, 22, bodyColor) })],
-            }),
-          ],
-        })],
+      metaRows.push(new TableRow({
+        children: [
+          new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'SUBJECT LINE', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
+          new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: subjectBg, type: ShadingType.SOLID, color: subjectBg }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: [new Paragraph({ children: parseInlineRuns(subjectLine, hf, 22, bodyColor) })] }),
+        ],
       }))
     }
-
-    // Preview Text box (2-cell: label | value)
     if (previewText) {
-      const cb = { style: BorderStyle.SINGLE, size: 2, color: borderCol } as const
+      metaRows.push(new TableRow({
+        children: [
+          new TableCell({ width: { size: 22, type: WidthType.PERCENTAGE }, shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'PREVIEW TEXT', font: hf, size: 18, bold: true, color: 'AABBCC' })] })] }),
+          new TableCell({ width: { size: 78, type: WidthType.PERCENTAGE }, shading: { fill: previewBg, type: ShadingType.SOLID, color: previewBg }, margins: { top: 80, bottom: 80, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, italics: true, color: mutedColor })] })] }),
+        ],
+      }))
+    }
+    if (metaRows.length) {
       elements.push(new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: { top: nb, bottom: cb, left: cb, right: cb, insideHorizontal: nb, insideVertical: cb },
-        rows: [new TableRow({
-          children: [
-            new TableCell({
-              width: { size: 22, type: WidthType.PERCENTAGE },
-              shading: { fill: labelBg, type: ShadingType.SOLID, color: labelBg },
-              margins: { top: 80, bottom: 80, left: 160, right: 160 },
-              children: [new Paragraph({ children: [new TextRun({ text: 'PREVIEW TEXT', font: hf, size: 18, bold: true, color: 'AABBCC' })] })],
-            }),
-            new TableCell({
-              width: { size: 78, type: WidthType.PERCENTAGE },
-              shading: { fill: previewBg, type: ShadingType.SOLID, color: previewBg },
-              margins: { top: 80, bottom: 80, left: 160, right: 160 },
-              children: [new Paragraph({ children: [new TextRun({ text: sanitize(previewText), font: bf, size: 20, italics: true, color: mutedColor })] })],
-            }),
-          ],
-        })],
+        borders: { top: nb, bottom: cb, left: cb, right: cb, insideHorizontal: cb, insideVertical: cb },
+        rows: metaRows,
       }))
     }
 
