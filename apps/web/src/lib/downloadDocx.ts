@@ -1341,6 +1341,14 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('14', s14.short, s14.subtitle, s14.usedIn))
   const campaignRows = fw.s14.campaigns.filter((r) => r.theme?.trim() || r.targetAudience?.trim() || r.primaryAssets?.trim())
   if (campaignRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Campaign themes give the asset suite coherence — each theme owns a set of assets and a buyer motion. Define 3-4 themes, then map each to the assets it drives.', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Campaign Theme Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 60 },
+    }))
     children.push(st(
       ['Campaign Theme', 'Target Audience', 'Primary Assets', 'Key Message'],
       campaignRows.map((r) => [r.theme, r.targetAudience, r.primaryAssets, r.keyMessage]),
