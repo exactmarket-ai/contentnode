@@ -1201,6 +1201,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   const filledProofPoints = fw.s09.proofPoints.filter((p) => p.text?.trim())
   if (filledProofPoints.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `${clientName} Company-Wide Proof Points`, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 60 },
+    }))
     const t = gtmFieldTable(filledProofPoints.map((pp) => ({
       label: pp.source?.trim() ? `[${pp.source}]` : 'Proof Point',
       value: pp.text,
