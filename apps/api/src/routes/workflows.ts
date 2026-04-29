@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma, type Prisma, auditService } from '@contentnode/database'
+import { requireRole } from '../plugins/auth.js'
 import { randomUUID } from 'node:crypto'
 import { getWorkflowRunsQueue } from '../lib/queues.js'
 
@@ -363,6 +364,7 @@ export async function workflowRoutes(app: FastifyInstance) {
         isTemplate:          body.isTemplate,
         templateCategory:    body.isTemplate ? (body.templateCategory ?? wf.templateCategory ?? 'general') : null,
         templateDescription: body.isTemplate ? (body.templateDescription ?? wf.templateDescription ?? wf.description) : null,
+        templateCreatedBy:   body.isTemplate ? (wf.templateCreatedBy ?? userId) : null,
       },
     })
 
@@ -382,7 +384,7 @@ export async function workflowRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
 
     const templates = await prisma.workflow.findMany({
-      where: { agencyId, isTemplate: true },
+      where: { agencyId, isTemplate: true, deletedAt: null },
       include: {
         nodes: { select: { id: true } },
         edges: { select: { id: true } },
@@ -391,6 +393,36 @@ export async function workflowRoutes(app: FastifyInstance) {
     })
 
     return reply.send({ data: templates })
+  })
+
+  // ── DELETE /templates/:id — soft-delete an org template ───────────────────
+  app.delete<{ Params: { id: string } }>('/templates/:id', async (req, reply) => {
+    const { agencyId, userId, role } = req.auth
+
+    const template = await prisma.workflow.findFirst({
+      where: { id: req.params.id, agencyId, isTemplate: true, deletedAt: null },
+    })
+    if (!template) return reply.code(404).send({ error: 'Template not found' })
+
+    const isAdmin = ['owner', 'super_admin', 'admin', 'org_admin'].includes(role)
+    if (!isAdmin && template.templateCreatedBy !== userId) {
+      return reply.code(403).send({ error: 'You can only delete templates you created' })
+    }
+
+    await prisma.workflow.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date(), isTemplate: false },
+    })
+
+    await auditService.log(agencyId, {
+      actorType: 'user', actorId: userId,
+      action: 'workflow.template_deleted',
+      resourceType: 'workflow', resourceId: template.id,
+      metadata: { name: template.name },
+      ip: req.ip, userAgent: req.headers['user-agent'],
+    })
+
+    return reply.code(204).send()
   })
 
   // ── DELETE /:id — delete workflow ─────────────────────────────────────────

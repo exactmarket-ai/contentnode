@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { useOllamaModels } from '@/hooks/useOllamaModels'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -59,6 +60,7 @@ interface OrgTemplate {
   name: string
   templateCategory: string | null
   templateDescription: string | null
+  templateCreatedBy: string | null
   nodes: Array<{ id: string }>
   edges: Array<{ id: string }>
 }
@@ -71,6 +73,7 @@ interface WorkflowCreationModalProps {
 
 export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: WorkflowCreationModalProps) {
   const { setWorkflowName, setWorkflow, loadTemplate } = useWorkflowStore()
+  const { user, isAdmin } = useCurrentUser()
 
   // Step 1: pick template (or blank), Step 2: configure
   const [step, setStep] = useState<'template' | 'configure'>('template')
@@ -86,6 +89,8 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedOrgTemplateId, setSelectedOrgTemplateId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Policy: if selected client requires offline, override all AI settings at render time — no effects
   const selectedClient = clients.find((c) => c.id === clientId)
@@ -127,6 +132,22 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
     setName(ot.name)
     setStep('configure')
   }
+
+  const handleDeleteTemplate = async (id: string) => {
+    setDeleting(true)
+    try {
+      const res = await apiFetch(`/api/v1/workflows/templates/${id}`, { method: 'DELETE' })
+      if (res.ok || res.status === 204) {
+        setOrgTemplates((prev) => prev.filter((t) => t.id !== id))
+      }
+    } finally {
+      setDeleting(false)
+      setConfirmDeleteId(null)
+    }
+  }
+
+  const canDeleteTemplate = (ot: OrgTemplate) =>
+    isAdmin || ot.templateCreatedBy === user?.id
 
   const handleProviderChange = (p: string) => {
     if (clientRequiresOffline) return
@@ -239,25 +260,65 @@ export function WorkflowCreationModal({ onClose, onDismiss, defaultClientId }: W
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Your Organization's Templates</p>
                 <div className="grid grid-cols-2 gap-2">
                   {orgTemplates.map((ot) => (
-                    <button
-                      key={ot.id}
-                      onClick={() => handleSelectOrgTemplate(ot)}
-                      className="flex items-start gap-3 rounded-lg p-3 text-left transition-opacity hover:opacity-90"
-                      style={{ border: '1px solid #e0c0ff', backgroundColor: '#fdf5ff' }}
-                    >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: '#f5e6ff', border: '1px solid #e0c0ff' }}>
-                        <Icons.Bookmark className="h-4 w-4" style={{ color: '#a200ee', fill: '#a200ee' }} />
+                    confirmDeleteId === ot.id ? (
+                      <div
+                        key={ot.id}
+                        className="flex flex-col gap-2 rounded-lg p-3"
+                        style={{ border: '1px solid #fca5a5', backgroundColor: '#fff5f5' }}
+                      >
+                        <p className="text-xs font-medium text-red-700">Delete "{ot.name}"?</p>
+                        <p className="text-[11px] text-muted-foreground">This template will be removed from the picker for all team members.</p>
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() => handleDeleteTemplate(ot.id)}
+                            disabled={deleting}
+                            className="flex-1 rounded px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                            style={{ backgroundColor: '#dc2626' }}
+                          >
+                            {deleting ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="flex-1 rounded border px-2 py-1 text-[11px] font-medium"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium leading-snug">{ot.name}</p>
-                        {ot.templateDescription && (
-                          <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug line-clamp-2">{ot.templateDescription}</p>
+                    ) : (
+                      <div
+                        key={ot.id}
+                        className="group relative flex items-start gap-3 rounded-lg p-3"
+                        style={{ border: '1px solid #e0c0ff', backgroundColor: '#fdf5ff' }}
+                      >
+                        <button
+                          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                          onClick={() => handleSelectOrgTemplate(ot)}
+                        >
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: '#f5e6ff', border: '1px solid #e0c0ff' }}>
+                            <Icons.Bookmark className="h-4 w-4" style={{ color: '#a200ee', fill: '#a200ee' }} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium leading-snug">{ot.name}</p>
+                            {ot.templateDescription && (
+                              <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug line-clamp-2">{ot.templateDescription}</p>
+                            )}
+                            <p className="mt-1.5 text-[10px] text-muted-foreground/60">
+                              {ot.nodes.length} node{ot.nodes.length !== 1 ? 's' : ''} · {ot.templateCategory ?? 'general'}
+                            </p>
+                          </div>
+                        </button>
+                        {canDeleteTemplate(ot) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(ot.id) }}
+                            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50"
+                            title="Delete template"
+                          >
+                            <Icons.Trash2 className="h-3.5 w-3.5 text-red-400" />
+                          </button>
                         )}
-                        <p className="mt-1.5 text-[10px] text-muted-foreground/60">
-                          {ot.nodes.length} node{ot.nodes.length !== 1 ? 's' : ''} · {ot.templateCategory ?? 'general'}
-                        </p>
                       </div>
-                    </button>
+                    )
                   ))}
                 </div>
               </div>
