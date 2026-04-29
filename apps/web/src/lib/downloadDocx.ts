@@ -975,6 +975,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §02 Customer Definition + Profile ──────────────────────────────────────
   const s02 = SECTIONS.find((s) => s.num === '02')!
   children.push(...sb('02', s02.short, s02.subtitle, s02.usedIn))
+
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'Primary Target Profile', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+    spacing: { before: 0, after: 60 },
+  }))
   ft([
     { label: 'Industry / Vertical', value: fw.s02.industry },
     { label: 'Company Size', value: fw.s02.companySize },
@@ -986,13 +991,22 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   const buyerRows = fw.s02.buyerTable.filter((r) => r.segment?.trim() || r.primaryBuyer?.trim() || r.corePain?.trim() || r.entryPoint?.trim())
   if (buyerRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Primary Buyer Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     children.push(st(
       ['Segment', 'Primary Buyer', 'Core Pain', 'Entry Point'],
       buyerRows.map((r) => [r.segment, r.primaryBuyer, r.corePain, r.entryPoint]),
       [20, 25, 30, 25],
     ))
   }
+
   if (fw.s02.secondaryTargets?.trim()) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Secondary Targets', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     ft([{ label: 'Secondary Targets', value: fw.s02.secondaryTargets }])
   }
   children.push(gtmSpacer())
