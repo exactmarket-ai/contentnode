@@ -439,6 +439,49 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
 
   const [reexporting, setReexporting] = useState<number | null>(null)
 
+  // ── Edit asset state (hidden — flip ENABLE_KIT_EDIT to test) ─────────────────
+  const ENABLE_KIT_EDIT = false
+  const [editingAsset, setEditingAsset]   = useState<AssetRecord | null>(null)
+  const [editContent, setEditContent]     = useState('')
+  const [editSaving, setEditSaving]       = useState(false)
+  const [editError, setEditError]         = useState<string | null>(null)
+
+  const openEdit = (asset: AssetRecord) => {
+    setEditingAsset(asset)
+    setEditContent(asset.content ?? '')
+    setEditError(null)
+  }
+
+  const saveAndDownload = async () => {
+    if (!editingAsset || !session) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const res = await apiFetch(`/kit-sessions/${session.id}/assets/${editingAsset.index}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editContent }),
+      })
+      if (!res.ok) throw new Error('Save failed')
+      const updated = { ...editingAsset, content: editContent }
+      const docStyle = session.generatedFiles?.docStyle
+      await downloadKit(updated, clientName, verticalName, docStyle)
+      // Patch local session state so future downloads use the edit
+      setSession((prev) => {
+        if (!prev) return prev
+        const assets = (prev.generatedFiles?.assets ?? []).map((a: AssetRecord) =>
+          a.index === editingAsset.index ? { ...a, content: editContent } : a
+        )
+        return { ...prev, generatedFiles: { ...prev.generatedFiles, assets } }
+      })
+      setEditingAsset(null)
+    } catch {
+      setEditError('Failed to save. Try again.')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   // ── Storyboard generation state ──────────────────────────────────────────────
   const [showFramesModal, setShowFramesModal]       = useState(false)
   const [framesPerScene, setFramesPerScene]         = useState<1 | 2 | 3 | 4>(1)
@@ -1030,6 +1073,15 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                             {reexporting === asset.index ? '…' : '↻'}
                           </button>
                         )}
+                        {ENABLE_KIT_EDIT && asset.status === 'complete' && (
+                          <button
+                            onClick={() => openEdit(asset)}
+                            title="Edit content before downloading"
+                            className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+                          >
+                            ✎
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1210,6 +1262,51 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                   </div>
                 )}
 
+              </div>
+            </div>
+          )}
+
+          {/* ── Kit content editor modal (hidden — ENABLE_KIT_EDIT controls visibility) ── */}
+          {ENABLE_KIT_EDIT && editingAsset && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+              <div className="bg-white border border-border rounded-xl shadow-2xl flex flex-col w-[90vw] max-w-4xl h-[85vh]">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+                  <div>
+                    <p className="font-semibold text-gray-900">{editingAsset.num} {editingAsset.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Edit the raw content, then save &amp; re-download</p>
+                  </div>
+                  <button
+                    onClick={() => setEditingAsset(null)}
+                    className="text-gray-400 hover:text-gray-700 text-xl leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+                <textarea
+                  className="flex-1 w-full resize-none font-mono text-xs text-gray-800 p-4 outline-none"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  spellCheck={false}
+                />
+                <div className="flex items-center justify-between px-5 py-3 border-t border-gray-200 shrink-0">
+                  {editError && <p className="text-xs text-red-600">{editError}</p>}
+                  {!editError && <span />}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingAsset(null)}
+                      className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => void saveAndDownload()}
+                      disabled={editSaving}
+                      className="rounded-lg bg-[#a200ee] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8800cc] disabled:opacity-50"
+                    >
+                      {editSaving ? 'Saving…' : 'Save + Download'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

@@ -425,6 +425,39 @@ export async function kitSessionRoutes(app: FastifyInstance) {
     }
   )
 
+  // PATCH /:sessionId/assets/:index — edit asset content (test/hidden feature)
+  app.patch<{ Params: { sessionId: string; index: string }; Body: { content: string } }>(
+    '/:sessionId/assets/:index',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId, index } = req.params
+      const { content } = req.body
+      const assetIndex = parseInt(index, 10)
+      if (!content || isNaN(assetIndex) || assetIndex < 0 || assetIndex > 7) {
+        return reply.code(400).send({ error: 'Invalid request' })
+      }
+
+      const session = await prisma.kitSession.findFirst({
+        where: { id: sessionId, agencyId },
+        select: { generatedFiles: true },
+      })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      const gf = (session.generatedFiles ?? {}) as Record<string, unknown>
+      const assets = Array.isArray(gf.assets) ? [...(gf.assets as Record<string, unknown>[])] : []
+      const idx = assets.findIndex((a) => (a as { index: number }).index === assetIndex)
+      if (idx === -1) return reply.code(404).send({ error: 'Asset not found' })
+
+      assets[idx] = { ...assets[idx], content }
+      await prisma.kitSession.update({
+        where: { id: sessionId },
+        data: { generatedFiles: { ...gf, assets } },
+      })
+
+      return reply.send({ ok: true })
+    }
+  )
+
   // PATCH /:sessionId — update session state
   app.patch<{ Params: { sessionId: string }; Body: Record<string, unknown> }>(
     '/:sessionId',
