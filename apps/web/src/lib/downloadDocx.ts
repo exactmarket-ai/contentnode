@@ -1415,6 +1415,10 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   const ctaRows = fw.s18.ctas.filter((r) => r.ctaName?.trim() || r.description?.trim())
   if (ctaRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Primary CTAs Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 60 },
+    }))
     children.push(st(
       ['CTA Name', 'Description', 'Target Audience / Trigger', 'Asset(s) Where This Appears'],
       ctaRows.map((r) => [r.ctaName, r.description, r.targetAudienceTrigger, r.assets]),
@@ -1425,23 +1429,33 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
 
   const campaignThemeRows = fw.s18.campaignThemes.filter((r) => r.campaignName?.trim() || r.description?.trim())
   if (campaignThemeRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Campaign Theme Suggestions', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     children.push(st(
       ['Campaign Name', 'Description'],
       campaignThemeRows.map((r) => [r.campaignName, r.description]),
       [35, 65],
     ))
-    children.push(new Paragraph({ spacing: { after: 80 } }))
   }
 
   const ct = fw.s18.contact
-  ft([
-    { label: 'Vertical owner', value: ct.verticalOwner },
-    { label: 'Marketing contact', value: ct.marketingContact },
-    { label: 'Sales lead', value: ct.salesLead },
-    { label: 'Document version', value: ct.documentVersion },
-    { label: 'Last updated', value: ct.lastUpdated },
-    { label: 'Next review date', value: ct.nextReviewDate },
-  ])
+  const hasContact = ct.verticalOwner?.trim() || ct.marketingContact?.trim() || ct.salesLead?.trim() || ct.documentVersion?.trim() || ct.lastUpdated?.trim() || ct.nextReviewDate?.trim()
+  if (hasContact) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Contact Information for This Vertical', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
+    ft([
+      { label: 'Vertical owner', value: ct.verticalOwner },
+      { label: 'Marketing contact', value: ct.marketingContact },
+      { label: 'Sales lead', value: ct.salesLead },
+      { label: 'Document version', value: ct.documentVersion },
+      { label: 'Last updated', value: ct.lastUpdated },
+      { label: 'Next review date', value: ct.nextReviewDate },
+    ])
+  }
 
   // ── Build document ───────────────────────────────────────────────────────────
   const footerPageChildren: TextRun[] = [
