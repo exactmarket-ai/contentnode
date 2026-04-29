@@ -444,6 +444,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
   const [framesPerScene, setFramesPerScene]         = useState<1 | 2 | 3 | 4>(1)
   const [storyboardStarting, setStoryboardStarting] = useState(false)
   const [storyboard, setStoryboard]                 = useState<StoryboardProgress | null>(null)
+  const [storyboardDownloadError, setStoryboardDownloadError] = useState<string | null>(null)
 
   // Sync storyboard status from session
   useEffect(() => {
@@ -485,9 +486,13 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
 
   const downloadStoryboard = async () => {
     if (!session) return
+    setStoryboardDownloadError(null)
     try {
       const res = await apiFetch(`/api/v1/kit-sessions/${session.id}/storyboard/download`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const body = await res.text()
+        throw new Error(`${res.status}: ${body}`)
+      }
       const blob = await res.blob()
       const objectUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -500,7 +505,9 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
     } catch (e) {
-      console.error('[downloadStoryboard] failed:', e)
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('[downloadStoryboard] failed:', msg)
+      setStoryboardDownloadError(msg)
     }
   }
 
@@ -1065,6 +1072,11 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                           </div>
                         )}
                       </div>
+
+                      {/* Download error */}
+                      {storyboardDownloadError && (
+                        <p className="mt-2 text-xs text-red-600 break-all">{storyboardDownloadError}</p>
+                      )}
 
                       {/* Per-scene page list — shows as scenes complete */}
                       {storyboard && (storyboard.scenes ?? []).length > 0 && (
