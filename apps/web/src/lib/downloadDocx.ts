@@ -2,7 +2,7 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   AlignmentType, BorderStyle, Table, TableRow, TableCell,
   WidthType, ShadingType, TableBorders,
-  Header, Footer, PageNumber, ImageRun,
+  Header, Footer, PageNumber, ImageRun, PageBreak,
 } from 'docx'
 import { stripMarkdown } from './utils'
 import type { FrameworkData } from '@/pages/ClientFrameworkTab'
@@ -845,6 +845,7 @@ function gtmSectionBlock(
   }
 
   return [
+    gtmPageBreak(),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows,
@@ -900,6 +901,10 @@ function gtmFieldTable(
 
 function gtmSpacer(): Paragraph {
   return new Paragraph({ spacing: { after: 120 } })
+}
+
+function gtmPageBreak(): Paragraph {
+  return new Paragraph({ children: [new PageBreak()] })
 }
 
 export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: string, verticalName: string, docStyle?: DocStyleConfig): Promise<void> {
