@@ -1494,7 +1494,11 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   if (hasContact) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Contact Information for This Vertical', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
-      spacing: { before: 160, after: 60 },
+      spacing: { before: 160, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Who internally owns this vertical? Who should be contacted for questions about this messaging document?', size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
     }))
     ft([
       { label: 'Vertical owner', value: ct.verticalOwner },
