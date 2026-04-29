@@ -734,6 +734,47 @@ async function saveImages(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared helper — generate one image from a plain-text prompt + config
+// Used by StoryboardFrameGenExecutor to reuse all provider logic
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type { ImageGenerationConfig }
+
+export async function generateSingleImageUrl(
+  promptText: string,
+  cfg: Partial<ImageGenerationConfig> & { provider: string },
+): Promise<string> {
+  const PROVIDER_ALIASES: Record<string, Provider> = {
+    'dall-e-3': 'dalle3', 'dalle-3': 'dalle3', 'openai': 'dalle3',
+    'gptimage1': 'gptimage15',
+    'ideogram-v2': 'ideogram', 'ideogram2': 'ideogram',
+    'flux': 'fal', 'flux-dev': 'fal',
+  }
+  const raw = cfg.provider ?? 'gptimage2'
+  const provider = (PROVIDER_ALIASES[raw] ?? raw) as Provider
+  const fullCfg = { ...cfg, provider, num_outputs: 1 } as ImageGenerationConfig
+  const prompt: ImagePromptOutput = {
+    positivePrompt: promptText,
+    negativePrompt: '',
+    aspectRatio: fullCfg.aspect_ratio ?? '1:1',
+    styleTag: '',
+    modelPreference: '',
+  }
+
+  let urls: string[]
+  switch (provider) {
+    case 'dalle3':        urls = await generateDalle3(prompt, fullCfg); break
+    case 'gptimage15':    urls = await generateGptImage(prompt, fullCfg, 'gpt-image-1.5'); break
+    case 'gptimage1mini': urls = await generateGptImage(prompt, fullCfg, 'gpt-image-1-mini'); break
+    case 'gptimage2':     urls = await generateGptImage(prompt, fullCfg, 'gpt-image-2'); break
+    case 'ideogram':      urls = await generateIdeogram(prompt, fullCfg); break
+    case 'fal':           urls = await generateFal(prompt, fullCfg); break
+    default:              urls = await generateGptImage(prompt, fullCfg, 'gpt-image-2'); break
+  }
+  return urls[0]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Executor
 // ─────────────────────────────────────────────────────────────────────────────
 

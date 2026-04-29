@@ -46,6 +46,7 @@ import { VideoPromptBuilderConfig } from './config/logic/VideoPromptBuilderConfi
 import { VideoTranscriptionConfig } from './config/logic/VideoTranscriptionConfig'
 import { VideoIntelligenceConfig } from './config/logic/VideoIntelligenceConfig'
 import { ImageResizeConfig } from './config/logic/ImageResizeConfig'
+import { StoryboardFrameGenConfig } from './config/logic/StoryboardFrameGenConfig'
 
 import { WebhookConfig } from './config/output/WebhookConfig'
 import { EmailConfig } from './config/output/EmailConfig'
@@ -156,6 +157,8 @@ function NodeConfigForm({
         return <VideoIntelligenceConfig config={config} onChange={onChange} />
       if (subtype === 'image-resize')
         return <ImageResizeConfig config={config} onChange={onChange} />
+      if (subtype === 'storyboard-frame-gen')
+        return <StoryboardFrameGenConfig config={config} onChange={onChange} />
       if (subtype === 'video-trimmer')
         return <VideoTrimmerConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'video-resize')
