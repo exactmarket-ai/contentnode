@@ -531,6 +531,26 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
     }
   }
 
+  const downloadSceneFrame = async (sceneNumber: number, frameIndex: number) => {
+    if (!session) return
+    try {
+      const res = await apiFetch(`/api/v1/kit-sessions/${session.id}/storyboard/scenes/${sceneNumber}/frames/${frameIndex}/download`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `Scene ${sceneNumber} Frame ${frameIndex}.png`
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (e) {
+      console.error('[downloadSceneFrame] failed:', e)
+    }
+  }
+
   const reexportAsset = async (asset: AssetRecord) => {
     if (!asset.content || reexporting !== null) return
     setReexporting(asset.index)
@@ -1082,12 +1102,23 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                                 Scene {s.sceneNumber} of {storyboard.totalScenes}
                               </span>
                               {s.status === 'complete' ? (
-                                <button
-                                  onClick={() => void downloadScenePage(s.sceneNumber)}
-                                  className="text-[10px] font-semibold text-purple-600 hover:text-purple-800 transition-colors"
-                                >
-                                  Download page
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => void downloadScenePage(s.sceneNumber)}
+                                    className="text-[10px] font-semibold text-purple-600 hover:text-purple-800 transition-colors"
+                                  >
+                                    PDF
+                                  </button>
+                                  {Array.from({ length: storyboard.framesPerScene ?? 1 }, (_, i) => (
+                                    <button
+                                      key={i}
+                                      onClick={() => void downloadSceneFrame(s.sceneNumber, i + 1)}
+                                      className="text-[10px] font-semibold text-gray-400 hover:text-gray-700 transition-colors"
+                                    >
+                                      Img {i + 1}
+                                    </button>
+                                  ))}
+                                </div>
                               ) : s.status === 'error' ? (
                                 <span className="text-[10px] text-red-500">Failed</span>
                               ) : s.status === 'generating' ? (

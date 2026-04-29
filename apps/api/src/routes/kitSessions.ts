@@ -689,4 +689,34 @@ export async function kitSessionRoutes(app: FastifyInstance) {
         .send(buf)
     }
   )
+
+  // GET /:sessionId/storyboard/scenes/:sceneNumber/frames/:frameIndex/download — download a raw AI frame image
+  app.get<{ Params: { sessionId: string; sceneNumber: string; frameIndex: string } }>(
+    '/:sessionId/storyboard/scenes/:sceneNumber/frames/:frameIndex/download',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId, sceneNumber, frameIndex } = req.params
+
+      const session = await prisma.kitSession.findFirst({
+        where: { id: sessionId, agencyId },
+        select: { storyboardImageCache: true },
+      })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      const cache    = (session.storyboardImageCache ?? {}) as Record<string, string>
+      const cacheKey = `scene_${sceneNumber}_frame_${frameIndex}`
+      const dataUrl  = cache[cacheKey]
+
+      if (!dataUrl) return reply.code(404).send({ error: 'Image not found' })
+
+      const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+      const buf    = Buffer.from(base64, 'base64')
+      const filename = `Scene ${sceneNumber} Frame ${frameIndex}.png`
+
+      return reply
+        .header('Content-Type', 'image/png')
+        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .send(buf)
+    }
+  )
 }
