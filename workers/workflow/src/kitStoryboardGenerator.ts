@@ -169,7 +169,7 @@ export async function runStoryboardJob(job: Job<StoryboardJobData>): Promise<voi
   const browser   = await puppeteer.launch({ headless: true, executablePath: resolveChromiumPath(), args: CHROMIUM_LAUNCH_ARGS })
   const coverPage = await browser.newPage()
   await coverPage.setContent(buildStoryboardCoverHtml({ clientName, verticalName, version: 'v1', date, docStyle }), { waitUntil: 'networkidle0' })
-  const coverBuf  = await coverPage.pdf({ width: '1400px', height: '1050px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
+  const coverBuf  = await coverPage.pdf({ width: '1123px', height: '794px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
   await coverPage.close()
   await browser.close()
 
@@ -256,7 +256,7 @@ export async function runStoryboardSceneJob(job: Job<StoryboardSceneJobData>): P
       buildStoryboardPageHtml({ scene, frameImageUrls: frameUrls, docStyle, clientName, verticalName }),
       { waitUntil: 'networkidle0' },
     )
-    buf = await page.pdf({ width: '1400px', height: '1050px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
+    buf = await page.pdf({ width: '1123px', height: '794px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
   } finally {
     await page.close().catch(() => {})
     await browser.close().catch(() => {})

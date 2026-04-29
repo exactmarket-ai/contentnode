@@ -51,17 +51,18 @@ export class StoryboardPdfBuilderExecutor extends NodeExecutor {
         buildStoryboardCoverHtml({ clientName, verticalName, version, date, docStyle }),
         { waitUntil: 'networkidle0' },
       )
-      pdfPages.push(await coverPage.pdf({ width: '1400px', height: '1050px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } }))
+      pdfPages.push(await coverPage.pdf({ width: '1123px', height: '794px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } }))
       await coverPage.close()
 
       // Scene pages
+      const totalScenes = framedScenes.length
       for (const { scene, frameImageUrls } of framedScenes) {
         const scenePage = await browser.newPage()
         await scenePage.setContent(
-          buildStoryboardPageHtml({ scene, frameImageUrls, docStyle, clientName, verticalName }),
+          buildStoryboardPageHtml({ scene, frameImageUrls, docStyle, clientName, verticalName, totalScenes }),
           { waitUntil: 'networkidle0' },
         )
-        pdfPages.push(await scenePage.pdf({ width: '1400px', height: '1050px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } }))
+        pdfPages.push(await scenePage.pdf({ width: '1123px', height: '794px', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } }))
         await scenePage.close()
       }
     } finally {

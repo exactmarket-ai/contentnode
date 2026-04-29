@@ -59,12 +59,14 @@ export function buildStoryboardPageHtml(opts: {
   docStyle: DocStyle
   clientName: string
   verticalName: string
+  totalScenes?: number
 }): string {
-  const { scene, frameImageUrls, docStyle, clientName, verticalName } = opts
+  const { scene, frameImageUrls, docStyle, clientName, verticalName, totalScenes } = opts
   const primary   = docStyle.primaryColor   ?? '#1B1F3B'
   const secondary = docStyle.secondaryColor ?? '#4A90D9'
   const bodyFont  = docStyle.bodyFont       ?? 'sans-serif'
   const frameCount = Math.max(frameImageUrls.length, 1)
+  const sceneOfTotal = totalScenes ? `Scene ${scene.sceneNumber} of ${totalScenes}` : `Scene ${scene.sceneNumber}`
 
   const frameHtml = frameImageUrls
     .map((url, i) => {
@@ -91,7 +93,7 @@ export function buildStoryboardPageHtml(opts: {
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    width: 1400px; height: 1050px; overflow: hidden;
+    width: 1123px; height: 794px; overflow: hidden;
     font-family: ${bodyFont}, 'Helvetica Neue', sans-serif;
     background: #ffffff;
     display: flex; flex-direction: column;
@@ -137,7 +139,7 @@ export function buildStoryboardPageHtml(opts: {
 <body>
   <div class="header">
     <span class="header-left">${clientName} · ${verticalName}</span>
-    <span class="header-right">Scene ${scene.sceneNumber} · ${scene.version === 'A' ? '60s' : '90s'}</span>
+    <span class="header-right">${sceneOfTotal}</span>
   </div>
   <div class="body">
     <div class="sidebar">
@@ -160,7 +162,7 @@ export function buildStoryboardPageHtml(opts: {
       ${frameHtml || '<div class="frame-cell" style="background:#e5e7eb;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px;">No image</div>'}
     </div>
   </div>
-  <div class="footer">Notes for Video: No voiceover.</div>
+  <div class="footer">${scene.sectionLabel || `Scene ${scene.sceneNumber}`}</div>
 </body>
 </html>`
 }
@@ -187,7 +189,7 @@ export function buildStoryboardCoverHtml(opts: {
 <meta charset="utf-8" />
 <style>
   body {
-    width: 1400px; height: 1050px; overflow: hidden; margin: 0;
+    width: 1123px; height: 794px; overflow: hidden; margin: 0;
     background: ${primary};
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;

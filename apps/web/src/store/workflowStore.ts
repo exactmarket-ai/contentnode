@@ -196,6 +196,24 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   },
   // Video Storyboard pipeline
   {
+    type: 'source', subtype: 'docx-reader',
+    label: 'DOCX Reader', description: 'Upload a .docx or .txt file and extract its plain text for downstream processing',
+    category: 'video', icon: 'FileText',
+    defaultConfig: { subtype: 'docx-reader', storageKey: '' },
+  },
+  {
+    type: 'logic', subtype: 'storyboard-scene-parser',
+    label: 'Scene Parser (AI)', description: 'Use Claude to extract structured scenes from any plain-text video script',
+    category: 'video', icon: 'ListOrdered',
+    defaultConfig: { subtype: 'storyboard-scene-parser' },
+  },
+  {
+    type: 'logic', subtype: 'storyboard-image-prompt-builder',
+    label: 'Image Prompt Builder', description: 'Generate per-scene image generation prompts tailored to your brand',
+    category: 'video', icon: 'Wand2',
+    defaultConfig: { subtype: 'storyboard-image-prompt-builder', clientName: '', verticalName: '', brandStyle: '' },
+  },
+  {
     type: 'source', subtype: 'video-script-reader',
     label: 'Video Script Reader', description: 'Load a video script from a GTM Kit session or upstream text input',
     category: 'video', icon: 'FileVideo',
