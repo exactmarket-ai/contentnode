@@ -1126,8 +1126,12 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('07', s07.short, s07.subtitle, s07.usedIn))
   fw.s07.segments.forEach((seg, i) => {
     if (!seg.name?.trim() && !seg.primaryBuyerTitles?.trim() && !seg.whatIsDifferent?.trim()) return
+    const label = seg.name?.trim() ? `Sub-Segment ${i + 1} — ${seg.name}` : `Sub-Segment ${i + 1}`
+    children.push(new Paragraph({
+      children: [new TextRun({ text: label, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: i === 0 ? 0 : 160, after: 60 },
+    }))
     const t = gtmFieldTable([
-      { label: 'Segment name', value: seg.name?.trim() ? `Segment ${i + 1}: ${seg.name}` : `Segment ${i + 1}` },
       { label: 'Primary buyer title(s)', value: seg.primaryBuyerTitles },
       { label: 'What is different', value: seg.whatIsDifferent },
       { label: 'Key pressures', value: seg.keyPressures },
@@ -1135,7 +1139,6 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
       { label: 'Unique compliance / context notes', value: seg.complianceNotes },
     ])
     if (t) children.push(t)
-    children.push(new Paragraph({ spacing: { after: 60 } }))
   })
   children.push(gtmSpacer())
 
