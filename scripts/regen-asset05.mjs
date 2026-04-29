@@ -87,8 +87,8 @@ async function main() {
     return
   }
 
-  const prefix = process.env.QUEUE_PREFIX ?? 'cn'
-  const queue  = new Queue(`${prefix}:kit-generation`, { connection: { url: redisUrl, maxRetriesPerRequest: null } })
+  const envPrefix = process.env.QUEUE_ENV_PREFIX ? `${process.env.QUEUE_ENV_PREFIX}:` : ''
+  const queue  = new Queue(`${envPrefix}kit-generation`, { connection: { url: redisUrl, maxRetriesPerRequest: null } })
 
   await queue.add(
     'generate-asset',

@@ -126,7 +126,11 @@ function getAssetUserPrompt(assetIndex: number, intake: Record<string, unknown>,
       `\n`
     : ''
 
-  const base = `${brandPreamble}Here is the complete intake JSON:\n\n\`\`\`json\n${intakeStr}\n\`\`\`\n\nGenerate the ${name} now.\n\n`
+  const metaPreamble = docStyle
+    ? `Document metadata:\n- Agency name: "${docStyle.agencyName || 'Your Agency'}"\n- Current year: ${new Date().getFullYear()}\n- URL placeholder rule: If any url field is empty, null, or "na", write [URL] as the placeholder — never write "na" into the document.\n\n`
+    : ''
+
+  const base = `${brandPreamble}${metaPreamble}Here is the complete intake JSON:\n\n\`\`\`json\n${intakeStr}\n\`\`\`\n\nGenerate the ${name} now.\n\n`
 
   const instructions = [
     // 01 Brochure
@@ -441,22 +445,34 @@ Output complete valid HTML only.`,
     // 04 BDR Emails
     `Using the intake JSON provided, generate BDR call scripts and email sequences in markdown format.
 
+════════════════════════════════════════════
+SEGMENT COUNT RULE — NON-NEGOTIABLE:
+Count how many items are in segments[]. Output EXACTLY that many email blocks in Email Sequences — one block per segment, in order. Then add exactly ONE final AI/Innovation email.
+
+Examples:
+  segments[] has 4 items → 4 segment email blocks + 1 AI email = 5 total
+  segments[] has 3 items → 3 segment email blocks + 1 AI email = 4 total
+
+Do NOT stop early. Do NOT skip any segment. Count first, then write every block.
+
+════════════════════════════════════════════
 CRITICAL RULES:
-- Platform-agnostic language everywhere (emails, voicemails, scripts): "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "Monday" → "your PM tool", "Box revision" → "file revision". No specific tool names.
-- Email CTA lines must be clean: just the URL + one short closing question (e.g. "Worth 30 minutes?" or "Want to see it?"). Never include audience targeting metadata in email body copy.
-- No audience descriptions like "Agency owners and heads of content at mid-funnel evaluation stage" inside email bodies.
+- Platform-agnostic language everywhere: "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "GPTZero" → "your AI detection tool". No specific tool names.
+- Never include audience targeting metadata inside email bodies.
+- Email body: 4-5 LINES MAXIMUM. One sentence per line. No paragraphs.
+- CTA: write [Link] as the placeholder — nothing else. No URL, no "primary_cta.url".
 
 ────────────────────────────────────────────
 ## Cover
 **[vertical.name] BDR Call Scripts & Email Sequences**
 [vertical.client_name]
-[count of segments] Segments · [count of segments + 1] Email Sequences
-Version 1.0 — Internal Use Only
+[exact count of segments[]] Segments · [exact count of segments[] + 1] Email Sequences
+Internal Use Only
 
 ────────────────────────────────────────────
 ## Contents
 Table with 2 columns: Segment | Subject Line
-One row per segment email, plus one row for the AI/Innovation email.
+One row per segment email block (in order), plus one row for the AI/Innovation email.
 
 ────────────────────────────────────────────
 ## How to Use
@@ -472,26 +488,34 @@ One row per segment from segments[]. Use segments[].lead_hook as the basis for S
 
 ────────────────────────────────────────────
 ## Email Sequences
-One email block per segment from segments[], plus one AI/Innovation email (addressed to all segments).
 
-Each email block format:
-**[Segment Name]**
+Repeat the following block for EVERY segment in segments[], then add the AI block at the end:
+
+**[Segment Name from segments[]]**
 **Subject:** [specific value-focused subject line]
 **Preview:** [1 sentence — the hook]
 ---
-[Email body — MAXIMUM 5 LINES. Count lines. Each line = one sentence or short thought. No paragraphs. No audience targeting metadata.]
+[Email body — 4-5 LINES MAXIMUM. One sentence per line. No audience metadata.]
 
-[URL from primary_cta.url — substitute the real value]
-[One short closing question: "Worth 30 minutes?" or "Want to see it?" — pick the one that fits the segment tone]
+[Link]
+[One short closing question: "Worth 30 minutes?" or "Want to see it?"]
 
 ---
 *[customize with: specific challenge, company name, recent trigger event]*
 
-ENFORCE:
-- No email body may exceed 6 lines. Count before writing.
-- CTA is always just the URL + closing question — no audience description, no funnel stage notes.
-- Never output "primary_cta.url" as a literal string — substitute the real URL from the intake JSON.
-- No specific tool names (Monday.com, Box, GPTZero, etc.) anywhere.
+After all segment blocks, add this final block:
+
+**AI-Forward Outreach (All Segments)**
+**Subject:** [AI-specific subject line]
+**Preview:** [AI-focused hook]
+---
+[Email body — 4-5 LINES MAXIMUM]
+
+[Link]
+[closing question]
+
+---
+*[customize with: specific AI initiative, company name]*
 
 ────────────────────────────────────────────
 ## Back Cover
@@ -500,8 +524,7 @@ ENFORCE:
 
 INTERNAL USE ONLY — Not for Distribution
 
-[agency name from document_control.marketing_contact or "Marketing Team"]
-Version 1.0 · [current year]`,
+[Agency name from document metadata] · Version 1.0 · [Current year from document metadata]`,
 
     // 05 Customer Deck
     `Using the intake JSON provided, generate a 14-slide customer-facing presentation in markdown format. Use ## Slide N: [Title] as the header for each slide.
@@ -690,70 +713,104 @@ Every version's final CTA must use the exact URL from primary_cta.url. If primar
     // 07 Web Page Copy
     `Using the intake JSON provided, generate web page copy in markdown format for a vertical landing page.
 
+════════════════════════════════════════════
+SEGMENT COUNT RULE — NON-NEGOTIABLE:
+Count how many items are in segments[]. Output EXACTLY that many ### segment cards in ## Segments — one card per segment, in order. Do NOT stop at 2. Do NOT skip any segment.
+Examples: segments[] has 5 items → output 5 ### cards. segments[] has 3 items → output 3 ### cards.
+
+URL RULE: If primary_cta.url is empty, null, or "na", write [URL] — never write "na".
+
+════════════════════════════════════════════
 CRITICAL RULES:
-1. CTA TEXT: Button and link labels must NEVER include audience descriptions, targeting metadata, or stage language. Only clean labels: "[Book a Demo]", "[Get Started]", "[See How It Works]", "[Download]", "[View]". If primary_cta.name is a clean label use it — otherwise rewrite it to be clean.
-2. PLATFORM-AGNOSTIC LANGUAGE in all public-facing sections. Replace: "Monday.com Integration" → "PM Tool Integration"; "Box Integration" → "File Delivery Integration"; "GPTZero, Originality.ai, Copyleaks" → "configurable AI detection services"; "Monday status changes" → "status changes in your PM tool"; "Claude, GPT-5, Ollama" → "leading AI models". Never name specific third-party vendors in public copy.
-3. 3-BOX BODIES: Exactly ONE sentence, maximum 15 words. No conjunctions that extend it. No second sentence.
-4. SERVICE CARDS: One sentence only.
+1. CTA TEXT: Only clean labels: "[Book a Demo]", "[Get Started]", "[See How It Works]", "[Download]", "[View]". No audience descriptions, no targeting metadata.
+2. PLATFORM-AGNOSTIC LANGUAGE: "Monday.com" → "your PM tool", "Box" → "your file delivery platform", "GPTZero/Originality.ai/Copyleaks" → "configurable AI detection", "Claude/GPT-5/Ollama" → "leading AI models". No specific vendor names.
+3. 3-BOX HEADINGS: 3-5 words maximum — punchy, no filler.
+4. 3-BOX BODIES: Exactly ONE sentence, maximum 15 words. No second sentence.
+5. SERVICE CARDS: ONE sentence, 15 words maximum. No vendor names.
+6. SOLUTION STACK: MAXIMUM 4 service cards per pillar. Prioritize the most important services.
+7. STATS BAR FORMAT: Output as bullet lines — NEVER as a markdown table or inline text. Use exactly this format:
+   - **[stat value]** | [2-4 word label] | [Source, Year]
 
+────────────────────────────────────────────
 ## Cover
-
-# [vertical.name] Web Page Copy
-**Client:** [vertical.client_name]
-**URL:** /[slugify vertical.name]/
+**[vertical.name] Web Page Copy**
+[vertical.client_name]
+URL: /[slugify vertical.name]/
 Draft v1
 
+────────────────────────────────────────────
 ## Page Metadata
 - **URL:** /[slugify vertical.name]/
 - **Title tag:** [vertical.taglines[0] | vertical.client_name] (max 60 chars)
 - **Meta description:** [1 sentence from vertical.positioning_statement] (max 155 chars)
 
+────────────────────────────────────────────
 ## Hero
 **Headline:** [vertical.taglines[0]]
 **Sub-headline:** [derived from vertical.positioning_statement — 1 sentence, active voice]
 **Benefit pills:** [differentiators[0].label] | [differentiators[1].label] | [differentiators[2].label]
-**CTA 1:** [primary_cta.name — clean label only, no audience description] → [primary_cta.url]
+**CTA 1:** [primary_cta.name — clean label] → [primary_cta.url or [URL] if empty]
 **CTA 2:** [See How It Works] ↓
 
+────────────────────────────────────────────
 ## Intro
 **Sub-heading:** [derived from market_narrative — 1 sentence]
-**Stats bar:** 4 stats from statistics[] — each: bold stat, label, source
+Output 4 stat lines in EXACTLY this bullet format (no table headers, no Stat/Label/Source column labels):
+- **[statistics[0].stat]** | [statistics[0].label — 2-4 words] | [statistics[0].source, year]
+- **[statistics[1].stat]** | [statistics[1].label — 2-4 words] | [statistics[1].source, year]
+- **[statistics[2].stat]** | [statistics[2].label — 2-4 words] | [statistics[2].source, year]
+- **[statistics[3].stat]** | [statistics[3].label — 2-4 words] | [statistics[3].source, year]
 **Intro callout:** 2-sentence paragraph derived from vertical.positioning_statement and market_narrative
 
+────────────────────────────────────────────
 ## 3-Box Treatment
-[Exactly 3 boxes. Each box: bold headline + exactly ONE sentence of max 15 words. Derive from top 3 differentiators[]. No second sentence. No exceptions.]
+[Exactly 3 boxes. Heading: 3-5 words max. Body: ONE sentence, max 15 words. No second sentence.]
 
 ### Box 1
-**[differentiators[0].label]**
+**[differentiators[0].label — 3-5 words max]**
 [ONE sentence, max 15 words, derived from differentiators[0].description]
 
 ### Box 2
-**[differentiators[1].label]**
+**[differentiators[1].label — 3-5 words max]**
 [ONE sentence, max 15 words, derived from differentiators[1].description]
 
 ### Box 3
-**[differentiators[2].label]**
+**[differentiators[2].label — 3-5 words max]**
 [ONE sentence, max 15 words, derived from differentiators[2].description]
 
+────────────────────────────────────────────
 ## CTA Banner
 **[primary_cta.name — clean label]**
 [primary_cta.description — 1 sentence max]
-→ [[primary_cta.name]] [primary_cta.url]
+→ [[primary_cta.name]] [primary_cta.url or [URL] if empty]
 
+────────────────────────────────────────────
 ## Solution Stack
-Group services by pillar from service_stack[]. Each service card:
-**[service.service]** — [service.what_it_delivers — ONE SENTENCE MAXIMUM. No specific tool names.]
+Group services by pillar from service_stack[]. MAXIMUM 4 service cards per pillar.
 
+### [pillar 1 name]
+- **[service name]** — [ONE SENTENCE, max 15 words. No vendor names.]
+[add up to 3 more service cards — maximum 4 total per pillar]
+
+### [pillar 2 name]
+[same format — maximum 4 service cards]
+
+[continue for each pillar — maximum 4 service cards per pillar]
+
+────────────────────────────────────────────
 ## Segments
-[One card per segment from segments[]. Format each card exactly as below:]
+[Count segments[] first. Output EXACTLY that many ### cards in order:]
 
-### [segments[N].name]
-*[segments[N].buyer_titles joined with " · " — if buyer_titles empty, derive: "Head of [function] · VP [function]"]*
-[segments[N].core_pain framed as active tension — ONE SENTENCE ONLY]
-**ContentNode delivers:** [3–4 relevant capability names from service_stack[], comma-separated, no sentences]
+### [segments[0].name]
+*[segments[0].buyer_titles joined with " · " — if empty, derive: "Head of [function] · VP [function]"]*
+[segments[0].core_pain framed as active tension — ONE SENTENCE ONLY]
+**ContentNode delivers:** [3-4 relevant capability names from service_stack[], pipe-separated, no descriptions]
 
+[REPEAT for every remaining segment — all must be present]
+
+────────────────────────────────────────────
 ## Case Studies
-[Always show exactly 2 structured cards. Use real data from case_studies[] if available. If case_studies[] is empty or has fewer than 2 entries, fill remaining cards with the placeholder structure below. Never show a plain notice or skip this section.]
+[Always show exactly 2 structured cards. Use case_studies[] if available; fill with placeholder if fewer than 2.]
 
 ### [case_studies[0].client_profile if available, else "[Segment] Engagement"]
 **Situation:** [case_studies[0].situation if available, else "[Case study to be added]"]
@@ -767,11 +824,12 @@ Group services by pillar from service_stack[]. Each service card:
 **Outcome:** [case_studies[1].headline_stat if available, else "[Case study to be added]"]
 [[View Full Case Study →]]
 
+────────────────────────────────────────────
 ## Resources
 
 ### eBOOK
 **[vertical.name] [vertical.client_name] eBook**
-[One sentence: what insight or framework the eBook delivers, derived from market_narrative]
+[One sentence: what insight the eBook delivers, derived from market_narrative]
 [[Download]]
 
 ### BROCHURE
@@ -779,15 +837,20 @@ Group services by pillar from service_stack[]. Each service card:
 [One sentence: what the brochure covers, derived from positioning_statement]
 [[View]]
 
+────────────────────────────────────────────
 ## Why Us
-[Stats bar using proof_points[]. Format each as: **[proof_points[N].stat]** [proof_points[N].label]. Render as a horizontal row separated by · . If proof_points[] is empty, use 3 placeholder blocks: **[Stat]** [Label to be added] · **[Stat]** [Label to be added] · **[Stat]** [Label to be added]. NO technical architecture copy — no BullMQ, no PostgreSQL, no named AI models, no named integrations.]
+Output as bullet lines in EXACTLY this format (visual strip — no inline text, no dot separators):
+- **[proof_points[0].stat]** | [proof_points[0].label — 2-4 words]
+- **[proof_points[1].stat]** | [proof_points[1].label — 2-4 words]
+[continue for ALL proof_points[]. If proof_points[] is empty, use 3 placeholder lines: - **[Stat]** | Label to be added]
 
+────────────────────────────────────────────
 ## Final CTA
 **[primary_cta.name — clean label only]**
 [primary_cta.description — 1 sentence]
-→ [[primary_cta.name]] [primary_cta.url]
+→ [[primary_cta.name]] [primary_cta.url or [URL] if empty]
 
-ENFORCE: CTA labels = clean text only, zero audience metadata. 3-box bodies = 1 sentence max 15 words. Segment cards = buyer titles + 1-sentence tension + ContentNode delivers list. Case studies = always 2 structured cards. Resources = eBOOK card + BROCHURE card only. Why Us = proof point stats bar, no tech jargon. Zero specific third-party tool names in public copy.`,
+ENFORCE: All segment cards present — count matches segments[]. Stats bar = bullet lines only. Why Us = bullet lines only. Solution stack = max 4 cards per pillar. 3-box headings = 3-5 words. No "na" anywhere. No vendor names in public copy.`,
 
     // 08 Internal Brief
     `Using the intake JSON provided, generate an internal GTM launch brief in markdown format.
@@ -973,7 +1036,7 @@ function getKitQueue(): Queue<KitGenerationJobData> {
 }
 
 const MAX_RETRIES = 2
-const LONG_ASSET_INDICES = new Set([1, 2, 4])
+const LONG_ASSET_INDICES = new Set([1, 2, 3, 4, 6])
 const RETRY_DELAYS_MS = [5_000, 15_000]
 
 export async function processKitGenerationJob(

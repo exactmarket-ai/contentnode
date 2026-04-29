@@ -284,6 +284,74 @@ async function buildCoverSection(
   ]
 }
 
+// ── Markdown-cover builder (for assets with embedded ## Cover sections) ────────
+
+async function buildMarkdownCoverSection(
+  coverLines: string[],
+  docStyle: DocStyle,
+): Promise<(Paragraph | Table)[]> {
+  const primary   = hexNoHash(docStyle.primaryColor)
+  const secondary = hexNoHash(docStyle.secondaryColor)
+  const items: Paragraph[] = []
+
+  if (docStyle.logoDataUrl) {
+    const logoType = imageTypeFromDataUrl(docStyle.logoDataUrl)
+    let placed = false
+    if (logoType) {
+      const dims = await getImageDimensions(docStyle.logoDataUrl)
+      if (dims && dims.h > 0) {
+        const TARGET_H = 50
+        const targetW  = Math.round(TARGET_H * (dims.w / dims.h))
+        try {
+          const logoData = dataUrlToArrayBuffer(docStyle.logoDataUrl)
+          items.push(new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 720, after: 480 },
+            children: [new ImageRun({ data: logoData, type: logoType, transformation: { width: targetW, height: TARGET_H } })],
+          }))
+          placed = true
+        } catch { /* fall through */ }
+      }
+    }
+    if (!placed && docStyle.agencyName) {
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 720, after: 480 }, children: [new TextRun({ text: docStyle.agencyName, font: docStyle.headingFont, size: 32, bold: true, color: 'FFFFFF' })] }))
+    }
+  } else {
+    items.push(new Paragraph({ spacing: { before: 1440 }, children: [] }))
+  }
+
+  let nonEmptyCount = 0
+  for (const raw of coverLines) {
+    const text = sanitize(raw.replace(/\*\*/g, '').replace(/^\*|\*$/g, '').trim())
+    if (!text) continue
+    if (nonEmptyCount === 0) {
+      // Document type title — large bold white
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text, font: docStyle.headingFont, size: 52, bold: true, color: 'FFFFFF' })] }))
+    } else if (nonEmptyCount === 1) {
+      // Client name — medium white
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text, font: docStyle.headingFont, size: 40, bold: false, color: 'FFFFFF' })] }))
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: '─────', font: docStyle.bodyFont, size: 24, color: secondary })] }))
+    } else if (nonEmptyCount === 2) {
+      // "X Segments · Y Sequences"
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text, font: docStyle.bodyFont, size: 22, color: 'CCCCCC' })] }))
+    } else {
+      // "Internal Use Only" / version info
+      items.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text, font: docStyle.bodyFont, size: 18, color: 'AAAAAA' })] }))
+    }
+    nonEmptyCount++
+  }
+
+  const nilBorder = { style: BorderStyle.NIL } as const
+  return [new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: nilBorder, bottom: nilBorder, left: nilBorder, right: nilBorder, insideHorizontal: nilBorder, insideVertical: nilBorder },
+    rows: [new TableRow({
+      height: { value: convertInchesToTwip(9.5), rule: HeightRule.EXACT },
+      children: [new TableCell({ shading: { fill: primary, type: ShadingType.SOLID, color: primary }, children: items })],
+    })],
+  })]
+}
+
 // ── Brochure-specific builders ─────────────────────────────────────────────────
 
 function noBorder() { return { style: BorderStyle.NONE, size: 0, color: 'auto' } as const }
@@ -732,9 +800,38 @@ export async function markdownToDocxBlob(
   const bodyFont     = docStyle.bodyFont
   const headFont     = docStyle.headingFont
 
-  const lines = markdown.split('\n')
+  // Detect embedded ## Cover section — extract and render as dark cover page
+  const rawMdSections = markdown.split(/^(?=## )/m)
+  let coverChildren: (Paragraph | Table)[] = []
+  let bodyMarkdown = markdown
+
+  if (rawMdSections.length > 0 && /^## Cover\b/i.test(rawMdSections[0])) {
+    const coverLines = rawMdSections[0].split('\n').slice(1).filter(l => l.trim())
+    coverChildren = await buildMarkdownCoverSection(coverLines, docStyle)
+    bodyMarkdown = rawMdSections.slice(1).join('')
+  } else if (docStyle.includeCoverPage && !!meta?.assetName) {
+    coverChildren = await buildCoverSection(docStyle, meta!.assetName!, meta!.clientName ?? '', meta!.verticalName ?? '')
+  }
+
+  // Bullet lines starting with a bold stat value followed by | — rendered as visual stat bar
+  const STAT_BAR_LINE_RE = /^[-*] \*\*[\d$€£¥%#][^*]*\*\*.*\|/
+
+  const lines = bodyMarkdown.split('\n')
   const children: (Paragraph | Table)[] = []
   let tableLines: string[] = []
+  let statBarLines: string[] = []
+
+  function flushStatBar() {
+    if (!statBarLines.length) return
+    if (statBarLines.length >= 2) {
+      children.push(buildStatBar(statBarLines, docStyle))
+    } else {
+      for (const l of statBarLines) {
+        children.push(new Paragraph({ bullet: { level: 0 }, children: parseInlineRuns(l.slice(2), bodyFont, 22, bodyColor) }))
+      }
+    }
+    statBarLines = []
+  }
 
   function flushTable() {
     if (!tableLines.length) return
@@ -744,8 +841,15 @@ export async function markdownToDocxBlob(
   }
 
   for (const line of lines) {
-    if (line.startsWith('|')) { tableLines.push(line); continue }
+    if (line.startsWith('|')) {
+      flushStatBar()
+      tableLines.push(line)
+      continue
+    }
     flushTable()
+
+    if (STAT_BAR_LINE_RE.test(line)) { statBarLines.push(line); continue }
+    flushStatBar()
 
     if      (line.startsWith('# '))    children.push(new Paragraph({ style: 'Heading1', children: [new TextRun(sanitize(line.slice(2)))] }))
     else if (line.startsWith('## '))   children.push(new Paragraph({ style: 'Heading2', children: [new TextRun(sanitize(line.slice(3)))] }))
@@ -758,11 +862,7 @@ export async function markdownToDocxBlob(
     else                               children.push(new Paragraph({ children: parseInlineRuns(line, bodyFont, 22, bodyColor) }))
   }
   flushTable()
-
-  const hasCover = docStyle.includeCoverPage && !!meta?.assetName
-  const coverChildren = hasCover
-    ? await buildCoverSection(docStyle, meta!.assetName!, meta!.clientName ?? '', meta!.verticalName ?? '')
-    : []
+  flushStatBar()
 
   const showFooter = docStyle.includePageNumbers || !!docStyle.agencyName || !!docStyle.footerText
   const footers = showFooter ? { default: buildFooterElement(docStyle) } : undefined
@@ -804,7 +904,7 @@ export async function markdownToDocxBlob(
       }],
     },
     sections: [
-      ...(hasCover ? [{
+      ...(coverChildren.length ? [{
         properties: { type: SectionType.NEXT_PAGE },
         children: coverChildren,
       }] : []),
