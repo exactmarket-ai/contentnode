@@ -29,6 +29,7 @@ import { SeoIntentConfig } from './config/source/SeoIntentConfig'
 import { AudienceSignalConfig } from './config/source/AudienceSignalConfig'
 import { WrikeSourceConfig } from './config/source/WrikeSourceConfig'
 import { VideoScriptReaderConfig } from './config/source/VideoScriptReaderConfig'
+import { DocxReaderConfig } from './config/source/DocxReaderConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -115,6 +116,8 @@ function NodeConfigForm({
         return <VideoUploadConfig config={config} onChange={onChange} />
       if (subtype === 'text-input')
         return <TextInputConfig config={config} onChange={onChange} />
+      if (subtype === 'docx-reader')
+        return <DocxReaderConfig config={config} onChange={onChange} />
       if (subtype === 'video-script-reader')
         return <VideoScriptReaderConfig config={config} onChange={onChange} />
       if (subtype === 'api-fetch')
