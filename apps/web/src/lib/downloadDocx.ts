@@ -1014,17 +1014,33 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §03 Market Pressures + Stats ────────────────────────────────────────────
   const s03 = SECTIONS.find((s) => s.num === '03')!
   children.push(...sb('03', s03.short, s03.subtitle, s03.usedIn))
+
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'Market Pressure Narrative', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+    spacing: { before: 0, after: 60 },
+  }))
   ft([{ label: 'Market Pressure Narrative', value: fw.s03.marketPressureNarrative }])
 
   const statRows = fw.s03.statsTable.filter((r) => r.stat?.trim() || r.context?.trim() || r.source?.trim())
   if (statRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Key Statistics', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
     children.push(st(
       ['Stat', 'Context / Label', 'Source', 'Year'],
       statRows.map((r) => [r.stat, r.context, r.source, r.year]),
       [30, 35, 25, 10],
     ))
   }
-  ft([{ label: 'Additional Context', value: fw.s03.additionalContext }])
+
+  if (fw.s03.additionalContext?.trim()) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Additional Context / Supporting Data', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 160, after: 60 },
+    }))
+    ft([{ label: 'Additional Context', value: fw.s03.additionalContext }])
+  }
   children.push(gtmSpacer())
 
   // ── §04 Core Challenges ─────────────────────────────────────────────────────
