@@ -32,6 +32,8 @@ export const QUEUE_PRINCIPLE_INFERENCE            = `${_p}principle-inference`
 export const QUEUE_BOX_VERSION_SCAN               = `${_p}box-version-scan`
 export const QUEUE_KIT_GENERATION                 = `${_p}kit-generation`
 export const QUEUE_STORYBOARD_GENERATION          = `${_p}storyboard-generation`
+export const QUEUE_STORYBOARD_SCENE               = `${_p}storyboard-scene`
+export const QUEUE_STORYBOARD_ASSEMBLE            = `${_p}storyboard-assemble`
 
 export interface KitGenerationJobData {
   sessionId: string
@@ -43,6 +45,18 @@ export interface StoryboardJobData {
   sessionId: string
   agencyId: string
   framesPerScene: 1 | 2 | 3 | 4
+}
+
+export interface StoryboardSceneJobData {
+  sessionId: string
+  agencyId: string
+  sceneNumber: number
+  framesPerScene: 1 | 2 | 3 | 4
+}
+
+export interface StoryboardAssembleJobData {
+  sessionId: string
+  agencyId: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -61,8 +61,8 @@ import { startBrainCollapseWorker } from './brainCollapseProcessor.js'
 import { startPrincipleInferenceWorker } from './principleInference.js'
 import { startBoxVersionScanWorker } from './boxVersionScanner.js'
 import { processKitGenerationJob } from './kitGenerator.js'
-import { runStoryboardJob } from './kitStoryboardGenerator.js'
-import { QUEUE_KIT_GENERATION, QUEUE_STORYBOARD_GENERATION, type KitGenerationJobData, type StoryboardJobData } from './queues.js'
+import { runStoryboardJob, runStoryboardSceneJob, runStoryboardAssembleJob } from './kitStoryboardGenerator.js'
+import { QUEUE_KIT_GENERATION, QUEUE_STORYBOARD_GENERATION, QUEUE_STORYBOARD_SCENE, QUEUE_STORYBOARD_ASSEMBLE, type KitGenerationJobData, type StoryboardJobData, type StoryboardSceneJobData, type StoryboardAssembleJobData } from './queues.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -414,6 +414,36 @@ const storyboardWorker = createWorker<StoryboardJobData>(
 storyboardWorker.on('error', (err) => console.error('[storyboard-worker] error:', err))
 storyboardWorker.on('failed', (job, err) => console.error(`[storyboard-worker] job ${job?.id} failed:`, err.message))
 
+// ── storyboard-scene ──────────────────────────────────────────────────────────
+const storyboardSceneWorker = createWorker<StoryboardSceneJobData>(
+  QUEUE_STORYBOARD_SCENE,
+  async (job) => {
+    const { sessionId, agencyId, sceneNumber } = job.data
+    console.log(`[storyboard-scene] picked up scene ${sceneNumber} for session ${sessionId}`)
+    await withAgency(agencyId, () => runStoryboardSceneJob(job))
+  },
+  4, // up to 4 scenes in parallel
+  { lockDuration: 10 * 60 * 1000 }, // 10 min per scene
+)
+storyboardSceneWorker.on('error', (err) => console.error('[storyboard-scene] error:', err))
+storyboardSceneWorker.on('failed', (job, err) => {
+  console.error(`[storyboard-scene] scene ${job?.data.sceneNumber} failed:`, err.message)
+})
+
+// ── storyboard-assemble ───────────────────────────────────────────────────────
+const storyboardAssembleWorker = createWorker<StoryboardAssembleJobData>(
+  QUEUE_STORYBOARD_ASSEMBLE,
+  async (job) => {
+    const { sessionId, agencyId } = job.data
+    console.log(`[storyboard-assemble] picked up assembly for session ${sessionId}`)
+    await withAgency(agencyId, () => runStoryboardAssembleJob(job))
+  },
+  2,
+  { lockDuration: 5 * 60 * 1000 },
+)
+storyboardAssembleWorker.on('error', (err) => console.error('[storyboard-assemble] error:', err))
+storyboardAssembleWorker.on('failed', (job, err) => console.error(`[storyboard-assemble] job ${job?.id} failed:`, err.message))
+
 // ── box version sweep — passive safety net, runs every 2 hours ───────────────
 // Catches Box versions that arrived without a Monday status change event
 // (network blips, direct Box uploads, etc.).
@@ -509,6 +539,8 @@ async function shutdown() {
     boxVersionScanWorker.close(),
     kitGenerationWorker.close(),
     storyboardWorker.close(),
+    storyboardSceneWorker.close(),
+    storyboardAssembleWorker.close(),
     boxVersionSweepWorker.close(),
     fileCleanupWorker.close(),
   ])

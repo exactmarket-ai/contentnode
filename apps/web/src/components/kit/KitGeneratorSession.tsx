@@ -43,11 +43,19 @@ interface GeneratedFiles {
   storyboard?: StoryboardProgress
 }
 
+interface StoryboardSceneRecord {
+  sceneNumber: number
+  status: 'pending' | 'generating' | 'complete' | 'error'
+  pageStorageKey?: string
+  error?: string
+}
+
 interface StoryboardProgress {
   status: 'pending' | 'generating' | 'complete' | 'error'
   framesPerScene: number
   totalScenes: number
   completedScenes: number
+  scenes: StoryboardSceneRecord[]
   pdfStorageKey?: string
   pdfFilename?: string
   error?: string
@@ -483,7 +491,7 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
       const blob = await res.blob()
       const objectUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      const filename = (storyboard?.filename as string | undefined) ?? 'storyboard.pdf'
+      const filename = storyboard?.pdfFilename ?? 'storyboard.pdf'
       a.href = objectUrl
       a.download = filename
       a.style.display = 'none'
@@ -493,6 +501,26 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
     } catch (e) {
       console.error('[downloadStoryboard] failed:', e)
+    }
+  }
+
+  const downloadScenePage = async (sceneNumber: number) => {
+    if (!session) return
+    try {
+      const res = await apiFetch(`/api/v1/kit-sessions/${session.id}/storyboard/scenes/${sceneNumber}/download`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `Scene ${sceneNumber}.pdf`
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (e) {
+      console.error('[downloadScenePage] failed:', e)
     }
   }
 
@@ -1026,20 +1054,10 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-3">
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className="text-xs font-semibold text-purple-800">
-                                {storyboard.status === 'pending' ? 'Queued…' : `Scene ${storyboard.completedScenes} / ${storyboard.totalScenes || '?'}`}
-                              </span>
-                              {storyboard.totalScenes > 0 && (
-                                <div className="h-1.5 w-32 overflow-hidden rounded-full bg-purple-200">
-                                  <div
-                                    className="h-full rounded-full bg-purple-500 transition-all"
-                                    style={{ width: `${Math.round((storyboard.completedScenes / storyboard.totalScenes) * 100)}%` }}
-                                  />
-                                </div>
-                              )}
-                            </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs text-purple-700 font-medium">
+                              {storyboard.status === 'pending' ? 'Queued…' : `${storyboard.completedScenes} / ${storyboard.totalScenes || '?'} scenes`}
+                            </span>
                             <svg className="h-4 w-4 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -1047,6 +1065,39 @@ export function KitGeneratorSession({ clientId, clientName, verticalId, vertical
                           </div>
                         )}
                       </div>
+
+                      {/* Per-scene page list — shows as scenes complete */}
+                      {storyboard && (storyboard.scenes ?? []).length > 0 && (
+                        <div className="mt-3 divide-y divide-purple-100 rounded-lg border border-purple-100 overflow-hidden">
+                          {[...(storyboard.scenes ?? [])].sort((a, b) => a.sceneNumber - b.sceneNumber).map((s) => (
+                            <div key={s.sceneNumber} className="flex items-center justify-between px-3 py-2 bg-white">
+                              <span className="text-xs text-purple-900 font-medium">
+                                Scene {s.sceneNumber} of {storyboard.totalScenes}
+                              </span>
+                              {s.status === 'complete' ? (
+                                <button
+                                  onClick={() => void downloadScenePage(s.sceneNumber)}
+                                  className="text-[10px] font-semibold text-purple-600 hover:text-purple-800 transition-colors"
+                                >
+                                  Download page
+                                </button>
+                              ) : s.status === 'error' ? (
+                                <span className="text-[10px] text-red-500">Failed</span>
+                              ) : s.status === 'generating' ? (
+                                <span className="text-[10px] text-purple-400 flex items-center gap-1">
+                                  <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                  </svg>
+                                  Rendering…
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-purple-300">Queued</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })()}

@@ -660,4 +660,33 @@ export async function kitSessionRoutes(app: FastifyInstance) {
         .send(buf)
     }
   )
+
+  // GET /:sessionId/storyboard/scenes/:sceneNumber/download — download a single scene page
+  app.get<{ Params: { sessionId: string; sceneNumber: string } }>(
+    '/:sessionId/storyboard/scenes/:sceneNumber/download',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { sessionId, sceneNumber } = req.params
+
+      const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+      const files     = (session.generatedFiles ?? {}) as Record<string, unknown>
+      const storyboard = (files.storyboard ?? null) as Record<string, unknown> | null
+      const scenes    = (storyboard?.scenes ?? []) as Array<Record<string, unknown>>
+      const scene     = scenes.find(s => s.sceneNumber === parseInt(sceneNumber, 10))
+
+      if (!scene?.pageStorageKey) {
+        return reply.code(404).send({ error: `Scene ${sceneNumber} PDF not available yet` })
+      }
+
+      const buf      = await downloadBuffer(scene.pageStorageKey as string)
+      const filename = `Scene ${sceneNumber}.pdf`
+
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .send(buf)
+    }
+  )
 }
