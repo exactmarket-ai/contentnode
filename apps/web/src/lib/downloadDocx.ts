@@ -1018,15 +1018,18 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('04', s04.short, s04.subtitle, s04.usedIn))
   fw.s04.challenges.forEach((ch, i) => {
     if (!ch.name?.trim() && !ch.whyExists?.trim() && !ch.consequence?.trim() && !ch.solution?.trim()) return
+    const label = ch.name?.trim() ? `Challenge ${i + 1} — ${ch.name}` : `Challenge ${i + 1}`
+    children.push(new Paragraph({
+      children: [new TextRun({ text: label, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: i === 0 ? 0 : 160, after: 60 },
+    }))
     const t = gtmFieldTable([
-      { label: 'Challenge name', value: ch.name?.trim() ? `Challenge ${i + 1}: ${ch.name}` : `Challenge ${i + 1}` },
       { label: 'Why it exists', value: ch.whyExists },
       { label: 'Business consequence', value: ch.consequence },
       { label: `${clientName} solution`, value: ch.solution },
       { label: 'Service pillars', value: ch.pillarsText },
     ])
     if (t) children.push(t)
-    children.push(new Paragraph({ spacing: { after: 60 } }))
   })
   children.push(gtmSpacer())
 
