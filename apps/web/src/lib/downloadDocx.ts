@@ -1366,6 +1366,14 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
       children: [new TextRun({ text: 'The closer these are to verbatim questions from real discovery calls, the better. These feed directly into eBook chapter structure, BDR email angles, and objection handling.', size: 19, color: '374151', italics: true })],
       spacing: { before: 0, after: 80 },
     }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'FAQs Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `10-15 questions. Include the honest ${clientName} answer and the asset where this FAQ is best addressed.`, size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
+    }))
     children.push(st(
       ['Question (verbatim if possible)', `${clientName} Answer`, 'Best Addressed In'],
       filledFaqs.map((f) => [f.question ?? '', f.answer ?? '', f.bestAddressedIn ?? '']),
