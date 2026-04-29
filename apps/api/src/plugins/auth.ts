@@ -49,9 +49,12 @@ async function authPluginFn(app: FastifyInstance) {
     if (req.url.startsWith('/api/v1/integrations/monday/webhook')) return
     // Box webhook is called by Box servers directly — verified by HMAC, no Clerk auth
     if (req.url.startsWith('/api/v1/webhooks/box-file')) return
+    // Google Drive webhook is called by Google's servers — verified by channel token, no Clerk auth
+    if (req.url.startsWith('/api/v1/webhooks/google-drive')) return
     // OAuth callbacks are redirects from external providers — no Clerk auth
     if (req.url.startsWith('/api/v1/integrations/box/callback')) return
     if (req.url.startsWith('/api/v1/integrations/monday/callback')) return
+    if (req.url.startsWith('/api/v1/integrations/google-drive/callback')) return
     // Generated files are public static assets — no auth required
     if (req.url.startsWith('/files/generated/')) return
     // Wrike OAuth callback is a redirect from Wrike's servers — no Clerk auth
