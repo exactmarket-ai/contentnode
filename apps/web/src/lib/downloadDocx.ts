@@ -1419,6 +1419,18 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   children.push(...sb('17', s17.short, s17.subtitle, s17.usedIn))
   const regRows = fw.s17.regulations.filter((r) => r.requirement?.trim() || r.capability?.trim() || r.servicePillar?.trim())
   if (regRows.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `Include only frameworks where ${clientName} has a direct service capability. Do not claim compliance or certification authority ${clientName} does not hold.`, size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Regulatory Framework Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
+      spacing: { before: 0, after: 40 },
+    }))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `For each relevant framework, map the requirement to the ${clientName} capability and service pillar.`, size: 19, color: '374151', italics: true })],
+      spacing: { before: 0, after: 80 },
+    }))
     children.push(st(
       ['Regulatory Requirement', `${clientName} Capability`, 'Service Pillar', 'Sales Note'],
       regRows.map((r) => [r.requirement, r.capability, r.servicePillar, r.salesNote]),
