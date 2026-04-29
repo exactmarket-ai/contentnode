@@ -778,15 +778,26 @@ export async function markdownToDocxBlob(
 
 // ── PPTX builder ───────────────────────────────────────────────────────────────
 
+// Pattern: "- **42%** — Short label — (Source, 2024)" or "- **$2.1M** — Short label (Source, 2024)"
+const STAT_LINE_RE = /^[-*]\s*\*\*([\d,\.\$€%×xX\+\-]+[^*]*?)\*\*\s*[—–\-]\s*([^(—–\-]+?)(?:\s*[—–\-]\s*|\s*)\(([^)]+)\)\s*$|^[-*]\s*\*\*([\d,\.\$€%×xX\+\-]+[^*]*?)\*\*\s*[—–\-]\s*(.+)$/
+
+function parseStatLine(line: string): { stat: string; label: string; source: string } | null {
+  const m = line.match(/^[-*]\s*\*\*\s*([^*]+?)\s*\*\*\s*[—–\-]\s*([^(—–\n]+?)(?:\s*[—–\-]\s*\(([^)]+)\)|\s*\(([^)]+)\))?\s*$/)
+  if (!m) return null
+  return { stat: m[1].trim(), label: m[2].trim(), source: (m[3] ?? m[4] ?? '').trim() }
+}
+
 export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = DEFAULT_STYLE): Promise<Blob> {
   const { default: PptxGenJS } = await import('pptxgenjs')
   const prs = new PptxGenJS()
   prs.layout = 'LAYOUT_WIDE'
 
   const primary    = docStyle.primaryColor
+  const secondary  = docStyle.secondaryColor ?? '#4A90D9'
   const headFont   = docStyle.headingFont
   const bodyFont   = docStyle.bodyFont
   const titleColor = primary.replace('#', '')
+  const accentHex  = secondary.replace('#', '')
 
   // Compute logo placement once: height fixed at 0.4", width from natural aspect ratio.
   // If dimensions cannot be determined, logoW is null and we fall back to agency name text.
@@ -796,6 +807,77 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
     const dims = await getImageDimensions(docStyle.logoDataUrl)
     if (dims && dims.h > 0) {
       pptxLogoW = parseFloat((LOGO_H * (dims.w / dims.h)).toFixed(3))
+    }
+  }
+
+  // Helper: add branded top bar + title — used by all content slides
+  function addSlideHeader(slide: ReturnType<typeof prs.addSlide>, title: string) {
+    slide.background = { color: 'FFFFFF' }
+    slide.addShape(prs.ShapeType.rect, {
+      x: 0, y: 0, w: '100%', h: 0.11,
+      fill: { color: titleColor },
+      line: { color: titleColor, width: 0 },
+    })
+    slide.addText(sanitize(title), {
+      x: 0.4, y: 0.18, w: 10.5, h: 0.75,
+      fontSize: 22, bold: true, color: titleColor, fontFace: headFont,
+    })
+  }
+
+  // Helper: stat card grid — renders 3-4 stat cards as a 2×2 (or 1×3) visual grid
+  function renderStatCards(
+    slide: ReturnType<typeof prs.addSlide>,
+    cards: { stat: string; label: string; source: string }[],
+    narrativeLines: string[],
+  ) {
+    const cols = cards.length <= 2 ? cards.length : 2
+    const rows = Math.ceil(cards.length / cols)
+    const cardW = cols === 2 ? 5.8 : 8.0
+    const cardH = rows === 1 ? 2.2 : 1.85
+    const startX = cols === 2 ? 0.4 : 2.67
+    const startY = 1.05
+    const gapX = cols === 2 ? 0.95 : 0
+    const gapY = 0.2
+
+    cards.forEach((card, i) => {
+      const col = i % cols
+      const row = Math.floor(i / cols)
+      const x = startX + col * (cardW + gapX)
+      const y = startY + row * (cardH + gapY)
+
+      slide.addShape(prs.ShapeType.rect, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: 'F3F4F6' },
+        line: { color: 'E5E7EB', width: 0.5 },
+      })
+      // Large stat number
+      slide.addText(sanitize(card.stat), {
+        x: x + 0.18, y: y + 0.15, w: cardW - 0.36, h: cardH * 0.5,
+        fontSize: rows === 1 ? 38 : 32, bold: true, color: titleColor, fontFace: headFont,
+        valign: 'middle',
+      })
+      // Label
+      slide.addText(sanitize(card.label), {
+        x: x + 0.18, y: y + cardH * 0.58, w: cardW - 0.36, h: cardH * 0.26,
+        fontSize: 11, color: '374151', fontFace: bodyFont, wrap: true,
+      })
+      // Source
+      if (card.source) {
+        slide.addText(sanitize(card.source), {
+          x: x + 0.18, y: y + cardH * 0.83, w: cardW - 0.36, h: cardH * 0.17,
+          fontSize: 9, color: '9CA3AF', fontFace: bodyFont,
+        })
+      }
+    })
+
+    // Narrative below the grid
+    if (narrativeLines.length > 0) {
+      const narrativeY = startY + rows * (cardH + gapY) + 0.15
+      const narrativeText = narrativeLines.map(l => l.replace(/^[-*]\s*/, '').trim()).join(' ')
+      slide.addText(sanitize(narrativeText), {
+        x: 0.4, y: narrativeY, w: 12.5, h: 7.5 - narrativeY - 0.5,
+        fontSize: 12, color: '4B5563', fontFace: bodyFont, wrap: true,
+      })
     }
   }
 
@@ -813,37 +895,39 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
 
       const isCover   = blockIdx === 0
       const isDivider = title.toLowerCase().includes('section') || bodyLines.length === 0
+      const isClosing = blockIdx > 0 && bodyLines.length > 0 &&
+        !bodyLines.some(l => /^[-*] /.test(l)) === false &&
+        title.length > 10 // closing slide has a long tagline title
 
       const slide = prs.addSlide()
 
       if (isCover || isDivider) {
         slide.background = { color: primary.replace('#', '') }
 
-        if (isCover && bodyLines.length > 0) {
-          // Rich cover: title at top-center, subtitle + client line below, accent bar at bottom
+        if (isCover) {
+          // Always render a rich cover — use body lines if present, fall back gracefully
           slide.addText(sanitize(title), {
-            x: 0.6, y: 1.8, w: 12.1, h: 1.6,
-            fontSize: 36, bold: true, color: 'FFFFFF', fontFace: headFont,
+            x: 0.6, y: 1.5, w: 12.1, h: 2.0,
+            fontSize: 40, bold: true, color: 'FFFFFF', fontFace: headFont,
             align: 'center', valign: 'middle', wrap: true,
           })
-          const subtitle = sanitize(bodyLines[0].replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim())
-          if (subtitle) {
-            slide.addText(subtitle, {
-              x: 1.0, y: 3.55, w: 11.33, h: 0.75,
-              fontSize: 16, bold: false, color: 'DDDDDD', fontFace: bodyFont,
+          const subtitleRaw = bodyLines[0]?.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim() ?? ''
+          if (subtitleRaw) {
+            slide.addText(sanitize(subtitleRaw), {
+              x: 1.0, y: 3.65, w: 11.33, h: 0.75,
+              fontSize: 17, bold: false, color: 'DDDDDD', fontFace: bodyFont,
               align: 'center', valign: 'middle', wrap: true,
             })
           }
-          if (bodyLines[1]) {
-            const clientLine = sanitize(bodyLines[1].replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim())
-            slide.addText(clientLine, {
-              x: 1.0, y: 4.4, w: 11.33, h: 0.5,
+          const clientRaw = bodyLines[1]?.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim() ?? ''
+          if (clientRaw) {
+            slide.addText(sanitize(clientRaw), {
+              x: 1.0, y: 4.55, w: 11.33, h: 0.5,
               fontSize: 13, bold: false, color: 'AAAAAA', fontFace: bodyFont,
               align: 'center', valign: 'middle',
             })
           }
-          // Accent bar at bottom
-          const accentHex = (docStyle.secondaryColor ?? '#4A90D9').replace('#', '')
+          // Accent bar
           slide.addShape(prs.ShapeType.rect, {
             x: 0, y: 7.12, w: '100%', h: 0.15,
             fill: { color: accentHex },
@@ -856,29 +940,64 @@ export async function markdownToPptxBlob(markdown: string, docStyle: DocStyle = 
             align: 'center', valign: 'middle',
           })
         }
-      } else {
-        slide.background = { color: 'FFFFFF' }
-        slide.addShape(prs.ShapeType.rect, {
-          x: 0, y: 0, w: '100%', h: 0.11,
-          fill: { color: primary.replace('#', '') },
-          line: { color: primary.replace('#', ''), width: 0 },
-        })
+      } else if (isClosing) {
+        // Closing slide: dark background like cover
+        slide.background = { color: primary.replace('#', '') }
         slide.addText(sanitize(title), {
-          x: 0.4, y: 0.18, w: 10.5, h: 0.75,
-          fontSize: 22, bold: true, color: titleColor, fontFace: headFont,
+          x: 0.6, y: 1.2, w: 12.1, h: 1.8,
+          fontSize: 38, bold: true, color: 'FFFFFF', fontFace: headFont,
+          align: 'center', valign: 'middle', wrap: true,
         })
+        const bodyText = bodyLines.map(l => l.replace(/^[-*] /, '').replace(/^\*\*[^*]+:\*\*\s*/, '').trim()).filter(Boolean)
+        bodyText.forEach((line, i) => {
+          slide.addText(sanitize(line), {
+            x: 1.0, y: 3.2 + i * 0.62, w: 11.33, h: 0.55,
+            fontSize: 13, color: i === 0 ? 'DDDDDD' : 'AAAAAA', fontFace: bodyFont,
+            align: 'center',
+          })
+        })
+        slide.addShape(prs.ShapeType.rect, {
+          x: 0, y: 7.12, w: '100%', h: 0.15,
+          fill: { color: accentHex },
+          line: { color: accentHex, width: 0 },
+        })
+      } else {
+        addSlideHeader(slide, title)
 
         if (bodyLines.length) {
-          const textItems = bodyLines.map(l => {
-            const isBullet = /^[-*] /.test(l)
-            const raw = sanitize(isBullet ? l.slice(2) : l).trim()
-            const isBold = raw.startsWith('**') && raw.endsWith('**')
-            return {
-              text: isBold ? raw.slice(2, -2) : raw,
-              options: { bullet: isBullet, bold: isBold, color: '1A1A14', fontFace: bodyFont },
-            }
-          })
-          slide.addText(textItems, { x: 0.4, y: 1.05, w: 12.2, h: 5.65, fontSize: 13, valign: 'top', wrap: true })
+          // Detect stat-card layout: 3+ bullet lines starting with **[number/stat]**
+          const statCards = bodyLines
+            .slice(0, 4)
+            .map(l => parseStatLine(l))
+          const validCards = statCards.filter((c): c is NonNullable<typeof c> => c !== null)
+
+          if (validCards.length >= 3) {
+            renderStatCards(slide, validCards, bodyLines.slice(validCards.length))
+          } else {
+            const textItems = bodyLines.map(l => {
+              const isBullet = /^[-*] /.test(l)
+              const raw = sanitize(isBullet ? l.slice(2) : l).trim()
+              // Handle **bold text** — keep bold markers for inline bold
+              const hasBoldMarkers = raw.includes('**')
+              if (hasBoldMarkers) {
+                const parts = raw.split(/\*\*/)
+                return parts.map((part, pi) => ({
+                  text: part,
+                  options: {
+                    bullet: isBullet && pi === 0,
+                    bold: pi % 2 === 1,
+                    color: '1A1A14' as string,
+                    fontFace: bodyFont,
+                  },
+                }))
+              }
+              return [{
+                text: raw,
+                options: { bullet: isBullet, bold: false, color: '1A1A14' as string, fontFace: bodyFont },
+              }]
+            }).flat()
+            slide.addText(textItems, { x: 0.4, y: 1.05, w: 12.2, h: 5.65, fontSize: 13, valign: 'top', wrap: true })
+          }
         }
       }
 

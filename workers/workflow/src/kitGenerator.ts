@@ -486,90 +486,138 @@ INTERNAL USE ONLY — Not for Distribution
 Version 1.0 · [current year]`,
 
     // 05 Customer Deck
-    `Using the intake JSON provided, generate a customer-facing presentation in markdown format. Use ## Slide N: [Title] as the header for each slide. Each slide body is bullet points — short, punchy, one idea per line.
+    `Using the intake JSON provided, generate a 14-slide customer-facing presentation in markdown format. Use ## Slide N: [Title] as the header for each slide.
 
-CRITICAL RULES:
-- This is a CUSTOMER-FACING deck. Remove ALL internal sales notes, DPA reminders, "Available on request" language, internal process instructions, and technical architecture details. None of these belong in a customer presentation.
-- Business language only. No: BullMQ, PostgreSQL, RLS, queue names, API layers, database terminology, or infrastructure specifics. Translate every technical mechanism to a business outcome.
-- Platform-agnostic: "Monday.com" → "your project management tool", "Box" → "your file delivery stack", "Monday URL Writeback" → "status writeback to your PM tool", "Anthropic and OpenAI" → "AI model providers".
-- Every statistic must have a source citation. Flag [UNSOURCED] if no source available.
+════════════════════════════════════════════
+COPY LENGTH ENFORCEMENT — NON-NEGOTIABLE HARD LIMITS
+Every piece of text must fit in its designated space on screen. These are maximums, not targets.
+
+• Slide titles: 3–5 words maximum
+• Stat labels: 2–4 words maximum
+• Bullet points: ONE LINE MAXIMUM — if a bullet exceeds 12 words, cut it. Never write a sentence that wraps to a second line on a slide.
+• Value propositions: one sentence, 12 words maximum
+• Service list items: service name ONLY — zero descriptions
+• Deep dive bullets: one line each, lead with the outcome (what the client gains) not the mechanism
+• Differentiator cards: bold headline + ONE sentence maximum — never a paragraph, never a second sentence
+• Assessment path descriptions: one sentence maximum, 12 words maximum
+• Case study cells: 2–3 bullets each, one line per bullet maximum
+
+VIOLATION EXAMPLES — NEVER WRITE THESE:
+❌ "Automates the end-to-end content production workflow from intake through stakeholder approval, eliminating manual coordination overhead and ensuring consistent asset delivery."
+✅ "Brief to approved asset — zero manual handoffs."
+
+❌ "HIPAA — We provide comprehensive audit trail documentation, role-based access control, and content governance logs to support your HIPAA compliance posture across all content operations."
+✅ "HIPAA — Audit-ready documentation and access logs."
+
+════════════════════════════════════════════
+CUSTOMER-FACING RULES:
+- Remove ALL internal sales notes, DPA reminders, "Available on request" language, and technical architecture details.
+- Business language only. Never write: BullMQ, PostgreSQL, RLS, API layers, database terminology, or infrastructure specifics.
+- Platform-agnostic: "Monday.com" → "your PM tool", "Box" → "your file delivery platform", "Anthropic/OpenAI" → "AI model providers".
+- Every statistic must have a source citation. Write [UNSOURCED] if no source is available.
+
+════════════════════════════════════════════
 
 ────────────────────────────────────────────
-## Slide 1: [exact verbatim text of vertical.taglines[0]]
-- [vertical.positioning_statement — one sentence]
-- [vertical.client_name] · [vertical.name]
+## Slide 1: [REQUIRED — output the EXACT verbatim text of vertical.taglines[0]. If taglines is empty or missing, write a 3–5 word tagline from the vertical.positioning_statement.]
+- [REQUIRED — vertical.positioning_statement, one sentence. If empty, write a one-sentence value proposition from the intake context.]
+- [vertical.name] · [vertical.client_name]
 
 ────────────────────────────────────────────
 ## Slide 2: Market Pressure
-4 stats from statistics[]. For each: **bold the stat value** — label — (source, year)
-Below the stats: one paragraph from market_pressure_narrative.
+Output EXACTLY 4 stat cards from statistics[]. Format each line:
+- **[large stat value]** — [2–4 word label] — ([source], [year])
+
+If statistics[] has fewer than 4, derive plausible sourced stats from the market context.
+Narrative: MAXIMUM 2 sentences below the 4 stat lines. Each sentence: one line only.
 
 ────────────────────────────────────────────
 ## Slide 3: The Challenges
-ONE UNIFIED LIST — do NOT split by category. One bullet per challenge from challenges[].
-Format each bullet: **[challenge.name]** — [why_it_exists, 1 sentence] · [service_pillar label]
-Keep bullets short (max 15 words each). No sub-bullets.
+One bullet per challenge from challenges[]. Hard format:
+- **[challenge.name]** — [why_it_exists, MAXIMUM 8 WORDS] · [service_pillar]
+
+Rules: NO sub-bullets, NO paragraph explanations. Challenge name + 8-word consequence + pillar only.
 
 ────────────────────────────────────────────
 ## Slide 4: Compliance & Regulatory
-One block per framework from regulatory_frameworks[]. For each:
-**[Framework Name]** — [capability, 1 sentence — customer-facing, no internal sales notes]
-No sales notes. No "DPA" language. No "Available on request". No "Lead with this in enterprise conversations." Customer-facing capability only.
+MAXIMUM 4 frameworks from regulatory_frameworks[]. If more than 4 exist, pick the 4 most referenced.
+For each framework:
+**[Framework Name]**
+- [capability, MAXIMUM 10 WORDS — customer-facing only, no internal notes]
+- [capability, MAXIMUM 10 WORDS]
+- [capability, MAXIMUM 10 WORDS]
+
+Hard rules: EXACTLY 3 bullets per framework. MAXIMUM 4 frameworks total. No "Available on request." No "Lead with this." No descriptions beyond 10 words.
+Final line (not a bullet): one sentence stating the compliance role.
 
 ────────────────────────────────────────────
 ## Slide 5: Our Four Pillars
 One block per pillar from pillars[]:
-**[pillar.name]** — [value_prop, 1 sentence]
-- [key_service 1]
-- [key_service 2]
-- [key_service 3]
+**[pillar.name]**
+[value_prop — ONE SENTENCE, 12 WORDS MAXIMUM. If the existing value_prop is longer, trim it.]
+- [key_service_1 name — name only, zero description]
+- [key_service_2 name — name only, zero description]
+- [key_service_3 name — name only, zero description]
 
 ────────────────────────────────────────────
-## Slide 6: [pillars[0].name] — How It Works
-Business outcomes for the first service pillar. Lead with what the client experiences, not how it works internally.
-4 bullet points. Each: bold outcome claim (≤10 words) + one-sentence explanation. No technical jargon.
-Example format: **Delivery in hours, not weeks** — Content moves from brief to approved asset without manual handoffs.
+## Slide 6: [pillars[0].name]
+[ONE punchy sub-heading — what clients gain, 8 words max]
+- **[bold outcome claim, ≤8 words]** — [clarifier, ≤6 words]
+- **[bold outcome claim, ≤8 words]** — [clarifier, ≤6 words]
+- **[bold outcome claim, ≤8 words]** — [clarifier, ≤6 words]
+- **[bold outcome claim, ≤8 words]** — [clarifier, ≤6 words]
+
+Rules: ZERO multi-sentence bullets. ZERO paragraphs. Lead with what the client gets, not how the system works.
 
 ────────────────────────────────────────────
-## Slide 7: [pillars[1].name] — How It Works
-Same format as Slide 6 for the second service pillar.
-4 bullet points. Business outcomes. No infrastructure or database terminology.
+## Slide 7: [pillars[1].name]
+Same format as Slide 6. Sub-heading (8 words max) + 4–5 outcome bullets in the same **bold claim** — [short clarifier] format.
 
 ────────────────────────────────────────────
-## Slide 8: [pillars[2].name or "Delivery & Operations"] — How It Works
-Same format for the third pillar or remaining service areas.
-4 bullet points. Business outcomes only.
+## Slide 8: [pillars[2].name or "Delivery & Operations"]
+Same format. Sub-heading + 4–5 outcome bullets.
 
 ────────────────────────────────────────────
-## Slide 9: Why Us
-STATS BAR FIRST — list proof_points[] as: **[stat]** — [label] (one per line, bold the number)
-Then 6 differentiator bullets from differentiators[]: **[label]** — [position, 1 sentence]
-No technical proof points. Only business claims a client would care about.
+## Slide 9: [pillars[3].name if it exists, otherwise "Scale & Governance"]
+Same format. Sub-heading + 4–5 outcome bullets.
 
 ────────────────────────────────────────────
-## Slide 10: Case Study — [case_studies[0].client_profile or "Enterprise Client"]
-3-column structure: Situation | What We Delivered | Outcomes
-Use case_studies[0] if available. If empty: "Situation: [placeholder]" / "Delivered: [placeholder]" / "Outcome: [placeholder]"
-*[Design team: insert visual from case study deck]*
+## Slide 10: Why Us
+Stats line (one line): **[proof_points[0].stat]** [label] · **[proof_points[1].stat]** [label] · **[proof_points[2].stat]** [label] · (continue for all proof_points — all on ONE line)
+
+6 differentiator bullets from differentiators[]:
+- **[label]** — [position, ONE SENTENCE, 10 WORDS MAXIMUM — hard stop, no second sentence]
+
+Rules: NO multi-sentence differentiator descriptions. Bold headline + one sentence. Full stop.
 
 ────────────────────────────────────────────
-## Slide 11: Case Study — [case_studies[1].client_profile or "Mid-Market Client"]
-Same structure as Slide 10 using case_studies[1] or placeholder.
-*[Design team: insert visual from case study deck]*
+## Slide 11: Case Study — [case_studies[0].client_profile or "Enterprise Healthcare Client"]
+**Situation** | **What We Delivered** | **Outcomes**
+- [one-line bullet] | - [one-line bullet] | - [one-line bullet]
+- [one-line bullet] | - [one-line bullet] | - [one-line bullet]
+- [one-line bullet] | - [one-line bullet] | - [one-line bullet]
+
+Total word count for entire slide: under 80 words.
 
 ────────────────────────────────────────────
-## Slide 12: Your Path Forward
-4 paths derived from segments[] and regulatory_frameworks[]. Each path:
-**[Path name]** — [trigger condition, 1 sentence]
-→ [Entry point CTA] — [actual URL from primary_cta.url — substitute the real value]
-Every path must include the URL. Never output "primary_cta.url" as a literal string.
+## Slide 12: Case Study — [case_studies[1].client_profile or "Mid-Market Healthcare Client"]
+Same structure as Slide 11 using case_studies[1] or placeholder.
 
 ────────────────────────────────────────────
-## Slide 13: [exact verbatim text of vertical.taglines[0]]
-- [vertical.positioning_statement]
-- **[primary_cta.name]** — [primary_cta.description]
-- [actual URL from primary_cta.url — substitute real value]
-- [proof_points[0].stat] [proof_points[0].label] · [proof_points[1].stat] [proof_points[1].label] · [proof_points[2].stat if available]`,
+## Slide 13: Your Path Forward
+4 paths from segments[] and regulatory_frameworks[]. Each path:
+- **[Path name]** — [trigger condition, ONE SENTENCE, 12 WORDS MAX]
+  → [CTA label] — [ACTUAL URL from primary_cta.url — you MUST substitute the real URL here. Never output the literal text "primary_cta.url".]
+
+────────────────────────────────────────────
+## Slide 14: [REQUIRED — exact verbatim text of vertical.taglines[0] — identical to Slide 1 title]
+REQUIRED — output ALL FOUR elements below. Do NOT truncate this slide:
+- [vertical.positioning_statement — one sentence]
+- **Proof:** [proof_points[0].stat] [proof_points[0].label] · [proof_points[1].stat] [proof_points[1].label] · [proof_points[2].stat] [proof_points[2].label]
+- **[primary_cta.name]** → [ACTUAL URL from primary_cta.url — substitute real value]
+- [document_control.marketing_contact or agency contact — one line]
+
+CLOSING SLIDE RULE: This slide MUST be complete. Never truncate. Output all four elements even if you are near the end of your output budget.`,
 
     // 06 Video Script
     `Using the intake JSON provided, generate a video script document in markdown format.
@@ -907,7 +955,7 @@ function getKitQueue(): Queue<KitGenerationJobData> {
 }
 
 const MAX_RETRIES = 2
-const LONG_ASSET_INDICES = new Set([1, 2])
+const LONG_ASSET_INDICES = new Set([1, 2, 4])
 const RETRY_DELAYS_MS = [5_000, 15_000]
 
 export async function processKitGenerationJob(
