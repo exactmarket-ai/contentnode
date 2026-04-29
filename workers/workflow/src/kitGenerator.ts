@@ -473,104 +473,124 @@ Output complete valid HTML only.`,
 
 ════════════════════════════════════════════
 SEGMENT COUNT RULE — NON-NEGOTIABLE:
-Count how many items are in segments[]. Output EXACTLY that many email blocks in Email Sequences — one block per segment, in order. Then add exactly ONE final AI/Innovation email.
+Count how many items are in segments[]. Output EXACTLY that many numbered email blocks — one per segment, in order. Then add exactly ONE final AI/governance email numbered N+1.
 
-  segments[] has 4 items → 4 segment email blocks + 1 AI email = 5 total
-  segments[] has 3 items → 3 segment email blocks + 1 AI email = 4 total
+  segments[] has 5 items → Email 1–5 + Email 6 (AI) = 6 total
+  segments[] has 3 items → Email 1–3 + Email 4 (AI) = 4 total
 
-Do NOT stop early. Do NOT skip any segment. Count first, then write every block.
+Do NOT stop early. Do NOT skip any segment. Count segments first, then write every block.
 
 ════════════════════════════════════════════
 EMAIL BODY RULES — NON-NEGOTIABLE:
-- NEVER open with a salutation. No "Hi [Name]", no "Dear [Name]", no greeting of any kind. Start immediately with the first line of copy.
-- 4-5 LINES MAXIMUM. One sentence per line. No paragraphs.
-- Weave in a specific statistic from statistics[] in at least one line.
-- Final line before [Link]: name the specific service or offer (e.g. "NexusTek gives practices like yours 24/7 security monitoring, HIPAA-aligned infrastructure, and a tested recovery plan — under a single fixed monthly fee.")
-- CTA placeholder: write [Link] — nothing else. No URL, no "primary_cta.url".
-- NEVER include audience targeting metadata inside the email body.
-- Platform-agnostic language: no specific tool names. "your PM tool", "your file delivery stack", etc.
+• Open with "Hi [Name]," — always, no exceptions.
+• Body = EXACTLY 3 SHORT PARAGRAPHS (not bullet points, not a single long paragraph).
+  - P1 (1–2 sentences): Consequence or scenario question specific to this segment. Use segment.lead_hook if populated. A question that forces the prospect to think about a real operational consequence.
+  - P2 (2–3 sentences): The broader pattern or why the problem is hard to fix internally. Weave in a specific statistic from statistics[] or reference segment.key_pressures. Write as a peer, not a vendor.
+  - P3 (1–2 sentences): Name [vertical.client_name] and the specific service combination for this segment. End with the primary_cta.name offer — one sentence, e.g. "The entry point is [primary_cta.name] — [brief benefit clause]."
+• After P3 on its own line: [Link]
+• Then one short closing question: "Worth 20 minutes?" / "Can we schedule a brief conversation?" / "Would a conversation about [topic] be useful?"
+• Then "Best," on its own line, then "[Sign off]" on its own line.
+• CTA placeholder: [Link] only — never the actual URL.
+• NEVER include audience targeting metadata in the email body.
 
 ════════════════════════════════════════════
 
 ────────────────────────────────────────────
 ## Cover
-BDR Call Scripts and Email Sequences
-[vertical.name] · [vertical.client_name]
-[exact count of segments[]] Segments · [exact count of segments[] + 1] Email Sequences
-Internal Use Only
+[vertical.client_name]
+[vertical.name] + [short label for the primary regulatory framework from regulatory_frameworks[0].name, e.g. "HIPAA" or "Compliance"]
+Call Scripts and Emails
+BDR Outreach · [exact count of segments[]] Segments · [exact count of segments[] + 1] Email Sequences
 
 ────────────────────────────────────────────
 ## Contents
-| Segment | Subject Line |
-|---|---|
-[One row per segment email in order, then one row for the AI email]
+Call Scripts  Summary table — subject lines, conversation starters, voicemail scripts
+Email 1  [segment 1 description — same wording used as the Email 1 heading below]
+Email 2  [segment 2 description]
+[continue for every segment...]
+Email [N+1]  AI governance — all segments
 
 ────────────────────────────────────────────
 ## How to Use
-Personalize every [customize with...] bracket before sending. Subject lines and conversation starters work without customization but specificity improves response rates. The primary CTA is the same in every email — never pitch a full managed services engagement on cold outreach.
+Personalise every [customize with...] bracket before sending. Subject lines and conversation starters are written to work without customisation, but specificity always improves response rates. [primary_cta.name] is the call to action in every sequence — never pitch a full managed services engagement on cold outreach.
 
 ────────────────────────────────────────────
 ## Call Scripts
-| # | Segment | Conversation Starters | Voicemail Script |
+Subject lines, opening conversation starters, and voicemail scripts for all [count of segments[]] segments.
+
+| # | Email / Segment | Conversation Starters | Voicemail Script |
 |---|---|---|---|
-[One row per segment. Segment cell = segment name, then *(subject line)* in italics on the next line within the cell. Conversation Starters = three starters numbered 1. 2. 3. in one cell. Each starter is 1-3 sentences, opens with a situation question or observation grounded in segment.key_pressures or statistics[]. Use segment.lead_hook as the basis for Starter 1. Voicemail = 2-3 sentences, complete script "Hi [Name], this is [Your Name] from [vertical.client_name]. [1 sentence on who you work with and the core gap]. [Closing: I'd like to / sending you a note]."]
+[One row per segment in segments[]. Rules per column:
+  # — row number
+  Email / Segment — "[Segment description from segments[].name]" then on a new line "Subject: [subject line for this segment's email]"
+  Conversation Starters — three starters in one cell. Format: 1. "[starter in quotes]" 2. "[starter in quotes]" 3. "[starter in quotes]". Each is 1–2 sentences. Starter 1 uses segment.lead_hook as the basis. All three are questions or direct observations the rep can say verbatim on a cold call.
+  Voicemail Script — complete script: "Hi [First Name], this is [Name] from [vertical.client_name] — I [sent you a note / reached out] about [short service description] for [segment description]. [1 sentence on the core gap — what most orgs in this segment can't sustain]. I'll [follow up by email / send a follow-up note], or [call me at / reach me at] [phone number] to connect sooner."]
 
 ────────────────────────────────────────────
-## Email Sequences
+Output one block per segment below, numbered sequentially, then the AI block.
 
-Repeat EXACTLY the following block for EVERY segment in segments[], in order. Then add the AI block.
+## Email 1  [Segment 1 description — e.g. "Physician groups + multi-specialty practices"]
+### [Subject line for Email 1 — repeated here as the visual section banner]
 
-FORMAT FOR EACH SEGMENT BLOCK — copy this structure exactly, substituting values:
+**Subject Line**
+[subject line]
 
-[Synthesized audience profile line — one sentence describing who this segment is: segment.name + types of organisations that fit + company size from icp.company_size + defining characteristic (e.g. "no dedicated internal security function"). Example: "Mid-market outpatient and ambulatory care providers: physician groups, specialty clinics, community health centers — 50 to 500 employees, no dedicated internal security function."]
-
-Subject: [subject line — event-driven or stat-led, specific to this segment's core pain]
-
-Preview: [1 sentence — the hook that expands the subject line]
-
-
-[Line 1 — Open with the consequence or scenario from segment.lead_hook. A question or a direct operational scenario. No salutation.]
-[Line 2 — Introduce the broader pattern or statistic from statistics[] that validates line 1.]
-[Line 3 — Name a specific financial or operational cost using statistics[] or challenges[]. Concrete figure if available.]
-[Line 4 — Introduce vertical.client_name and the specific service combination that solves lines 1-3. Name the services. One sentence.]
-
-[Link]
-
-[Closing question — one short question: "Worth 30 minutes to see what your current exposure looks like?" or similar.]
+**Preview Text**
+[1 sentence — expands the subject line into a specific operational hook]
 
 
-*Customize with: [2-3 specific personalization suggestions — recent event at similar org, specific technology in use, recent regulatory enforcement activity in the prospect's region]*
+Hi [Name],
 
-────────────────────────────────────────────
-After all segment blocks, add this AI block:
+[P1 — 1–2 sentences. Direct consequence question or scenario tied to segment.lead_hook or segment.core_pain. Specific.]
 
-AI-Forward Outreach (All Segments)
+[P2 — 2–3 sentences. The broader pattern. Why it is hard to fix internally. A statistic from statistics[] or reference from segment.key_pressures.]
 
-Subject: [AI-specific subject line — references a specific time cost or productivity gap]
-
-Preview: [AI hook — names the governance or deployment barrier]
-
-
-[Line 1 — Open with a specific time statistic about AI admin burden or similar from statistics[]. No salutation.]
-[Line 2 — Name the reason AI pilots stall for this vertical (governance, PHI, compliance infrastructure).]
-[Line 3 — Name vertical.client_name's AI readiness or assessment service specifically.]
-[Line 4 — Describe the outcome the prospect gets — productivity gain without the PHI risk.]
+[P3 — 1–2 sentences. Name [vertical.client_name] + the specific services for this segment. Close with: "The entry point is [primary_cta.name]" + a brief benefit clause, e.g. "— maps your current posture against [framework], no commitment required."]
 
 [Link]
 
 [Closing question]
 
+Best,
 
-*Customize with: [specific AI initiative underway, administrative bottleneck identified in discovery, company name]*
+[Sign off]
+
+[Repeat the exact structure above as "## Email 2  [Segment 2]", "## Email 3  [Segment 3]", etc., for every remaining segment in segments[]]
+
+────────────────────────────────────────────
+Final block — always last:
+
+## Email [N+1]  AI governance — all segments
+### [Subject line — references a specific admin time cost or productivity gap from statistics[], e.g. "The problem with AI in [vertical] isn't AI — it's the missing governance layer"]
+
+**Subject Line**
+[subject line]
+
+**Preview Text**
+[1 sentence — names the governance or deployment barrier]
+
+
+Hi [Name],
+
+[P1 — 1–2 sentences. Open with a specific statistic about AI admin burden or productivity opportunity from statistics[]. Specific percentage or figure if available.]
+
+[P2 — 2–3 sentences. Name the governance gap — why AI pilots stall for this vertical (PHI, compliance infrastructure, no governed deployment layer). Draw from regulatory_frameworks[] or challenges[] as context.]
+
+[P3 — 1–2 sentences. Name [vertical.client_name]'s AI service. Describe the outcome — productivity gain + governance built in. Close with a reference to primary_cta.name.]
+
+[Link]
+
+[Closing question]
+
+Best,
+
+[Sign off]
 
 ────────────────────────────────────────────
 ## Back Cover
-**[vertical.client_name] — [vertical.name]**
-*BDR Call Scripts and Email Sequences*
-
-INTERNAL USE ONLY — Not for Distribution
-
-[vertical.client_name] · Version 1.0 · [current year from document metadata]`,
+[vertical.client_name]
+[VERTICAL.NAME IN CAPS] + [COMPLIANCE LABEL IN CAPS]  |  CALL SCRIPTS AND EMAILS  |  INTERNAL USE ONLY
+Confidential — Not for Distribution  ·  [vertical.client_name] Marketing  ·  v1.0  ·  [current year from document metadata]`,
 
     // 05 Customer Deck
     `Using the intake JSON provided, generate a 14-slide customer-facing presentation in markdown format. Use ## Slide N: [Title] as the header for each slide.
