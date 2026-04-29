@@ -64,6 +64,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
     if (cfg.documentId) return true
     if (cfg.url) return true  // web-scrape / api-fetch
     if (cfg.raw_text) return true  // instruction-translator
+    if (cfg.storageKey) return true  // docx-reader
     return false
   })()
   const needsContent = !hasContent && status === 'idle' && !hasIncomingEdge

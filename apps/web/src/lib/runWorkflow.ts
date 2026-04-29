@@ -39,7 +39,7 @@ function isSourceNodeConfigured(n: Node): boolean {
     (Array.isArray(cfg.library_refs) && cfg.library_refs.length > 0) ||
     (Array.isArray(cfg.audio_files) && cfg.audio_files.length > 0) ||
     (Array.isArray(cfg.video_files) && cfg.video_files.length > 0) ||
-    cfg.documentId || cfg.url || cfg.raw_text
+    cfg.documentId || cfg.url || cfg.raw_text || cfg.storageKey
   )
 }
 
