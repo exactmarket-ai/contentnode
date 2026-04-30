@@ -103,6 +103,51 @@ function getComplianceFrameworks(verticalName: string): { frameworks: string; de
   return null
 }
 
+// ─── Brand tension detection ──────────────────────────────────────────────────
+
+// Maps product-category keywords that can appear in company names to category IDs.
+// Only strong, unambiguous signals are included to avoid false positives.
+const BRAND_CATEGORY_SIGNALS: Array<{ category: string; keywords: string[] }> = [
+  { category: 'performance_mgmt',  keywords: ['performix', 'performio', 'perform', 'appraisal', 'okr'] },
+  { category: 'time_attendance',   keywords: ['timetrack', 'timeclock', 'clockin', 'timesheet', 'shiftplan'] },
+  { category: 'fleet_field',       keywords: ['fleettrack', 'fleetio', 'fleet', 'dispatch', 'fieldops', 'fieldservice'] },
+  { category: 'sales_crm',         keywords: ['salesforce', 'salesfunnel', 'pipelinecrm', 'leadscore'] },
+  { category: 'hr_people',         keywords: ['paylocity', 'payroll', 'hris', 'talentplus', 'workforcepro', 'onboardiq'] },
+  { category: 'healthcare',        keywords: ['healthcloud', 'medplus', 'clinicpro', 'dentalpro', 'pharmapro', 'careiq'] },
+  { category: 'finance_accounting',keywords: ['quickbooks', 'xeroplus', 'ledgerio', 'invoicecloud', 'billingpro'] },
+  { category: 'inventory_supply',  keywords: ['inventorypro', 'warehouseiq', 'stockpro', 'supplychain'] },
+  { category: 'learning_lms',      keywords: ['learnpro', 'trainingpro', 'courseware', 'elearning', 'lmsplus'] },
+  { category: 'marketing',         keywords: ['campaignpro', 'marketingos', 'emailpro', 'adcloud'] },
+]
+
+// Keywords in vertical names that signal the same category.
+const VERTICAL_CATEGORY_SIGNALS: Record<string, string[]> = {
+  performance_mgmt:   ['performance', 'appraisal', 'review', 'okr', 'goal'],
+  time_attendance:    ['time', 'pto', 'leave', 'schedule', 'shift', 'attendance', 'timesheet'],
+  fleet_field:        ['fleet', 'field service', 'dispatch', 'routing'],
+  sales_crm:          ['sales', 'crm', 'pipeline', 'revenue', 'prospect'],
+  hr_people:          ['hr ', 'human resource', 'people ops', 'talent', 'payroll', 'workforce'],
+  healthcare:         ['health', 'medical', 'clinical', 'dental', 'pharma'],
+  finance_accounting: ['finance', 'accounting', 'billing', 'invoice', 'bookkeep'],
+  inventory_supply:   ['inventory', 'warehouse', 'supply chain', 'logistics', 'stock'],
+  learning_lms:       ['learning', 'training', 'lms', 'course'],
+  marketing:          ['marketing', 'campaign', 'advertising'],
+}
+
+function detectBrandTension(clientName: string, verticalName: string): boolean {
+  const nameLower = clientName.toLowerCase().replace(/\s+/g, '')
+  const vertLower  = verticalName.toLowerCase()
+
+  for (const { category, keywords } of BRAND_CATEGORY_SIGNALS) {
+    if (!keywords.some((kw) => nameLower.includes(kw))) continue
+    // Company name has a strong signal for `category` — check if vertical matches it
+    const vertSignals = VERTICAL_CATEGORY_SIGNALS[category] ?? []
+    if (vertSignals.some((vs) => vertLower.includes(vs))) return false
+    return true  // company implies category X, vertical doesn't
+  }
+  return false
+}
+
 // ─── Section reference ────────────────────────────────────────────────────────
 
 const SECTION_REFERENCE = `
@@ -536,6 +581,7 @@ function buildSystemPrompt(
   researchBySection?: Record<string, string> | null,
   conflictLog?: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation?: string }> | null,
   companyBrief?: string | null,
+  brandTensionDetected?: boolean,
 ): string {
   const filledList = filledSections.length > 0
     ? filledSections.join(', ')
@@ -1957,7 +2003,10 @@ YOUR ROLE — ALWAYS BRING SOMETHING:
 You never present a blank field and ask the user to fill it. Every response starts with you bringing something: a draft, a hypothesis, a data point from the brain, or a direct question that shows you already know the context. The user reacts to what you bring — they do not create from scratch.
 
 SESSION ARC:
-**Orient** (first 1-2 turns): Announce the brain state and what it means. If RICH, lead with a draft for the most strategically important empty section. If PARTIAL, name the gaps and show what exists. If SPARSE, build a working starting point before asking anything. The most important work is rarely the emptiest section — a filled section with a weak answer is often the bigger problem.
+${brandTensionDetected ? `**Brand naming tension — open with this before anything else:**
+The company name carries product-category language that does not obviously align with the "${verticalName}" vertical. Your very first response must be: "Before we start, I want to flag something. The company name carries connotations from one product category but this vertical sits in a different space. Is this vertical being marketed under the same brand or does it have its own product name? That answer affects how we position everything here." After the user answers, proceed with the normal session arc below.
+
+` : ''}**Orient** (first 1-2 turns): Announce the brain state and what it means. If RICH, lead with a draft for the most strategically important empty section. If PARTIAL, name the gaps and show what exists. If SPARSE, build a working starting point before asking anything. The most important work is rarely the emptiest section — a filled section with a weak answer is often the bigger problem.
 **Explore**: Go deep. Reference brain content directly rather than asking the user to repeat it. Name contradictions. Ask the uncomfortable question.
 **Narrow**: When you have enough, confirm a draft: "Based on what you've said and what I know about this vertical, here's what I'd put in Section 08 — does this feel right?"
 **Fill**: User confirms. Navigate to that section.
@@ -2259,6 +2308,9 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     const brainState = classifyBrainState(brainMeta, activeBriefContent)
     const brainStateBlock = buildBrainStateBlock(brainState, brainMeta, activeBriefContent)
 
+    const brandTensionDetected = messages.length === 1
+      && detectBrandTension(client.name, verticalName ?? vertical.name)
+
     const systemPrompt = buildSystemPrompt(
       contextParts,
       filledSections,
@@ -2269,6 +2321,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       researchBySection as Record<string, string> | null | undefined,
       conflictLog,
       activeBriefContent,
+      brandTensionDetected,
     )
 
     const levelHint = `[GTM Framework — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`
@@ -2372,5 +2425,112 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
 
     await prisma.pilotSession.delete({ where: { id: sessionId } })
     return reply.send({ data: { deleted: true } })
+  })
+
+  // ── POST /consolidate — summarize a session and write to vertical brain ──────
+  // Called by the frontend when the chat payload grows too large. Generates a
+  // structured summary synchronously (user is waiting), saves it to the pilot
+  // session record, and creates a ClientVerticalBrainAttachment so future
+  // sessions load the summary as vertical brain context.
+  app.post('/consolidate', async (req, reply) => {
+    const { agencyId } = req.auth
+
+    const parsed = z.object({
+      messages:   z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).min(1),
+      clientId:   z.string(),
+      verticalId: z.string(),
+      sessionId:  z.string().optional().nullable(),
+    }).safeParse(req.body)
+
+    if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' })
+    const { messages: msgs, clientId, verticalId, sessionId } = parsed.data
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true, name: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true, name: true } }),
+    ])
+    if (!client || !vertical) return reply.code(404).send({ error: 'Client or vertical not found' })
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
+    const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
+
+    // Truncate each message to 800 chars for the summarization prompt so it stays compact
+    const transcript = msgs
+      .map((m) => `${m.role.toUpperCase()}: ${m.content.length > 800 ? m.content.slice(0, 800) + '…' : m.content}`)
+      .join('\n\n')
+
+    let summary: { decisions: string[]; rejected: string[]; openQuestions: string[] } = {
+      decisions: [], rejected: [], openQuestions: [],
+    }
+
+    try {
+      const result = await anthropic.messages.create({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 800,
+        messages:   [{
+          role:    'user',
+          content: `Summarize this gtmPILOT session for ${client.name} — ${vertical.name} vertical. Output valid JSON only, no markdown:
+{"decisions":["…"],"rejected":["…"],"openQuestions":["…"]}
+- decisions: things committed to (positioning, buyers, differentiators, confirmed section content)
+- rejected: options ruled out with reason
+- openQuestions: unresolved threads to pick up next session
+Max 5 per category. Be specific — use language from the transcript.
+
+TRANSCRIPT:
+${transcript}`,
+        }],
+      })
+      const text = result.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+      const cleaned = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '')
+      summary = JSON.parse(cleaned) as typeof summary
+    } catch { /* non-fatal — proceed with empty summary */ }
+
+    // Persist summary to the pilot session record
+    if (sessionId) {
+      try {
+        await prisma.pilotSession.upsert({
+          where:  { id: sessionId },
+          create: {
+            id: sessionId, agencyId, clientId, verticalId,
+            messages: msgs, messageCount: msgs.length,
+            status: 'summarized', summary, summarizedAt: new Date(),
+          },
+          update: { summary, status: 'summarized', summarizedAt: new Date() },
+        })
+      } catch { /* non-fatal */ }
+    }
+
+    // Write summary to ClientVerticalBrainAttachment so it loads in future sessions
+    const summaryLines = [
+      summary.decisions.length > 0      ? `Key decisions: ${summary.decisions.join(' | ')}` : null,
+      summary.rejected.length > 0       ? `Ruled out: ${summary.rejected.join(' | ')}`       : null,
+      summary.openQuestions.length > 0  ? `Open questions: ${summary.openQuestions.join(' | ')}` : null,
+    ].filter(Boolean).join('\n')
+
+    if (summaryLines) {
+      const date = new Date().toISOString().split('T')[0]
+      try {
+        await prisma.clientVerticalBrainAttachment.create({
+          data: {
+            agencyId,
+            clientId,
+            verticalId,
+            filename:         `PILOT Session Summary — ${date}`,
+            uploadMethod:     'note',
+            mimeType:         'text/plain',
+            extractionStatus: 'ready',
+            extractedText:    summaryLines,
+            summaryStatus:    'ready',
+            summary:          summaryLines,
+          },
+        })
+      } catch { /* non-fatal — brain write failure does not break consolidation */ }
+    }
+
+    return reply.send({ data: { summary } })
   })
 }

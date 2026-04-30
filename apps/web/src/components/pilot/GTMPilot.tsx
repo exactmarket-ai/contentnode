@@ -484,8 +484,72 @@ export function GTMPilot({
       })
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Request failed' }))
-        setMessages((prev) => [...prev, { role: 'assistant', content: `Something went wrong: ${(err as { error?: string }).error ?? res.status}` }])
+        const errData = await res.json().catch(() => ({ error: 'Request failed' })) as { error?: string }
+
+        // 400 = payload validation failure (conversation too long, message too large, etc.)
+        // Consolidate the session and retry automatically rather than surfacing a raw error.
+        if (res.status === 400) {
+          setMessages((prev) => [...prev, {
+            role: 'assistant',
+            content: 'Our conversation has gotten long enough that I need to consolidate the context. One moment.',
+          }])
+
+          // Write session summary to vertical brain (non-fatal if it fails)
+          try {
+            await apiFetch('/api/v1/gtm-pilot/consolidate', {
+              method:  'POST',
+              headers: { 'content-type': 'application/json' },
+              body:    JSON.stringify({
+                messages:   history.map((m) => ({ role: m.role, content: m.content })),
+                clientId,
+                verticalId: verticalId!,
+                sessionId:  sessionIdRef.current,
+              }),
+            })
+          } catch { /* non-fatal */ }
+
+          // Trim to last 10 exchanges (20 messages), preserving the session anchor
+          const RECOVERY_LIMIT = 20
+          const trimmedHistory: GtmMessage[] = history.length > RECOVERY_LIMIT
+            ? [history[0], ...history.slice(-(RECOVERY_LIMIT - 1))]
+            : history
+
+          // Retry the original message with trimmed history
+          const retryRes = await apiFetch('/api/v1/gtm-pilot/chat', {
+            method:  'POST',
+            headers: { 'content-type': 'application/json' },
+            body:    JSON.stringify({
+              messages:   trimmedHistory.map((m) => ({ role: m.role, content: m.content })),
+              clientId,
+              verticalId: verticalId!,
+              verticalName,
+              filledSections,
+              emptySections,
+              activeSection:  activeSection ?? undefined,
+              researchBySection,
+              conflictLog:    activeSectionConflicts.length > 0 ? activeSectionConflicts : undefined,
+              companyBrief:   companyBrief ?? undefined,
+              sessionId:      sessionIdRef.current,
+            }),
+          })
+
+          if (!retryRes.ok) {
+            setMessages((prev) => [...prev, {
+              role:    'assistant',
+              content: "I wasn't able to recover automatically. Please refresh the page — your session history has been saved and will be available next time.",
+            }])
+            return
+          }
+
+          const { data: retryData } = await retryRes.json() as { data: { reply: string; suggestions: GtmSuggestion[] } }
+          const retryContent = processReply((retryData.reply ?? '').trim())
+          const retrySuggestions: GtmSuggestion[] = Array.isArray(retryData.suggestions) ? retryData.suggestions : []
+          setMessages((prev) => [...prev, { role: 'assistant', content: retryContent, suggestions: retrySuggestions }])
+          return
+        }
+
+        // Other non-400 errors — surface directly
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Something went wrong: ${errData.error ?? res.status}` }])
         return
       }
 
