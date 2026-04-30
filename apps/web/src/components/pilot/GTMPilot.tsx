@@ -305,7 +305,7 @@ export function GTMPilot({
   onBriefSaved,
   onSectionSkipped,
 }: GTMPilotProps) {
-  const [openInternal, setOpenInternal] = useState(false)
+  const [openInternal, setOpenInternal] = useState(true)
   const [messages, setMessages]         = useState<GtmMessage[]>([])
   const [loading, setLoading]           = useState(false)
   const [input, setInput]               = useState('')
@@ -453,60 +453,64 @@ export function GTMPilot({
     void sendMessage(`I'm looking at section ${num} — ${SECTION_LABELS[num] ?? num}. What should I focus on here?`)
   }
 
-  // ── Collapsed ──────────────────────────────────────────────────────────────
+  // ── Minimized — user explicitly minimized, shows last message preview ────────
   if (!open) {
     const lastMsg = [...messages].reverse().find((m) => m.role === 'assistant')
     const conflictCount = conflictLog?.length ?? 0
     return (
       <div
-        className="relative flex items-center gap-3 border-t border-border bg-card px-4 cursor-pointer hover:bg-muted/40 transition-colors"
-        style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 44, zIndex: 40 }}
+        className="relative flex flex-col border-t border-border bg-card cursor-pointer hover:bg-muted/20 transition-colors"
+        style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 96, zIndex: 40 }}
         onClick={() => setOpen(true)}
       >
         <button
           onClick={(e) => { e.stopPropagation(); setOpen(true) }}
-          title="Open gtmPILOT"
+          title="Expand gtmPILOT"
           className="absolute top-0 left-1/2 z-10 -translate-x-1/2 flex w-12 h-3 items-center justify-center rounded-b-sm border border-t-0 border-border bg-card hover:bg-muted transition-colors"
         >
           <Icons.ChevronUp className="h-2 w-2 text-muted-foreground" />
         </button>
 
-        <div className="flex items-center gap-1.5 text-blue-600 shrink-0">
-          <Icons.Compass className="h-4 w-4" />
-          <span className="text-xs font-bold tracking-wide">gtmPILOT</span>
+        {/* Mini header */}
+        <div className="flex items-center gap-2 px-4 pt-3 pb-1 shrink-0">
+          <div className="flex items-center gap-1.5 text-blue-600">
+            <Icons.Compass className="h-3.5 w-3.5" />
+            <span className="text-[11px] font-bold tracking-wide">gtmPILOT</span>
+          </div>
+          {verticalName && (
+            <span className="rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{verticalName}</span>
+          )}
+          {conflictCount > 0 && (
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">{conflictCount} conflict{conflictCount !== 1 ? 's' : ''}</span>
+          )}
+          <span className="ml-auto text-[10px] text-muted-foreground/60 select-none">minimized</span>
         </div>
 
-        {conflictCount > 0 && (
-          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-            {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
-          </span>
-        )}
-
-        <span className="flex-1 truncate text-[11px] text-muted-foreground">
-          {!verticalId
-            ? 'Select a vertical above to start your GTM Framework…'
-            : lastMsg
-              ? lastMsg.content.replace(/\n/g, ' ').slice(0, 90)
-              : 'Ask me to help complete your GTM Framework sections…'
-          }
-        </span>
-
-        <span className="text-[10px] text-blue-500 font-medium shrink-0 select-none">
-          Click to open ↑
-        </span>
+        {/* Last message preview — 2-3 lines */}
+        <div className="px-4 pb-2 overflow-hidden">
+          {lastMsg ? (
+            <p className="text-[11px] text-muted-foreground line-clamp-3 leading-relaxed">
+              {lastMsg.content.replace(/\n+/g, ' ')}
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground/60 italic">
+              {!verticalId ? 'Select a vertical to begin…' : 'Ready to help with your GTM Framework.'}
+            </p>
+          )}
+        </div>
       </div>
     )
   }
 
-  // ── Expanded — 40% viewport height ────────────────────────────────────────
+  // ── Expanded — min 300px, up to 40vh ─────────────────────────────────────
   return (
     <div
       className="relative flex flex-col border-t border-border bg-card"
-      style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: '40vh', zIndex: 40 }}
+      style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 'max(300px, 40vh)', zIndex: 40 }}
     >
       <button
         onClick={() => setOpen(false)}
-        title="Collapse gtmPILOT"
+        title="Minimize gtmPILOT"
         className="absolute top-0 left-1/2 z-10 -translate-x-1/2 flex w-12 h-3 items-center justify-center rounded-b-sm border border-t-0 border-border bg-card hover:bg-muted transition-colors"
       >
         <Icons.ChevronDown className="h-2 w-2 text-muted-foreground" />

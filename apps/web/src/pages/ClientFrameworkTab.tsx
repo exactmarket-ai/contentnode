@@ -2389,7 +2389,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [pendingResearchMerge, setPendingResearchMerge] = useState<boolean>(false)
   const [uploadedGtm, setUploadedGtm] = useState<UploadedGtm | null>(null)
   const [uploadingClientGtm, setUploadingClientGtm] = useState(false)
-  const [pilotOpen, setPilotOpen] = useState(false)
+  const [pilotOpen, setPilotOpen] = useState(true)
   const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({})
   const [companyBrief, setCompanyBrief] = useState('')
   const [briefSaved, setBriefSaved] = useState(false)
@@ -3574,7 +3574,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         verticalName={selectedVertical?.name ?? null}
         filledSections={filledSections}
         emptySections={emptySections}
-        onNavigateToSection={(num) => { setActiveSection(num); setPilotOpen(false) }}
+        onNavigateToSection={(num) => { setActiveSection(num) }}
         open={pilotOpen}
         onOpenChange={setPilotOpen}
         activeSection={activeSection !== 'brain' && activeSection !== '00' ? activeSection : null}
