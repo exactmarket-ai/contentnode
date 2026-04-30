@@ -2130,7 +2130,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const websitePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Enhanced research run state
-  type ResearchRun = { id: string; status: string; researchMode: string; sectionResults: Record<string, string | null> | null; researchedAt: string | null; createdAt: string }
+  type ResearchRun = { id: string; status: string; researchMode: string; sectionResults: Record<string, unknown> | null; researchedAt: string | null; createdAt: string }
   type UploadedGtm = { id: string; filename: string; status: string; conflictLog: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation?: string }> | null; uploadedAt: string; processedAt: string | null; errorMessage: string | null }
   const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([])
   const [researchRunning, setResearchRunning] = useState(false)

@@ -13,25 +13,33 @@ import { cn } from '@/lib/utils'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatResearchForDisplay(raw: string): string {
-  try {
-    const parsed = JSON.parse(raw)
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return raw
-    return Object.entries(parsed).map(([key, val]) => {
-      const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-      if (Array.isArray(val)) {
-        const items = val.filter((v) => typeof v === 'string') as string[]
-        const preview = items.slice(0, 3).join(' · ')
-        return `${label}: ${preview}${items.length > 3 ? ` (+${items.length - 3} more)` : ''}`
-      }
-      if (typeof val === 'string') {
-        return `${label}: ${val.length > 120 ? val.slice(0, 120) + '…' : val}`
-      }
-      return null
-    }).filter(Boolean).join('\n')
-  } catch {
-    return raw
+function formatResearchForDisplay(raw: unknown): string {
+  if (!raw) return ''
+  // Prisma Json columns arrive as JS objects at runtime — handle both objects and strings
+  let obj: Record<string, unknown> | null = null
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    obj = raw as Record<string, unknown>
+  } else if (typeof raw === 'string') {
+    try { obj = JSON.parse(raw) as Record<string, unknown> } catch { return raw }
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return raw
+  } else {
+    return String(raw)
   }
+  return Object.entries(obj).map(([key, val]) => {
+    const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    if (Array.isArray(val)) {
+      const items = (val as unknown[]).filter((v) => typeof v === 'string') as string[]
+      const preview = items.slice(0, 3).join(' · ')
+      return `${label}: ${preview}${items.length > 3 ? ` (+${items.length - 3} more)` : ''}`
+    }
+    if (typeof val === 'string') {
+      return `${label}: ${val.length > 120 ? val.slice(0, 120) + '…' : val}`
+    }
+    if (typeof val === 'object' && val !== null) {
+      return `${label}: ${JSON.stringify(val).slice(0, 120)}…`
+    }
+    return null
+  }).filter(Boolean).join('\n')
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -82,7 +90,7 @@ export interface GTMPilotProps {
   onOpenChange?: (open: boolean) => void
   // Research context
   activeSection?: string | null
-  researchRun?: { sectionResults: Record<string, string | null> | null } | null
+  researchRun?: { sectionResults: Record<string, unknown> | null } | null
   conflictLog?: ConflictEntry[] | null
   sectionStatus?: Record<string, string>
   onSectionStatusChange?: (sectionNum: string, status: string) => void
@@ -321,9 +329,9 @@ export function GTMPilot({
     try {
       const history = [...messages, userMsg]
 
-      // Build research context for active section
+      // Build research context for active section (coerce to string for API)
       const researchBySection: Record<string, string> | undefined = (activeSection && activeSectionResearch)
-        ? { [activeSection]: activeSectionResearch }
+        ? { [activeSection]: typeof activeSectionResearch === 'string' ? activeSectionResearch : JSON.stringify(activeSectionResearch) }
         : undefined
 
       const res = await apiFetch('/api/v1/gtm-pilot/chat', {
