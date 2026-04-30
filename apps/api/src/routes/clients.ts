@@ -3933,10 +3933,12 @@ ${docText.slice(0, 12000)}`
     return reply.send({ data: { ok: true } })
   })
 
-  // ── POST /:id/framework/:verticalId/fill-from-client-gtm — fill empty sections from uploaded GTM
+  // ── POST /:id/framework/:verticalId/fill-from-client-gtm — fill sections from uploaded GTM
+  // Body: { replace?: boolean } — when true, overwrites all sections (not just empty ones)
   app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/fill-from-client-gtm', async (req, reply) => {
     const { agencyId } = req.auth
     const { id: clientId, verticalId } = req.params
+    const { replace = false } = (req.body ?? {}) as { replace?: boolean }
 
     const [client, vertical] = await Promise.all([
       prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
@@ -3978,16 +3980,18 @@ ${docText.slice(0, 12000)}`
       return total === 0 || filled === 0
     }
 
-    // Collect empty sections that have extracted content
+    // Collect sections that have extracted content — in replace mode, include all; otherwise only empty ones
     const SECTION_NUMS = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18']
     const sectionsToFill: Record<string, string> = {}
     for (const num of SECTION_NUMS) {
       const text = extracted[num]
       if (!text || !text.trim()) continue
-      const sKey = `s${num}`
-      const current = currentData[sKey]
-      const alreadyFilled = current && !isSectionEmpty(current)
-      if (alreadyFilled) continue
+      if (!replace) {
+        const sKey = `s${num}`
+        const current = currentData[sKey]
+        const alreadyFilled = current && !isSectionEmpty(current)
+        if (alreadyFilled) continue
+      }
       sectionsToFill[num] = text
     }
 

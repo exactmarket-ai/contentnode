@@ -2397,12 +2397,16 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     }
   }, [clientId, selectedVertical])
 
-  const fillFromClientGtm = useCallback(async () => {
+  const fillFromClientGtm = useCallback(async (replace = false) => {
     if (!selectedVertical) return
     setFillingFromClientGtm(true)
     setFillResult(null)
     try {
-      const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/fill-from-client-gtm`, { method: 'POST' })
+      const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/fill-from-client-gtm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replace }),
+      })
       if (!res.ok) { const b = await res.json().catch(() => ({})); alert('Fill failed: ' + ((b as any).error ?? res.status)); return }
       const { data } = await res.json()
       setFillResult(data)
@@ -3117,21 +3121,33 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                     </div>
                     <div className="flex items-center gap-3">
                       {uploadedGtm.status === 'ready' && (
-                        <button
-                          onClick={() => void fillFromClientGtm()}
-                          disabled={fillingFromClientGtm}
-                          className="flex items-center gap-1.5 rounded-md bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 text-[11px] font-semibold text-white transition-colors"
-                        >
-                          {fillingFromClientGtm ? (
-                            <>
-                              <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                              </svg>
-                              Filling…
-                            </>
-                          ) : 'Fill empty sections'}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => void fillFromClientGtm(false)}
+                            disabled={fillingFromClientGtm}
+                            className="flex items-center gap-1.5 rounded-md bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 text-[11px] font-semibold text-white transition-colors"
+                          >
+                            {fillingFromClientGtm ? (
+                              <>
+                                <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                </svg>
+                                Filling…
+                              </>
+                            ) : 'Fill empty sections'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!window.confirm('This will overwrite all sections — including any content you have already edited — with what was in the uploaded document. Continue?')) return
+                              void fillFromClientGtm(true)
+                            }}
+                            disabled={fillingFromClientGtm}
+                            className="flex items-center gap-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 text-[11px] font-semibold text-foreground transition-colors"
+                          >
+                            Replace all sections
+                          </button>
+                        </>
                       )}
                       <button
                         onClick={() => clientGtmInputRef.current?.click()}
@@ -3155,8 +3171,8 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                     {fillResult && (
                       <p className="text-[11px] text-green-600 font-medium">
                         {fillResult.filledCount > 0
-                          ? `✓ Filled ${fillResult.filledCount} section${fillResult.filledCount !== 1 ? 's' : ''} — marked as AI Draft`
-                          : 'No empty sections to fill — all sections already have content'}
+                          ? `✓ Replaced ${fillResult.filledCount} section${fillResult.filledCount !== 1 ? 's' : ''} — marked as AI Draft`
+                          : 'No sections with content found in the uploaded document'}
                       </p>
                     )}
                   </div>
