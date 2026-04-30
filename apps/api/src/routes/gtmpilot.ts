@@ -126,6 +126,66 @@ GTM FRAMEWORK SECTIONS (sectionNum → meaning):
 "18" — CTAs + Next Steps: Approved CTAs by funnel stage with guidance. Used across all 8 assets.
 `
 
+// ─── Section behavioral groups ────────────────────────────────────────────────
+
+const SECTION_BEHAVIORAL_GROUPS = `
+SECTION BEHAVIORAL GROUPS — apply the correct pattern for every section:
+
+GROUP 1 — RESEARCH-DRIVEN (§03, §12, §15, §17):
+Do NOT ask the user to provide this content. Pull from vertical brain, company brain, and research first.
+Present a complete or near-complete draft and ask the user to confirm, correct, or expand.
+If research is thin, run targeted searches before presenting anything.
+The user should rarely need to type more than corrections in these sections.
+
+GROUP 2 — EXTRACTION (§01, §06, §08, §11):
+The user holds the answer but hasn't articulated it yet. Your job is to pull it out and sharpen it.
+Lead with a hypothesis based on brain content. Ask one specific question at a time.
+When the user answers, reflect it back in sharpened form and ask if that's accurate.
+Do not accept vague answers. If the answer could describe any company in any vertical, say so and ask again.
+
+GROUP 3 — CONSTRUCTION (§02, §04, §07, §10):
+Build collaboratively. Lead with 2-3 concrete options based on what you know about the vertical and company.
+The user reacts, selects, or redirects. You refine based on their input.
+Neither you nor the user completes these sections alone — it's an iterative build.
+
+GROUP 4 — DOWNSTREAM (§05, §09, §14, §16, §18):
+These sections depend on upstream sections. Before attempting them, check whether upstream content is sufficient.
+  §05 needs: §01 (positioning), §04 (challenges)
+  §09 needs: §04 (challenges), §07 (buyer profiles), §08 (messaging)
+  §14 needs: §01 (overview), §08 (messaging)
+  §16 needs: §08 (messaging)
+  §18 needs: §01 (overview), §08 (messaging)
+If upstream sections are complete enough: draft the section automatically and present for approval.
+If upstream sections are incomplete: tell the user exactly which sections need more work first.
+Do not attempt to fill downstream sections from insufficient inputs — the output will be generic.
+
+GROUP 5 — PROOF AND ADMIN (§13):
+Behaves as CONSTRUCTION if no case studies exist in the brain: ask targeted questions to build anonymized versions from engagements the user describes.
+Behaves as DOWNSTREAM if case studies exist in the brain: pull and format them, present for approval.
+Check the brain context before deciding which mode to use.
+`
+
+const SECTION_GROUP_MAP: Record<string, { name: string; hint: string }> = {
+  '03': { name: 'GROUP 1 — RESEARCH-DRIVEN', hint: 'Pull from brain and research first. Present a near-complete draft. Ask the user to confirm, correct, or expand — not to create.' },
+  '12': { name: 'GROUP 1 — RESEARCH-DRIVEN', hint: 'Pull from brain and research first. Present a near-complete draft. Ask the user to confirm, correct, or expand — not to create.' },
+  '15': { name: 'GROUP 1 — RESEARCH-DRIVEN', hint: 'Pull from brain and research first. Present a near-complete draft. Ask the user to confirm, correct, or expand — not to create.' },
+  '17': { name: 'GROUP 1 — RESEARCH-DRIVEN', hint: 'Pull from brain and research first. Present a near-complete draft. Ask the user to confirm, correct, or expand — not to create.' },
+  '01': { name: 'GROUP 2 — EXTRACTION', hint: 'Lead with a hypothesis from brain content. One question at a time. Reflect every answer back in sharpened form. Reject anything that could describe any company.' },
+  '06': { name: 'GROUP 2 — EXTRACTION', hint: 'Lead with a hypothesis from brain content. One question at a time. Reflect every answer back in sharpened form. Reject anything that could describe any company.' },
+  '08': { name: 'GROUP 2 — EXTRACTION', hint: 'Lead with a hypothesis from brain content. One question at a time. Reflect every answer back in sharpened form. Reject anything that could describe any company.' },
+  '11': { name: 'GROUP 2 — EXTRACTION', hint: 'Lead with a hypothesis from brain content. One question at a time. Reflect every answer back in sharpened form. Reject anything that could describe any company.' },
+  '02': { name: 'GROUP 3 — CONSTRUCTION', hint: 'Lead with 2-3 concrete options based on what you know. User reacts, selects, or redirects. Refine iteratively. Neither party completes this alone.' },
+  '04': { name: 'GROUP 3 — CONSTRUCTION', hint: 'Lead with 2-3 concrete options based on what you know. User reacts, selects, or redirects. Refine iteratively. Neither party completes this alone.' },
+  '07': { name: 'GROUP 3 — CONSTRUCTION', hint: 'Lead with 2-3 concrete options based on what you know. User reacts, selects, or redirects. Refine iteratively. Neither party completes this alone.' },
+  '10': { name: 'GROUP 3 — CONSTRUCTION', hint: 'Lead with 2-3 concrete options based on what you know. User reacts, selects, or redirects. Refine iteratively. Neither party completes this alone.' },
+  '05': { name: 'GROUP 4 — DOWNSTREAM', hint: 'Check §01 and §04 first. If sufficient, draft automatically and present for approval. If not, name exactly which sections need more work.' },
+  '09': { name: 'GROUP 4 — DOWNSTREAM', hint: 'Check §04, §07, §08 first. If sufficient, draft automatically and present for approval. If not, name exactly which sections need more work.' },
+  '14': { name: 'GROUP 4 — DOWNSTREAM', hint: 'Check §01 and §08 first. If sufficient, draft automatically and present for approval. If not, name exactly which sections need more work.' },
+  '16': { name: 'GROUP 4 — DOWNSTREAM', hint: 'Check §08 first. If sufficient, draft automatically and present for approval. If not, name exactly which sections need more work.' },
+  '18': { name: 'GROUP 4 — DOWNSTREAM', hint: 'Check §01 and §08 first. If sufficient, draft automatically and present for approval. If not, name exactly which sections need more work.' },
+  '13': { name: 'GROUP 5 — PROOF AND ADMIN', hint: 'Check brain for case studies. If they exist: pull and format them (DOWNSTREAM mode). If not: ask targeted questions to build anonymized versions (CONSTRUCTION mode).' },
+}
+
 // ─── Context assembler ────────────────────────────────────────────────────────
 
 interface BrainMeta {
@@ -457,6 +517,13 @@ function buildSystemPrompt(
 After the user answers all 3, synthesize their answers into a company brief, output it on a new line starting with: "BRIEF_SAVE: " followed by the brief text (2-3 sentences). Do NOT include the BRIEF_SAVE line in what you show to the user — it is a silent signal to the system.`
     : ''
 
+  // Active section behavioral group hint
+  let sectionGroupBlock = ''
+  if (activeSection && SECTION_GROUP_MAP[activeSection]) {
+    const grp = SECTION_GROUP_MAP[activeSection]
+    sectionGroupBlock = `\nACTIVE SECTION BEHAVIORAL MODE: ${grp.name}\n${grp.hint}\n`
+  }
+
   // Section-specific research context
   let researchBlock = ''
   if (activeSection && researchBySection?.[activeSection]) {
@@ -535,7 +602,7 @@ Flag this when it's relevant: "Confirming HIPAA here means I'll pull it into the
 Your role: Help the user think through what is actually true about this client's GTM strategy. The sections get filled as a result of that thinking — not as the goal of it.
 
 ${SECTION_REFERENCE}
-
+${SECTION_BEHAVIORAL_GROUPS}
 CLIENT CONTEXT (in priority order — use this to ground every response):
 ${contextBlock}
 ${briefBlock}
@@ -545,7 +612,7 @@ CURRENT FRAMEWORK STATE:
 Vertical: ${verticalName}
 Sections already filled: ${filledList}
 Sections still empty: ${emptyList}
-${activeSection ? `User is currently viewing: §${activeSection}` : ''}${researchBlock}${conflictBlock}${section17Block}${dependencyBlock}${intakeInstructions}
+${activeSection ? `User is currently viewing: §${activeSection}` : ''}${sectionGroupBlock}${researchBlock}${conflictBlock}${section17Block}${dependencyBlock}${intakeInstructions}
 
 YOUR ROLE — ALWAYS BRING SOMETHING:
 You never present a blank field and ask the user to fill it. Every response starts with you bringing something: a draft, a hypothesis, a data point from the brain, or a direct question that shows you already know the context. The user reacts to what you bring — they do not create from scratch.
