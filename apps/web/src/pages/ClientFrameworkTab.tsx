@@ -1714,7 +1714,7 @@ function BriefLibraryPanel({
   briefs: ClientBriefLocal[]
   briefsLoading: boolean
   onBrieferOpen: (brief: ClientBriefLocal) => void
-  onCreateBrief: (name: string, type: string, text?: string) => void
+  onCreateBrief: (name: string, type: string, text?: string) => Promise<void>
   onUploadFile: (file: File) => void
   onToggleStatus: (briefId: string, status: 'active' | 'draft') => void
   onDelete: (briefId: string) => void
@@ -1726,6 +1726,8 @@ function BriefLibraryPanel({
   const [name, setName] = useState('')
   const [type, setType] = useState('company')
   const [text, setText] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
@@ -1751,10 +1753,18 @@ function BriefLibraryPanel({
     }
   }
 
-  const handleCreate = () => {
-    if (!name.trim()) return
-    onCreateBrief(name.trim(), type, showAdd === 'paste' ? text.trim() : undefined)
-    setName(''); setType('company'); setText(''); setShowAdd(null)
+  const handleCreate = async () => {
+    if (!name.trim() || creating) return
+    setCreating(true)
+    setCreateError(null)
+    try {
+      await onCreateBrief(name.trim(), type, showAdd === 'paste' ? text.trim() : undefined)
+      setName(''); setType('company'); setText(''); setShowAdd(null)
+    } catch {
+      setCreateError('Save failed — check your connection and try again.')
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -1811,14 +1821,17 @@ function BriefLibraryPanel({
               onChange={(e) => setText(e.target.value)}
             />
           )}
+          {createError && (
+            <p className="text-[11px] text-red-600 font-medium">{createError}</p>
+          )}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowAdd(null)} className="text-[12px] text-muted-foreground hover:text-foreground px-3 py-1.5 transition-colors">Cancel</button>
+            <button onClick={() => { setShowAdd(null); setCreateError(null) }} className="text-[12px] text-muted-foreground hover:text-foreground px-3 py-1.5 transition-colors">Cancel</button>
             <button
-              onClick={handleCreate}
-              disabled={!name.trim()}
+              onClick={() => void handleCreate()}
+              disabled={!name.trim() || creating}
               className="text-[12px] font-medium bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-40 transition-colors"
             >
-              {showAdd === 'paste' ? 'Create & Extract' : 'Create'}
+              {creating ? 'Saving…' : showAdd === 'paste' ? 'Create & Extract' : 'Create'}
             </button>
           </div>
         </div>
@@ -3389,11 +3402,13 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, type, rawInput: text || undefined }),
                   })
-                  if (res.ok) {
-                    const { data } = await res.json()
-                    setBriefs((prev) => [data as ClientBriefLocal, ...prev])
-                    setBrieferOpen(data as ClientBriefLocal)
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({})) as { error?: string }
+                    throw new Error(err.error ?? `Save failed (${res.status})`)
                   }
+                  const { data } = await res.json()
+                  setBriefs((prev) => [data as ClientBriefLocal, ...prev])
+                  setBrieferOpen(data as ClientBriefLocal)
                 }}
                 onUploadFile={uploadBriefFile}
                 onToggleStatus={toggleBriefStatus}
