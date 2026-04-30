@@ -190,10 +190,31 @@ async function authPluginFn(app: FastifyInstance) {
     let resolvedRole = role
     if (!process.env.DEFAULT_ROLE && roleFromToken === 'member') {
       try {
-        const dbUser = await prisma.user.findFirst({
+        let dbUser = await prisma.user.findFirst({
           where: { agencyId, clerkUserId: payload.sub },
-          select: { role: true },
+          select: { id: true, role: true },
         })
+        // Fallback: clerkUserId may be stale (e.g. pending-xxx from invite).
+        // Look up by email from Clerk and auto-fix the stored ID.
+        if (!dbUser) {
+          const { clerkClient } = await import('../lib/clerk.js')
+          if (clerkClient) {
+            try {
+              const clerkUser = await clerkClient.users.getUser(payload.sub)
+              const email = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
+              if (email) {
+                const byEmail = await prisma.user.findFirst({
+                  where: { agencyId, email },
+                  select: { id: true, role: true },
+                })
+                if (byEmail) {
+                  await prisma.user.update({ where: { id: byEmail.id }, data: { clerkUserId: payload.sub } })
+                  dbUser = byEmail
+                }
+              }
+            } catch { /* non-fatal */ }
+          }
+        }
         if (dbUser?.role) resolvedRole = dbUser.role
       } catch { /* non-fatal — fall back to JWT role */ }
     }
