@@ -65,16 +65,21 @@ export function BrieferPilot({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Auto-start: send opening message on mount
+  // Auto-start: inject opening directly for new/blank briefs; use API for refinement
   useEffect(() => {
     if (hasStarted.current) return
     hasStarted.current = true
 
-    const openingMessage = brief.content
-      ? `Let's refine the existing brief for "${brief.name}". I'll review what we have and tighten it up.`
-      : `Let's build a ${TYPE_LABELS[brief.type] ?? 'brief'} for "${brief.name}".`
-
-    void sendMessage(openingMessage, true)
+    if (brief.content) {
+      // Has existing content — use API to generate a refinement-specific opening
+      void sendMessage(`Let's refine the existing brief for "${brief.name}". I'll review what we have and tighten it up.`, true)
+    } else {
+      // New or blank brief — inject opening instantly, no API round-trip
+      setMessages([{
+        role: 'assistant',
+        content: `Tell me what this is. Not the pitch, just what it actually does and who it helps.`,
+      }])
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -171,9 +176,13 @@ export function BrieferPilot({
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
-          {messages.length === 0 && !loading && (
+          {messages.length === 0 && loading && (
             <div className="flex items-center justify-center h-32">
-              <p className="text-[12px] text-muted-foreground">Starting session...</p>
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
             </div>
           )}
           {messages.map((msg, i) => (

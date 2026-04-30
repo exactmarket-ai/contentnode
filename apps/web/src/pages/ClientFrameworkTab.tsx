@@ -3392,7 +3392,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                   if (res.ok) {
                     const { data } = await res.json()
                     setBriefs((prev) => [data as ClientBriefLocal, ...prev])
-                    if (text) setBrieferOpen(data as ClientBriefLocal)
+                    setBrieferOpen(data as ClientBriefLocal)
                   }
                 }}
                 onUploadFile={uploadBriefFile}
