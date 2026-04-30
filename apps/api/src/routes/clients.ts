@@ -5374,12 +5374,15 @@ Example format: {"field1":"value1","field2":"value2"}`,
         where: {
           agencyId,
           clientId,
-          // When a verticalId is supplied: return only briefs scoped to that
-          // vertical OR explicitly shared across all verticals.
+          // When a verticalId is supplied: return briefs scoped to that vertical,
+          // shared briefs, OR legacy briefs with no vertical assignment yet.
+          // Empty verticalIds means the brief pre-dates vertical scoping — show
+          // it everywhere until the user explicitly scopes or shares it.
           ...(verticalId ? {
             OR: [
               { verticalIds: { has: verticalId } },
               { sharedAcrossVerticals: true },
+              { verticalIds: { equals: [] } },
             ],
           } : {}),
         },
