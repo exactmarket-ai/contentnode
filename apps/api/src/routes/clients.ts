@@ -3908,6 +3908,31 @@ ${docText.slice(0, 12000)}`
     return reply.send({ data: upload ?? null })
   })
 
+  // ── DELETE /:id/framework/:verticalId/uploaded-client-gtm — delete latest uploaded GTM
+  app.delete<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/uploaded-client-gtm', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    const upload = await prisma.clientFrameworkUploadedGtm.findFirst({
+      where: { agencyId, clientId, verticalId },
+      orderBy: { uploadedAt: 'desc' },
+      select: { id: true, storageKey: true },
+    })
+    if (!upload) return reply.code(404).send({ error: 'No uploaded GTM found' })
+
+    await prisma.clientFrameworkUploadedGtm.delete({ where: { id: upload.id } })
+    try { await deleteObject(upload.storageKey) } catch { /* file may already be gone */ }
+
+    return reply.send({ data: { ok: true } })
+  })
+
   // ── POST /:id/framework/:verticalId/fill-from-client-gtm — fill empty sections from uploaded GTM
   app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/fill-from-client-gtm', async (req, reply) => {
     const { agencyId } = req.auth

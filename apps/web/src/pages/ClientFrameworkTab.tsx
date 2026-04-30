@@ -3104,6 +3104,17 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                       >
                         Replace with new file
                       </button>
+                      <button
+                        onClick={async () => {
+                          if (!selectedVertical) return
+                          await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/uploaded-client-gtm`, { method: 'DELETE' })
+                          setUploadedGtm(null)
+                          setFillResult(null)
+                        }}
+                        className="text-[11px] text-red-500 hover:text-red-600 transition-colors"
+                      >
+                        Delete
+                      </button>
                     </div>
                     {fillResult && (
                       <p className="text-[11px] text-green-600 font-medium">
