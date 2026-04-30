@@ -15,35 +15,48 @@ import { cn } from '@/lib/utils'
 
 function formatResearchForDisplay(raw: unknown): string {
   if (!raw) return ''
-  // Prisma Json columns arrive as JS objects at runtime — handle both objects and strings
-  let obj: Record<string, unknown> | null = null
-  if (typeof raw === 'object' && !Array.isArray(raw)) {
-    obj = raw as Record<string, unknown>
-  } else if (typeof raw === 'string') {
-    try { obj = JSON.parse(raw) as Record<string, unknown> } catch { return raw }
-    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return raw
-  } else {
-    return String(raw)
+
+  // Unwrap up to two layers of JSON encoding (API may serialize the Prisma Json column to a string)
+  let value: unknown = raw
+  for (let i = 0; i < 2; i++) {
+    if (typeof value !== 'string') break
+    try { value = JSON.parse(value) } catch { break }
   }
-  return Object.entries(obj).map(([key, val]) => {
-    const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    if (Array.isArray(val)) {
-      const items = (val as unknown[]).filter((v) => typeof v === 'string') as string[]
-      const preview = items.slice(0, 3).join(' · ')
-      return `${label}: ${preview}${items.length > 3 ? ` (+${items.length - 3} more)` : ''}`
-    }
-    if (typeof val === 'string') {
-      return `${label}: ${val.length > 120 ? val.slice(0, 120) + '…' : val}`
-    }
-    if (typeof val === 'object' && val !== null) {
-      // Flatten nested object to readable text — never use JSON.stringify in display
-      const nested = Object.values(val as Record<string, unknown>)
-        .filter((v) => typeof v === 'string')
-        .join(' · ')
-      return nested ? `${label}: ${nested.length > 160 ? nested.slice(0, 160) + '…' : nested}` : null
-    }
-    return null
-  }).filter(Boolean).join('\n')
+
+  // Plain string after unwrapping — render as-is
+  if (typeof value === 'string') return value.slice(0, 500)
+
+  // Top-level array — join string items
+  if (Array.isArray(value)) {
+    return (value as unknown[]).filter((v) => typeof v === 'string').slice(0, 5).join(' · ')
+  }
+
+  // Not an object — nothing useful to show
+  if (typeof value !== 'object' || value === null) return ''
+
+  // Object — format each entry as a labeled line
+  return Object.entries(value as Record<string, unknown>)
+    .map(([key, val]) => {
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      if (typeof val === 'string') {
+        return `${label}: ${val.length > 120 ? val.slice(0, 120) + '…' : val}`
+      }
+      if (Array.isArray(val)) {
+        const items = (val as unknown[]).filter((v) => typeof v === 'string') as string[]
+        if (!items.length) return null
+        const preview = items.slice(0, 3).join(' · ')
+        return `${label}: ${preview}${items.length > 3 ? ` (+${items.length - 3} more)` : ''}`
+      }
+      if (typeof val === 'object' && val !== null) {
+        const nested = Object.values(val as Record<string, unknown>)
+          .filter((v) => typeof v === 'string')
+          .join(' · ')
+        return nested ? `${label}: ${nested.length > 160 ? nested.slice(0, 160) + '…' : nested}` : null
+      }
+      return null
+    })
+    .filter(Boolean)
+    .join('\n')
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
