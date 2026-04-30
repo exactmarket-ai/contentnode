@@ -15,48 +15,53 @@ import { cn } from '@/lib/utils'
 
 function formatResearchForDisplay(raw: unknown): string {
   if (!raw) return ''
+  const lines: string[] = []
 
-  // Unwrap up to two layers of JSON encoding (API may serialize the Prisma Json column to a string)
-  let value: unknown = raw
-  for (let i = 0; i < 2; i++) {
-    if (typeof value !== 'string') break
-    try { value = JSON.parse(value) } catch { break }
+  function extract(val: unknown, label: string | undefined, depth: number): void {
+    if (depth > 4 || lines.length >= 6) return
+
+    if (typeof val === 'string') {
+      const trimmed = val.trimStart()
+      // Looks like JSON — try to parse and recurse rather than displaying raw syntax
+      if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && val.length < 100_000) {
+        try { extract(JSON.parse(val), label, depth); return } catch { /* fall through to regex */ }
+        // Parse failed (truncated / malformed) — pull out quoted values via regex instead
+        const extracted = (val.match(/:\s*"([^"\\]{15,}(?:\\.[^"\\]*)*)"/g) ?? [])
+          .map((m) => m.replace(/^:\s*"/, '').replace(/"$/, '').replace(/\\"/g, '"'))
+        extracted.slice(0, 3).forEach((v) => {
+          if (lines.length < 6) lines.push(v.length > 140 ? v.slice(0, 140) + '…' : v)
+        })
+        return
+      }
+      // Plain content string — show if long enough to be meaningful
+      if (val.length > 15) {
+        const text = val.length > 140 ? val.slice(0, 140) + '…' : val
+        lines.push(label ? `${label}: ${text}` : text)
+      }
+      return
+    }
+
+    if (Array.isArray(val)) {
+      const strs = (val as unknown[]).filter((v): v is string => typeof v === 'string' && v.length > 10)
+      if (strs.length > 0) {
+        const preview = strs.slice(0, 3).join(' · ')
+        lines.push(label
+          ? `${label}: ${preview.length > 160 ? preview.slice(0, 160) + '…' : preview}`
+          : preview)
+      }
+      return
+    }
+
+    if (typeof val === 'object' && val !== null) {
+      for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+        const lbl = k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+        extract(v, lbl, depth + 1)
+      }
+    }
   }
 
-  // Plain string after unwrapping — render as-is
-  if (typeof value === 'string') return value.slice(0, 500)
-
-  // Top-level array — join string items
-  if (Array.isArray(value)) {
-    return (value as unknown[]).filter((v) => typeof v === 'string').slice(0, 5).join(' · ')
-  }
-
-  // Not an object — nothing useful to show
-  if (typeof value !== 'object' || value === null) return ''
-
-  // Object — format each entry as a labeled line
-  return Object.entries(value as Record<string, unknown>)
-    .map(([key, val]) => {
-      const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-      if (typeof val === 'string') {
-        return `${label}: ${val.length > 120 ? val.slice(0, 120) + '…' : val}`
-      }
-      if (Array.isArray(val)) {
-        const items = (val as unknown[]).filter((v) => typeof v === 'string') as string[]
-        if (!items.length) return null
-        const preview = items.slice(0, 3).join(' · ')
-        return `${label}: ${preview}${items.length > 3 ? ` (+${items.length - 3} more)` : ''}`
-      }
-      if (typeof val === 'object' && val !== null) {
-        const nested = Object.values(val as Record<string, unknown>)
-          .filter((v) => typeof v === 'string')
-          .join(' · ')
-        return nested ? `${label}: ${nested.length > 160 ? nested.slice(0, 160) + '…' : nested}` : null
-      }
-      return null
-    })
-    .filter(Boolean)
-    .join('\n')
+  extract(raw, undefined, 0)
+  return lines.join('\n')
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
