@@ -4052,13 +4052,36 @@ Rules:
 
     // Merge mapped sections into current data (only empty sections)
     const filledSectionNums: string[] = []
+    // Default shapes — ensures arrays are never undefined when Claude omits them
+    const SECTION_DEFAULTS: Record<string, Record<string, unknown>> = {
+      s01: { positioningStatement: '', taglineOptions: '', howToUse: '', whatIsNot: '', platformName: '', platformBenefit: '' },
+      s02: { industry: '', companySize: '', geography: '', itPosture: '', complianceStatus: '', contractProfile: '', buyerTable: [{ segment: '', primaryBuyer: '', corePain: '', entryPoint: '' }], secondaryTargets: '' },
+      s03: { marketPressureNarrative: '', statsTable: [{ stat: '', context: '', source: '', year: '' }], additionalContext: '' },
+      s04: { challenges: [{ name: '', whyExists: '', consequence: '', solution: '', pillarsText: '', _open: true }] },
+      s05: { pillars: [{ pillar: '', valueProp: '', keyServices: '', relevantTo: '', _open: true }], serviceStack: [{ service: '', regulatoryDomain: '', whatItDelivers: '', priority: '', _open: true }] },
+      s06: { differentiators: [{ label: '', position: '', _open: true }] },
+      s07: { segments: [{ name: '', primaryBuyerTitles: '', whatIsDifferent: '', keyPressures: '', leadHook: '', complianceNotes: '', _open: true }] },
+      s08: { problems: '', solution: '', outcomes: '', valuePropTable: [{ pillar: '', meaning: '', proofPoint: '', citation: '' }, { pillar: '', meaning: '', proofPoint: '', citation: '' }, { pillar: '', meaning: '', proofPoint: '', citation: '' }, { pillar: '', meaning: '', proofPoint: '', citation: '' }] },
+      s09: { proofPoints: [{ text: '', source: '' }, { text: '', source: '' }, { text: '', source: '' }], caseStudies: [{ clientProfile: '', url: '', situation: '', engagement: '', outcomes: '', thirtySecond: '', headlineStat: '', _open: true }] },
+      s10: { objections: [{ objection: '', response: '', followUp: '' }] },
+      s11: { toneTarget: '', vocabularyLevel: '', sentenceStyle: '', whatToAvoid: '', goodExamples: [{ text: '' }, { text: '' }, { text: '' }], badExamples: [{ bad: '', whyWrong: '' }] },
+      s12: { competitors: [{ type: '', positioning: '', counter: '', whenComesUp: '' }] },
+      s13: { quotes: [{ quoteText: '', attribution: '', context: '', bestUsedIn: '', approved: '', _open: true }] },
+      s14: { campaigns: [{ theme: '', targetAudience: '', primaryAssets: '', keyMessage: '' }] },
+      s15: { faqs: [{ question: '', answer: '', bestAddressedIn: '' }] },
+      s16: { funnelStages: [{ stage: 'Top of Funnel', assets: '', primaryCTA: '', buyerState: '' }, { stage: 'Mid Funnel', assets: '', primaryCTA: '', buyerState: '' }, { stage: 'Bottom Funnel', assets: '', primaryCTA: '', buyerState: '' }], ctaSequencing: '' },
+      s17: { regulations: [{ requirement: '', capability: '', servicePillar: '', salesNote: '' }], regulatorySalesNote: '' },
+      s18: { ctas: [{ ctaName: '', description: '', targetAudienceTrigger: '', assets: '' }], campaignThemes: [{ campaignName: '', description: '' }], contact: { verticalOwner: '', marketingContact: '', salesLead: '', documentVersion: '', lastUpdated: '', nextReviewDate: '' } },
+    }
+
     const newData = { ...currentData }
     const newSectionStatus = { ...currentSectionStatus }
 
     for (const num of Object.keys(sectionsToFill)) {
       const sKey = `s${num}`
       if (mapped[sKey]) {
-        newData[sKey] = mapped[sKey]
+        // Merge defaults first, then overlay Claude's result — guarantees all array fields exist
+        newData[sKey] = { ...(SECTION_DEFAULTS[sKey] ?? {}), ...(mapped[sKey] as Record<string, unknown>) }
         newSectionStatus[num] = 'ai-draft'
         filledSectionNums.push(num)
       }
