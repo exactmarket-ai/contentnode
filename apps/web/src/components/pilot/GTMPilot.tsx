@@ -160,7 +160,7 @@ function SuggestionCard({
       <div className="flex items-start justify-between gap-1">
         <span className="text-[11px] font-semibold text-foreground leading-snug">
           <span className="mr-1.5 inline-flex items-center justify-center rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold text-blue-600">
-            §{suggestion.sectionNum}
+            {suggestion.sectionNum}
           </span>
           {suggestion.title}
         </span>
@@ -466,7 +466,7 @@ export function GTMPilot({
         )}
         {activeSection && (
           <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
-            §{activeSection} {SECTION_LABELS[activeSection] ?? ''}
+            Section {activeSection} {SECTION_LABELS[activeSection] ?? ''}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -566,7 +566,7 @@ export function GTMPilot({
             className="flex w-full items-center gap-2 px-4 py-1.5 text-left"
           >
             <Icons.BookOpen className="h-3 w-3 text-blue-500 shrink-0" />
-            <span className="flex-1 text-[10px] font-semibold text-blue-700">Research findings for §{activeSection}</span>
+            <span className="flex-1 text-[10px] font-semibold text-blue-700">Research findings — Section {activeSection}</span>
             {researchPanelOpen
               ? <Icons.ChevronUp className="h-3 w-3 text-blue-400 shrink-0" />
               : <Icons.ChevronDown className="h-3 w-3 text-blue-400 shrink-0" />
@@ -596,19 +596,19 @@ export function GTMPilot({
               )}
               <div className="mt-1 flex gap-2">
                 <button
-                  onClick={() => void sendMessage(`On §${c.sectionNum}, I accept the client's version: "${c.clientClaim}"`)}
+                  onClick={() => void sendMessage(`On Section ${c.sectionNum}, I accept the client's version: "${c.clientClaim}"`)}
                   className="rounded bg-amber-200 px-1.5 py-0.5 text-[9px] font-medium text-amber-800 hover:bg-amber-300 transition-colors"
                 >
                   Accept client
                 </button>
                 <button
-                  onClick={() => void sendMessage(`On §${c.sectionNum}, I'll go with what the research shows: "${c.researchFinds}"`)}
+                  onClick={() => void sendMessage(`On Section ${c.sectionNum}, I'll go with what the research shows: "${c.researchFinds}"`)}
                   className="rounded bg-amber-200 px-1.5 py-0.5 text-[9px] font-medium text-amber-800 hover:bg-amber-300 transition-colors"
                 >
                   Accept research
                 </button>
                 <button
-                  onClick={() => void sendMessage(`Let's discuss the conflict in §${c.sectionNum}: the client says "${c.clientClaim}" but research shows "${c.researchFinds}". Help me decide.`)}
+                  onClick={() => void sendMessage(`Let's discuss the conflict in Section ${c.sectionNum}: the client says "${c.clientClaim}" but research shows "${c.researchFinds}". Help me decide.`)}
                   className="rounded bg-transparent px-1.5 py-0.5 text-[9px] font-medium text-amber-700 hover:text-amber-900 transition-colors"
                 >
                   Discuss
@@ -654,19 +654,19 @@ export function GTMPilot({
               <p className="text-xs font-medium text-muted-foreground">I'm your GTM Framework strategist.</p>
               <p className="text-[10px] text-muted-foreground/60 max-w-[240px]">
                 {activeSection
-                  ? `I can see you're on §${activeSection} — ${SECTION_LABELS[activeSection] ?? ''}. Ask me anything about this section.`
+                  ? `I can see you're on Section ${activeSection} — ${SECTION_LABELS[activeSection] ?? ''}. Ask me anything about this section.`
                   : 'I\'ll use the client brain, vertical knowledge, and GTM best practices to guide you through all 18 sections.'
                 }
               </p>
               <button
                 onClick={() => void sendMessage(
                   activeSection
-                    ? `Help me fill in §${activeSection} — ${SECTION_LABELS[activeSection] ?? ''}`
+                    ? `Help me fill in Section ${activeSection} — ${SECTION_LABELS[activeSection] ?? ''}`
                     : "Which sections should we focus on first?"
                 )}
                 className="mt-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-medium text-blue-600 hover:bg-blue-100 transition-colors"
               >
-                {activeSection ? `Help me with §${activeSection}` : 'Which sections should we focus on first?'}
+                {activeSection ? `Help me with Section ${activeSection}` : 'Which sections should we focus on first?'}
               </button>
             </div>
           )}
@@ -703,7 +703,7 @@ export function GTMPilot({
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-green-200 bg-green-50 px-2 text-[10px] font-medium text-green-700 hover:bg-green-100 transition-colors whitespace-nowrap"
           >
             <Icons.CheckCircle2 className="h-3.5 w-3.5" />
-            Mark §{activeSection} done
+            Mark Section {activeSection} done
           </button>
         )}
         <textarea
