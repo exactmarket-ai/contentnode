@@ -5388,24 +5388,35 @@ Example format: {"field1":"value1","field2":"value2"}`,
       const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
       if (!client) return reply.code(404).send({ error: 'Client not found' })
 
-      const brief = await withAgency(agencyId, () =>
-        prisma.clientBrief.create({
-          data: {
-            agencyId,
-            clientId,
-            name,
-            type,
-            source: rawInput ? 'pasted' : 'pasted',
-            rawInput: rawInput ?? null,
-            content: content ?? null,
-            extractionStatus: rawInput ? 'pending' : 'none',
-          },
-        })
-      )
+      let brief
+      try {
+        brief = await withAgency(agencyId, () =>
+          prisma.clientBrief.create({
+            data: {
+              agencyId,
+              clientId,
+              name,
+              type,
+              source: rawInput ? 'pasted' : 'manual',
+              rawInput: rawInput ?? null,
+              content: content ?? null,
+              extractionStatus: rawInput ? 'pending' : 'none',
+            },
+          })
+        )
+      } catch (err) {
+        req.log.error({ err }, '[briefs/create] Prisma error — client_briefs table may be missing. Run run-migration.mjs against the DB.')
+        const msg = err instanceof Error ? err.message : String(err)
+        return reply.code(500).send({ error: msg })
+      }
 
       if (rawInput) {
-        const { getBriefExtractQueue } = await import('../lib/queues.js')
-        await getBriefExtractQueue().add('extract', { agencyId, clientId, briefId: brief.id })
+        try {
+          const { getBriefExtractQueue } = await import('../lib/queues.js')
+          await getBriefExtractQueue().add('extract', { agencyId, clientId, briefId: brief.id })
+        } catch (err) {
+          req.log.error({ err }, '[briefs/create] failed to enqueue extract job')
+        }
       }
 
       return reply.code(201).send({ data: brief })
