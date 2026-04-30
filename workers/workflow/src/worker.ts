@@ -29,6 +29,8 @@ import {
   type EditAnalysisJobData,
   type FrameworkResearchJobData,
   type ClientGtmUploadJobData,
+  type PilotSessionSummaryJobData,
+  QUEUE_PILOT_SESSION_SUMMARY,
   type AttachmentProcessJobData,
   type BrandAttachmentProcessJobData,
   type CampaignBrainProcessJobData,
@@ -42,6 +44,7 @@ import { detectPatterns, detectEditPatterns } from './patternDetector.js'
 import { runScheduleChecker, runOrphanSweeper } from './scheduleChecker.js'
 import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment, processClientGtmUpload } from './frameworkResearch.js'
+import { summarizePilotSession } from './pilotSessionSummarizer.js'
 import { processBrandAttachment } from './brandExtraction.js'
 import { processCampaignBrainAttachment } from './campaignBrainExtraction.js'
 import {
@@ -249,6 +252,22 @@ const clientGtmUploadWorker = createWorker<ClientGtmUploadJobData>(
   },
   2,
   { lockDuration: 5 * 60 * 1000 }
+)
+
+// ── pilot-session-summary ─────────────────────────────────────────────────────
+const pilotSessionSummaryWorker = createWorker<PilotSessionSummaryJobData>(
+  QUEUE_PILOT_SESSION_SUMMARY,
+  async (job: Job<PilotSessionSummaryJobData>) => {
+    console.log(`[pilot-session-summary] job started for session=${job.data.sessionId}`)
+    try {
+      await summarizePilotSession(job)
+    } catch (err) {
+      console.error('[pilot-session-summary] job failed:', err)
+      throw err
+    }
+  },
+  3,
+  { lockDuration: 3 * 60 * 1000 }
 )
 
 // ── attachment-process ────────────────────────────────────────────────────────
@@ -565,6 +584,7 @@ async function shutdown() {
     scheduleCheckerWorker.close(),
     frameworkResearchWorker.close(),
     clientGtmUploadWorker.close(),
+    pilotSessionSummaryWorker.close(),
     attachmentProcessWorker.close(),
     brandAttachmentProcessWorker.close(),
     agencyBrainProcessWorker.close(),

@@ -17,6 +17,7 @@ export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
 export const QUEUE_EDIT_ANALYSIS = 'edit-analysis'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
 export const QUEUE_CLIENT_GTM_UPLOAD = 'client-gtm-upload'
+export const QUEUE_PILOT_SESSION_SUMMARY = 'pilot-session-summary'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
 export const QUEUE_CAMPAIGN_BRAIN_PROCESS = 'campaign-brain-process'
@@ -61,6 +62,13 @@ export interface ClientGtmUploadJobData {
   clientId: string
   verticalId: string
   uploadId: string
+}
+
+export interface PilotSessionSummaryJobData {
+  agencyId: string
+  clientId: string
+  verticalId: string
+  sessionId: string
 }
 
 export interface AttachmentProcessJobData {
@@ -335,4 +343,12 @@ export function getClientGtmUploadQueue(): Queue<ClientGtmUploadJobData> {
     clientGtmUploadQueue = new Queue<ClientGtmUploadJobData>(QUEUE_CLIENT_GTM_UPLOAD, { connection: getBullMQConnection() })
   }
   return clientGtmUploadQueue
+}
+
+let pilotSessionSummaryQueue: Queue<PilotSessionSummaryJobData> | null = null
+export function getPilotSessionSummaryQueue(): Queue<PilotSessionSummaryJobData> {
+  if (!pilotSessionSummaryQueue) {
+    pilotSessionSummaryQueue = new Queue<PilotSessionSummaryJobData>(QUEUE_PILOT_SESSION_SUMMARY, { connection: getBullMQConnection() })
+  }
+  return pilotSessionSummaryQueue
 }

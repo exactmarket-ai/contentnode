@@ -16,6 +16,7 @@ export const QUEUE_EDIT_ANALYSIS                  = `${_p}edit-analysis`
 export const QUEUE_SCHEDULE_CHECKER               = `${_p}schedule-checker`
 export const QUEUE_FRAMEWORK_RESEARCH             = `${_p}framework-research`
 export const QUEUE_CLIENT_GTM_UPLOAD              = `${_p}client-gtm-upload`
+export const QUEUE_PILOT_SESSION_SUMMARY          = `${_p}pilot-session-summary`
 export const QUEUE_ATTACHMENT_PROCESS             = `${_p}attachment-process`
 export const QUEUE_BRAND_ATTACHMENT_PROCESS       = `${_p}brand-attachment-process`
 export const QUEUE_CAMPAIGN_BRAIN_PROCESS         = `${_p}campaign-brain-process`
@@ -119,6 +120,13 @@ export interface ClientGtmUploadJobData {
   clientId: string
   verticalId: string
   uploadId: string
+}
+
+export interface PilotSessionSummaryJobData {
+  agencyId: string
+  clientId: string
+  verticalId: string
+  sessionId: string
 }
 
 export interface AttachmentProcessJobData {

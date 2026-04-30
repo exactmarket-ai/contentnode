@@ -35,6 +35,18 @@ export interface ConflictEntry {
   recommendation?: string
 }
 
+interface PriorSession {
+  id: string
+  messageCount: number
+  createdAt: string
+  summarizedAt: string | null
+  summary: {
+    decisions: string[]
+    rejected: string[]
+    openQuestions: string[]
+  } | null
+}
+
 export interface GTMPilotProps {
   clientId: string
   verticalId: string | null
@@ -218,10 +230,14 @@ export function GTMPilot({
   const [loading, setLoading]           = useState(false)
   const [input, setInput]               = useState('')
   const [researchPanelOpen, setResearchPanelOpen] = useState(true)
+  const [historyOpen, setHistoryOpen]   = useState(false)
+  const [priorSessions, setPriorSessions] = useState<PriorSession[]>([])
 
-  const scrollRef  = useRef<HTMLDivElement>(null)
-  const lastMsgRef = useRef<HTMLDivElement>(null)
-  const inputRef   = useRef<HTMLTextAreaElement>(null)
+  const scrollRef    = useRef<HTMLDivElement>(null)
+  const lastMsgRef   = useRef<HTMLDivElement>(null)
+  const inputRef     = useRef<HTMLTextAreaElement>(null)
+  // Stable session ID for this PILOT opening — generated once on mount
+  const sessionIdRef = useRef<string>(crypto.randomUUID())
 
   // Controlled vs uncontrolled open state
   const open = openProp !== undefined ? openProp : openInternal
@@ -244,6 +260,15 @@ export function GTMPilot({
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 80)
   }, [open])
+
+  // Load prior session summaries when PILOT opens and verticalId is set
+  useEffect(() => {
+    if (!open || !verticalId) return
+    apiFetch(`/api/v1/gtm-pilot/sessions?clientId=${clientId}&verticalId=${verticalId}`)
+      .then((res) => res.json())
+      .then((json) => { if (Array.isArray(json.data)) setPriorSessions(json.data as PriorSession[]) })
+      .catch(() => {})
+  }, [open, clientId, verticalId])
 
   // Clear conversation when vertical changes
   useEffect(() => {
@@ -292,6 +317,7 @@ export function GTMPilot({
           researchBySection,
           conflictLog: activeSectionConflicts.length > 0 ? activeSectionConflicts : undefined,
           companyBrief: companyBrief ?? undefined,
+          sessionId:    sessionIdRef.current,
         }),
       })
 
@@ -426,9 +452,28 @@ export function GTMPilot({
               {emptySections.length} section{emptySections.length !== 1 ? 's' : ''} to fill
             </span>
           )}
+          {priorSessions.length > 0 && (
+            <button
+              onClick={() => setHistoryOpen((v) => !v)}
+              title="Session history"
+              className={cn(
+                'flex h-6 items-center gap-1 rounded-md px-1.5 text-[10px] font-medium transition-colors',
+                historyOpen
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+            >
+              <Icons.History className="h-3 w-3" />
+              {priorSessions.length} prior
+            </button>
+          )}
           {messages.length > 0 && (
             <button
-              onClick={() => setMessages([])}
+              onClick={() => {
+                setMessages([])
+                // Generate a new session ID so the next conversation is a fresh session
+                sessionIdRef.current = crypto.randomUUID()
+              }}
               title="Clear conversation"
               className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
             >
@@ -437,6 +482,58 @@ export function GTMPilot({
           )}
         </div>
       </div>
+
+      {/* Session history panel */}
+      {historyOpen && priorSessions.length > 0 && (
+        <div className="border-b border-border bg-muted/40 shrink-0 max-h-48 overflow-y-auto">
+          <div className="px-4 py-2 space-y-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Prior sessions — injected into PILOT context</p>
+            {priorSessions.map((s) => {
+              const date = new Date(s.summarizedAt ?? s.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+              return (
+                <div key={s.id} className="rounded-lg border border-border bg-background p-3 text-[11px] space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground">{date} · {s.messageCount} messages</span>
+                    <button
+                      onClick={async () => {
+                        await apiFetch(`/api/v1/gtm-pilot/sessions/${s.id}`, { method: 'DELETE' })
+                        setPriorSessions((prev) => prev.filter((x) => x.id !== s.id))
+                      }}
+                      className="text-[10px] text-red-500 hover:text-red-600 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  {s.summary?.decisions && s.summary.decisions.length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-medium text-green-700 uppercase tracking-wide">Decided</span>
+                      <ul className="mt-0.5 space-y-0.5">
+                        {s.summary.decisions.map((d, i) => <li key={i} className="text-muted-foreground pl-2 border-l-2 border-green-200">{d}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {s.summary?.rejected && s.summary.rejected.length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-medium text-amber-700 uppercase tracking-wide">Rejected</span>
+                      <ul className="mt-0.5 space-y-0.5">
+                        {s.summary.rejected.map((r, i) => <li key={i} className="text-muted-foreground pl-2 border-l-2 border-amber-200">{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {s.summary?.openQuestions && s.summary.openQuestions.length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-medium text-blue-700 uppercase tracking-wide">Open</span>
+                      <ul className="mt-0.5 space-y-0.5">
+                        {s.summary.openQuestions.map((q, i) => <li key={i} className="text-muted-foreground pl-2 border-l-2 border-blue-200">{q}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Research context banner — active section findings */}
       {activeSectionResearch && (

@@ -16,6 +16,7 @@ import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
 import { prisma }               from '@contentnode/database'
+import { getPilotSessionSummaryQueue } from '../lib/queues.js'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ const chatBody = z.object({
   researchBySection: z.record(z.string()).optional().nullable(), // { "03": "research findings..." }
   conflictLog:       z.array(conflictEntrySchema).optional().nullable(),
   companyBrief:      z.string().optional().nullable(),
+  sessionId:         z.string().optional().nullable(),
 })
 
 // ─── Vertical → compliance framework map ──────────────────────────────────────
@@ -241,6 +243,8 @@ SPARSE STATE BEHAVIOR RULES:
 - If intake mode is not already active, run it now to capture the company brief before doing strategic work`
 }
 
+const PRIOR_SESSIONS_TO_INCLUDE = 3
+
 async function buildContext(
   agencyId: string,
   clientId: string,
@@ -376,6 +380,30 @@ async function buildContext(
     parts.push(`\n=== LAYER 2: ORGANIZATION BRAIN ===`)
     parts.push(...orgParts)
   }
+
+  // ── Prior PILOT session summaries ─────────────────────────────────────────
+  try {
+    const priorSessions = await prisma.pilotSession.findMany({
+      where:   { agencyId, clientId, verticalId, status: 'summarized' },
+      orderBy: { summarizedAt: 'desc' },
+      take:    PRIOR_SESSIONS_TO_INCLUDE,
+      select:  { id: true, summary: true, createdAt: true, summarizedAt: true },
+    })
+
+    if (priorSessions.length > 0) {
+      parts.push(`\n=== PRIOR PILOT SESSION SUMMARIES (${priorSessions.length} most recent) ===`)
+      parts.push(`CRITICAL: The PILOT must reference these explicitly. At session start say "Last session you landed on X and rejected Y. I'm building from that." Then continue from where the last session ended.`)
+      for (const s of priorSessions) {
+        const sum = s.summary as { decisions?: string[]; rejected?: string[]; openQuestions?: string[] }
+        const date = (s.summarizedAt ?? s.createdAt).toISOString().split('T')[0]
+        const lines: string[] = [`[Session: ${date}]`]
+        if (sum.decisions?.length)     lines.push(`DECIDED: ${sum.decisions.join(' • ')}`)
+        if (sum.rejected?.length)      lines.push(`REJECTED: ${sum.rejected.join(' • ')}`)
+        if (sum.openQuestions?.length) lines.push(`OPEN QUESTIONS: ${sum.openQuestions.join(' • ')}`)
+        parts.push(lines.join('\n'))
+      }
+    }
+  } catch { /* non-fatal — priors unavailable */ }
 
   return { parts, meta }
 }
@@ -606,7 +634,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     const {
       messages, clientId, verticalId, verticalName,
       filledSections = [], emptySections = [],
-      activeSection, researchBySection, conflictLog, companyBrief,
+      activeSection, researchBySection, conflictLog, companyBrief, sessionId,
     } = parsed.data
 
     // Verify client and vertical belong to this agency
@@ -670,6 +698,65 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       replyText = fullText.replace(/<GTMPILOT_SUGGESTIONS>[\s\S]*/i, '').trim()
     }
 
+    // ── Persist session transcript ────────────────────────────────────────────
+    if (sessionId) {
+      const allMessages = [...messages, { role: 'assistant', content: replyText }]
+      const msgCount = allMessages.length
+
+      try {
+        await prisma.pilotSession.upsert({
+          where:  { id: sessionId },
+          create: { id: sessionId, agencyId, clientId, verticalId, messages: allMessages, messageCount: msgCount, status: 'active' },
+          update: { messages: allMessages, messageCount: msgCount },
+        })
+
+        // Enqueue summarization once session crosses the threshold (6+ messages).
+        // Use a deduped jobId so re-enqueueing just updates the existing job with
+        // fresh content rather than stacking duplicate jobs.
+        if (msgCount >= 6) {
+          await getPilotSessionSummaryQueue().add(
+            'summarize',
+            { agencyId, clientId, verticalId, sessionId },
+            { jobId: `pilot-summary-${sessionId}`, removeOnComplete: true, removeOnFail: false }
+          )
+        }
+      } catch (err) {
+        // Non-fatal — session save failure should never break the chat response
+        req.log.warn({ err, sessionId }, '[gtm-pilot] failed to persist session')
+      }
+    }
+
     return reply.send({ data: { reply: replyText, suggestions, brainState } })
+  })
+
+  // ── GET /sessions — list summarized sessions for a client+vertical ─────────
+  app.get('/sessions', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId, verticalId } = (req.query ?? {}) as { clientId?: string; verticalId?: string }
+    if (!clientId || !verticalId) return reply.code(400).send({ error: 'clientId and verticalId are required' })
+
+    const sessions = await prisma.pilotSession.findMany({
+      where:   { agencyId, clientId, verticalId, status: 'summarized' },
+      orderBy: { summarizedAt: 'desc' },
+      take:    10,
+      select:  { id: true, summary: true, messageCount: true, createdAt: true, summarizedAt: true },
+    })
+
+    return reply.send({ data: sessions })
+  })
+
+  // ── DELETE /sessions/:sessionId — remove a session summary ─────────────────
+  app.delete('/sessions/:sessionId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { sessionId } = req.params as { sessionId: string }
+
+    const session = await prisma.pilotSession.findFirst({
+      where: { id: sessionId, agencyId },
+      select: { id: true },
+    })
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+
+    await prisma.pilotSession.delete({ where: { id: sessionId } })
+    return reply.send({ data: { deleted: true } })
   })
 }

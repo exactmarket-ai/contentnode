@@ -2539,3 +2539,23 @@ model ImagePrompt {
   @@index([clientId])
   @@map("image_prompts")
 }
+
+// PilotSession — persists gtmPILOT conversation transcript per client+vertical.
+// Automatically summarized into decisions/rejected/openQuestions after threshold.
+// Prior summaries are injected into the system prompt so the PILOT builds on them.
+model PilotSession {
+  id           String    @id
+  agencyId     String    @map("agency_id")
+  clientId     String    @map("client_id")
+  verticalId   String    @map("vertical_id")
+  messages     Json      @default("[]")   // { role: 'user'|'assistant', content: string }[]
+  messageCount Int       @default(0) @map("message_count")
+  status       String    @default("active")  // active | summarizing | summarized | failed
+  summary      Json?                          // { decisions: string[], rejected: string[], openQuestions: string[] }
+  createdAt    DateTime  @default(now()) @map("created_at")
+  summarizedAt DateTime? @map("summarized_at")
+
+  @@index([agencyId, clientId, verticalId])
+  @@index([agencyId, clientId, verticalId, status])
+  @@map("pilot_sessions")
+}
