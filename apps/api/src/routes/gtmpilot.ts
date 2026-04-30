@@ -374,8 +374,22 @@ COMPANY-WIDE content provides portfolio-level awareness only: product/solution n
     meta.hasBrandProfile = true
     const b = brandData as Record<string, unknown>
     parts.push(`[COMPANY-WIDE] Brand profile:`)
-    if (b.positioning ?? b.value_proposition) parts.push(`  POSITIONING: ${JSON.stringify(b.positioning ?? b.value_proposition)}`)
-    if (b.target_audience ?? b.audience) parts.push(`  TARGET AUDIENCE: ${JSON.stringify(b.target_audience ?? b.audience)}`)
+    if (b.positioning ?? b.value_proposition) {
+      const val = b.positioning ?? b.value_proposition
+      const text = typeof val === 'string' ? val
+        : Array.isArray(val) ? (val as unknown[]).filter((x) => typeof x === 'string').join('; ')
+        : typeof val === 'object' && val !== null ? Object.values(val as Record<string, unknown>).filter((x) => typeof x === 'string').join('; ')
+        : String(val)
+      parts.push(`  POSITIONING: ${text}`)
+    }
+    if (b.target_audience ?? b.audience) {
+      const val = b.target_audience ?? b.audience
+      const text = typeof val === 'string' ? val
+        : Array.isArray(val) ? (val as unknown[]).filter((x) => typeof x === 'string').join('; ')
+        : typeof val === 'object' && val !== null ? Object.values(val as Record<string, unknown>).filter((x) => typeof x === 'string').join('; ')
+        : String(val)
+      parts.push(`  TARGET AUDIENCE: ${text}`)
+    }
   }
 
   if (client.brainContext?.trim()) {
