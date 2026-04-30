@@ -11,6 +11,29 @@ import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatResearchForDisplay(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return raw
+    return Object.entries(parsed).map(([key, val]) => {
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      if (Array.isArray(val)) {
+        const items = val.filter((v) => typeof v === 'string') as string[]
+        const preview = items.slice(0, 3).join(' · ')
+        return `${label}: ${preview}${items.length > 3 ? ` (+${items.length - 3} more)` : ''}`
+      }
+      if (typeof val === 'string') {
+        return `${label}: ${val.length > 120 ? val.slice(0, 120) + '…' : val}`
+      }
+      return null
+    }).filter(Boolean).join('\n')
+  } catch {
+    return raw
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GtmSuggestion {
@@ -551,7 +574,7 @@ export function GTMPilot({
           </button>
           {researchPanelOpen && (
             <div className="max-h-20 overflow-y-auto px-4 pb-2">
-              <p className="text-[10px] text-blue-800 leading-relaxed whitespace-pre-wrap">{activeSectionResearch}</p>
+              <p className="text-[10px] text-blue-800 leading-relaxed whitespace-pre-wrap">{formatResearchForDisplay(activeSectionResearch)}</p>
             </div>
           )}
         </div>
