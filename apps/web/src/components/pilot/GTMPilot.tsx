@@ -459,8 +459,8 @@ export function GTMPilot({
     const conflictCount = conflictLog?.length ?? 0
     return (
       <div
-        className="relative flex shrink-0 items-center gap-3 border-t border-border bg-card px-4 cursor-pointer hover:bg-muted/40 transition-colors"
-        style={{ height: 44 }}
+        className="relative flex items-center gap-3 border-t border-border bg-card px-4 cursor-pointer hover:bg-muted/40 transition-colors"
+        style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 44, zIndex: 40 }}
         onClick={() => setOpen(true)}
       >
         <button
@@ -501,8 +501,8 @@ export function GTMPilot({
   // ── Expanded — 40% viewport height ────────────────────────────────────────
   return (
     <div
-      className="relative flex shrink-0 flex-col border-t border-border bg-card"
-      style={{ height: '40vh' }}
+      className="relative flex flex-col border-t border-border bg-card"
+      style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: '40vh', zIndex: 40 }}
     >
       <button
         onClick={() => setOpen(false)}

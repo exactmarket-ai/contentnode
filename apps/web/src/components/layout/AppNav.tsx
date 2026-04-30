@@ -291,6 +291,10 @@ function NavItem({
 export function AppNav({ onSignOut }: AppNavProps) {
   const [collapsed, setCollapsed] = useState(false)
   const { user, isAdmin, isOwner, isLead } = useCurrentUser()
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--nav-w', collapsed ? '56px' : '192px')
+  }, [collapsed])
   const role = user?.role ?? ''
   const location = useLocation()
   const setPendingNavAction = useWorkflowStore((s) => s.setPendingNavAction)

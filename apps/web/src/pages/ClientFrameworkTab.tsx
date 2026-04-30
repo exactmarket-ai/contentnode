@@ -3237,7 +3237,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
       {/* Left nav */}
       <div className="w-64 shrink-0 overflow-y-auto border-r border-border bg-background">
-        <div className="px-3 py-3">
+        <div className="px-3 py-3 pb-16">
           {/* Brain nav item */}
           <button
             onClick={() => setActiveSection('brain')}
@@ -3293,7 +3293,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       </div>
 
       {/* Content */}
-      <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-8 py-6">
+      <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-8 pt-6 pb-16">
         {activeSection === 'brain' ? (
           <div className="mx-auto max-w-4xl space-y-8">
             {selectedVertical && (
