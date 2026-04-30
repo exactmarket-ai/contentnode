@@ -127,32 +127,49 @@ const SECTION_LABELS: Record<string, string> = {
 // ─── Reply processor — strips JSON blocks before rendering ───────────────────
 
 function processReply(raw: string): string {
-  // Strip triple-backtick code blocks (```lang\n...\n``` or ```\n...\n```)
-  let text = raw.replace(/```[a-z]*\n[\s\S]*?```/gi, '').trim()
+  // Strip triple-backtick code blocks (with or without language tag, with or without newline)
+  let text = raw.replace(/```[a-z]*\n?[\s\S]*?```/gi, '').trim()
 
-  // Strip bare JSON objects/arrays using a brace-depth state machine
-  const lines = text.split('\n')
-  const kept: string[] = []
-  let depth = 0
-  let inBlock = false
-
-  for (const line of lines) {
-    const t = line.trim()
-    if (!inBlock && (t.startsWith('{') || t.startsWith('['))) {
-      inBlock = true; depth = 0
-      for (const c of t) { if (c==='{' || c==='[') depth++; else if (c==='}' || c===']') depth-- }
-      if (depth <= 0) inBlock = false
-      continue
+  // Strip ALL JSON objects and arrays — both standalone and inline mid-sentence.
+  // Uses a character-level scanner: when { or [ is followed by a JSON signal
+  // ("key": pattern, or another { / [), consume the entire block including nesting.
+  let result = ''
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    if (ch === '{' || ch === '[') {
+      // Lookahead: is this JSON? Detect "key": pattern or nested opener within 200 chars
+      const preview = text.slice(i + 1, i + 200)
+      const isJson = /^\s*(?:"[^"]*"\s*:|[\[\{])/.test(preview)
+      if (isJson) {
+        // Consume through matching close bracket, respecting quoted strings
+        let depth = 1
+        let inStr = false
+        let esc = false
+        let j = i + 1
+        while (j < text.length && depth > 0) {
+          const c = text[j]
+          if (esc)                       { esc = false }
+          else if (c === '\\' && inStr)  { esc = true }
+          else if (c === '"')            { inStr = !inStr }
+          else if (!inStr) {
+            if (c === '{' || c === '[')  depth++
+            else if (c === '}' || c === ']') depth--
+          }
+          j++
+        }
+        i = j  // jump past entire JSON block
+        continue
+      }
     }
-    if (inBlock) {
-      for (const c of t) { if (c==='{' || c==='[') depth++; else if (c==='}' || c===']') depth-- }
-      if (depth <= 0) { inBlock = false; depth = 0 }
-      continue
-    }
-    kept.push(line)
+    result += ch
+    i++
   }
 
-  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return result
+    .replace(/[ \t]+$/gm, '')     // trailing whitespace per line
+    .replace(/\n{3,}/g, '\n\n')   // collapse excessive blank lines
+    .trim()
 }
 
 // ─── Line renderer ───────────────────────────────────────────────────────────

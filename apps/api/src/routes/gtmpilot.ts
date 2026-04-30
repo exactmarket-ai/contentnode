@@ -316,7 +316,7 @@ async function buildContext(
   const parts: string[] = []
 
   // ── Layer 1: Client Brain ─────────────────────────────────────────────────
-  const [client, clientAttachments, frameworkAttachments] = await Promise.all([
+  const [client, clientAttachments, frameworkAttachments, verticalScopedAttachments] = await Promise.all([
     prisma.client.findFirst({
       where: { id: clientId, agencyId },
       select: {
@@ -336,6 +336,13 @@ async function buildContext(
       orderBy: { createdAt: 'desc' },
       take: 10,
     }),
+    // Strictly scoped client+vertical brain docs — these are ONLY for the active vertical
+    prisma.clientVerticalBrainAttachment.findMany({
+      where: { clientId, verticalId, agencyId, summaryStatus: 'ready' },
+      select: { filename: true, summary: true },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+    }),
   ])
 
   const meta: BrainMeta = {
@@ -354,8 +361,10 @@ async function buildContext(
   if (!client) return { parts, meta }
 
   parts.push(`=== LAYER 1: CLIENT BRAIN — ACTIVE VERTICAL: ${verticalName} ===`)
-  parts.push(`VERTICAL SCOPE: Context is assembled ONLY for the "${verticalName}" vertical. Docs labeled COMPANY-WIDE apply to all verticals. Docs labeled VERTICAL-SPECIFIC apply ONLY to ${verticalName} — never blend with other verticals.
-COMPANY-WIDE content provides portfolio-level awareness only: product/solution names, how the company describes the relationships between its offerings, and company-wide positioning that applies regardless of vertical. It does not carry buyer language, pain statements, messaging, or market intelligence specific to any vertical. Use it as background context and translate into ${verticalName} language before presenting — never copy verbatim into vertical-specific answers.`)
+  parts.push(`VERTICAL ISOLATION RULE (non-negotiable):
+The ONLY vertical in scope for this session is "${verticalName}" (ID: ${verticalId}).
+If any content below — including the COMPANY-WIDE synthesis — contains positioning statements, buyer personas, pain points, messaging, or market language specific to ANY OTHER vertical (e.g. golf, hospitality, real estate, or any vertical that is not "${verticalName}"), that content does not exist for the purposes of this session. Do not reference it, rephrase it, or let it influence your responses in any way.
+COMPANY-WIDE content provides portfolio-level awareness only: product/solution names and how offerings relate to each other. It does not carry vertical-specific buyer language, pain statements, or messaging. Translate any company-wide positioning into "${verticalName}" terms before presenting — never copy verbatim.`)
   parts.push(`CLIENT: ${client.name}`)
   if (client.industry) parts.push(`INDUSTRY: ${client.industry}`)
 
@@ -398,6 +407,15 @@ COMPANY-WIDE content provides portfolio-level awareness only: product/solution n
     parts.push('\nGTM FRAMEWORK BRAIN (uploaded files for this vertical):')
     for (const doc of fwDocsWithSummary) {
       parts.push(`[framework] ${doc.filename}:\n${doc.summary!.trim()}`)
+    }
+  }
+
+  // Strictly scoped client+vertical brain docs (ClientVerticalBrainAttachment)
+  const verticalScopedDocs = verticalScopedAttachments.filter((d) => d.summary?.trim())
+  if (verticalScopedDocs.length > 0) {
+    parts.push(`\n[VERTICAL-SPECIFIC — ${verticalName} ONLY] CLIENT-VERTICAL BRAIN DOCUMENTS:`)
+    for (const doc of verticalScopedDocs) {
+      parts.push(`[client-vertical] ${doc.filename}:\n${doc.summary!.trim()}`)
     }
   }
 

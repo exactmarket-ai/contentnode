@@ -11,6 +11,36 @@ import * as Icons from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
+// Strip JSON objects/arrays and code fences from LLM replies before displaying
+function stripJsonBlocks(raw: string): string {
+  let text = raw.replace(/```[a-z]*\n?[\s\S]*?```/gi, '').trim()
+  let result = ''
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    if (ch === '{' || ch === '[') {
+      const preview = text.slice(i + 1, i + 200)
+      if (/^\s*(?:"[^"]*"\s*:|[\[\{])/.test(preview)) {
+        let depth = 1, inStr = false, esc = false, j = i + 1
+        while (j < text.length && depth > 0) {
+          const c = text[j]
+          if (esc)                      { esc = false }
+          else if (c === '\\' && inStr) { esc = true }
+          else if (c === '"')           { inStr = !inStr }
+          else if (!inStr) {
+            if (c === '{' || c === '[') depth++
+            else if (c === '}' || c === ']') depth--
+          }
+          j++
+        }
+        i = j; continue
+      }
+    }
+    result += ch; i++
+  }
+  return result.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 interface BriefMessage {
   role: 'user' | 'assistant'
   content: string
@@ -114,7 +144,9 @@ export function BrieferPilot({
       if (!res.ok) throw new Error(`API error ${res.status}`)
       const json = await res.json() as { reply: string; briefSaved?: boolean }
 
-      const assistantMsg: BriefMessage = { role: 'assistant', content: json.reply }
+      // Strip any JSON blocks or code fences the LLM may have leaked into the reply
+      const cleanReply = stripJsonBlocks(json.reply ?? '')
+      const assistantMsg: BriefMessage = { role: 'assistant', content: cleanReply }
       setMessages((prev) => [...(isSystem ? prev : prev), assistantMsg])
 
       if (json.briefSaved) {
