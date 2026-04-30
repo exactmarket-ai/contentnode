@@ -38,6 +38,8 @@ import {
   type AgencyBrainProcessJobData,
   type VerticalBrainProcessJobData,
   type ClientVerticalBrainProcessJobData,
+  QUEUE_BRIEF_EXTRACT,
+  type BriefExtractJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns, detectEditPatterns } from './patternDetector.js'
@@ -45,6 +47,7 @@ import { runScheduleChecker, runOrphanSweeper } from './scheduleChecker.js'
 import { runFileCleanup } from './fileCleanup.js'
 import { runFrameworkResearch, processAttachment, processClientGtmUpload } from './frameworkResearch.js'
 import { summarizePilotSession } from './pilotSessionSummarizer.js'
+import { extractBrief } from './briefExtractor.js'
 import { processBrandAttachment } from './brandExtraction.js'
 import { processCampaignBrainAttachment } from './campaignBrainExtraction.js'
 import {
@@ -263,6 +266,22 @@ const pilotSessionSummaryWorker = createWorker<PilotSessionSummaryJobData>(
       await summarizePilotSession(job)
     } catch (err) {
       console.error('[pilot-session-summary] job failed:', err)
+      throw err
+    }
+  },
+  3,
+  { lockDuration: 3 * 60 * 1000 }
+)
+
+// ── brief-extract ─────────────────────────────────────────────────────────────
+const briefExtractWorker = createWorker<BriefExtractJobData>(
+  QUEUE_BRIEF_EXTRACT,
+  async (job: Job<BriefExtractJobData>) => {
+    console.log(`[brief-extract] job started for brief=${job.data.briefId}`)
+    try {
+      await extractBrief(job)
+    } catch (err) {
+      console.error('[brief-extract] job failed:', err)
       throw err
     }
   },
@@ -585,6 +604,7 @@ async function shutdown() {
     frameworkResearchWorker.close(),
     clientGtmUploadWorker.close(),
     pilotSessionSummaryWorker.close(),
+    briefExtractWorker.close(),
     attachmentProcessWorker.close(),
     brandAttachmentProcessWorker.close(),
     agencyBrainProcessWorker.close(),

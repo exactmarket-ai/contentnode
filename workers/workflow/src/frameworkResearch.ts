@@ -381,14 +381,38 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
       }),
       prisma.clientFramework.findUnique({
         where: { clientId_verticalId: { clientId, verticalId } },
-        select: { data: true },
+        select: { data: true, primaryBriefId: true },
       }),
     ])
 
     // Resolve website URL: job data takes priority, then fall back to stored URL from prior research
     const resolvedWebsiteUrl = websiteUrl || existingResearch?.websiteUrl || null
-    // Resolve company brief: job data takes priority, then fall back to stored brief
-    const resolvedBrief = companyBrief || existingResearch?.companyBrief || null
+
+    // Load brief library: company-level briefs + vertical primary brief
+    let resolvedBrief = companyBrief || existingResearch?.companyBrief || null
+    try {
+      const briefParts: string[] = []
+      const companyBriefs = await prisma.clientBrief.findMany({
+        where: { agencyId, clientId, status: 'active', type: 'company' },
+        orderBy: { updatedAt: 'desc' },
+        take: 1,
+        select: { content: true },
+      })
+      if (companyBriefs[0]?.content) briefParts.push(`COMPANY BRIEF:\n${companyBriefs[0].content}`)
+
+      const primaryBriefId = (existingFramework as { primaryBriefId?: string | null })?.primaryBriefId
+      if (primaryBriefId) {
+        const pb = await prisma.clientBrief.findFirst({
+          where: { id: primaryBriefId, agencyId, clientId, status: 'active' },
+          select: { content: true, type: true, name: true },
+        })
+        if (pb?.content) {
+          briefParts.push(`${pb.type.toUpperCase().replace('_', ' ')} BRIEF (${pb.name}):\n${pb.content}`)
+        }
+      }
+
+      if (briefParts.length > 0) resolvedBrief = briefParts.join('\n\n')
+    } catch { /* non-fatal — fall back to legacy companyBrief */ }
 
     const contextParts: string[] = []
     const sources: DocumentSource[] = []

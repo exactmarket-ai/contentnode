@@ -352,3 +352,19 @@ export function getPilotSessionSummaryQueue(): Queue<PilotSessionSummaryJobData>
   }
   return pilotSessionSummaryQueue
 }
+
+export const QUEUE_BRIEF_EXTRACT = 'brief-extract'
+
+export interface BriefExtractJobData {
+  agencyId: string
+  clientId: string
+  briefId:  string
+}
+
+let briefExtractQueue: Queue<BriefExtractJobData> | null = null
+export function getBriefExtractQueue(): Queue<BriefExtractJobData> {
+  if (!briefExtractQueue) {
+    briefExtractQueue = new Queue<BriefExtractJobData>(QUEUE_BRIEF_EXTRACT, { connection: getBullMQConnection() })
+  }
+  return briefExtractQueue
+}

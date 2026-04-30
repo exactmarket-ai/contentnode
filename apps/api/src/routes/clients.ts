@@ -5357,4 +5357,233 @@ Example format: {"field1":"value1","field2":"value2"}`,
     }
     return reply.send({ data: merged })
   })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CLIENT BRIEF LIBRARY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── GET /:id/briefs — list all briefs for client
+  app.get<{ Params: { id: string } }>('/:id/briefs', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId } = req.params
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    const briefs = await withAgency(agencyId, () =>
+      prisma.clientBrief.findMany({
+        where: { agencyId, clientId },
+        orderBy: { createdAt: 'desc' },
+      })
+    )
+    return reply.send({ data: briefs })
+  })
+
+  // ── POST /:id/briefs — create a brief (pasted or blank)
+  app.post<{ Params: { id: string }; Body: { name: string; type?: string; rawInput?: string; content?: string } }>(
+    '/:id/briefs',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { id: clientId } = req.params
+      const { name, type = 'company', rawInput, content } = req.body
+      if (!name) return reply.code(400).send({ error: 'name is required' })
+      const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+      if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+      const brief = await withAgency(agencyId, () =>
+        prisma.clientBrief.create({
+          data: {
+            agencyId,
+            clientId,
+            name,
+            type,
+            source: rawInput ? 'pasted' : 'pasted',
+            rawInput: rawInput ?? null,
+            content: content ?? null,
+            extractionStatus: rawInput ? 'pending' : 'none',
+          },
+        })
+      )
+
+      if (rawInput) {
+        const { getBriefExtractQueue } = await import('../lib/queues.js')
+        await getBriefExtractQueue().add('extract', { agencyId, clientId, briefId: brief.id })
+      }
+
+      return reply.code(201).send({ data: brief })
+    }
+  )
+
+  // ── PATCH /:id/briefs/:briefId — update brief (name, content, status, verticalIds, etc.)
+  app.patch<{
+    Params: { id: string; briefId: string }
+    Body: {
+      name?: string
+      type?: string
+      status?: string
+      content?: string
+      rawInput?: string
+      extractedData?: Record<string, unknown>
+      verticalIds?: string[]
+    }
+  }>('/:id/briefs/:briefId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, briefId } = req.params
+    const existing = await withAgency(agencyId, () =>
+      prisma.clientBrief.findFirst({ where: { id: briefId, agencyId, clientId } })
+    )
+    if (!existing) return reply.code(404).send({ error: 'Brief not found' })
+
+    const { name, type, status, content, rawInput, extractedData, verticalIds } = req.body
+    const brief = await withAgency(agencyId, () =>
+      prisma.clientBrief.update({
+        where: { id: briefId },
+        data: {
+          ...(name !== undefined ? { name } : {}),
+          ...(type !== undefined ? { type } : {}),
+          ...(status !== undefined ? { status } : {}),
+          ...(content !== undefined ? { content } : {}),
+          ...(rawInput !== undefined ? { rawInput } : {}),
+          ...(extractedData !== undefined ? { extractedData: extractedData as object } : {}),
+          ...(verticalIds !== undefined ? { verticalIds } : {}),
+        },
+      })
+    )
+
+    // If rawInput was updated, re-trigger extraction
+    if (rawInput !== undefined && rawInput) {
+      const { getBriefExtractQueue } = await import('../lib/queues.js')
+      await getBriefExtractQueue().add('extract', { agencyId, clientId, briefId })
+    }
+
+    return reply.send({ data: brief })
+  })
+
+  // ── DELETE /:id/briefs/:briefId
+  app.delete<{ Params: { id: string; briefId: string } }>('/:id/briefs/:briefId', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, briefId } = req.params
+    const existing = await withAgency(agencyId, () =>
+      prisma.clientBrief.findFirst({ where: { id: briefId, agencyId, clientId }, select: { id: true } })
+    )
+    if (!existing) return reply.code(404).send({ error: 'Brief not found' })
+    await withAgency(agencyId, () => prisma.clientBrief.delete({ where: { id: briefId } }))
+    return reply.code(204).send()
+  })
+
+  // ── POST /:id/briefs/:briefId/extract — re-trigger extraction
+  app.post<{ Params: { id: string; briefId: string } }>('/:id/briefs/:briefId/extract', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, briefId } = req.params
+    const existing = await withAgency(agencyId, () =>
+      prisma.clientBrief.findFirst({ where: { id: briefId, agencyId, clientId }, select: { id: true, rawInput: true } })
+    )
+    if (!existing) return reply.code(404).send({ error: 'Brief not found' })
+    if (!existing.rawInput) return reply.code(400).send({ error: 'Brief has no raw input to extract from' })
+    await withAgency(agencyId, () =>
+      prisma.clientBrief.update({ where: { id: briefId }, data: { extractionStatus: 'pending' } })
+    )
+    const { getBriefExtractQueue } = await import('../lib/queues.js')
+    await getBriefExtractQueue().add('extract', { agencyId, clientId, briefId })
+    return reply.code(202).send({ data: { status: 'pending' } })
+  })
+
+  // ── POST /:id/briefs/upload — upload DOCX/TXT file → create brief + queue extraction
+  app.post<{ Params: { id: string }; Body: { name?: string; type?: string } }>(
+    '/:id/briefs/upload',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const { id: clientId } = req.params
+      const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
+      if (!client) return reply.code(404).send({ error: 'Client not found' })
+
+      let uploadData: { id?: string; storageKey?: string; filename?: string; text?: string } | null = null
+      try {
+        const parts = req.parts()
+        for await (const part of parts) {
+          if (part.type === 'file') {
+            const filename = part.filename ?? 'brief.docx'
+            const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+            if (!['docx', 'txt', 'pdf', 'md'].includes(ext)) {
+              return reply.code(400).send({ error: 'Only DOCX, TXT, PDF, and MD files are supported' })
+            }
+            const { uploadBuffer } = await import('@contentnode/storage')
+            const chunks: Buffer[] = []
+            for await (const chunk of part.file) { chunks.push(chunk as Buffer) }
+            const buf = Buffer.concat(chunks)
+
+            let text = ''
+            if (ext === 'docx') {
+              const { default: mammoth } = await import('mammoth')
+              const res = await mammoth.extractRawText({ buffer: buf })
+              text = res.value
+            } else {
+              text = buf.toString('utf-8')
+            }
+
+            const storageKey = `briefs/${agencyId}/${clientId}/${Date.now()}_${filename}`
+            await uploadBuffer(storageKey, buf, { contentType: part.mimetype ?? 'application/octet-stream' })
+            uploadData = { storageKey, filename, text }
+            break
+          }
+        }
+      } catch (err) {
+        console.error('[briefs/upload] file processing error:', err)
+        return reply.code(500).send({ error: 'File processing failed' })
+      }
+
+      if (!uploadData?.text) return reply.code(400).send({ error: 'Could not extract text from file' })
+
+      const briefName = (req.body as Record<string, string | undefined>).name ?? uploadData.filename ?? 'Uploaded Brief'
+      const briefType = (req.body as Record<string, string | undefined>).type ?? 'company'
+
+      const brief = await withAgency(agencyId, () =>
+        prisma.clientBrief.create({
+          data: {
+            agencyId,
+            clientId,
+            name: briefName,
+            type: briefType,
+            source: 'uploaded',
+            rawInput: uploadData!.text,
+            storageKey: uploadData!.storageKey ?? null,
+            filename: uploadData!.filename ?? null,
+            extractionStatus: 'pending',
+          },
+        })
+      )
+
+      const { getBriefExtractQueue } = await import('../lib/queues.js')
+      await getBriefExtractQueue().add('extract', { agencyId, clientId, briefId: brief.id })
+
+      return reply.code(201).send({ data: brief })
+    }
+  )
+
+  // ── PATCH /:id/framework/:verticalId/primary-brief — set/clear primary brief for a vertical
+  app.patch<{
+    Params: { id: string; verticalId: string }
+    Body: { primaryBriefId: string | null }
+  }>('/:id/framework/:verticalId/primary-brief', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const { primaryBriefId } = req.body
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    // Upsert the framework record just to store primaryBriefId
+    const framework = await withAgency(agencyId, () =>
+      prisma.clientFramework.upsert({
+        where: { clientId_verticalId: { clientId, verticalId } },
+        update: { primaryBriefId: primaryBriefId ?? null },
+        create: { agencyId, clientId, verticalId, data: {}, sectionStatus: {}, primaryBriefId: primaryBriefId ?? null },
+        select: { id: true, primaryBriefId: true },
+      })
+    )
+
+    return reply.send({ data: framework })
+  })
 }

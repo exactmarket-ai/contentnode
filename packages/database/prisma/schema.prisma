@@ -79,6 +79,7 @@ model Agency {
   stakeholderPreferenceProfiles  StakeholderPreferenceProfile[]
   clientPreferenceProfiles       ClientPreferenceProfile[]
   stakeholderPrinciples          StakeholderPrinciple[]
+  clientBriefs                   ClientBrief[]
   // Permissions override — if null, role defaults apply.
   // See PermissionService for resolution order.
   permissionsOverride Json? @map("permissions_override")
@@ -230,6 +231,7 @@ model Client {
   programContentPacks ProgramContentPack[]
   preferenceProfile   ClientPreferenceProfile?
   imagePrompts        ImagePrompt[]
+  clientBriefs        ClientBrief[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -348,14 +350,15 @@ model ClientGTMAssessment {
 // ClientFramework — per-client-per-vertical GTM content engine
 // ─────────────────────────────────────────────
 model ClientFramework {
-  id            String   @id @default(cuid())
-  agencyId      String   @map("agency_id")
-  clientId      String   @map("client_id")
-  verticalId    String   @map("vertical_id")
-  data          Json     @default("{}")
-  sectionStatus Json     @default("{}") @map("section_status")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id              String   @id @default(cuid())
+  agencyId        String   @map("agency_id")
+  clientId        String   @map("client_id")
+  verticalId      String   @map("vertical_id")
+  data            Json     @default("{}")
+  sectionStatus   Json     @default("{}") @map("section_status")
+  primaryBriefId  String?  @map("primary_brief_id")  // active product/solution brief for this vertical
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -2558,4 +2561,36 @@ model PilotSession {
   @@index([agencyId, clientId, verticalId])
   @@index([agencyId, clientId, verticalId, status])
   @@map("pilot_sessions")
+}
+
+// ─────────────────────────────────────────────
+// ClientBrief — company/product/solution brief library
+// Each brief can be associated with one or more verticals.
+// Company-level briefs are always injected; product/solution briefs are
+// selected per-vertical via ClientFramework.primaryBriefId.
+// ─────────────────────────────────────────────
+model ClientBrief {
+  id               String    @id @default(cuid())
+  agencyId         String    @map("agency_id")
+  clientId         String    @map("client_id")
+  name             String
+  type             String    @default("company")    // company | product | solution | service_line
+  status           String    @default("draft")      // draft | active
+  source           String    @default("pasted")     // uploaded | pasted | pilot_built
+  content          String?   @db.Text               // final approved brief text
+  extractedData    Json?     @map("extracted_data") // { whatItIs, whoItsFor, problem, outcome, differentiator, buyerContext }
+  rawInput         String?   @map("raw_input") @db.Text
+  storageKey       String?   @map("storage_key")
+  filename         String?
+  verticalIds      String[]  @default([]) @map("vertical_ids")
+  extractionStatus String    @default("none") @map("extraction_status")  // none | pending | ready | failed
+  errorMessage     String?   @map("error_message")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, clientId])
+  @@map("client_briefs")
 }

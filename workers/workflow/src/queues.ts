@@ -36,6 +36,7 @@ export const QUEUE_KIT_GENERATION                 = `${_p}kit-generation`
 export const QUEUE_STORYBOARD_GENERATION          = `${_p}storyboard-generation`
 export const QUEUE_STORYBOARD_SCENE               = `${_p}storyboard-scene`
 export const QUEUE_STORYBOARD_ASSEMBLE            = `${_p}storyboard-assemble`
+export const QUEUE_BRIEF_EXTRACT                  = `${_p}brief-extract`
 
 export interface KitGenerationJobData {
   sessionId: string
@@ -230,6 +231,12 @@ export interface PMAgentJobData {
   triggeredBy:   string | null  // userId who triggered (for manual runs)
   topic:         string | null  // Start Run Topic — used to detect same-topic re-runs
   completedAt:   string         // ISO timestamp
+}
+
+export interface BriefExtractJobData {
+  agencyId:  string
+  clientId:  string
+  briefId:   string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

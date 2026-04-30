@@ -44,6 +44,8 @@ const chatBody = z.object({
   conflictLog:       z.array(conflictEntrySchema).optional().nullable(),
   companyBrief:      z.string().optional().nullable(),
   sessionId:         z.string().optional().nullable(),
+  pilotMode:         z.enum(['gtm', 'briefer']).optional().default('gtm'),
+  briefId:           z.string().optional().nullable(),        // briefer mode: brief being built
 })
 
 // ─── Vertical → compliance framework map ──────────────────────────────────────
@@ -1945,6 +1947,72 @@ Make suggestions feel like real strategic choices — different angles, differen
 If the conversation is deep in one section and navigation isn't relevant, omit the suggestions block entirely.`
 }
 
+// ─── Briefer PILOT system prompt ──────────────────────────────────────────────
+
+function buildBrieferSystemPrompt(
+  clientName: string,
+  verticalName: string,
+  briefType: string,
+  briefName: string | null,
+  existingContent: string | null,
+): string {
+  const typeLabel = briefType === 'company' ? 'Company' : briefType === 'product' ? 'Product' : briefType === 'solution' ? 'Solution' : 'Service Line'
+
+  return `You are running a focused brief-building session for ${clientName}. Your only job in this session is to produce a clean, usable ${typeLabel} Brief${briefName ? ` called "${briefName}"` : ''} for the ${verticalName} vertical.
+
+This is not a full GTM strategy session. You are interrogating one idea until you understand it clearly enough to write a brief that a strategist can use as the foundation for a complete GTM Framework.
+${existingContent ? `\nEXISTING BRIEF CONTENT (refine this):\n${existingContent}\n` : ''}
+YOUR FIVE PROBES — work through these one at a time. Do not move to the next probe until you have a clean answer to the current one. Never ask all five at once.
+
+1. WHAT IT IS: Plain language description. No jargon, no positioning language yet.
+   Push back if: the answer contains category jargon or marketing language.
+   Push back line: "Pretend you're explaining this to someone who has never heard of your category. What does it actually do?"
+
+2. WHO IT IS FOR: Specific buyer, not a broad market.
+   Push back if: the answer is too broad ("mid-market companies", "SMBs", "businesses").
+   Push back line: "What's the job title of the person who feels the pain this solves most acutely? What does their day look like when the problem is present?"
+
+3. WHAT PROBLEM IT SOLVES: The specific pain, not the category of pain.
+   Push back if: the answer is abstract ("inefficiency", "lack of visibility", "poor performance").
+   Push back line: "What specifically goes wrong for that person when this problem is unsolved? What does it cost them, their team, or their company?"
+
+4. WHAT CHANGES AFTER: The outcome in the buyer's language.
+   Push back if: the answer is generic ("improved outcomes", "better results", "increased efficiency").
+   Push back line: "What does the buyer stop doing, start doing, or do differently after using this? Give me something specific enough to put in a headline."
+
+5. WHAT MAKES IT DIFFERENT: One thing that is genuinely ownable.
+   Apply the competitor copy-paste test: if a competitor could say the exact same thing, it's not a differentiator.
+   Push back if: the differentiator could describe any competitor in the category.
+   Push back line: "That's true of most solutions in this space. What's the one thing about this that a competitor would have to specifically build or change to match?"
+
+SPARRING BEHAVIOR:
+- Feel like the smartest person in the room who has done homework on the category and is genuinely trying to understand whether this idea holds up
+- When the user says something that reveals an unexamined assumption, name it explicitly: "You're assuming your buyer already knows they have this problem. Do they?"
+- When the user says something genuinely strong, reflect it back immediately: "That's the differentiator. Everything else could describe three other vendors. That one couldn't. Let's make sure that's front and center."
+- When the user is stuck, offer three specific options — never an open-ended prompt: "Based on what you've described, the buyer is probably one of these three..." Then give three specific buyer descriptions with enough detail that the user can react to them.
+- Never accept a vague answer. The brief produced from this session feeds every research run and every section of the GTM Framework — thin input produces thin output.
+
+BRIEF DRAFT FORMAT — use this when all five probes are complete:
+Present the draft and ask "Does this accurately represent what we just built? What would you change?"
+
+When the user approves the draft, emit this EXACT block on a new line at the end of your response (the system reads it silently — do NOT mention it to the user):
+BRIEF_SAVE: {"content":"<4-6 sentence brief>","whatItIs":"<plain language description>","whoItsFor":"<specific buyer>","problem":"<specific pain>","outcome":"<specific outcome>","differentiator":"<ownable differentiator>","buyerContext":"<title, situation, what they want to achieve>"}
+
+After brief is saved, offer to transition to Section 01 of the GTM Framework:
+"We have enough here to start your framework. Your positioning statement is basically implied by what we just built. The target is [X], the outcome is [Y], and the pain point is [Z]. We just need to nail down your role and sharpen the language. Want to go straight into Section 01?"
+
+OPENING MOVE — your very first message in this session:
+Do NOT open with a list of questions or a form. Open with ONE direct question:
+"Tell me what this is. Not the pitch — just what it actually does and who it helps."
+
+Then listen for what the user gives you and probe on the current state of that answer. If they give you all five things at once, reflect the weakest one back first.
+
+RESPONSE FORMAT:
+- Keep responses short: 3-5 lines + one follow-up question or three specific options
+- Never ask more than one question per turn
+- Never show the user the five probes list — work through them naturally in conversation`
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function gtmPilotRoutes(app: FastifyInstance) {
@@ -1960,6 +2028,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       messages, clientId, verticalId, verticalName,
       filledSections = [], emptySections = [],
       activeSection, researchBySection, conflictLog, companyBrief, sessionId,
+      pilotMode = 'gtm', briefId,
     } = parsed.data
 
     // Verify client and vertical belong to this agency
@@ -1970,10 +2039,103 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     if (!client) return reply.code(404).send({ error: 'Client not found' })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
 
+    // ── Briefer PILOT mode ────────────────────────────────────────────────────
+    if (pilotMode === 'briefer') {
+      const existingBrief = briefId
+        ? await prisma.clientBrief.findFirst({ where: { id: briefId, agencyId, clientId } })
+        : null
+
+      const brieferPrompt = buildBrieferSystemPrompt(
+        client.name,
+        verticalName ?? vertical.name,
+        existingBrief?.type ?? 'company',
+        existingBrief?.name ?? null,
+        existingBrief?.content ?? null,
+      )
+
+      const apiKey = process.env.ANTHROPIC_API_KEY
+      if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
+      const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
+
+      const levelHint = `[Brief Session — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`
+      const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => ({
+        role: m.role,
+        content: i === 0 ? `${levelHint}\n\n${m.content}` : m.content,
+      }))
+
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1500,
+        system: brieferPrompt,
+        messages: anthropicMessages,
+      })
+
+      const fullText = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+
+      // Extract BRIEF_SAVE: marker — save to brief if briefId is set
+      const briefSaveMatch = fullText.match(/BRIEF_SAVE:\s*(\{[\s\S]+?\})\s*(?:\n|$)/)
+      let replyText = fullText
+      let savedBrief: Record<string, unknown> | null = null
+      if (briefSaveMatch && briefId) {
+        try {
+          savedBrief = JSON.parse(briefSaveMatch[1]) as Record<string, unknown>
+          await prisma.clientBrief.update({
+            where: { id: briefId },
+            data: {
+              content: (savedBrief.content as string) ?? null,
+              extractedData: savedBrief as object,
+              source: 'pilot_built',
+              status: 'active',
+              extractionStatus: 'ready',
+            },
+          })
+          replyText = fullText.replace(/BRIEF_SAVE:\s*\{[\s\S]+?\}\s*(?:\n|$)/, '').trim()
+        } catch { /* malformed JSON — keep fullText */ }
+      }
+
+      return reply.send({
+        reply: replyText,
+        suggestions: [],
+        briefSaved: savedBrief !== null,
+        briefId: briefId ?? null,
+      })
+    }
+
+    // ── GTM mode — load brief library for this client+vertical ────────────────
+    let activeBriefContent: string | null = companyBrief ?? null
+    try {
+      const framework = await prisma.clientFramework.findUnique({
+        where: { clientId_verticalId: { clientId, verticalId } },
+        select: { primaryBriefId: true },
+      })
+      const companyBriefs = await prisma.clientBrief.findMany({
+        where: { agencyId, clientId, status: 'active', type: 'company' },
+        orderBy: { updatedAt: 'desc' },
+        take: 1,
+        select: { content: true },
+      })
+      const primaryBriefContent = framework?.primaryBriefId
+        ? (await prisma.clientBrief.findFirst({
+            where: { id: framework.primaryBriefId, agencyId, clientId, status: 'active' },
+            select: { content: true, type: true, name: true },
+          }))
+        : null
+
+      const briefParts: string[] = []
+      if (companyBriefs[0]?.content) briefParts.push(`COMPANY BRIEF:\n${companyBriefs[0].content}`)
+      if (primaryBriefContent?.content) {
+        briefParts.push(`${primaryBriefContent.type.toUpperCase().replace('_', ' ')} BRIEF (${primaryBriefContent.name}):\n${primaryBriefContent.content}`)
+      }
+      if (briefParts.length > 0) activeBriefContent = briefParts.join('\n\n')
+    } catch { /* non-fatal — fall back to companyBrief from body */ }
+
     const { parts: contextParts, meta: brainMeta } = await buildContext(agencyId, clientId, verticalId)
-    brainMeta.hasCompanyBrief = !!(companyBrief?.trim())
-    const brainState = classifyBrainState(brainMeta, companyBrief)
-    const brainStateBlock = buildBrainStateBlock(brainState, brainMeta, companyBrief)
+    brainMeta.hasCompanyBrief = !!(activeBriefContent?.trim())
+    const brainState = classifyBrainState(brainMeta, activeBriefContent)
+    const brainStateBlock = buildBrainStateBlock(brainState, brainMeta, activeBriefContent)
 
     const systemPrompt = buildSystemPrompt(
       contextParts,
@@ -1984,7 +2146,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       activeSection,
       researchBySection as Record<string, string> | null | undefined,
       conflictLog,
-      companyBrief,
+      activeBriefContent,
     )
 
     const levelHint = `[GTM Framework — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`

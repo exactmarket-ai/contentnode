@@ -5,6 +5,7 @@ import { DimensionBar, type DimensionItem } from '@/components/layout/DimensionB
 import { checkFilenames, type FilenameIssue } from '@/lib/filename'
 import { FilenameWarning } from '@/components/ui/FilenameWarning'
 import { GTMPilot } from '@/components/pilot/GTMPilot'
+import { BrieferPilot } from '@/components/pilot/BrieferPilot'
 import { downloadGTMFrameworkDocx, DEFAULT_DOC_STYLE, type DocStyleConfig } from '@/lib/downloadDocx'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useVerticalTerm } from '@/hooks/useVerticalTerm'
@@ -1677,6 +1678,195 @@ function AttachmentRow({ attachment: a, base, brandBase, deletingId, onDelete, o
   )
 }
 
+// ── Brief Library Panel ──────────────────────────────────────────────────────
+
+type ClientBriefLocal = { id: string; name: string; type: string; status: string; source: string; content: string | null; extractedData: Record<string, string> | null; extractionStatus: string; verticalIds: string[]; updatedAt: string }
+
+const BRIEF_TYPE_LABELS: Record<string, string> = {
+  company: 'Company',
+  product: 'Product',
+  solution: 'Solution',
+  service_line: 'Service Line',
+}
+
+const BRIEF_SOURCE_LABELS: Record<string, string> = {
+  uploaded: 'Uploaded',
+  pasted: 'Pasted',
+  pilot_built: 'PILOT-built',
+}
+
+function BriefLibraryPanel({
+  clientId,
+  verticalId,
+  briefs,
+  briefsLoading,
+  onBrieferOpen,
+  onCreateBrief,
+  onUploadFile,
+  onToggleStatus,
+  onDelete,
+  onSetPrimary,
+  primaryBriefId,
+}: {
+  clientId: string
+  verticalId: string | null
+  briefs: ClientBriefLocal[]
+  briefsLoading: boolean
+  onBrieferOpen: (brief: ClientBriefLocal) => void
+  onCreateBrief: (name: string, type: string, text?: string) => void
+  onUploadFile: (file: File) => void
+  onToggleStatus: (briefId: string, status: 'active' | 'draft') => void
+  onDelete: (briefId: string) => void
+  onSetPrimary: (briefId: string | null) => void
+  primaryBriefId?: string | null
+}) {
+  const [showAdd, setShowAdd] = useState<'menu' | 'paste' | 'new' | null>(null)
+  const [name, setName] = useState('')
+  const [type, setType] = useState('company')
+  const [text, setText] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleCreate = () => {
+    if (!name.trim()) return
+    onCreateBrief(name.trim(), type, showAdd === 'paste' ? text.trim() : undefined)
+    setName(''); setType('company'); setText(''); setShowAdd(null)
+  }
+
+  return (
+    <div className="mb-6 rounded-xl border border-border bg-muted/20 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Brief Library</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Company, product, and solution briefs — injected into every research run and PILOT session for this vertical.</p>
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => setShowAdd(showAdd ? null : 'menu')}
+            className="flex items-center gap-1.5 text-[12px] font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <span className="text-base leading-none">+</span> Add Brief
+          </button>
+          {showAdd === 'menu' && (
+            <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-border rounded-xl shadow-lg w-52 py-1 text-[13px]">
+              <button onClick={() => { setShowAdd('new'); setType('company') }} className="w-full text-left px-3 py-2 hover:bg-muted transition-colors">New blank brief</button>
+              <button onClick={() => { setShowAdd('paste'); setType('company') }} className="w-full text-left px-3 py-2 hover:bg-muted transition-colors">Paste existing content</button>
+              <button onClick={() => fileRef.current?.click()} className="w-full text-left px-3 py-2 hover:bg-muted transition-colors">Upload document</button>
+            </div>
+          )}
+          <input ref={fileRef} type="file" className="hidden" accept=".docx,.txt,.pdf,.md" onChange={(e) => { if (e.target.files?.[0]) { onUploadFile(e.target.files[0]); setShowAdd(null) } }} />
+        </div>
+      </div>
+
+      {(showAdd === 'new' || showAdd === 'paste') && (
+        <div className="mb-4 bg-white border border-border rounded-xl p-4 space-y-3">
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="Brief name (e.g. Company Overview, HR Module Brief)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <select
+              className="rounded-lg border border-border bg-background px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+            >
+              <option value="company">Company</option>
+              <option value="product">Product</option>
+              <option value="solution">Solution</option>
+              <option value="service_line">Service Line</option>
+            </select>
+          </div>
+          {showAdd === 'paste' && (
+            <textarea
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[12px] resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+              rows={5}
+              placeholder="Paste your existing brief, one-pager, or any content describing this company, product, or solution..."
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+          )}
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setShowAdd(null)} className="text-[12px] text-muted-foreground hover:text-foreground px-3 py-1.5 transition-colors">Cancel</button>
+            <button
+              onClick={handleCreate}
+              disabled={!name.trim()}
+              className="text-[12px] font-medium bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-40 transition-colors"
+            >
+              {showAdd === 'paste' ? 'Create & Extract' : 'Create'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {briefsLoading && <p className="text-[12px] text-muted-foreground py-2">Loading briefs...</p>}
+
+      {!briefsLoading && briefs.length === 0 && (
+        <div className="text-center py-4">
+          <p className="text-[12px] text-muted-foreground">No briefs yet — add one above or build one with the PILOT.</p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {briefs.map((brief) => {
+          const isPrimary = verticalId && brief.id === primaryBriefId && brief.type !== 'company'
+          return (
+            <div key={brief.id} className="bg-white border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-[13px] font-medium text-foreground truncate">{brief.name}</p>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border text-muted-foreground">{BRIEF_TYPE_LABELS[brief.type] ?? brief.type}</span>
+                  <span className={cn(
+                    'text-[10px] px-1.5 py-0.5 rounded-full font-medium',
+                    brief.status === 'active' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-muted text-muted-foreground border border-border',
+                  )}>{brief.status === 'active' ? 'Active' : 'Draft'}</span>
+                  {brief.extractionStatus === 'pending' && <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Extracting...</span>}
+                  {brief.extractionStatus === 'ready' && !brief.content && <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0.5">Review pending</span>}
+                  {isPrimary && <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-1.5 py-0.5">Primary for vertical</span>}
+                </div>
+                {brief.content && <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{brief.content}</p>}
+                <p className="text-[10px] text-muted-foreground mt-0.5">{BRIEF_SOURCE_LABELS[brief.source] ?? brief.source} · {new Date(brief.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {verticalId && brief.type !== 'company' && (
+                  <button
+                    title={isPrimary ? 'Remove as primary' : 'Set as primary for this vertical'}
+                    onClick={() => onSetPrimary(isPrimary ? null : brief.id)}
+                    className={cn('p-1.5 rounded-lg transition-colors text-[10px]', isPrimary ? 'text-violet-600 bg-violet-50 hover:bg-violet-100' : 'text-muted-foreground hover:bg-muted')}
+                  >
+                    <span className="text-sm">{isPrimary ? '★' : '☆'}</span>
+                  </button>
+                )}
+                <button
+                  title="Build / refine with PILOT"
+                  onClick={() => onBrieferOpen(brief)}
+                  className="p-1.5 rounded-lg text-violet-500 hover:bg-violet-50 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+                </button>
+                <button
+                  title={brief.status === 'active' ? 'Set to draft' : 'Activate'}
+                  onClick={() => onToggleStatus(brief.id, brief.status === 'active' ? 'draft' : 'active')}
+                  className={cn('p-1.5 rounded-lg transition-colors', brief.status === 'active' ? 'text-green-600 hover:bg-green-50' : 'text-muted-foreground hover:bg-muted')}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </button>
+                <button
+                  title="Delete"
+                  onClick={() => onDelete(brief.id)}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsite, onReadyChange, companyBrief, onBriefChange, onBriefBlur, briefSaved }: {
   clientId: string
   verticalId: string | null
@@ -1860,26 +2050,7 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
         </div>
       </div>}
 
-      {/* Company brief — only shown for vertical-specific brain */}
-      {verticalId && onBriefChange && (
-        <div className="mb-6 rounded-xl border border-border bg-muted/20 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Company brief <span className="text-[10px] font-normal text-muted-foreground ml-1">optional</span></p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">A short plain-language description of what this company does. Injected as the first context in every research run. You can also build this with gtmPILOT.</p>
-            </div>
-            {briefSaved && <span className="text-[11px] text-green-500 font-medium shrink-0">Brief saved ✓</span>}
-          </div>
-          <textarea
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-            rows={4}
-            placeholder="e.g. We are a managed service provider serving mid-market healthcare organizations, specialising in HIPAA compliance, network security, and Microsoft 365 management. We compete against regional MSPs and in-house IT teams…"
-            value={companyBrief ?? ''}
-            onChange={(e) => onBriefChange?.(e.target.value)}
-            onBlur={(e) => onBriefBlur?.(e.target.value)}
-          />
-        </div>
-      )}
+      {/* Brief library is now rendered above AttachmentsSection in the parent */}
 
       {/* Drop zone */}
       <div
@@ -2142,6 +2313,10 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({})
   const [companyBrief, setCompanyBrief] = useState('')
   const [briefSaved, setBriefSaved] = useState(false)
+  // Brief library state
+  const [briefs, setBriefs] = useState<ClientBriefLocal[]>([])
+  const [briefsLoading, setBriefsLoading] = useState(false)
+  const [brieferOpen, setBrieferOpen] = useState<ClientBriefLocal | null>(null)
   const [fillingFromClientGtm, setFillingFromClientGtm] = useState(false)
   const [fillResult, setFillResult] = useState<{ filledCount: number; sections: string[] } | null>(null)
   const clientGtmInputRef = useRef<HTMLInputElement>(null)
@@ -2297,6 +2472,22 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     })
   }, [clientId, selectedVertical])
 
+  // Load briefs whenever client changes
+  const loadBriefs = useCallback(async () => {
+    setBriefsLoading(true)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/briefs`)
+      if (res.ok) {
+        const { data } = await res.json()
+        setBriefs(data ?? [])
+      }
+    } catch { /* non-fatal */ } finally {
+      setBriefsLoading(false)
+    }
+  }, [clientId])
+
+  useEffect(() => { void loadBriefs() }, [loadBriefs])
+
   // Poll research runs while one is running
   useEffect(() => {
     if (!researchRunning || !selectedVertical) return
@@ -2356,6 +2547,45 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     }).catch(() => {})
     setBriefSaved(true)
     setTimeout(() => setBriefSaved(false), 3000)
+  }, [clientId, selectedVertical])
+
+  const uploadBriefFile = useCallback(async (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/briefs/upload`, { method: 'POST', body: form })
+      if (res.ok) {
+        const { data } = await res.json()
+        setBriefs((prev) => [data, ...prev])
+        void loadBriefs()
+      }
+    } catch { /* non-fatal */ }
+  }, [clientId, loadBriefs])
+
+  const toggleBriefStatus = useCallback(async (briefId: string, newStatus: 'active' | 'draft') => {
+    const res = await apiFetch(`/api/v1/clients/${clientId}/briefs/${briefId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    })
+    if (res.ok) {
+      setBriefs((prev) => prev.map((b) => b.id === briefId ? { ...b, status: newStatus } : b))
+    }
+  }, [clientId])
+
+  const deleteBrief = useCallback(async (briefId: string) => {
+    if (!confirm('Delete this brief?')) return
+    await apiFetch(`/api/v1/clients/${clientId}/briefs/${briefId}`, { method: 'DELETE' })
+    setBriefs((prev) => prev.filter((b) => b.id !== briefId))
+  }, [clientId])
+
+  const setPrimaryBrief = useCallback(async (briefId: string | null) => {
+    if (!selectedVertical) return
+    await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/primary-brief`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ primaryBriefId: briefId }),
+    }).catch(() => {})
   }, [clientId, selectedVertical])
 
   const fireResearch = useCallback(async (researchMode: 'established' | 'new_vertical', mergeWithExisting: boolean) => {
@@ -3066,6 +3296,31 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-8 py-6">
         {activeSection === 'brain' ? (
           <div className="mx-auto max-w-4xl space-y-8">
+            {selectedVertical && (
+              <BriefLibraryPanel
+                clientId={clientId}
+                verticalId={selectedVertical.id}
+                briefs={briefs}
+                briefsLoading={briefsLoading}
+                onBrieferOpen={(brief) => setBrieferOpen(brief)}
+                onCreateBrief={async (name, type, text) => {
+                  const res = await apiFetch(`/api/v1/clients/${clientId}/briefs`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, type, rawInput: text || undefined }),
+                  })
+                  if (res.ok) {
+                    const { data } = await res.json()
+                    setBriefs((prev) => [data as ClientBriefLocal, ...prev])
+                    if (text) setBrieferOpen(data as ClientBriefLocal)
+                  }
+                }}
+                onUploadFile={uploadBriefFile}
+                onToggleStatus={toggleBriefStatus}
+                onDelete={deleteBrief}
+                onSetPrimary={setPrimaryBrief}
+              />
+            )}
             <AttachmentsSection
               clientId={clientId}
               verticalId={selectedVertical?.id ?? null}
@@ -3250,6 +3505,21 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
         onSectionSkipped={(num) => void patchSectionStatus(num, 'complete')}
       />
+
+      {/* Briefer PILOT modal */}
+      {brieferOpen && selectedVertical && (
+        <BrieferPilot
+          clientId={clientId}
+          verticalId={selectedVertical.id}
+          verticalName={selectedVertical.name}
+          brief={brieferOpen}
+          onBriefSaved={(updated) => {
+            setBriefs((prev) => prev.map((b) => b.id === updated.id ? { ...b, ...updated } : b))
+          }}
+          onClose={() => setBrieferOpen(null)}
+          onGoToSection01={() => { setPilotOpen(true); setActiveSection('01') }}
+        />
+      )}
 
       {/* Research mode dialog */}
       {showResearchDialog === 'mode' && (
