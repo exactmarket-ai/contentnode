@@ -3062,12 +3062,18 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => clientGtmInputRef.current?.click()}
-                    disabled={uploadingClientGtm}
+                  <div
+                    onClick={() => { if (!uploadingClientGtm) clientGtmInputRef.current?.click() }}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+                    onDrop={(e) => {
+                      e.preventDefault(); e.stopPropagation()
+                      if (uploadingClientGtm) return
+                      const f = e.dataTransfer.files?.[0]
+                      if (f) void handleClientGtmUpload(f)
+                    }}
                     className={cn(
                       'flex w-full flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border py-6 text-center transition-colors',
-                      uploadingClientGtm ? 'cursor-not-allowed opacity-50' : 'hover:border-blue-300 hover:bg-blue-50/30',
+                      uploadingClientGtm ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-blue-300 hover:bg-blue-50/30',
                     )}
                   >
                     {uploadingClientGtm ? (
@@ -3081,10 +3087,10 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                       </svg>
                     )}
                     <div>
-                      <p className="text-xs font-medium text-foreground">{uploadingClientGtm ? 'Uploading…' : 'Upload client GTM (.docx)'}</p>
+                      <p className="text-xs font-medium text-foreground">{uploadingClientGtm ? 'Uploading…' : 'Drop .docx here or click to browse'}</p>
                       <p className="text-[11px] text-muted-foreground">We'll extract sections and flag conflicts with your research</p>
                     </div>
-                  </button>
+                  </div>
                 )}
               </div>
             )}
