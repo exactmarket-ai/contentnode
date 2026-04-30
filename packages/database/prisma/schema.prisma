@@ -2582,7 +2582,8 @@ model ClientBrief {
   rawInput         String?   @map("raw_input") @db.Text
   storageKey       String?   @map("storage_key")
   filename         String?
-  verticalIds      String[]  @default([]) @map("vertical_ids")
+  verticalIds             String[]  @default([]) @map("vertical_ids")
+  sharedAcrossVerticals   Boolean   @default(false) @map("shared_across_verticals")
   extractionStatus String    @default("none") @map("extraction_status")  // none | pending | ready | failed
   errorMessage     String?   @map("error_message")
   createdAt        DateTime  @default(now()) @map("created_at")

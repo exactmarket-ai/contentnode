@@ -1680,7 +1680,7 @@ function AttachmentRow({ attachment: a, base, brandBase, deletingId, onDelete, o
 
 // ── Brief Library Panel ──────────────────────────────────────────────────────
 
-type ClientBriefLocal = { id: string; name: string; type: string; status: string; source: string; content: string | null; extractedData: Record<string, string> | null; extractionStatus: string; verticalIds: string[]; updatedAt: string }
+type ClientBriefLocal = { id: string; name: string; type: string; status: string; source: string; content: string | null; extractedData: Record<string, string> | null; extractionStatus: string; verticalIds: string[]; sharedAcrossVerticals: boolean; updatedAt: string }
 
 const BRIEF_TYPE_LABELS: Record<string, string> = {
   company: 'Company',
@@ -1707,6 +1707,7 @@ function BriefLibraryPanel({
   onDelete,
   onSetPrimary,
   onBriefUpdated,
+  onToggleShared,
   primaryBriefId,
 }: {
   clientId: string
@@ -1720,6 +1721,7 @@ function BriefLibraryPanel({
   onDelete: (briefId: string) => void
   onSetPrimary: (briefId: string | null) => void
   onBriefUpdated: (brief: ClientBriefLocal) => void
+  onToggleShared: (briefId: string, shared: boolean) => void
   primaryBriefId?: string | null
 }) {
   const [showAdd, setShowAdd] = useState<'menu' | 'paste' | 'new' | null>(null)
@@ -1918,7 +1920,23 @@ function BriefLibraryPanel({
                     </div>
                   )}
 
-                  <p className="text-[10px] text-muted-foreground mt-1">{BRIEF_SOURCE_LABELS[brief.source] ?? brief.source} · {new Date(brief.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <p className="text-[10px] text-muted-foreground">{BRIEF_SOURCE_LABELS[brief.source] ?? brief.source} · {new Date(brief.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                    <span className="text-muted-foreground/30 text-[10px]">·</span>
+                    <button
+                      title={brief.sharedAcrossVerticals ? 'Shown in all verticals — click to scope to this vertical only' : 'Shown in this vertical only — click to share across all verticals'}
+                      onClick={() => onToggleShared(brief.id, !brief.sharedAcrossVerticals)}
+                      className={cn('flex items-center gap-1 text-[10px] transition-colors', brief.sharedAcrossVerticals ? 'text-blue-600 hover:text-blue-700' : 'text-muted-foreground hover:text-foreground')}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        {brief.sharedAcrossVerticals
+                          ? <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                          : <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                        }
+                      </svg>
+                      {brief.sharedAcrossVerticals ? 'Shared across verticals' : 'This vertical only'}
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {verticalId && brief.type !== 'company' && (
@@ -2566,11 +2584,13 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     })
   }, [clientId, selectedVertical])
 
-  // Load briefs whenever client changes
+  // Load briefs scoped to the active vertical
   const loadBriefs = useCallback(async () => {
     setBriefsLoading(true)
     try {
-      const res = await apiFetch(`/api/v1/clients/${clientId}/briefs`)
+      const vid = selectedVertical?.id
+      const url = `/api/v1/clients/${clientId}/briefs${vid ? `?verticalId=${vid}` : ''}`
+      const res = await apiFetch(url)
       if (res.ok) {
         const { data } = await res.json()
         setBriefs(data ?? [])
@@ -2578,7 +2598,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     } catch { /* non-fatal */ } finally {
       setBriefsLoading(false)
     }
-  }, [clientId])
+  }, [clientId, selectedVertical?.id])
 
   useEffect(() => { void loadBriefs() }, [loadBriefs])
 
@@ -3401,7 +3421,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                   const res = await apiFetch(`/api/v1/clients/${clientId}/briefs`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, type, rawInput: text || undefined }),
+                    body: JSON.stringify({ name, type, rawInput: text || undefined, verticalId: selectedVertical.id }),
                   })
                   if (!res.ok) {
                     const err = await res.json().catch(() => ({})) as { error?: string; message?: string }
@@ -3420,6 +3440,14 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                 onDelete={deleteBrief}
                 onSetPrimary={setPrimaryBrief}
                 onBriefUpdated={(updated) => setBriefs((prev) => prev.map((b) => b.id === updated.id ? { ...b, ...updated } : b))}
+                onToggleShared={async (briefId, shared) => {
+                  setBriefs((prev) => prev.map((b) => b.id === briefId ? { ...b, sharedAcrossVerticals: shared } : b))
+                  await apiFetch(`/api/v1/clients/${clientId}/briefs/${briefId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sharedAcrossVerticals: shared }),
+                  })
+                }}
               />
             )}
             <AttachmentsSection

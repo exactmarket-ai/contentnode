@@ -55,6 +55,9 @@ const statements = [
         FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     END IF;
   END $$`,
+
+  // Brief vertical scoping — shared_across_verticals flag (2026-04-30)
+  `ALTER TABLE "client_briefs" ADD COLUMN IF NOT EXISTS "shared_across_verticals" BOOLEAN NOT NULL DEFAULT false`,
 ]
 
 try {

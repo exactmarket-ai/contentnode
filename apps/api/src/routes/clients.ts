@@ -5362,15 +5362,27 @@ Example format: {"field1":"value1","field2":"value2"}`,
   // CLIENT BRIEF LIBRARY
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // ── GET /:id/briefs — list all briefs for client
-  app.get<{ Params: { id: string } }>('/:id/briefs', async (req, reply) => {
+  // ── GET /:id/briefs — list briefs for client, scoped to verticalId when provided
+  app.get<{ Params: { id: string }; Querystring: { verticalId?: string } }>('/:id/briefs', async (req, reply) => {
     const { agencyId } = req.auth
     const { id: clientId } = req.params
+    const { verticalId } = req.query
     const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
     if (!client) return reply.code(404).send({ error: 'Client not found' })
     const briefs = await withAgency(agencyId, () =>
       prisma.clientBrief.findMany({
-        where: { agencyId, clientId },
+        where: {
+          agencyId,
+          clientId,
+          // When a verticalId is supplied: return only briefs scoped to that
+          // vertical OR explicitly shared across all verticals.
+          ...(verticalId ? {
+            OR: [
+              { verticalIds: { has: verticalId } },
+              { sharedAcrossVerticals: true },
+            ],
+          } : {}),
+        },
         orderBy: { createdAt: 'desc' },
       })
     )
@@ -5378,12 +5390,12 @@ Example format: {"field1":"value1","field2":"value2"}`,
   })
 
   // ── POST /:id/briefs — create a brief (pasted or blank)
-  app.post<{ Params: { id: string }; Body: { name: string; type?: string; rawInput?: string; content?: string } }>(
+  app.post<{ Params: { id: string }; Body: { name: string; type?: string; rawInput?: string; content?: string; verticalId?: string } }>(
     '/:id/briefs',
     async (req, reply) => {
       const { agencyId } = req.auth
       const { id: clientId } = req.params
-      const { name, type = 'company', rawInput, content } = req.body
+      const { name, type = 'company', rawInput, content, verticalId } = req.body
       if (!name) return reply.code(400).send({ error: 'name is required' })
       const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } })
       if (!client) return reply.code(404).send({ error: 'Client not found' })
@@ -5401,6 +5413,7 @@ Example format: {"field1":"value1","field2":"value2"}`,
               rawInput: rawInput ?? null,
               content: content ?? null,
               extractionStatus: rawInput ? 'pending' : 'none',
+              verticalIds: verticalId ? [verticalId] : [],
             },
           })
         )
@@ -5423,7 +5436,7 @@ Example format: {"field1":"value1","field2":"value2"}`,
     }
   )
 
-  // ── PATCH /:id/briefs/:briefId — update brief (name, content, status, verticalIds, etc.)
+  // ── PATCH /:id/briefs/:briefId — update brief (name, content, status, verticalIds, sharedAcrossVerticals, etc.)
   app.patch<{
     Params: { id: string; briefId: string }
     Body: {
@@ -5434,6 +5447,7 @@ Example format: {"field1":"value1","field2":"value2"}`,
       rawInput?: string
       extractedData?: Record<string, unknown>
       verticalIds?: string[]
+      sharedAcrossVerticals?: boolean
     }
   }>('/:id/briefs/:briefId', async (req, reply) => {
     const { agencyId } = req.auth
@@ -5443,7 +5457,7 @@ Example format: {"field1":"value1","field2":"value2"}`,
     )
     if (!existing) return reply.code(404).send({ error: 'Brief not found' })
 
-    const { name, type, status, content, rawInput, extractedData, verticalIds } = req.body
+    const { name, type, status, content, rawInput, extractedData, verticalIds, sharedAcrossVerticals } = req.body
     const brief = await withAgency(agencyId, () =>
       prisma.clientBrief.update({
         where: { id: briefId },
@@ -5455,6 +5469,7 @@ Example format: {"field1":"value1","field2":"value2"}`,
           ...(rawInput !== undefined ? { rawInput } : {}),
           ...(extractedData !== undefined ? { extractedData: extractedData as object } : {}),
           ...(verticalIds !== undefined ? { verticalIds } : {}),
+          ...(sharedAcrossVerticals !== undefined ? { sharedAcrossVerticals } : {}),
         },
       })
     )
