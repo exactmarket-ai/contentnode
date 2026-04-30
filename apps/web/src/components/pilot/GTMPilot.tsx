@@ -54,6 +54,8 @@ export interface GTMPilotProps {
   // Company brief
   companyBrief?: string | null
   onBriefSaved?: (brief: string) => void
+  // Section skip (e.g. §17 "no regulations apply" → mark complete)
+  onSectionSkipped?: (sectionNum: string) => void
 }
 
 // ─── Section display names ────────────────────────────────────────────────────
@@ -209,6 +211,7 @@ export function GTMPilot({
   onSectionStatusChange,
   companyBrief,
   onBriefSaved,
+  onSectionSkipped,
 }: GTMPilotProps) {
   const [openInternal, setOpenInternal] = useState(false)
   const [messages, setMessages]         = useState<GtmMessage[]>([])
@@ -310,13 +313,20 @@ export function GTMPilot({
         replyContent = replyContent.replace(/BRIEF_SAVE:\s*.+?(?:\n|$)/s, '').trim()
       }
 
+      // Parse SECTION_SKIP: marker — PILOT determined section should be skipped (e.g. §17 no regulations)
+      const skipMatch = replyContent.match(/^SECTION_SKIP:\s*(\d+)\s*$/m)
+      if (skipMatch && onSectionSkipped) {
+        onSectionSkipped(skipMatch[1].padStart(2, '0'))
+        replyContent = replyContent.replace(/^SECTION_SKIP:\s*\d+\s*\n?/m, '').trim()
+      }
+
       setMessages((prev) => [...prev, { role: 'assistant', content: replyContent, suggestions }])
     } catch {
       setMessages((prev) => [...prev, { role: 'assistant', content: 'Network error — check your connection and try again.' }])
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, clientId, verticalId, verticalName, filledSections, emptySections, activeSection, activeSectionResearch, activeSectionConflicts, companyBrief, onBriefSaved])
+  }, [input, loading, messages, clientId, verticalId, verticalName, filledSections, emptySections, activeSection, activeSectionResearch, activeSectionConflicts, companyBrief, onBriefSaved, onSectionSkipped])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

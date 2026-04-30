@@ -44,6 +44,61 @@ const chatBody = z.object({
   companyBrief:      z.string().optional().nullable(),
 })
 
+// ─── Vertical → compliance framework map ──────────────────────────────────────
+
+const COMPLIANCE_VERTICAL_MAP: Array<{ keywords: string[]; frameworks: string; description: string }> = [
+  {
+    keywords: ['healthcare', 'health care', 'medical', 'hospital', 'clinic', 'dental', 'pharma', 'hipaa', 'health it', 'ehr', 'emr', 'telehealth'],
+    frameworks: 'HIPAA, HITRUST CSF, 42 CFR Part 2 (substance use records), state health data privacy laws (e.g. CMIA in California)',
+    description: 'patient data protection, electronic health records security, breach notification requirements',
+  },
+  {
+    keywords: ['manufacturing', 'defense', 'aerospace', 'government contractor', 'federal', 'dod', 'cmmc', 'itar', 'military', 'contractor'],
+    frameworks: 'CMMC 2.0, ITAR, EAR, ISO 27001, NIST CSF, NIST SP 800-171',
+    description: 'controlled unclassified information (CUI) protection, supply chain security, export control compliance',
+  },
+  {
+    keywords: ['finance', 'financial', 'banking', 'bank', 'insurance', 'investment', 'wealth management', 'fintech', 'credit union', 'mortgage', 'lending', 'accounting', 'cpa'],
+    frameworks: 'SOC 2 Type II, PCI-DSS, GLBA (Gramm-Leach-Bliley), SEC cybersecurity disclosure rules, FFIEC guidelines',
+    description: 'financial data protection, payment card security, fiduciary data obligations',
+  },
+  {
+    keywords: ['education', 'edtech', 'school', 'university', 'college', 'k-12', 'district', 'academic', 'campus', 'student'],
+    frameworks: 'FERPA, CIPA, COPPA (for platforms serving minors), state student data privacy laws (e.g. SOPIPA in California)',
+    description: 'student education record protection, internet safety for minors, parental consent requirements',
+  },
+  {
+    keywords: ['energy', 'utilities', 'utility', 'electric', 'grid', 'power', 'oil', 'gas', 'water', 'pipeline', 'ot', 'ics', 'scada', 'nerc'],
+    frameworks: 'NERC CIP, ICS/OT security frameworks (ISA/IEC 62443), NIST CSF, TSA pipeline directives',
+    description: 'critical infrastructure protection, operational technology (OT) security, grid reliability',
+  },
+  {
+    keywords: ['retail', 'ecommerce', 'e-commerce', 'consumer', 'merchant', 'shop', 'store', 'hospitality', 'hotel', 'restaurant'],
+    frameworks: 'PCI-DSS, CCPA/CPRA, state consumer privacy laws (Virginia CDPA, Colorado CPA, etc.), FTC Act Section 5',
+    description: 'payment card data security, consumer data privacy rights, data breach notification',
+  },
+  {
+    keywords: ['legal', 'law firm', 'attorney', 'lawyer', 'professional services', 'staffing', 'hr', 'human resources', 'consulting', 'advisory'],
+    frameworks: 'SOC 2 Type II, state bar data security requirements, ABA cybersecurity guidelines, GDPR (for EU client data)',
+    description: 'client confidentiality obligations, professional duty of competence, data handling for privileged information',
+  },
+  {
+    keywords: ['msp', 'managed service', 'it service', 'mssp', 'cybersecurity', 'security operations', 'soc', 'var', 'technology'],
+    frameworks: 'SOC 2 Type II, NIST CSF, ISO 27001, CIS Controls — plus client-inherited frameworks (e.g. HIPAA BAA, CMMC if serving those sectors)',
+    description: 'third-party risk management, client data handling, security operations compliance',
+  },
+]
+
+function getComplianceFrameworks(verticalName: string): { frameworks: string; description: string } | null {
+  const lower = verticalName.toLowerCase()
+  for (const entry of COMPLIANCE_VERTICAL_MAP) {
+    if (entry.keywords.some((kw) => lower.includes(kw))) {
+      return { frameworks: entry.frameworks, description: entry.description }
+    }
+  }
+  return null
+}
+
 // ─── Section reference ────────────────────────────────────────────────────────
 
 const SECTION_REFERENCE = `
@@ -248,6 +303,49 @@ After the user answers all 3, synthesize their answers into a company brief, out
       ).join('\n\n') + '\n'
   }
 
+  // §17 regulatory context — toggle + pre-populate + cross-section awareness
+  let section17Block = ''
+  if (activeSection === '17') {
+    const compliance = getComplianceFrameworks(verticalName)
+    const frameworkSuggestion = compliance
+      ? `Based on the vertical name "${verticalName}", the most likely applicable frameworks are:\n${compliance.frameworks}\n(These typically relate to: ${compliance.description})`
+      : `I don't have a default framework list for "${verticalName}" — ask the user to identify any applicable regulatory frameworks.`
+
+    section17Block = `
+SECTION 17 — REGULATORY + COMPLIANCE CONTEXT (active):
+This section is fully framework-agnostic — it applies to any regulated vertical, not just cybersecurity clients.
+
+STEP 1 — TOGGLE QUESTION (required as your first response on §17, unless the user has already answered it):
+Ask exactly this: "Does this vertical operate under any regulatory or compliance frameworks?"
+
+If the user says NO or this vertical is unregulated:
+- Acknowledge it clearly, then output on a new line: SECTION_SKIP: 17
+- The SECTION_SKIP: line must appear alone on its own line and is a silent system signal — do NOT show it to the user or explain it
+- Suggest moving to the next relevant section (§18 CTAs, or whichever is most valuable)
+- Do not fill any §17 fields
+
+If the user says YES or the vertical is clearly regulated, proceed to Step 2.
+
+STEP 2 — LEAD WITH A PRE-POPULATED LIST (do not wait for the user to name frameworks):
+${frameworkSuggestion}
+
+Present the list and say something like: "Here are the frameworks most common in this vertical. Remove any that don't apply, add any I'm missing, and for each that stays, I'll help you map your service capability to it."
+
+STEP 3 — MAP CAPABILITIES (for each confirmed framework):
+Help the user articulate:
+- What specific service or technical capability demonstrates compliance with this framework
+- What proof exists (certification, audit report, documented process, third-party attestation)
+- The plain-language sales version (not legalese — what a rep can say in a meeting)
+
+CROSS-SECTION DOWNSTREAM IMPACT:
+When the user confirms a regulation applies, tell them which assets will use it:
+- Brochure → compliance credentialing section ("We understand your regulatory environment")
+- BDR Email 3 → compliance objection handling ("We're already certified for [framework]")
+- Sales cheat sheet → quick-reference compliance table for reps in regulated deals
+Flag this when it's relevant: "Confirming HIPAA here means I'll pull it into the brochure's credentialing section and BDR Email 3's compliance positioning."
+`
+  }
+
   // Section dependency warning
   let dependencyBlock = ''
   if (activeSection && SECTION_DEPENDENCIES[activeSection]) {
@@ -275,7 +373,7 @@ CURRENT FRAMEWORK STATE:
 Vertical: ${verticalName}
 Sections already filled: ${filledList}
 Sections still empty: ${emptyList}
-${activeSection ? `User is currently viewing: §${activeSection}` : ''}${researchBlock}${conflictBlock}${dependencyBlock}${intakeInstructions}
+${activeSection ? `User is currently viewing: §${activeSection}` : ''}${researchBlock}${conflictBlock}${section17Block}${dependencyBlock}${intakeInstructions}
 
 YOUR ROLE — GUIDE, DON'T FILL:
 You are not a form assistant. You are a GTM thinking partner. The difference matters:

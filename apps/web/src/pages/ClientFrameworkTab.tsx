@@ -3248,6 +3248,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         onSectionStatusChange={patchSectionStatus}
         companyBrief={companyBrief || null}
         onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
+        onSectionSkipped={(num) => void patchSectionStatus(num, 'complete')}
       />
 
       {/* Research mode dialog */}
