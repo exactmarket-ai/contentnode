@@ -2971,7 +2971,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   return (
     <SaveContext.Provider value={{ flushSave }}>
     <DraftContext.Provider value={draftContextValue}>
-    <div className="flex h-full flex-col" style={{ minHeight: 0 }}>
+    <div className="flex h-full flex-col overflow-hidden min-h-0">
 
       {/* Dimension selector bar */}
       <DimensionBar

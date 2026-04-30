@@ -311,6 +311,7 @@ async function buildContext(
   agencyId: string,
   clientId: string,
   verticalId: string,
+  verticalName: string,
 ): Promise<{ parts: string[]; meta: BrainMeta }> {
   const parts: string[] = []
 
@@ -324,10 +325,10 @@ async function buildContext(
       },
     }),
     prisma.clientBrainAttachment.findMany({
-      where: { clientId, agencyId, summaryStatus: 'ready' },
-      select: { filename: true, summary: true, source: true },
+      where: { clientId, agencyId, summaryStatus: 'ready', OR: [{ verticalId }, { verticalId: null }] },
+      select: { filename: true, summary: true, source: true, verticalId: true },
       orderBy: { createdAt: 'desc' },
-      take: 8,
+      take: 12,
     }),
     prisma.clientFrameworkAttachment.findMany({
       where: { clientId, verticalId, agencyId, summaryStatus: 'ready' },
@@ -352,7 +353,9 @@ async function buildContext(
 
   if (!client) return { parts, meta }
 
-  parts.push(`=== LAYER 1: CLIENT BRAIN ===`)
+  parts.push(`=== LAYER 1: CLIENT BRAIN — ACTIVE VERTICAL: ${verticalName} ===`)
+  parts.push(`VERTICAL SCOPE: Context is assembled ONLY for the "${verticalName}" vertical. Docs labeled COMPANY-WIDE apply to all verticals. Docs labeled VERTICAL-SPECIFIC apply ONLY to ${verticalName} — never blend with other verticals.
+COMPANY-WIDE content provides portfolio-level awareness only: product/solution names, how the company describes the relationships between its offerings, and company-wide positioning that applies regardless of vertical. It does not carry buyer language, pain statements, messaging, or market intelligence specific to any vertical. Use it as background context and translate into ${verticalName} language before presenting — never copy verbatim into vertical-specific answers.`)
   parts.push(`CLIENT: ${client.name}`)
   if (client.industry) parts.push(`INDUSTRY: ${client.industry}`)
 
@@ -361,21 +364,30 @@ async function buildContext(
   if (brandData) {
     meta.hasBrandProfile = true
     const b = brandData as Record<string, unknown>
-    if (b.positioning ?? b.value_proposition) parts.push(`POSITIONING: ${JSON.stringify(b.positioning ?? b.value_proposition)}`)
-    if (b.target_audience ?? b.audience) parts.push(`TARGET AUDIENCE: ${JSON.stringify(b.target_audience ?? b.audience)}`)
+    parts.push(`[COMPANY-WIDE] Brand profile:`)
+    if (b.positioning ?? b.value_proposition) parts.push(`  POSITIONING: ${JSON.stringify(b.positioning ?? b.value_proposition)}`)
+    if (b.target_audience ?? b.audience) parts.push(`  TARGET AUDIENCE: ${JSON.stringify(b.target_audience ?? b.audience)}`)
   }
 
   if (client.brainContext?.trim()) {
     meta.hasClientBrainContext = true
     meta.clientBrainContextLength = client.brainContext.trim().length
-    parts.push(`\nCLIENT BRAIN SYNTHESIS:\n${client.brainContext.trim()}`)
+    parts.push(`\n[COMPANY-WIDE] CLIENT BRAIN SYNTHESIS (applies to all verticals):\n${client.brainContext.trim()}`)
   }
 
-  const clientDocsWithSummary = clientAttachments.filter((d) => d.summary?.trim())
-  meta.clientAttachmentCount = clientDocsWithSummary.length
-  if (clientDocsWithSummary.length > 0) {
-    parts.push('\nCLIENT BRAIN DOCUMENTS:')
-    for (const doc of clientDocsWithSummary) {
+  const companyWideDocs = clientAttachments.filter((d) => d.summary?.trim() && !d.verticalId)
+  const verticalDocs = clientAttachments.filter((d) => d.summary?.trim() && !!d.verticalId)
+  meta.clientAttachmentCount = companyWideDocs.length + verticalDocs.length
+
+  if (companyWideDocs.length > 0) {
+    parts.push('\n[COMPANY-WIDE] CLIENT BRAIN DOCUMENTS (applies to all verticals):')
+    for (const doc of companyWideDocs) {
+      parts.push(`[${doc.source}] ${doc.filename}:\n${doc.summary!.trim()}`)
+    }
+  }
+  if (verticalDocs.length > 0) {
+    parts.push(`\n[VERTICAL-SPECIFIC — ${verticalName} ONLY] CLIENT BRAIN DOCUMENTS:`)
+    for (const doc of verticalDocs) {
       parts.push(`[${doc.source}] ${doc.filename}:\n${doc.summary!.trim()}`)
     }
   }
@@ -1861,6 +1873,15 @@ If any are missing: "Before we close §18 and declare this framework complete, [
 
 Your role: Help the user think through what is actually true about this client's GTM strategy. The sections get filled as a result of that thinking — not as the goal of it.
 
+VERTICAL CONTEXT LOCK — ${verticalName.toUpperCase()}:
+This session is strictly scoped to the "${verticalName}" vertical. The brain context loaded below has been filtered to include ONLY company-wide content and content explicitly tagged to "${verticalName}". Brain content from any other vertical is absent from this context.
+Before your first substantive response, silently verify: (1) no piece of context references a different vertical by name as its subject, (2) all VERTICAL-SPECIFIC labeled content is for ${verticalName}. If you detect cross-vertical contamination, discard the contaminated content and flag the issue to the user before proceeding. Under no circumstances blend, reference, or apply content from another vertical — even if the user's question seems to invite it.
+
+COMPANY BRAIN — PORTFOLIO AWARENESS SCOPE:
+Content labeled [COMPANY-WIDE] provides surface-level portfolio awareness: product and solution names, one-sentence descriptions of each, how the company describes the relationship between its offerings, and company-wide positioning that applies regardless of vertical. That is its entire scope.
+What company brain does NOT carry into this session: buyer language from any specific vertical, pain statements or market pressures tied to any vertical's market, messaging framework content from other verticals, research or statistics specific to any vertical.
+How to use it: treat company brain as background context, then translate to ${verticalName} language before presenting. The correct pattern is "At the company level, [the platform / product / positioning] is described as [X]. In the ${verticalName} vertical, that translates to [active-vertical interpretation]." Never present company brain content verbatim as if it were ${verticalName}-specific insight — always run it through the vertical lens first.
+
 ${SECTION_REFERENCE}
 ${SECTION_BEHAVIORAL_GROUPS}
 CLIENT CONTEXT (in priority order — use this to ground every response):
@@ -1919,6 +1940,9 @@ Ask the one question that matters most right now. If multiple gaps exist, priori
 3-5 lines + one question or three options + suggestion block. The user is in a work session, not reading an essay.
 
 **At session start** (first 1-2 messages), communicate the brain state and what it means for the session — then get into the work immediately.
+
+**Company brain is background context — always translate, never copy.**
+When referencing [COMPANY-WIDE] content, run it through the ${verticalName} lens before presenting it. Ask: what does this product feature, positioning statement, or service description mean for a buyer in ${verticalName}? Build from that translation. If the company brain says "we help organizations improve performance across verticals," do not use that phrase in the ${verticalName} framework — it tells the buyer nothing. The company brain tells you what exists; your job is to make it mean something specific in this vertical.
 
 GTM BEST PRACTICES TO APPLY:
 - §08 (Messaging Framework) is the highest-value section — everything downstream references it; get this right first
@@ -2125,14 +2149,15 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
         : null
 
       const briefParts: string[] = []
-      if (companyBriefs[0]?.content) briefParts.push(`COMPANY BRIEF:\n${companyBriefs[0].content}`)
+      if (companyBriefs[0]?.content) briefParts.push(`[COMPANY-WIDE] COMPANY BRIEF (applies to all verticals):\n${companyBriefs[0].content}`)
       if (primaryBriefContent?.content) {
-        briefParts.push(`${primaryBriefContent.type.toUpperCase().replace('_', ' ')} BRIEF (${primaryBriefContent.name}):\n${primaryBriefContent.content}`)
+        const activeVerticalName = verticalName ?? vertical.name
+        briefParts.push(`[VERTICAL-SPECIFIC — ${activeVerticalName} ONLY] ${primaryBriefContent.type.toUpperCase().replace('_', ' ')} BRIEF "${primaryBriefContent.name}":\n${primaryBriefContent.content}`)
       }
       if (briefParts.length > 0) activeBriefContent = briefParts.join('\n\n')
     } catch { /* non-fatal — fall back to companyBrief from body */ }
 
-    const { parts: contextParts, meta: brainMeta } = await buildContext(agencyId, clientId, verticalId)
+    const { parts: contextParts, meta: brainMeta } = await buildContext(agencyId, clientId, verticalId, verticalName ?? vertical.name)
     brainMeta.hasCompanyBrief = !!(activeBriefContent?.trim())
     const brainState = classifyBrainState(brainMeta, activeBriefContent)
     const brainStateBlock = buildBrainStateBlock(brainState, brainMeta, activeBriefContent)

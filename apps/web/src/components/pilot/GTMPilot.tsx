@@ -124,27 +124,76 @@ const SECTION_LABELS: Record<string, string> = {
   '18': 'CTAs + Next Steps',
 }
 
-const SECTION_NUMS = Object.keys(SECTION_LABELS)
+// ─── Reply processor — strips JSON blocks before rendering ───────────────────
 
-// ─── Status dot ───────────────────────────────────────────────────────────────
+function processReply(raw: string): string {
+  // Strip triple-backtick code blocks (```lang\n...\n``` or ```\n...\n```)
+  let text = raw.replace(/```[a-z]*\n[\s\S]*?```/gi, '').trim()
 
-function PilotStatusDot({ status }: { status: string }) {
-  if (status === 'complete') return <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
-  if (status === 'ai-draft') return <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
-  if (status === 'in-progress') return <span className="h-2 w-2 rounded-full bg-blue-400 shrink-0" />
-  return <span className="h-2 w-2 rounded-full border border-muted-foreground/40 shrink-0" />
+  // Strip bare JSON objects/arrays using a brace-depth state machine
+  const lines = text.split('\n')
+  const kept: string[] = []
+  let depth = 0
+  let inBlock = false
+
+  for (const line of lines) {
+    const t = line.trim()
+    if (!inBlock && (t.startsWith('{') || t.startsWith('['))) {
+      inBlock = true; depth = 0
+      for (const c of t) { if (c==='{' || c==='[') depth++; else if (c==='}' || c===']') depth-- }
+      if (depth <= 0) inBlock = false
+      continue
+    }
+    if (inBlock) {
+      for (const c of t) { if (c==='{' || c==='[') depth++; else if (c==='}' || c===']') depth-- }
+      if (depth <= 0) { inBlock = false; depth = 0 }
+      continue
+    }
+    kept.push(line)
+  }
+
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-// ─── Bold renderer ────────────────────────────────────────────────────────────
+// ─── Line renderer ───────────────────────────────────────────────────────────
 
-function renderBold(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+function renderInline(text: string): React.ReactNode {
+  // **bold** → <b>, *italic* → <em>
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g)
   if (parts.length === 1) return text
-  return parts.map((part, i) =>
-    part.startsWith('**') && part.endsWith('**')
-      ? <b key={i} className="font-semibold">{part.slice(2, -2)}</b>
-      : part,
-  )
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <b key={i} className="font-semibold">{part.slice(2, -2)}</b>
+    if (part.startsWith('*') && part.endsWith('*'))   return <em key={i}>{part.slice(1, -1)}</em>
+    return part
+  })
+}
+
+// Keep renderBold as alias used by SuggestionCard + external callers
+const renderBold = renderInline
+
+function renderLine(line: string): React.ReactNode {
+  // Strip leading diamond/bullet symbols
+  let cleaned = line.replace(/^[◆◇•▸▶►▷]\s*/u, '')
+
+  // ## Heading → bold styled heading
+  if (/^#{1,6}\s/.test(cleaned)) {
+    const text = cleaned.replace(/^#+\s+/, '')
+    return <b className="block font-semibold pt-0.5">{renderInline(text)}</b>
+  }
+
+  // - item or * item → visual bullet
+  if (/^[-*]\s/.test(cleaned)) {
+    const text = cleaned.slice(2)
+    return <><span className="mr-1.5 select-none opacity-40">·</span>{renderInline(text)}</>
+  }
+
+  // 1. numbered list
+  const numMatch = cleaned.match(/^(\d+)\.\s(.+)/)
+  if (numMatch) {
+    return <><span className="mr-1 select-none text-muted-foreground/60">{numMatch[1]}.</span>{renderInline(numMatch[2])}</>
+  }
+
+  return renderInline(cleaned)
 }
 
 // ─── Suggestion card ──────────────────────────────────────────────────────────
@@ -214,7 +263,7 @@ function MessageBubble({
         >
           {msg.content.split('\n').map((line, i, arr) => (
             <span key={i}>
-              {renderBold(line)}
+              {renderLine(line)}
               {i < arr.length - 1 && <br />}
             </span>
           ))}
@@ -376,6 +425,9 @@ export function GTMPilot({
         onSectionSkipped(skipMatch[1].padStart(2, '0'))
         replyContent = replyContent.replace(/^SECTION_SKIP:\s*\d+\s*\n?/m, '').trim()
       }
+
+      // Strip JSON blocks and code fences — must never render raw JSON in chat
+      replyContent = processReply(replyContent)
 
       setMessages((prev) => [...prev, { role: 'assistant', content: replyContent, suggestions }])
     } catch {
@@ -627,35 +679,8 @@ export function GTMPilot({
         </div>
       )}
 
-      {/* Body: section nav rail + chat */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
-
-        {/* Section nav rail */}
-        <div className="w-40 shrink-0 overflow-y-auto border-r border-border py-1">
-          {SECTION_NUMS.map((num) => {
-            const status = sectionStatus[num] ?? (filledSections.includes(num) ? 'complete' : (emptySections.includes(num) ? 'not-started' : 'not-started'))
-            const isActive = activeSection === num
-            return (
-              <button
-                key={num}
-                onClick={() => handleNavToSection(num)}
-                className={cn(
-                  'flex w-full items-center gap-1.5 px-2 py-1 text-left text-[10px] transition-colors',
-                  isActive
-                    ? 'bg-blue-50 text-blue-700 font-semibold'
-                    : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-                )}
-              >
-                <span className="shrink-0 w-4 font-mono text-[9px] text-muted-foreground">{num}</span>
-                <PilotStatusDot status={status} />
-                <span className="truncate">{SECTION_LABELS[num]}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Messages */}
-        <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
+      {/* Messages */}
+      <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
               <Icons.Compass className="h-6 w-6 text-blue-300" />
@@ -699,7 +724,6 @@ export function GTMPilot({
               </div>
             </div>
           )}
-        </div>
       </div>
 
       {/* Input */}
