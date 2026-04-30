@@ -101,8 +101,13 @@ export function BrieferPilot({
     hasStarted.current = true
 
     if (brief.content) {
-      // Has existing content — use API to generate a refinement-specific opening
-      void sendMessage(`Let's refine the existing brief for "${brief.name}". I'll review what we have and tighten it up.`, true)
+      // Has existing content — inject opening synchronously, same as new brief path.
+      // Never make an API call here: messages is [] at mount so sendMessage would send
+      // an empty history and the route would reject it.
+      setMessages([{
+        role: 'assistant',
+        content: `I have your "${brief.name}" brief here. Want to sharpen anything, or are you ready to take this into Section 01?`,
+      }])
     } else {
       // New or blank brief — inject opening instantly, no API round-trip
       setMessages([{
