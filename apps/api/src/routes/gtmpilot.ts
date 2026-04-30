@@ -126,11 +126,126 @@ GTM FRAMEWORK SECTIONS (sectionNum → meaning):
 
 // ─── Context assembler ────────────────────────────────────────────────────────
 
+interface BrainMeta {
+  hasClientBrainContext: boolean
+  clientBrainContextLength: number
+  hasBrandProfile: boolean
+  clientAttachmentCount: number
+  frameworkAttachmentCount: number
+  hasVerticalBrainContext: boolean
+  verticalAttachmentCount: number
+  hasAgencyBrainContext: boolean
+  agencyAttachmentCount: number
+  hasCompanyBrief: boolean
+}
+
+type BrainState = 'RICH' | 'PARTIAL' | 'SPARSE'
+
+function classifyBrainState(meta: BrainMeta, companyBrief?: string | null): BrainState {
+  const clientDepth =
+    (meta.hasClientBrainContext ? 2 : 0) +
+    (meta.hasBrandProfile ? 1 : 0) +
+    Math.min(meta.clientAttachmentCount, 3) +
+    Math.min(meta.frameworkAttachmentCount, 2)
+
+  const verticalDepth =
+    (meta.hasVerticalBrainContext ? 2 : 0) +
+    Math.min(meta.verticalAttachmentCount, 2)
+
+  const agencyDepth =
+    (meta.hasAgencyBrainContext ? 1 : 0) +
+    Math.min(meta.agencyAttachmentCount, 1)
+
+  const total = clientDepth + verticalDepth + agencyDepth + (companyBrief ? 1 : 0)
+
+  if (total >= 7) return 'RICH'
+  if (total >= 2) return 'PARTIAL'
+  return 'SPARSE'
+}
+
+function buildBrainStateBlock(state: BrainState, meta: BrainMeta, companyBrief?: string | null): string {
+  const available: string[] = []
+  const missing: string[] = []
+
+  if (companyBrief || meta.hasClientBrainContext) {
+    available.push(`company context (${companyBrief ? 'brief + ' : ''}${meta.hasClientBrainContext ? 'brain synthesis' : 'no synthesis yet'})`)
+  } else {
+    missing.push('company overview / brief')
+  }
+
+  if (meta.hasBrandProfile) available.push('brand positioning data')
+  else missing.push('brand positioning')
+
+  if (meta.clientAttachmentCount > 0) available.push(`${meta.clientAttachmentCount} company brain document${meta.clientAttachmentCount !== 1 ? 's' : ''}`)
+  else missing.push('company brain documents (case studies, service collateral, reviews)')
+
+  if (meta.frameworkAttachmentCount > 0) available.push(`${meta.frameworkAttachmentCount} GTM framework attachment${meta.frameworkAttachmentCount !== 1 ? 's' : ''}`)
+  else missing.push('GTM-specific framework files')
+
+  if (meta.hasVerticalBrainContext || meta.verticalAttachmentCount > 0) {
+    available.push(`vertical brain (${meta.hasVerticalBrainContext ? 'synthesis' : ''}${meta.verticalAttachmentCount > 0 ? ` + ${meta.verticalAttachmentCount} doc${meta.verticalAttachmentCount !== 1 ? 's' : ''}` : ''})`.replace('( ', '(').trim())
+  } else {
+    missing.push('vertical brain (market research, competitor data, industry stats)')
+  }
+
+  if (meta.hasAgencyBrainContext || meta.agencyAttachmentCount > 0) {
+    available.push('agency knowledge base')
+  }
+
+  const availableStr = available.length > 0 ? available.join(', ') : 'minimal content'
+  const missingStr = missing.length > 0 ? missing.join(', ') : 'nothing critical'
+
+  if (state === 'RICH') {
+    return `
+SESSION BRAIN STATE: RICH
+The brain contains enough content to draft most sections without asking the user to create content from scratch.
+Available: ${availableStr}
+Missing: ${missingStr}
+
+RICH STATE BEHAVIOR RULES:
+- Lead every section with a specific draft answer pulled directly from what is in the brain — do not ask an open question when you can propose a concrete answer
+- When you propose a draft, cite where it came from ("Based on your case study with X..." or "Your brain documents mention...")
+- Ask the user to refine, redirect, or correct — not to create
+- If the brain covers something, never ask the user to supply it again
+- If a gap genuinely exists that the brain doesn't cover, name it specifically: "I don't have proof points for §09 — do you have outcome data we can pull from?"
+- At session start: briefly tell the user the state and what you'll do — then get to work immediately`
+  }
+
+  if (state === 'PARTIAL') {
+    return `
+SESSION BRAIN STATE: PARTIAL
+The brain has useful content but meaningful gaps exist.
+Available: ${availableStr}
+Missing: ${missingStr}
+
+PARTIAL STATE BEHAVIOR RULES:
+- Lead with what exists — extract and present it before asking the user to fill gaps
+- Explicitly name what is missing and why it matters: "I don't have [X] — without it, §04 will be generic. Do you have [concrete example]?"
+- Offer to construct a working draft from what exists, even if imperfect — give the user something to react to
+- Don't present open-ended prompts for sections where you have partial information; show a draft with gaps marked [NEEDS INPUT]
+- At session start: tell the user what you have and what's missing in plain terms, then offer to handle the gaps before they fill things manually`
+  }
+
+  // SPARSE
+  return `
+SESSION BRAIN STATE: SPARSE
+The brain contains little to no usable content for this session.
+Available: ${availableStr || 'minimal content'}
+Missing: ${missingStr}
+
+SPARSE STATE BEHAVIOR RULES:
+- Do NOT present empty fields or open-ended prompts like "What's your positioning?" — this creates blank-page anxiety and wastes the session
+- At session start: tell the user what you're missing, explain that you'll build working drafts first, and describe what you need from them (specific inputs, not form fields)
+- Use whatever context exists (company name, vertical name, industry, company brief) plus your built-in GTM expertise to construct realistic draft starting points
+- Build a minimum viable draft for the highest-priority sections and present it to the user for validation and correction — they react, they don't create
+- If intake mode is not already active, run it now to capture the company brief before doing strategic work`
+}
+
 async function buildContext(
   agencyId: string,
   clientId: string,
   verticalId: string,
-): Promise<string[]> {
+): Promise<{ parts: string[]; meta: BrainMeta }> {
   const parts: string[] = []
 
   // ── Layer 1: Client Brain ─────────────────────────────────────────────────
@@ -156,7 +271,20 @@ async function buildContext(
     }),
   ])
 
-  if (!client) return parts
+  const meta: BrainMeta = {
+    hasClientBrainContext: false,
+    clientBrainContextLength: 0,
+    hasBrandProfile: false,
+    clientAttachmentCount: 0,
+    frameworkAttachmentCount: 0,
+    hasVerticalBrainContext: false,
+    verticalAttachmentCount: 0,
+    hasAgencyBrainContext: false,
+    agencyAttachmentCount: 0,
+    hasCompanyBrief: false,
+  }
+
+  if (!client) return { parts, meta }
 
   parts.push(`=== LAYER 1: CLIENT BRAIN ===`)
   parts.push(`CLIENT: ${client.name}`)
@@ -165,26 +293,33 @@ async function buildContext(
   const brandProfile = client.brandProfiles[0]
   const brandData = brandProfile?.editedJson ?? brandProfile?.extractedJson
   if (brandData) {
+    meta.hasBrandProfile = true
     const b = brandData as Record<string, unknown>
     if (b.positioning ?? b.value_proposition) parts.push(`POSITIONING: ${JSON.stringify(b.positioning ?? b.value_proposition)}`)
     if (b.target_audience ?? b.audience) parts.push(`TARGET AUDIENCE: ${JSON.stringify(b.target_audience ?? b.audience)}`)
   }
 
   if (client.brainContext?.trim()) {
+    meta.hasClientBrainContext = true
+    meta.clientBrainContextLength = client.brainContext.trim().length
     parts.push(`\nCLIENT BRAIN SYNTHESIS:\n${client.brainContext.trim()}`)
   }
 
-  if (clientAttachments.length > 0) {
+  const clientDocsWithSummary = clientAttachments.filter((d) => d.summary?.trim())
+  meta.clientAttachmentCount = clientDocsWithSummary.length
+  if (clientDocsWithSummary.length > 0) {
     parts.push('\nCLIENT BRAIN DOCUMENTS:')
-    for (const doc of clientAttachments) {
-      if (doc.summary?.trim()) parts.push(`[${doc.source}] ${doc.filename}:\n${doc.summary.trim()}`)
+    for (const doc of clientDocsWithSummary) {
+      parts.push(`[${doc.source}] ${doc.filename}:\n${doc.summary!.trim()}`)
     }
   }
 
-  if (frameworkAttachments.length > 0) {
+  const fwDocsWithSummary = frameworkAttachments.filter((d) => d.summary?.trim())
+  meta.frameworkAttachmentCount = fwDocsWithSummary.length
+  if (fwDocsWithSummary.length > 0) {
     parts.push('\nGTM FRAMEWORK BRAIN (uploaded files for this vertical):')
-    for (const doc of frameworkAttachments) {
-      if (doc.summary?.trim()) parts.push(`[framework] ${doc.filename}:\n${doc.summary.trim()}`)
+    for (const doc of fwDocsWithSummary) {
+      parts.push(`[framework] ${doc.filename}:\n${doc.summary!.trim()}`)
     }
   }
 
@@ -217,18 +352,24 @@ async function buildContext(
   if (vertical) {
     orgParts.push(`VERTICAL: ${vertical.name}`)
     if (vertical.brainContext?.trim()) {
+      meta.hasVerticalBrainContext = true
       orgParts.push(`VERTICAL BRAIN:\n${vertical.brainContext.trim()}`)
     }
-    for (const doc of verticalAttachments) {
-      if (doc.summary?.trim()) orgParts.push(`[vertical doc] ${doc.filename}:\n${doc.summary.trim()}`)
+    const vertDocsWithSummary = verticalAttachments.filter((d) => d.summary?.trim())
+    meta.verticalAttachmentCount = vertDocsWithSummary.length
+    for (const doc of vertDocsWithSummary) {
+      orgParts.push(`[vertical doc] ${doc.filename}:\n${doc.summary!.trim()}`)
     }
   }
 
   if (agency?.brainContext?.trim()) {
+    meta.hasAgencyBrainContext = true
     orgParts.push(`AGENCY KNOWLEDGE (${agency.name}):\n${agency.brainContext.trim()}`)
   }
-  for (const doc of agencyAttachments) {
-    if (doc.summary?.trim()) orgParts.push(`[agency doc] ${doc.filename}:\n${doc.summary.trim()}`)
+  const agencyDocsWithSummary = agencyAttachments.filter((d) => d.summary?.trim())
+  meta.agencyAttachmentCount = agencyDocsWithSummary.length
+  for (const doc of agencyDocsWithSummary) {
+    orgParts.push(`[agency doc] ${doc.filename}:\n${doc.summary!.trim()}`)
   }
 
   if (orgParts.length > 0) {
@@ -236,7 +377,7 @@ async function buildContext(
     parts.push(...orgParts)
   }
 
-  return parts
+  return { parts, meta }
 }
 
 // ─── System prompt builder ────────────────────────────────────────────────────
@@ -256,6 +397,7 @@ function buildSystemPrompt(
   filledSections: string[],
   emptySections: string[],
   verticalName: string,
+  brainStateBlock: string,
   activeSection?: string | null,
   researchBySection?: Record<string, string> | null,
   conflictLog?: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation?: string }> | null,
@@ -369,6 +511,8 @@ ${SECTION_REFERENCE}
 CLIENT CONTEXT (in priority order — use this to ground every response):
 ${contextBlock}
 ${briefBlock}
+${brainStateBlock}
+
 CURRENT FRAMEWORK STATE:
 Vertical: ${verticalName}
 Sections already filled: ${filledList}
@@ -382,7 +526,7 @@ You are not a form assistant. You are a GTM thinking partner. The difference mat
 - Thinking partner: "Messaging unlocks everything downstream. Before we go there — where does the positioning feel contested or fuzzy to you right now?"
 
 SESSION ARC:
-**Orient** (first 1-2 turns): Ask what feels most unclear or underexplored. Don't assume the most important work is filling the emptiest section — sometimes a filled section has a weak answer worth challenging.
+**Orient** (first 1-2 turns): Check the brain state — if RICH, lead with a draft for the most strategically important empty section. If PARTIAL, name the gaps first. If SPARSE, acknowledge what you'll build before asking anything. Don't assume the most important work is filling the emptiest section — sometimes a filled section has a weak answer worth challenging.
 **Explore**: Go deep on the most strategically valuable territory. Ask the uncomfortable question. When an answer is vague, push for evidence. When something conflicts with what you know, name it.
 **Narrow**: When you have enough to write something specific, confirm it: "Based on what you've said, here's what I'd put in §08 — does this feel right?"
 **Fill**: User confirms. Navigate to that section.
@@ -390,10 +534,11 @@ SESSION ARC:
 BEHAVIORAL RULES:
 - One question per turn — ask the one that matters most right now
 - Present 2-3 directions before settling on one — let the user choose where to go
-- Never ask for information already in the brain context — reference it, challenge it, or build on it
+- NEVER ask for information already in the brain context — reference it, challenge it, or build on it. If the brain has positioning, don't ask what their positioning is.
 - Surface contradictions: "You said X earlier but now Y — how do you reconcile that?"
 - Push for specificity: job titles aren't buyer personas, revenue growth isn't a proof point
 - Short responses: 3-5 lines + one question + suggestion block
+- At the start of a session (first 1-2 messages), always communicate the brain state and what it means for how you'll work
 
 GTM BEST PRACTICES TO APPLY:
 - §08 (Messaging Framework) is the highest-value section — everything else references it
@@ -447,12 +592,17 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     if (!client) return reply.code(404).send({ error: 'Client not found' })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
 
-    const contextParts = await buildContext(agencyId, clientId, verticalId)
+    const { parts: contextParts, meta: brainMeta } = await buildContext(agencyId, clientId, verticalId)
+    brainMeta.hasCompanyBrief = !!(companyBrief?.trim())
+    const brainState = classifyBrainState(brainMeta, companyBrief)
+    const brainStateBlock = buildBrainStateBlock(brainState, brainMeta, companyBrief)
+
     const systemPrompt = buildSystemPrompt(
       contextParts,
       filledSections,
       emptySections,
       verticalName ?? vertical.name,
+      brainStateBlock,
       activeSection,
       researchBySection as Record<string, string> | null | undefined,
       conflictLog,
@@ -495,6 +645,6 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       replyText = fullText.replace(/<GTMPILOT_SUGGESTIONS>[\s\S]*/i, '').trim()
     }
 
-    return reply.send({ data: { reply: replyText, suggestions } })
+    return reply.send({ data: { reply: replyText, suggestions, brainState } })
   })
 }
