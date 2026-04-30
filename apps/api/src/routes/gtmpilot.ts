@@ -2049,6 +2049,9 @@ Ask the one question that matters most right now. If multiple gaps exist, priori
 **Write like a person talking, not a document.**
 Every response is a conversation turn. Never use horizontal dividers (---, ***, ===). Never write document-style headers ("Brain State — What We Have", "Start Here — Two Paths", "Session Overview", "Available:", "Missing:", etc.). Never use bold labels to introduce bullet sections — bold is for emphasis on a specific word or phrase, not for structural headers. Never present options as a formatted menu with labels like "Path A / Path B" or "Option 1 / Option 2". Information that you have internally structured (what's in the brain, what's missing, what group a section belongs to) must be delivered as plain prose. Say "I've looked at what's in your brain — you've got three solid documents that give me enough for positioning and buyer language, but market research and competitive context are missing. We can build that as we go." Not a header followed by categorized bullets. Say "I'd start with the positioning foundation. If we get that wrong everything downstream sounds generic." Not "Start Here — Two Paths" followed by labeled options. When you have a point of view, state it directly and explain why — do not present a menu for the user to choose from.
 
+**Never ask the user to paste documents or long text into the chat.**
+The chat input is for conversation only. Never ask the user to paste case studies, articles, bios, existing copy, or any substantial text into the chat. If you need source material, direct them to upload it to the brain: "Rather than pasting that here, upload it to the brain using the file upload area. Once it's interpreted I'll pull from it directly." This applies to any content longer than a sentence or two.
+
 **Never output raw JSON or code.**
 Never respond with JSON objects, arrays, or key-value syntax. Never use curly braces, square brackets, or quoted-key-colon patterns in your responses. Never use code blocks or backticks. If you have structured information to convey — a list of sections, a set of data points, a group of options — describe it in plain conversational sentences. Your responses must always be readable prose that the user can act on without parsing.
 
@@ -2220,7 +2223,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
 
       const apiKey = process.env.ANTHROPIC_API_KEY
       if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
-      const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
+      const anthropic = new Anthropic({ apiKey, timeout: 90_000, maxRetries: 1 })
 
       const levelHint = `[Brief Session — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`
       // Keep first message (context anchor) + most recent 19 exchanges (38 msgs) = 39 total sent to Claude
@@ -2233,12 +2236,18 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
         content: i === 0 ? `${levelHint}\n\n${m.content}` : m.content,
       }))
 
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1500,
-        system: brieferPrompt,
-        messages: anthropicMessages,
-      })
+      let response: Anthropic.Message
+      try {
+        response = await anthropic.messages.create({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 3000,
+          system: brieferPrompt,
+          messages: anthropicMessages,
+        })
+      } catch (aiErr) {
+        req.log.error({ err: aiErr }, '[gtm-pilot/briefer] Anthropic call failed')
+        return reply.code(502).send({ error: 'AI provider error — please try again' })
+      }
 
       const fullText = response.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -2339,14 +2348,20 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
-    const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
+    const anthropic = new Anthropic({ apiKey, timeout: 90_000, maxRetries: 1 })
 
-    const response = await anthropic.messages.create({
-      model:      'claude-sonnet-4-5',
-      max_tokens: 2000,
-      system:     systemPrompt,
-      messages:   anthropicMessages,
-    })
+    let response: Anthropic.Message
+    try {
+      response = await anthropic.messages.create({
+        model:      'claude-sonnet-4-5',
+        max_tokens: 4000,
+        system:     systemPrompt,
+        messages:   anthropicMessages,
+      })
+    } catch (aiErr) {
+      req.log.error({ err: aiErr }, '[gtm-pilot/gtm] Anthropic call failed')
+      return reply.code(502).send({ error: 'AI provider error — please try again' })
+    }
 
     const fullText = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -2366,7 +2381,9 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     }
 
     // ── Persist session transcript ────────────────────────────────────────────
-    if (sessionId) {
+    // Guard: skip persist if response is unusually long (malformed/runaway output)
+    const SESSION_MSG_MAX_CHARS = 50_000
+    if (sessionId && replyText.length <= SESSION_MSG_MAX_CHARS) {
       const allMessages = [...messages, { role: 'assistant', content: replyText }]
       const msgCount = allMessages.length
 

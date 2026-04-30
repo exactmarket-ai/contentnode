@@ -49,7 +49,7 @@ export async function summarizePilotSession(job: Job<PilotSessionSummaryJobData>
       },
       `You are summarizing a gtmPILOT session — a strategic conversation where an agency team worked through a GTM Framework for a client.
 
-Extract exactly three components. Output valid JSON only — no markdown, no code fences, no explanation.
+Extract exactly three components. Respond with raw JSON only. Do not wrap your response in markdown code fences. Do not include any text before or after the JSON object.
 
 {
   "decisions": ["Specific decision made — complete sentence with context", ...],
@@ -69,7 +69,8 @@ TRANSCRIPT:
 ${transcript}`
     )
 
-    summary = JSON.parse(result.text.trim()) as typeof summary
+    const cleaned = result.text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+    summary = JSON.parse(cleaned) as typeof summary
   } catch (err) {
     console.error(`[pilot-summarizer] Claude call or parse failed for ${sessionId}:`, err)
     await withAgency(agencyId, () =>

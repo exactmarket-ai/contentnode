@@ -121,6 +121,8 @@ export interface GTMPilotProps {
   onBriefSaved?: (brief: string) => void
   // Section skip (e.g. §17 "no regulations apply" → mark complete)
   onSectionSkipped?: (sectionNum: string) => void
+  // Split layout mode — when true, panel uses normal flow instead of position:fixed
+  splitMode?: boolean
 }
 
 // ─── Section display names ────────────────────────────────────────────────────
@@ -379,11 +381,14 @@ export function GTMPilot({
   companyBrief,
   onBriefSaved,
   onSectionSkipped,
+  splitMode = false,
 }: GTMPilotProps) {
   const [openInternal, setOpenInternal] = useState(true)
   const [messages, setMessages]         = useState<GtmMessage[]>([])
   const [loading, setLoading]           = useState(false)
   const [input, setInput]               = useState('')
+  const [inputTooLong, setInputTooLong] = useState(false)
+  const CHAT_MAX_CHARS = 2000
   const [researchPanelOpen, setResearchPanelOpen] = useState(true)
   const [historyOpen, setHistoryOpen]   = useState(false)
   const [priorSessions, setPriorSessions] = useState<PriorSession[]>([])
@@ -444,7 +449,7 @@ export function GTMPilot({
     const text = (overrideText ?? input).trim()
     if (!text || loading || !verticalId) return
 
-    if (!overrideText) setInput('')
+    if (!overrideText) { setInput(''); setInputTooLong(false) }
 
     const userMsg: GtmMessage = { role: 'user', content: text }
     setMessages((prev) => [...prev, userMsg])
@@ -606,7 +611,9 @@ export function GTMPilot({
     return (
       <div
         className="relative flex flex-col border-t border-border bg-card cursor-pointer hover:bg-muted/20 transition-colors"
-        style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 96, zIndex: 40 }}
+        style={splitMode
+          ? { position: 'relative', height: '100%' }
+          : { position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 96, zIndex: 40 }}
         onClick={() => setOpen(true)}
       >
         <button
@@ -648,11 +655,13 @@ export function GTMPilot({
     )
   }
 
-  // ── Expanded — min 300px, up to 40vh ─────────────────────────────────────
+  // ── Expanded — fills container in split mode, fixed overlay otherwise ────────
   return (
     <div
       className="relative flex flex-col border-t border-border bg-card"
-      style={{ position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 'max(300px, 40vh)', zIndex: 40 }}
+      style={splitMode
+        ? { position: 'relative', height: '100%' }
+        : { position: 'fixed', bottom: 0, left: 'var(--nav-w, 192px)', right: 0, height: 'max(300px, 40vh)', zIndex: 40 }}
     >
       <button
         onClick={() => setOpen(false)}
@@ -888,19 +897,30 @@ export function GTMPilot({
             Mark Section {activeSection} done
           </button>
         )}
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask me anything about this GTM Framework… (Shift+Enter for new line)"
-          rows={1}
-          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-blue-400 min-h-[32px] max-h-[80px] overflow-y-auto"
-          style={{ lineHeight: '1.4' }}
-        />
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => {
+              const val = e.target.value
+              setInput(val)
+              setInputTooLong(val.length > CHAT_MAX_CHARS)
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask me anything about this GTM Framework… (Shift+Enter for new line)"
+            rows={1}
+            className={`w-full resize-none rounded-lg border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 min-h-[32px] max-h-[80px] overflow-y-auto ${inputTooLong ? 'border-amber-400 focus:ring-amber-400' : 'border-border focus:ring-blue-400'}`}
+            style={{ lineHeight: '1.4' }}
+          />
+          {inputTooLong && (
+            <p className="text-[10px] text-amber-600 leading-snug">
+              That's too long for the chat. Upload it as a file to the brain instead and I'll use it from there.
+            </p>
+          )}
+        </div>
         <button
           onClick={() => void sendMessage()}
-          disabled={!input.trim() || loading}
+          disabled={!input.trim() || loading || inputTooLong}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
         >
           <Icons.SendHorizontal className="h-4 w-4" />

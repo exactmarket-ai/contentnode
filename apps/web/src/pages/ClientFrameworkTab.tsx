@@ -2434,6 +2434,30 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const clientGtmInputRef = useRef<HTMLInputElement>(null)
   const researchPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // ── Split panel layout ─────────────────────────────────────────────────────
+  const SPLIT_LS_KEY  = 'gtm-pilot-split-ratio'
+  const MIN_SPLIT     = 0.2
+  const MAX_SPLIT     = 0.8
+  const COMPACT_SPLIT = 0.2
+  const DEFAULT_SPLIT = 0.5
+  const PILOT_MIN_H   = 48   // minimized bar height (px)
+  const HANDLE_H      = 10   // drag handle height (px)
+
+  const [splitRatio, setSplitRatio] = useState<number>(() => {
+    try {
+      const v = localStorage.getItem(SPLIT_LS_KEY)
+      const n = v ? parseFloat(v) : NaN
+      return !isNaN(n) && n >= MIN_SPLIT && n <= MAX_SPLIT ? n : DEFAULT_SPLIT
+    } catch { return DEFAULT_SPLIT }
+  })
+  const [isCompact, setIsCompact]       = useState(false)
+  const customRatioRef                  = useRef(splitRatio)
+  const splitRatioRef                   = useRef(splitRatio)
+  const splitContainerRef               = useRef<HTMLDivElement>(null)
+  const [splitContainerH, setSplitContainerH] = useState(0)
+  const [isWide, setIsWide]             = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true)
+  const isDraggingRef                   = useRef(false)
+
   const latestRun = researchRuns.find((r) => r.status === 'ready') ?? null
 
   // Load verticals assigned to this client
@@ -3027,6 +3051,58 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     d.sectionNotes[num] = val
   })
 
+  // ── Split layout effects + handlers ───────────────────────────────────────
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 768)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    const el = splitContainerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      setSplitContainerH(entries[0].contentRect.height)
+    })
+    ro.observe(el)
+    setSplitContainerH(el.getBoundingClientRect().height)
+    return () => ro.disconnect()
+  }, [])
+
+  const handlePilotDragPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    isDraggingRef.current = true
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }, [])
+
+  const handlePilotDragPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || splitContainerH === 0 || !splitContainerRef.current) return
+    const rect = splitContainerRef.current.getBoundingClientRect()
+    const fromTop = e.clientY - rect.top
+    const ratio = Math.max(MIN_SPLIT, Math.min(MAX_SPLIT, (splitContainerH - fromTop) / splitContainerH))
+    setSplitRatio(ratio)
+    splitRatioRef.current = ratio
+    customRatioRef.current = ratio
+    setIsCompact(false)
+  }, [splitContainerH])
+
+  const handlePilotDragPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return
+    isDraggingRef.current = false
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+    try { localStorage.setItem(SPLIT_LS_KEY, String(splitRatioRef.current)) } catch { /* */ }
+  }, [])
+
+  const handlePilotDragDoubleClick = useCallback(() => {
+    if (isCompact) {
+      setSplitRatio(customRatioRef.current)
+      setIsCompact(false)
+    } else {
+      customRatioRef.current = splitRatioRef.current
+      setIsCompact(true)
+    }
+  }, [isCompact])
+
   function renderSection() {
     if (activeSection === 'brain' && selectedVertical) {
       return null // rendered directly in JSX with props
@@ -3081,6 +3157,19 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     ? SECTION_KEYS.filter((k) => hasData((fw as Record<string, unknown>)[`s${k}`]))
     : []
   const emptySections = SECTION_KEYS.filter((k) => !filledSections.includes(k))
+
+  // ── Split layout computed values ───────────────────────────────────────────
+  const effectiveSplit  = isCompact ? COMPACT_SPLIT : splitRatio
+  const pilotPxH        = splitContainerH > 0
+    ? Math.max(
+        Math.round(MIN_SPLIT * splitContainerH),
+        Math.min(Math.round(MAX_SPLIT * splitContainerH), Math.round(effectiveSplit * splitContainerH))
+      )
+    : 0
+  const pilotWrapperH   = pilotOpen ? pilotPxH : PILOT_MIN_H
+  const frameworkPxH    = splitContainerH > 0
+    ? splitContainerH - pilotWrapperH - (pilotOpen ? HANDLE_H : 0)
+    : 0
 
   return (
     <SaveContext.Provider value={{ flushSave }}>
@@ -3346,8 +3435,16 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         )}
       </DimensionBar>
 
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
+      {/* Split container — framework panel + drag handle + PILOT panel */}
+      <div ref={splitContainerRef} className="flex flex-1 flex-col overflow-hidden min-h-0">
+
+      {/* Body — framework panel (top half of split) */}
+      <div
+        className="flex overflow-hidden min-h-0"
+        style={isWide && splitContainerH > 0
+          ? { height: frameworkPxH, flexShrink: 0 }
+          : { flex: '1 1 0%' }}
+      >
 
       {/* Left nav */}
       <div className="w-64 shrink-0 overflow-y-auto border-r border-border bg-background">
@@ -3615,25 +3712,49 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
       </div>{/* /Body */}
 
-      {/* gtmPILOT — always visible; handles no-vertical state internally */}
-      <GTMPilot
-        clientId={clientId}
-        verticalId={selectedVertical?.id ?? null}
-        verticalName={selectedVertical?.name ?? null}
-        filledSections={filledSections}
-        emptySections={emptySections}
-        onNavigateToSection={(num) => { setActiveSection(num) }}
-        open={pilotOpen}
-        onOpenChange={setPilotOpen}
-        activeSection={activeSection !== 'brain' && activeSection !== '00' ? activeSection : null}
-        researchRun={latestRun}
-        conflictLog={uploadedGtm?.status === 'ready' ? (uploadedGtm.conflictLog ?? null) : null}
-        sectionStatus={sectionStatus}
-        onSectionStatusChange={patchSectionStatus}
-        companyBrief={companyBrief || null}
-        onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
-        onSectionSkipped={(num) => void patchSectionStatus(num, 'complete')}
-      />
+      {/* Drag handle — wide screens only, when PILOT is open */}
+      {isWide && pilotOpen && (
+        <div
+          style={{ height: HANDLE_H, flexShrink: 0 }}
+          className="cursor-ns-resize flex items-center justify-center bg-border/40 hover:bg-blue-100/70 select-none group transition-colors"
+          onPointerDown={handlePilotDragPointerDown}
+          onPointerMove={handlePilotDragPointerMove}
+          onPointerUp={handlePilotDragPointerUp}
+          onDoubleClick={handlePilotDragDoubleClick}
+          title="Drag to resize · Double-click for compact view"
+        >
+          <div className="flex items-center gap-[3px]">
+            {[0,1,2,3,4].map((i) => (
+              <span key={i} className="block h-[3px] w-[3px] rounded-full bg-muted-foreground/35 group-hover:bg-blue-400 transition-colors" />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PILOT panel wrapper — height-controlled in split mode, zero-height on mobile (fixed overlay) */}
+      <div style={isWide ? { height: pilotWrapperH, flexShrink: 0, overflow: 'hidden' } : undefined}>
+        <GTMPilot
+          clientId={clientId}
+          verticalId={selectedVertical?.id ?? null}
+          verticalName={selectedVertical?.name ?? null}
+          filledSections={filledSections}
+          emptySections={emptySections}
+          onNavigateToSection={(num) => { setActiveSection(num) }}
+          open={pilotOpen}
+          onOpenChange={setPilotOpen}
+          activeSection={activeSection !== 'brain' && activeSection !== '00' ? activeSection : null}
+          researchRun={latestRun}
+          conflictLog={uploadedGtm?.status === 'ready' ? (uploadedGtm.conflictLog ?? null) : null}
+          sectionStatus={sectionStatus}
+          onSectionStatusChange={patchSectionStatus}
+          companyBrief={companyBrief || null}
+          onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
+          onSectionSkipped={(num) => void patchSectionStatus(num, 'complete')}
+          splitMode={isWide}
+        />
+      </div>
+
+      </div>{/* /Split container */}
 
       {/* Briefer PILOT modal */}
       {brieferOpen && (
