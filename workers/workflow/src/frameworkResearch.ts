@@ -364,7 +364,7 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
     await prisma.clientFrameworkResearch.upsert({
       where: { clientId_verticalId: { clientId, verticalId } },
       create: { agencyId, clientId, verticalId, status: 'running', websiteUrl: websiteUrl ?? null, sources: [] },
-      update: { status: 'running', errorMessage: null, websiteUrl: websiteUrl ?? undefined },
+      update: { status: 'running', errorMessage: null, ...(websiteUrl ? { websiteUrl } : {}) },
     })
 
     // Create versioned run record
@@ -372,13 +372,51 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
       data: { agencyId, clientId, verticalId, status: 'running', researchMode },
     })
 
-    const [client, vertical] = await Promise.all([
-      prisma.client.findFirstOrThrow({ where: { id: clientId, agencyId }, select: { name: true } }),
+    const [client, vertical, existingResearch, existingFramework] = await Promise.all([
+      prisma.client.findFirstOrThrow({ where: { id: clientId, agencyId }, select: { name: true, industry: true } }),
       prisma.vertical.findFirstOrThrow({ where: { id: verticalId, agencyId }, select: { name: true } }),
+      prisma.clientFrameworkResearch.findUnique({
+        where: { clientId_verticalId: { clientId, verticalId } },
+        select: { websiteUrl: true },
+      }),
+      prisma.clientFramework.findUnique({
+        where: { clientId_verticalId: { clientId, verticalId } },
+        select: { data: true },
+      }),
     ])
+
+    // Resolve website URL: job data takes priority, then fall back to stored URL from prior research
+    const resolvedWebsiteUrl = websiteUrl || existingResearch?.websiteUrl || null
 
     const contextParts: string[] = []
     const sources: DocumentSource[] = []
+
+    // 0. Existing framework data — what the strategist has already filled in
+    if (existingFramework?.data) {
+      const fw = existingFramework.data as Record<string, unknown>
+      const fwParts: string[] = []
+      const s01 = fw['s01'] as Record<string, string> | undefined
+      const s02 = fw['s02'] as Record<string, unknown> | undefined
+      const s05 = fw['s05'] as Record<string, unknown> | undefined
+      const s06 = fw['s06'] as Record<string, unknown> | undefined
+      if (s01?.positioningStatement) fwParts.push(`Positioning: ${s01.positioningStatement}`)
+      if (s01?.whatIsNot) fwParts.push(`What we are NOT: ${s01.whatIsNot}`)
+      if (s02?.industry) fwParts.push(`Target industry: ${s02.industry}`)
+      if (s02?.companySize) fwParts.push(`Target company size: ${s02.companySize}`)
+      if (s05) {
+        const pillars = (s05['pillars'] as Array<{ pillar?: string; valueProp?: string }> | undefined) ?? []
+        const pillarText = pillars.filter((p) => p.valueProp).map((p) => `${p.pillar ?? 'Pillar'}: ${p.valueProp}`).join('\n')
+        if (pillarText) fwParts.push(`Service pillars:\n${pillarText}`)
+      }
+      if (s06) {
+        const diffs = (s06['differentiators'] as Array<{ label?: string; position?: string }> | undefined) ?? []
+        const diffText = diffs.filter((d) => d.label).map((d) => `${d.label}: ${d.position ?? ''}`).join('\n')
+        if (diffText) fwParts.push(`Why us:\n${diffText}`)
+      }
+      if (fwParts.length > 0) {
+        contextParts.push(`[EXISTING GTM FRAMEWORK — what the strategist has already defined]\n${fwParts.join('\n\n')}`)
+      }
+    }
 
     // 1. Agency brain (corporate identity)
     try {
@@ -441,21 +479,22 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
     } catch (err) { console.error('[framework-research] framework attachments fetch failed:', err) }
 
     // 5. Company website BFS scrape
-    if (websiteUrl) {
+    if (resolvedWebsiteUrl) {
       try {
-        const rawText = await scrapeWebsite(websiteUrl, 10)
+        const rawText = await scrapeWebsite(resolvedWebsiteUrl, 10)
         if (rawText.length > 200) {
-          const summary = await summarise(rawText, websiteUrl, client.name, vertical.name)
-          contextParts.push(`[WEBSITE — ${websiteUrl}]\n${summary}`)
-          sources.push({ type: 'website', filename: websiteUrl, summary: summary.slice(0, 200) })
+          const summary = await summarise(rawText, resolvedWebsiteUrl, client.name, vertical.name)
+          contextParts.push(`[WEBSITE — ${resolvedWebsiteUrl}]\n${summary}`)
+          sources.push({ type: 'website', filename: resolvedWebsiteUrl, summary: summary.slice(0, 200) })
         }
       } catch (err) { console.error('[framework-research] website scrape failed:', err) }
     }
 
-    // 6. Brave vertical stats (new_vertical mode only)
+    // 6. Brave vertical stats
     if (researchMode === 'new_vertical') {
       const queries = [
-        `${vertical.name} market size statistics 2025`,
+        `${client.name} ${vertical.name} managed services`,
+        `${vertical.name} IT managed services market statistics 2025`,
         `${vertical.name} IT buyer challenges pain points`,
         `${vertical.name} compliance regulatory requirements`,
       ]
@@ -470,7 +509,7 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
       }
     }
 
-    if (contextParts.length === 0 && !websiteUrl) {
+    if (contextParts.length === 0 && !resolvedWebsiteUrl) {
       await Promise.all([
         prisma.clientFrameworkResearch.update({
           where: { clientId_verticalId: { clientId, verticalId } },
@@ -500,9 +539,11 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
         },
         `You are a senior GTM strategist analyzing research to fill in a Go-to-Market Framework for a sales and marketing team.
 
-CLIENT: ${client.name}
-VERTICAL: ${vertical.name}
-MODE: ${researchMode === 'new_vertical' ? 'New market entry — client is entering this vertical' : 'Established vertical — client already operates here'}
+CLIENT: ${client.name}${client.industry ? ` (${client.industry})` : ''}
+VERTICAL BEING RESEARCHED: ${vertical.name}
+WEBSITE: ${resolvedWebsiteUrl ?? 'not available'}
+MODE: ${researchMode === 'new_vertical' ? 'New market entry — client is expanding into this vertical' : 'Established vertical — client already operates here'}
+GOAL: Extract intelligence that helps a strategist complete the 18-section GTM Framework for ${client.name} targeting the ${vertical.name} vertical.
 
 RESEARCH CONTEXT:
 ${truncatedContext}
