@@ -246,6 +246,7 @@ interface BrainMeta {
   hasAgencyBrainContext: boolean
   agencyAttachmentCount: number
   hasCompanyBrief: boolean
+  hasPriorSession: boolean
 }
 
 type BrainState = 'RICH' | 'PARTIAL' | 'SPARSE'
@@ -401,6 +402,7 @@ async function buildContext(
     hasAgencyBrainContext: false,
     agencyAttachmentCount: 0,
     hasCompanyBrief: false,
+    hasPriorSession: false,
   }
 
   if (!client) return { parts, meta }
@@ -542,8 +544,8 @@ COMPANY-WIDE content provides portfolio-level awareness only: product/solution n
     })
 
     if (priorSessions.length > 0) {
+      meta.hasPriorSession = true
       parts.push(`\n=== PRIOR PILOT SESSION SUMMARIES (${priorSessions.length} most recent) ===`)
-      parts.push(`CRITICAL: The PILOT must reference these explicitly. At session start say "Last session you landed on X and rejected Y. I'm building from that." Then continue from where the last session ended.`)
       for (const s of priorSessions) {
         const sum = s.summary as { decisions?: string[]; rejected?: string[]; openQuestions?: string[] }
         const date = (s.summarizedAt ?? s.createdAt).toISOString().split('T')[0]
@@ -582,6 +584,8 @@ function buildSystemPrompt(
   conflictLog?: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation?: string }> | null,
   companyBrief?: string | null,
   brandTensionDetected?: boolean,
+  hasPriorSession?: boolean,
+  isFirstTurn?: boolean,
 ): string {
   const filledList = filledSections.length > 0
     ? filledSections.join(', ')
@@ -2003,7 +2007,13 @@ YOUR ROLE — ALWAYS BRING SOMETHING:
 You never present a blank field and ask the user to fill it. Every response starts with you bringing something: a draft, a hypothesis, a data point from the brain, or a direct question that shows you already know the context. The user reacts to what you bring — they do not create from scratch.
 
 SESSION ARC:
-${brandTensionDetected ? `**Brand naming tension — open with this before anything else:**
+${hasPriorSession && isFirstTurn ? `**SESSION RE-ENTRY — THIS IS YOUR ONLY OPENING MOVE:**
+Prior session summaries are loaded above in the PRIOR PILOT SESSION SUMMARIES block. Your first response must do exactly this, in order:
+1. Pull the most recent session summary and present it in plain language — what was decided, what was rejected, what's still open. Be specific: name the actual decisions, not categories.
+2. End with one direct question: "Where do you want to pick up?"
+Do NOT announce the brain state. Do NOT flag brand tension. Do NOT offer a list of sections. Do NOT ask what they want to work on generally. Surface the history first — that is the only job of the first response.
+
+` : brandTensionDetected ? `**Brand naming tension — open with this before anything else:**
 The company name carries product-category language that does not obviously align with the "${verticalName}" vertical. Your very first response must be: "Before we start, I want to flag something. The company name carries connotations from one product category but this vertical sits in a different space. Is this vertical being marketed under the same brand or does it have its own product name? That answer affects how we position everything here." After the user answers, proceed with the normal session arc below.
 
 ` : ''}**Orient** (first 1-2 turns): Announce the brain state and what it means. If RICH, lead with a draft for the most strategically important empty section. If PARTIAL, name the gaps and show what exists. If SPARSE, build a working starting point before asking anything. The most important work is rarely the emptiest section — a filled section with a weak answer is often the bigger problem.
@@ -2317,7 +2327,9 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     const brainState = classifyBrainState(brainMeta, activeBriefContent)
     const brainStateBlock = buildBrainStateBlock(brainState, brainMeta, activeBriefContent)
 
-    const brandTensionDetected = messages.length === 1
+    const isFirstTurn = messages.length === 1
+    const brandTensionDetected = isFirstTurn
+      && !brainMeta.hasPriorSession
       && detectBrandTension(client.name, verticalName ?? vertical.name)
 
     const systemPrompt = buildSystemPrompt(
@@ -2331,6 +2343,8 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       conflictLog,
       activeBriefContent,
       brandTensionDetected,
+      brainMeta.hasPriorSession,
+      isFirstTurn,
     )
 
     const levelHint = `[GTM Framework — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`
