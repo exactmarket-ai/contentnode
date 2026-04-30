@@ -131,22 +131,58 @@ const SECTION_LABELS: Record<string, string> = {
 // ─── Reply processor — strips JSON blocks before rendering ───────────────────
 
 function processReply(raw: string): string {
-  // Strip triple-backtick code blocks (with or without language tag, with or without newline)
-  let text = raw.replace(/```[a-z]*\n?[\s\S]*?```/gi, '').trim()
+  // 1. Strip triple-backtick code blocks (any language tag, uppercase or lowercase)
+  let text = raw.replace(/```[a-zA-Z0-9]*\n?[\s\S]*?```/gi, '').trim()
 
-  // Strip ALL JSON objects and arrays — both standalone and inline mid-sentence.
-  // Uses a character-level scanner: when { or [ is followed by a JSON signal
-  // ("key": pattern, or another { / [), consume the entire block including nesting.
+  // 2. Strip line-level JSON blocks:
+  //    - Lines starting with { or [
+  //    - Lines starting with "key": (covers "01": {...}, "positioning": ..., etc.)
+  //    Tracks brace depth to consume entire multi-line blocks.
+  const kept: string[] = []
+  const splitLines = text.split('\n')
+  let li = 0
+  while (li < splitLines.length) {
+    const trimmed = splitLines[li].trimStart()
+    const isJsonLine =
+      trimmed.startsWith('{') ||
+      trimmed.startsWith('[') ||
+      /^"[^"]*"\s*:/.test(trimmed)
+    if (isJsonLine) {
+      let depth = 0
+      let inStr = false
+      let esc = false
+      let ji = li
+      while (ji < splitLines.length) {
+        for (let k = 0; k < splitLines[ji].length; k++) {
+          const c = splitLines[ji][k]
+          if (esc)                      { esc = false; continue }
+          if (c === '\\' && inStr)      { esc = true; continue }
+          if (c === '"')                { inStr = !inStr; continue }
+          if (!inStr) {
+            if (c === '{' || c === '[') depth++
+            else if (c === '}' || c === ']') depth--
+          }
+        }
+        ji++
+        if (depth <= 0) break
+      }
+      li = ji
+      continue
+    }
+    kept.push(splitLines[li])
+    li++
+  }
+  text = kept.join('\n')
+
+  // 3. Strip remaining inline JSON objects/arrays mid-sentence (character-level scanner)
   let result = ''
   let i = 0
   while (i < text.length) {
     const ch = text[i]
     if (ch === '{' || ch === '[') {
-      // Lookahead: is this JSON? Detect "key": pattern or nested opener within 200 chars
       const preview = text.slice(i + 1, i + 200)
       const isJson = /^\s*(?:"[^"]*"\s*:|[\[\{])/.test(preview)
       if (isJson) {
-        // Consume through matching close bracket, respecting quoted strings
         let depth = 1
         let inStr = false
         let esc = false
@@ -162,7 +198,7 @@ function processReply(raw: string): string {
           }
           j++
         }
-        i = j  // jump past entire JSON block
+        i = j
         continue
       }
     }
@@ -171,8 +207,8 @@ function processReply(raw: string): string {
   }
 
   return result
-    .replace(/[ \t]+$/gm, '')     // trailing whitespace per line
-    .replace(/\n{3,}/g, '\n\n')   // collapse excessive blank lines
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
