@@ -556,10 +556,36 @@ After the user answers all 3, synthesize their answers into a company brief, out
     sectionGroupBlock = `\nACTIVE SECTION BEHAVIORAL MODE: ${grp.name}\n${grp.hint}\n`
   }
 
-  // Section-specific research context
+  // Section-specific research context — convert to readable prose, never inject raw JSON
   let researchBlock = ''
   if (activeSection && researchBySection?.[activeSection]) {
-    researchBlock = `\nRESEARCH FINDINGS FOR Section ${activeSection} (from automated research run):\n${researchBySection[activeSection]}\n`
+    const raw = researchBySection[activeSection]
+    let readable: string
+    try {
+      // raw is JSON.stringify'd on the client — parse back and flatten to labeled lines
+      const parsed = JSON.parse(raw) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        readable = Object.entries(parsed as Record<string, unknown>)
+          .map(([k, v]) => {
+            const label = k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+            const text = typeof v === 'string' ? v
+              : Array.isArray(v) ? (v as unknown[]).filter((x) => typeof x === 'string').join('; ')
+              : typeof v === 'object' && v !== null
+                ? Object.values(v as Record<string, unknown>).filter((x) => typeof x === 'string').join('; ')
+                : String(v)
+            return `${label}: ${text}`
+          })
+          .filter(Boolean)
+          .join('\n')
+      } else if (typeof parsed === 'string') {
+        readable = parsed
+      } else {
+        readable = raw
+      }
+    } catch {
+      readable = raw  // already a plain string — use as-is
+    }
+    researchBlock = `\nRESEARCH FINDINGS FOR Section ${activeSection} (from automated research run):\n${readable}\n`
   }
 
   // Conflict log for active section

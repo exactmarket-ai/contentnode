@@ -36,7 +36,11 @@ function formatResearchForDisplay(raw: unknown): string {
       return `${label}: ${val.length > 120 ? val.slice(0, 120) + '…' : val}`
     }
     if (typeof val === 'object' && val !== null) {
-      return `${label}: ${JSON.stringify(val).slice(0, 120)}…`
+      // Flatten nested object to readable text — never use JSON.stringify in display
+      const nested = Object.values(val as Record<string, unknown>)
+        .filter((v) => typeof v === 'string')
+        .join(' · ')
+      return nested ? `${label}: ${nested.length > 160 ? nested.slice(0, 160) + '…' : nested}` : null
     }
     return null
   }).filter(Boolean).join('\n')
