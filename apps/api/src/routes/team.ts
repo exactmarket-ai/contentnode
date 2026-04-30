@@ -98,7 +98,9 @@ function memberView(m: {
 export async function teamRoutes(app: FastifyInstance) {
 
   // ── GET / — list team members ──────────────────────────────────────────────
-  app.get('/', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
+  // Any authenticated agency member can see who's on their team.
+  // Management actions (invite/patch/delete) still require owner/admin.
+  app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
 
     const members = await prisma.user.findMany({

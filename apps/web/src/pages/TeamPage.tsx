@@ -668,7 +668,13 @@ export function TeamPage() {
     try {
       const res = await apiFetch('/api/v1/team')
       const json = await res.json()
-      if (res.ok) setMembers(json.data)
+      if (res.ok) {
+        setMembers(json.data)
+      } else {
+        console.error('[TeamPage] GET /team failed', res.status, json)
+      }
+    } catch (err) {
+      console.error('[TeamPage] GET /team error', err)
     } finally {
       setLoading(false)
     }
