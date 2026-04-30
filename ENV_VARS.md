@@ -1,5 +1,7 @@
 # Environment Variables for Railway Deployment
 
+> **Migration rule:** Always run `npx prisma migrate deploy` with the Railway staging `DATABASE_URL` (get it via `railway variables --service "@contentnode/api"`), not the URL in `apps/api/.env`. These are different Neon instances. Running against the wrong DB wastes debugging time.
+
 ## API service (Dockerfile.api)
 
 | Variable | Example | Notes |

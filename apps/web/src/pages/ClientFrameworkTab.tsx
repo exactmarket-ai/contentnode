@@ -1759,9 +1759,10 @@ function BriefLibraryPanel({
     setCreateError(null)
     try {
       await onCreateBrief(name.trim(), type, showAdd === 'paste' ? text.trim() : undefined)
+      // Success: clear form state — brief now in library, PILOT auto-launches
       setName(''); setType('company'); setText(''); setShowAdd(null)
-    } catch {
-      setCreateError('Save failed — check your connection and try again.')
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Save failed — check your connection and try again.')
     } finally {
       setCreating(false)
     }
@@ -3403,11 +3404,15 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                     body: JSON.stringify({ name, type, rawInput: text || undefined }),
                   })
                   if (!res.ok) {
-                    const err = await res.json().catch(() => ({})) as { error?: string }
-                    throw new Error(err.error ?? `Save failed (${res.status})`)
+                    const err = await res.json().catch(() => ({})) as { error?: string; message?: string }
+                    throw new Error(err.error ?? err.message ?? `Save failed (${res.status})`)
                   }
                   const { data } = await res.json()
+                  // Optimistic update + server refresh to ensure list is accurate
                   setBriefs((prev) => [data as ClientBriefLocal, ...prev])
+                  void loadBriefs()
+                  // Ensure PILOT panel is expanded then open the briefer session
+                  setPilotOpen(true)
                   setBrieferOpen(data as ClientBriefLocal)
                 }}
                 onUploadFile={uploadBriefFile}
@@ -3603,11 +3608,11 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       />
 
       {/* Briefer PILOT modal */}
-      {brieferOpen && selectedVertical && (
+      {brieferOpen && (
         <BrieferPilot
           clientId={clientId}
-          verticalId={selectedVertical.id}
-          verticalName={selectedVertical.name}
+          verticalId={selectedVertical?.id ?? ''}
+          verticalName={selectedVertical?.name ?? null}
           brief={brieferOpen}
           onBriefSaved={(updated) => {
             setBriefs((prev) => prev.map((b) => b.id === updated.id ? { ...b, ...updated } : b))
