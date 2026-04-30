@@ -2195,7 +2195,26 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       .then(({ data, sectionStatus: ss }) => {
         const base = defaultFramework()
         if (data && typeof data === 'object') {
-          const merged = { ...base, ...(data as Partial<FrameworkData>) }
+          // Deep-merge section by section so missing/null array fields fall back to defaults
+          const raw = data as Record<string, unknown>
+          const merged = { ...base }
+          for (const key of Object.keys(base) as Array<keyof typeof base>) {
+            if (raw[key] && typeof raw[key] === 'object' && !Array.isArray(raw[key])) {
+              const defaultSec = base[key] as Record<string, unknown>
+              const dbSec = raw[key] as Record<string, unknown>
+              const sec: Record<string, unknown> = { ...defaultSec }
+              for (const field of Object.keys(dbSec)) {
+                const val = dbSec[field]
+                // Only overwrite if the DB value is a non-null, non-empty value
+                if (val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) {
+                  sec[field] = val
+                }
+              }
+              ;(merged as Record<string, unknown>)[key] = sec
+            } else if (raw[key] !== undefined) {
+              ;(merged as Record<string, unknown>)[key] = raw[key]
+            }
+          }
           setFwRaw(merged)
           latestFwRef.current = merged
         } else {
@@ -2387,12 +2406,29 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       if (!res.ok) { const b = await res.json().catch(() => ({})); alert('Fill failed: ' + ((b as any).error ?? res.status)); return }
       const { data } = await res.json()
       setFillResult(data)
-      // Reload framework + section status
+      // Reload framework + section status (reuse the same deep-merge as initial load)
       const fwRes = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`)
       const { data: fwData, sectionStatus: ss } = await fwRes.json()
       const base = defaultFramework()
       if (fwData && typeof fwData === 'object') {
-        const merged = { ...base, ...(fwData as Partial<FrameworkData>) }
+        const raw = fwData as Record<string, unknown>
+        const merged = { ...base }
+        for (const key of Object.keys(base) as Array<keyof typeof base>) {
+          if (raw[key] && typeof raw[key] === 'object' && !Array.isArray(raw[key])) {
+            const defaultSec = base[key] as Record<string, unknown>
+            const dbSec = raw[key] as Record<string, unknown>
+            const sec: Record<string, unknown> = { ...defaultSec }
+            for (const field of Object.keys(dbSec)) {
+              const val = dbSec[field]
+              if (val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) {
+                sec[field] = val
+              }
+            }
+            ;(merged as Record<string, unknown>)[key] = sec
+          } else if (raw[key] !== undefined) {
+            ;(merged as Record<string, unknown>)[key] = raw[key]
+          }
+        }
         setFwRaw(merged)
         latestFwRef.current = merged
       }
