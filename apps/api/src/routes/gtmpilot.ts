@@ -22,7 +22,7 @@ import { getPilotSessionSummaryQueue } from '../lib/queues.js'
 
 const messageSchema = z.object({
   role:    z.enum(['user', 'assistant']),
-  content: z.string().max(10000),
+  content: z.string().max(50_000),
 })
 
 const conflictEntrySchema = z.object({
@@ -33,7 +33,7 @@ const conflictEntrySchema = z.object({
 })
 
 const chatBody = z.object({
-  messages:          z.array(messageSchema).min(1).max(40),
+  messages:          z.array(messageSchema).min(1).max(200),
   clientId:          z.string(),
   verticalId:        z.string(),
   verticalName:      z.string().optional().nullable(),
@@ -2125,9 +2125,19 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
   app.post('/chat', async (req, reply) => {
     const { agencyId } = req.auth
 
-    const parsed = chatBody.safeParse(req.body)
+    let rawBody: unknown
+    try {
+      rawBody = req.body
+    } catch (parseErr) {
+      return reply.code(400).send({ error: 'Request body could not be parsed as JSON' })
+    }
+
+    const parsed = chatBody.safeParse(rawBody)
     if (!parsed.success) {
-      return reply.code(400).send({ error: 'Invalid request body', details: parsed.error.issues })
+      const first = parsed.error.issues[0]
+      const field = first?.path?.join('.') ?? 'unknown'
+      const msg   = first?.message ?? 'validation failed'
+      return reply.code(400).send({ error: `Invalid request body — field "${field}": ${msg}`, details: parsed.error.issues })
     }
 
     const {
@@ -2164,7 +2174,12 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
 
       const levelHint = `[Brief Session — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`
-      const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => ({
+      // Keep first message (context anchor) + most recent 19 exchanges (38 msgs) = 39 total sent to Claude
+      const MAX_CLAUDE_MSGS = 39
+      const brieferMsgs = messages.length > MAX_CLAUDE_MSGS
+        ? [messages[0], ...messages.slice(-(MAX_CLAUDE_MSGS - 1))]
+        : messages
+      const anthropicMessages: Anthropic.MessageParam[] = brieferMsgs.map((m, i) => ({
         role: m.role,
         content: i === 0 ? `${levelHint}\n\n${m.content}` : m.content,
       }))
@@ -2258,7 +2273,12 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
 
     const levelHint = `[GTM Framework — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`
 
-    const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => ({
+    // Keep first message (context anchor) + most recent 19 exchanges (38 msgs) = 39 total sent to Claude
+    const MAX_CLAUDE_MSGS = 39
+    const gtmMsgs = messages.length > MAX_CLAUDE_MSGS
+      ? [messages[0], ...messages.slice(-(MAX_CLAUDE_MSGS - 1))]
+      : messages
+    const anthropicMessages: Anthropic.MessageParam[] = gtmMsgs.map((m, i) => ({
       role:    m.role,
       content: i === 0 ? `${levelHint}\n\n${m.content}` : m.content,
     }))

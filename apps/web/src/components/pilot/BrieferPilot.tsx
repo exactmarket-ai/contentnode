@@ -125,16 +125,22 @@ export function BrieferPilot({
     if (!isSystem) setInput('')
 
     const userMsg: BriefMessage = { role: 'user', content: text }
-    const newMessages = isSystem ? messages : [...messages, userMsg]
-    if (!isSystem) setMessages(newMessages)
+    const fullMessages = isSystem ? messages : [...messages, userMsg]
+    if (!isSystem) setMessages(fullMessages)
     setLoading(true)
+
+    // Truncate before sending — preserve first message + most recent 39 exchanges
+    const MAX_SEND = 80
+    const sendMessages = fullMessages.length > MAX_SEND
+      ? [fullMessages[0], ...fullMessages.slice(-(MAX_SEND - 1))]
+      : fullMessages
 
     try {
       const res = await apiFetch('/api/v1/gtm-pilot/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+          messages: sendMessages.map((m) => ({ role: m.role, content: m.content })),
           clientId,
           verticalId,
           verticalName,

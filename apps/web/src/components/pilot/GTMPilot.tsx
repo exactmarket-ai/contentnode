@@ -451,7 +451,14 @@ export function GTMPilot({
     setLoading(true)
 
     try {
-      const history = [...messages, userMsg]
+      const fullHistory = [...messages, userMsg]
+
+      // Truncate before sending — preserve first message (session anchor) + most recent 39 exchanges.
+      // The UI always shows the full history; this only affects what's sent to the API.
+      const MAX_SEND = 80
+      const history = fullHistory.length > MAX_SEND
+        ? [fullHistory[0], ...fullHistory.slice(-(MAX_SEND - 1))]
+        : fullHistory
 
       // Build research context for active section (coerce to string for API)
       const researchBySection: Record<string, string> | undefined = (activeSection && activeSectionResearch)
