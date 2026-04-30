@@ -2142,6 +2142,8 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({})
   const [companyBrief, setCompanyBrief] = useState('')
   const [briefSaved, setBriefSaved] = useState(false)
+  const [fillingFromClientGtm, setFillingFromClientGtm] = useState(false)
+  const [fillResult, setFillResult] = useState<{ filledCount: number; sections: string[] } | null>(null)
   const clientGtmInputRef = useRef<HTMLInputElement>(null)
   const researchPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -2265,7 +2267,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   // Load research runs + uploaded GTM when vertical changes
   useEffect(() => {
-    if (!selectedVertical) { setResearchRuns([]); setUploadedGtm(null); return }
+    if (!selectedVertical) { setResearchRuns([]); setUploadedGtm(null); setFillResult(null); return }
     const base = `/api/v1/clients/${clientId}/framework/${selectedVertical.id}`
     Promise.all([
       apiFetch(`${base}/research/runs`).then((r) => r.json()).catch(() => ({ data: [] })),
@@ -2373,6 +2375,30 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       }, 3000)
     } finally {
       setUploadingClientGtm(false)
+    }
+  }, [clientId, selectedVertical])
+
+  const fillFromClientGtm = useCallback(async () => {
+    if (!selectedVertical) return
+    setFillingFromClientGtm(true)
+    setFillResult(null)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/fill-from-client-gtm`, { method: 'POST' })
+      if (!res.ok) { const b = await res.json().catch(() => ({})); alert('Fill failed: ' + ((b as any).error ?? res.status)); return }
+      const { data } = await res.json()
+      setFillResult(data)
+      // Reload framework + section status
+      const fwRes = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`)
+      const { data: fwData, sectionStatus: ss } = await fwRes.json()
+      const base = defaultFramework()
+      if (fwData && typeof fwData === 'object') {
+        const merged = { ...base, ...(fwData as Partial<FrameworkData>) }
+        setFwRaw(merged)
+        latestFwRef.current = merged
+      }
+      setSectionStatus((ss && typeof ss === 'object') ? ss as Record<string, string> : {})
+    } catch { /* ignore */ } finally {
+      setFillingFromClientGtm(false)
     }
   }, [clientId, selectedVertical])
 
@@ -3053,13 +3079,39 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                         </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => clientGtmInputRef.current?.click()}
-                      disabled={uploadingClientGtm}
-                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      Replace with new file
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {uploadedGtm.status === 'ready' && (
+                        <button
+                          onClick={() => void fillFromClientGtm()}
+                          disabled={fillingFromClientGtm}
+                          className="flex items-center gap-1.5 rounded-md bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 text-[11px] font-semibold text-white transition-colors"
+                        >
+                          {fillingFromClientGtm ? (
+                            <>
+                              <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                              </svg>
+                              Filling…
+                            </>
+                          ) : 'Fill empty sections'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => clientGtmInputRef.current?.click()}
+                        disabled={uploadingClientGtm}
+                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Replace with new file
+                      </button>
+                    </div>
+                    {fillResult && (
+                      <p className="text-[11px] text-green-600 font-medium">
+                        {fillResult.filledCount > 0
+                          ? `✓ Filled ${fillResult.filledCount} section${fillResult.filledCount !== 1 ? 's' : ''} — marked as AI Draft`
+                          : 'No empty sections to fill — all sections already have content'}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div

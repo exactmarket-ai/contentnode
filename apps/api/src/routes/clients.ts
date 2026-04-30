@@ -3908,6 +3908,147 @@ ${docText.slice(0, 12000)}`
     return reply.send({ data: upload ?? null })
   })
 
+  // ── POST /:id/framework/:verticalId/fill-from-client-gtm — fill empty sections from uploaded GTM
+  app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/fill-from-client-gtm', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    // Load latest ready upload
+    const upload = await prisma.clientFrameworkUploadedGtm.findFirst({
+      where: { agencyId, clientId, verticalId, status: 'ready' },
+      orderBy: { uploadedAt: 'desc' },
+      select: { extractedSections: true },
+    })
+    if (!upload?.extractedSections) return reply.code(422).send({ error: 'No processed client GTM found. Upload and wait for processing to complete.' })
+
+    const extracted = upload.extractedSections as Record<string, string | null>
+
+    // Load current framework
+    const fw = await prisma.clientFramework.findFirst({
+      where: { agencyId, clientId, verticalId },
+      select: { data: true, sectionStatus: true },
+    })
+    const currentData = (fw?.data ?? {}) as Record<string, unknown>
+    const currentSectionStatus = (fw?.sectionStatus ?? {}) as Record<string, string>
+
+    // Determine which section numbers are empty (no string fields filled)
+    const SKIP_KEYS = new Set(['_open', 'stage'])
+    function isSectionEmpty(sec: unknown): boolean {
+      let filled = 0
+      let total = 0
+      function count(val: unknown, key?: string) {
+        if (key && SKIP_KEYS.has(key)) return
+        if (typeof val === 'string') { total++; if (val.trim()) filled++ }
+        else if (Array.isArray(val)) val.forEach((item) => count(item))
+        else if (val && typeof val === 'object') Object.entries(val as Record<string, unknown>).forEach(([k, v]) => count(v, k))
+      }
+      count(sec)
+      return total === 0 || filled === 0
+    }
+
+    // Collect empty sections that have extracted content
+    const SECTION_NUMS = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18']
+    const sectionsToFill: Record<string, string> = {}
+    for (const num of SECTION_NUMS) {
+      const text = extracted[num]
+      if (!text || !text.trim()) continue
+      const sKey = `s${num}`
+      const current = currentData[sKey]
+      const alreadyFilled = current && !isSectionEmpty(current)
+      if (alreadyFilled) continue
+      sectionsToFill[num] = text
+    }
+
+    if (Object.keys(sectionsToFill).length === 0) {
+      return reply.send({ data: { filledCount: 0, sections: [] } })
+    }
+
+    // Map flat text → structured FrameworkData via Claude
+    const sectionsJson = JSON.stringify(sectionsToFill, null, 2)
+    const mappingResult = await callModel(
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        api_key_ref: 'ANTHROPIC_API_KEY',
+        max_tokens: 6000,
+        temperature: 0.1,
+      },
+      `You are mapping content from a client-provided GTM document into a structured framework JSON format.
+
+For each section below (keyed by number), parse the extracted text and return a structured JSON object.
+Output ONLY valid JSON — no markdown, no code fences, no explanation.
+Only include section keys that are present in the input.
+
+SECTION TEXT INPUT:
+${sectionsJson}
+
+TARGET JSON STRUCTURE — use exactly these field names, create multiple array items where content warrants it:
+{
+  "s01": { "positioningStatement": "", "taglineOptions": "", "howToUse": "", "whatIsNot": "" },
+  "s02": { "industry": "", "companySize": "", "geography": "", "itPosture": "", "complianceStatus": "", "contractProfile": "", "buyerTable": [{"segment":"","primaryBuyer":"","corePain":"","entryPoint":""}], "secondaryTargets": "" },
+  "s03": { "marketPressureNarrative": "", "statsTable": [{"stat":"","context":"","source":"","year":""}], "additionalContext": "" },
+  "s04": { "challenges": [{"name":"","whyExists":"","consequence":"","solution":"","pillarsText":""}] },
+  "s05": { "pillars": [{"pillar":"","valueProp":"","keyServices":"","relevantTo":""}], "serviceStack": [{"service":"","regulatoryDomain":"","whatItDelivers":"","priority":""}] },
+  "s06": { "differentiators": [{"label":"","position":""}] },
+  "s07": { "segments": [{"name":"","primaryBuyerTitles":"","whatIsDifferent":"","keyPressures":"","leadHook":"","complianceNotes":""}] },
+  "s08": { "problems": "", "solution": "", "outcomes": "", "valuePropTable": [{"pillar":"","meaning":"","proofPoint":"","citation":""}] },
+  "s09": { "proofPoints": [{"text":"","source":""}], "caseStudies": [{"clientProfile":"","url":"","situation":"","engagement":"","outcomes":"","thirtySecond":"","headlineStat":""}] },
+  "s10": { "objections": [{"objection":"","response":"","followUp":""}] },
+  "s11": { "toneTarget": "", "vocabularyLevel": "", "sentenceStyle": "", "whatToAvoid": "", "goodExamples": [{"text":""}], "badExamples": [{"bad":"","whyWrong":""}] },
+  "s12": { "competitors": [{"type":"","positioning":"","counter":"","whenComesUp":""}] },
+  "s13": { "quotes": [{"quoteText":"","attribution":"","context":"","bestUsedIn":"","approved":""}] },
+  "s14": { "campaigns": [{"theme":"","targetAudience":"","primaryAssets":"","keyMessage":""}] },
+  "s15": { "faqs": [{"question":"","answer":"","bestAddressedIn":""}] },
+  "s16": { "funnelStages": [{"stage":"Top of Funnel","assets":"","primaryCTA":"","buyerState":""},{"stage":"Mid Funnel","assets":"","primaryCTA":"","buyerState":""},{"stage":"Bottom Funnel","assets":"","primaryCTA":"","buyerState":""}], "ctaSequencing": "" },
+  "s17": { "regulations": [{"requirement":"","capability":"","servicePillar":"","salesNote":""}], "regulatorySalesNote": "" },
+  "s18": { "ctas": [{"ctaName":"","description":"","targetAudienceTrigger":"","assets":""}] }
+}
+
+Rules:
+- Map ALL content from the input text — do not skip or summarize
+- Split list-like content into multiple array items (one per item)
+- If a field has no relevant content in the source text, leave it as an empty string
+- Preserve exact wording where possible — do not paraphrase`,
+    )
+
+    let mapped: Record<string, unknown> = {}
+    try {
+      mapped = JSON.parse(mappingResult.text.trim()) as Record<string, unknown>
+    } catch {
+      return reply.code(500).send({ error: 'Failed to parse Claude mapping response' })
+    }
+
+    // Merge mapped sections into current data (only empty sections)
+    const filledSectionNums: string[] = []
+    const newData = { ...currentData }
+    const newSectionStatus = { ...currentSectionStatus }
+
+    for (const num of Object.keys(sectionsToFill)) {
+      const sKey = `s${num}`
+      if (mapped[sKey]) {
+        newData[sKey] = mapped[sKey]
+        newSectionStatus[num] = 'ai-draft'
+        filledSectionNums.push(num)
+      }
+    }
+
+    // Save
+    await prisma.clientFramework.upsert({
+      where: { clientId_verticalId: { clientId, verticalId } },
+      create: { agencyId, clientId, verticalId, data: newData as object, sectionStatus: newSectionStatus as object },
+      update: { data: newData as object, sectionStatus: newSectionStatus as object },
+    })
+
+    return reply.send({ data: { filledCount: filledSectionNums.length, sections: filledSectionNums } })
+  })
+
   // ── PATCH /:id/framework/:verticalId/section-status — update per-section status
   app.patch<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/section-status', async (req, reply) => {
     const { agencyId } = req.auth
