@@ -1706,6 +1706,7 @@ function BriefLibraryPanel({
   onToggleStatus,
   onDelete,
   onSetPrimary,
+  onBriefUpdated,
   primaryBriefId,
 }: {
   clientId: string
@@ -1718,6 +1719,7 @@ function BriefLibraryPanel({
   onToggleStatus: (briefId: string, status: 'active' | 'draft') => void
   onDelete: (briefId: string) => void
   onSetPrimary: (briefId: string | null) => void
+  onBriefUpdated: (brief: ClientBriefLocal) => void
   primaryBriefId?: string | null
 }) {
   const [showAdd, setShowAdd] = useState<'menu' | 'paste' | 'new' | null>(null)
@@ -1725,6 +1727,29 @@ function BriefLibraryPanel({
   const [type, setType] = useState('company')
   const [text, setText] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const saveContent = async (briefId: string) => {
+    if (saving) return
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/briefs/${briefId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editingText.trim() }),
+      })
+      if (res.ok) {
+        const { data } = await res.json()
+        onBriefUpdated(data as ClientBriefLocal)
+        setEditingId(null)
+        setEditingText('')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handleCreate = () => {
     if (!name.trim()) return
@@ -1810,54 +1835,109 @@ function BriefLibraryPanel({
       <div className="space-y-2">
         {briefs.map((brief) => {
           const isPrimary = verticalId && brief.id === primaryBriefId && brief.type !== 'company'
+          const isEmpty = !brief.content && brief.extractionStatus !== 'pending'
+          const isEditing = editingId === brief.id
           return (
-            <div key={brief.id} className="bg-white border border-border rounded-xl px-4 py-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-[13px] font-medium text-foreground truncate">{brief.name}</p>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border text-muted-foreground">{BRIEF_TYPE_LABELS[brief.type] ?? brief.type}</span>
-                  <span className={cn(
-                    'text-[10px] px-1.5 py-0.5 rounded-full font-medium',
-                    brief.status === 'active' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-muted text-muted-foreground border border-border',
-                  )}>{brief.status === 'active' ? 'Active' : 'Draft'}</span>
-                  {brief.extractionStatus === 'pending' && <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Extracting...</span>}
-                  {brief.extractionStatus === 'ready' && !brief.content && <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0.5">Review pending</span>}
-                  {isPrimary && <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-1.5 py-0.5">Primary for vertical</span>}
+            <div key={brief.id} className={cn('bg-white border rounded-xl px-4 py-3', isEmpty && !isEditing ? 'border-amber-200 bg-amber-50/40' : 'border-border')}>
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-[13px] font-medium text-foreground truncate">{brief.name}</p>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border text-muted-foreground">{BRIEF_TYPE_LABELS[brief.type] ?? brief.type}</span>
+                    <span className={cn(
+                      'text-[10px] px-1.5 py-0.5 rounded-full font-medium',
+                      brief.status === 'active' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-muted text-muted-foreground border border-border',
+                    )}>{brief.status === 'active' ? 'Active' : 'Draft'}</span>
+                    {brief.extractionStatus === 'pending' && <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Extracting...</span>}
+                    {brief.extractionStatus === 'ready' && !brief.content && <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0.5">Review pending</span>}
+                    {isPrimary && <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-1.5 py-0.5">Primary for vertical</span>}
+                  </div>
+
+                  {/* Content preview or empty state */}
+                  {brief.content && !isEditing && (
+                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{brief.content}</p>
+                  )}
+                  {isEmpty && !isEditing && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-[11px] text-amber-700">No content yet</span>
+                      <span className="text-muted-foreground/40 text-[10px]">·</span>
+                      <button
+                        onClick={() => { setEditingId(brief.id); setEditingText('') }}
+                        className="text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                      >
+                        Add content
+                      </button>
+                      <span className="text-muted-foreground/40 text-[10px]">·</span>
+                      <button
+                        onClick={() => onBrieferOpen(brief)}
+                        className="text-[11px] font-medium text-violet-600 hover:text-violet-700 transition-colors"
+                      >
+                        Build with PILOT
+                      </button>
+                    </div>
+                  )}
+                  {isEditing && (
+                    <div className="mt-2 space-y-2">
+                      <textarea
+                        autoFocus
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[12px] resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        rows={5}
+                        placeholder="Paste or type your brief content — describe the company, product, or solution clearly and specifically..."
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => { setEditingId(null); setEditingText('') }}
+                          className="text-[12px] text-muted-foreground hover:text-foreground px-3 py-1.5 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => void saveContent(brief.id)}
+                          disabled={saving || !editingText.trim()}
+                          className="text-[12px] font-medium bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                        >
+                          {saving ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-muted-foreground mt-1">{BRIEF_SOURCE_LABELS[brief.source] ?? brief.source} · {new Date(brief.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
                 </div>
-                {brief.content && <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{brief.content}</p>}
-                <p className="text-[10px] text-muted-foreground mt-0.5">{BRIEF_SOURCE_LABELS[brief.source] ?? brief.source} · {new Date(brief.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {verticalId && brief.type !== 'company' && (
+                <div className="flex items-center gap-1 shrink-0">
+                  {verticalId && brief.type !== 'company' && (
+                    <button
+                      title={isPrimary ? 'Remove as primary' : 'Set as primary for this vertical'}
+                      onClick={() => onSetPrimary(isPrimary ? null : brief.id)}
+                      className={cn('p-1.5 rounded-lg transition-colors text-[10px]', isPrimary ? 'text-violet-600 bg-violet-50 hover:bg-violet-100' : 'text-muted-foreground hover:bg-muted')}
+                    >
+                      <span className="text-sm">{isPrimary ? '★' : '☆'}</span>
+                    </button>
+                  )}
                   <button
-                    title={isPrimary ? 'Remove as primary' : 'Set as primary for this vertical'}
-                    onClick={() => onSetPrimary(isPrimary ? null : brief.id)}
-                    className={cn('p-1.5 rounded-lg transition-colors text-[10px]', isPrimary ? 'text-violet-600 bg-violet-50 hover:bg-violet-100' : 'text-muted-foreground hover:bg-muted')}
+                    title="Build / refine with PILOT"
+                    onClick={() => onBrieferOpen(brief)}
+                    className="p-1.5 rounded-lg text-violet-500 hover:bg-violet-50 transition-colors"
                   >
-                    <span className="text-sm">{isPrimary ? '★' : '☆'}</span>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
                   </button>
-                )}
-                <button
-                  title="Build / refine with PILOT"
-                  onClick={() => onBrieferOpen(brief)}
-                  className="p-1.5 rounded-lg text-violet-500 hover:bg-violet-50 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
-                </button>
-                <button
-                  title={brief.status === 'active' ? 'Set to draft' : 'Activate'}
-                  onClick={() => onToggleStatus(brief.id, brief.status === 'active' ? 'draft' : 'active')}
-                  className={cn('p-1.5 rounded-lg transition-colors', brief.status === 'active' ? 'text-green-600 hover:bg-green-50' : 'text-muted-foreground hover:bg-muted')}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </button>
-                <button
-                  title="Delete"
-                  onClick={() => onDelete(brief.id)}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                </button>
+                  <button
+                    title={brief.status === 'active' ? 'Set to draft' : 'Activate'}
+                    onClick={() => onToggleStatus(brief.id, brief.status === 'active' ? 'draft' : 'active')}
+                    className={cn('p-1.5 rounded-lg transition-colors', brief.status === 'active' ? 'text-green-600 hover:bg-green-50' : 'text-muted-foreground hover:bg-muted')}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </button>
+                  <button
+                    title="Delete"
+                    onClick={() => onDelete(brief.id)}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                  </button>
+                </div>
               </div>
             </div>
           )
@@ -3319,6 +3399,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                 onToggleStatus={toggleBriefStatus}
                 onDelete={deleteBrief}
                 onSetPrimary={setPrimaryBrief}
+                onBriefUpdated={(updated) => setBriefs((prev) => prev.map((b) => b.id === updated.id ? { ...b, ...updated } : b))}
               />
             )}
             <AttachmentsSection
