@@ -348,13 +348,14 @@ model ClientGTMAssessment {
 // ClientFramework — per-client-per-vertical GTM content engine
 // ─────────────────────────────────────────────
 model ClientFramework {
-  id         String   @id @default(cuid())
-  agencyId   String   @map("agency_id")
-  clientId   String   @map("client_id")
-  verticalId String   @map("vertical_id")
-  data       Json     @default("{}")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  agencyId      String   @map("agency_id")
+  clientId      String   @map("client_id")
+  verticalId    String   @map("vertical_id")
+  data          Json     @default("{}")
+  sectionStatus Json     @default("{}") @map("section_status")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   agency   Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -418,6 +419,53 @@ model ClientFrameworkResearch {
   @@unique([clientId, verticalId])
   @@index([agencyId])
   @@map("client_framework_research")
+}
+
+// ─────────────────────────────────────────────
+// ClientFrameworkResearchRun — versioned research runs per client+vertical
+// ─────────────────────────────────────────────
+model ClientFrameworkResearchRun {
+  id             String    @id @default(cuid())
+  agencyId       String    @map("agency_id")
+  clientId       String    @map("client_id")
+  verticalId     String    @map("vertical_id")
+  // pending | running | ready | failed
+  status         String    @default("pending")
+  // established | new_vertical
+  researchMode   String    @default("established") @map("research_mode")
+  sectionResults Json?     @map("section_results")
+  sources        Json      @default("[]")
+  errorMessage   String?   @map("error_message") @db.Text
+  mergedFromIds  String[]  @default([]) @map("merged_from_ids")
+  researchedAt   DateTime? @map("researched_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([clientId, verticalId])
+  @@index([agencyId])
+  @@map("client_framework_research_runs")
+}
+
+// ─────────────────────────────────────────────
+// ClientFrameworkUploadedGtm — client-supplied GTM upload + conflict analysis
+// ─────────────────────────────────────────────
+model ClientFrameworkUploadedGtm {
+  id                String    @id @default(cuid())
+  agencyId          String    @map("agency_id")
+  clientId          String    @map("client_id")
+  verticalId        String    @map("vertical_id")
+  storageKey        String    @map("storage_key")
+  filename          String
+  // processing | ready | failed
+  status            String    @default("processing")
+  extractedSections Json?     @map("extracted_sections")
+  conflictLog       Json?     @map("conflict_log")
+  errorMessage      String?   @map("error_message") @db.Text
+  uploadedAt        DateTime  @default(now()) @map("uploaded_at")
+  processedAt       DateTime? @map("processed_at")
+
+  @@index([clientId, verticalId])
+  @@index([agencyId])
+  @@map("client_framework_uploaded_gtms")
 }
 
 // ─────────────────────────────────────────────

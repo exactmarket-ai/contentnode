@@ -2522,7 +2522,7 @@ Rules:
     const fw = await prisma.clientFramework.findUnique({
       where: { clientId_verticalId: { clientId: req.params.id, verticalId: req.params.verticalId } },
     })
-    return reply.send({ data: fw?.data ?? null })
+    return reply.send({ data: fw?.data ?? null, sectionStatus: (fw?.sectionStatus as Record<string, string> | null) ?? {} })
   })
 
   // ── GET /:id/demand-gen/base — return company-wide demand gen data for a client
@@ -3781,7 +3781,11 @@ ${docText.slice(0, 12000)}`
   app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/research', async (req, reply) => {
     const { agencyId } = req.auth
     const { id: clientId, verticalId } = req.params
-    const { websiteUrl } = (req.body ?? {}) as { websiteUrl?: string }
+    const { websiteUrl, researchMode, mergeWithExisting } = (req.body ?? {}) as {
+      websiteUrl?: string
+      researchMode?: 'established' | 'new_vertical'
+      mergeWithExisting?: boolean
+    }
 
     const [client, vertical] = await Promise.all([
       prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
@@ -3790,19 +3794,121 @@ ${docText.slice(0, 12000)}`
     if (!client) return reply.code(404).send({ error: 'Client not found' })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
 
-    // Upsert to pending so polling can track it immediately
     await prisma.clientFrameworkResearch.upsert({
       where: { clientId_verticalId: { clientId, verticalId } },
       create: { agencyId, clientId, verticalId, status: 'pending', sources: [], websiteUrl: websiteUrl ?? null },
       update: { status: 'pending', errorMessage: null, websiteUrl: websiteUrl ?? null },
     })
 
-    await getFrameworkResearchQueue().add('research', { agencyId, clientId, verticalId, websiteUrl }, {
+    await getFrameworkResearchQueue().add('research', { agencyId, clientId, verticalId, websiteUrl, researchMode, mergeWithExisting }, {
       removeOnComplete: { count: 20 },
       removeOnFail: { count: 20 },
     })
 
     return reply.code(202).send({ data: { status: 'pending' } })
+  })
+
+  // ── GET /:id/framework/:verticalId/research/runs — versioned research run history
+  app.get<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/research/runs', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    const runs = await prisma.clientFrameworkResearchRun.findMany({
+      where: { agencyId, clientId, verticalId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { id: true, status: true, researchMode: true, sectionResults: true, sources: true, researchedAt: true, createdAt: true, errorMessage: true, mergedFromIds: true },
+    })
+    return reply.send({ data: runs })
+  })
+
+  // ── POST /:id/framework/:verticalId/upload-client-gtm — upload client-supplied GTM DOCX
+  app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/upload-client-gtm', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    const data = await req.file()
+    if (!data) return reply.code(400).send({ error: 'No file uploaded' })
+
+    const ext = data.filename.split('.').pop()?.toLowerCase() ?? ''
+    if (ext !== 'docx') return reply.code(400).send({ error: 'Only .docx files are accepted for GTM upload' })
+
+    const { Readable } = await import('node:stream')
+    const { randomUUID } = await import('node:crypto')
+    const buffer = await data.toBuffer()
+    const mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    const storageKey = `client-gtm-uploads/${agencyId}/${clientId}/${verticalId}/${randomUUID()}.docx`
+    await uploadStream(storageKey, Readable.from(buffer), mimeType)
+
+    const record = await prisma.clientFrameworkUploadedGtm.create({
+      data: { agencyId, clientId, verticalId, storageKey, filename: data.filename, status: 'processing' },
+    })
+
+    const { getClientGtmUploadQueue } = await import('../lib/queues.js')
+    await getClientGtmUploadQueue().add('process', { agencyId, clientId, verticalId, uploadId: record.id }, {
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 10 },
+    })
+
+    return reply.code(202).send({ data: { id: record.id, status: 'processing' } })
+  })
+
+  // ── GET /:id/framework/:verticalId/uploaded-client-gtm — latest uploaded GTM status
+  app.get<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/uploaded-client-gtm', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    const upload = await prisma.clientFrameworkUploadedGtm.findFirst({
+      where: { agencyId, clientId, verticalId },
+      orderBy: { uploadedAt: 'desc' },
+      select: { id: true, filename: true, status: true, conflictLog: true, extractedSections: true, uploadedAt: true, processedAt: true, errorMessage: true },
+    })
+    return reply.send({ data: upload ?? null })
+  })
+
+  // ── PATCH /:id/framework/:verticalId/section-status — update per-section status
+  app.patch<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/section-status', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const { sectionNum, status } = (req.body ?? {}) as { sectionNum?: string; status?: string }
+
+    if (!sectionNum || !status) return reply.code(400).send({ error: 'sectionNum and status are required' })
+    const validStatuses = ['complete', 'in-progress', 'ai-draft', 'not-started', 'pending']
+    if (!validStatuses.includes(status)) return reply.code(400).send({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` })
+
+    const fw = await prisma.clientFramework.findFirst({
+      where: { clientId, verticalId, agencyId },
+      select: { id: true, sectionStatus: true },
+    })
+    if (!fw) return reply.code(404).send({ error: 'Framework not found' })
+
+    const current = (fw.sectionStatus ?? {}) as Record<string, string>
+    current[sectionNum] = status
+
+    await prisma.clientFramework.update({
+      where: { id: fw.id },
+      data: { sectionStatus: current },
+    })
+    return reply.send({ data: { sectionNum, status } })
   })
 
   // ── POST /:id/framework/:verticalId/draft — draft a single field using stored research

@@ -34,6 +34,9 @@ const DraftContext = createContext<DraftContextValue>({
   getDraft: () => null,
 })
 
+// ── Save context — lets FwTextarea/FwInput flush the debounced save on blur ──
+const SaveContext = createContext<{ flushSave: () => void }>({ flushSave: () => {} })
+
 // ── Section definitions ──────────────────────────────────────────────────────
 
 export const SECTIONS = [
@@ -290,7 +293,10 @@ export type FrameworkData = ReturnType<typeof defaultFramework>
 
 // ── Helper: section completion status ────────────────────────────────────────
 
-export function getSectionStatus(fw: FrameworkData, num: string): 'complete' | 'in-progress' | 'not-started' {
+export function getSectionStatus(fw: FrameworkData, num: string, sectionStatus?: Record<string, string>): 'complete' | 'in-progress' | 'ai-draft' | 'not-started' {
+  // DB-persisted status overrides computed status (except 'not-started')
+  const dbStatus = sectionStatus?.[num]
+  if (dbStatus === 'ai-draft' || dbStatus === 'pending') return dbStatus === 'ai-draft' ? 'ai-draft' : 'not-started'
   const sKey = `s${num}` as keyof FrameworkData
   const sec = fw[sKey] as Record<string, unknown> | undefined
   if (!sec) return 'not-started'
@@ -425,6 +431,7 @@ function FwTextarea({ value, onChange, rows = 3, placeholder, fieldId, sectionNu
   value: string; onChange: (v: string) => void; rows?: number; placeholder?: string
   fieldId?: string; sectionNum?: string; sectionTitle?: string; fieldLabel?: string
 }) {
+  const { flushSave } = useContext(SaveContext)
   return (
     <div className="group relative">
       <OverflowTooltip value={value} threshold={120}>
@@ -433,6 +440,7 @@ function FwTextarea({ value, onChange, rows = 3, placeholder, fieldId, sectionNu
           rows={rows}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={flushSave}
           placeholder={placeholder}
         />
       </OverflowTooltip>
@@ -445,6 +453,7 @@ function FwInput({ value, onChange, placeholder, type = 'text', fieldId, section
   value: string; onChange: (v: string) => void; placeholder?: string; type?: string
   fieldId?: string; sectionNum?: string; sectionTitle?: string; fieldLabel?: string
 }) {
+  const { flushSave } = useContext(SaveContext)
   return (
     <div className="group relative">
       <OverflowTooltip value={value} threshold={40}>
@@ -453,6 +462,7 @@ function FwInput({ value, onChange, placeholder, type = 'text', fieldId, section
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-blue-500"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={flushSave}
           placeholder={placeholder}
         />
       </OverflowTooltip>
@@ -569,12 +579,13 @@ function AddButton({ onClick, label }: { onClick: () => void; label: string }) {
 
 // ── Status dot ────────────────────────────────────────────────────────────────
 
-function StatusDot({ status }: { status: 'complete' | 'in-progress' | 'not-started' }) {
+function StatusDot({ status }: { status: 'complete' | 'in-progress' | 'ai-draft' | 'not-started' }) {
   return (
     <span className={cn(
       'inline-block h-2 w-2 rounded-full shrink-0',
-      status === 'complete'    ? 'bg-green-500'  :
-      status === 'in-progress' ? 'bg-amber-400'  :
+      status === 'complete'    ? 'bg-green-500'     :
+      status === 'ai-draft'   ? 'bg-amber-400'     :
+      status === 'in-progress' ? 'bg-blue-400'      :
                                  'bg-muted-foreground/30',
     )} />
   )
@@ -582,14 +593,15 @@ function StatusDot({ status }: { status: 'complete' | 'in-progress' | 'not-start
 
 // ── Section 00: Progress tracker ──────────────────────────────────────────────
 
-function ProgressSection({ fw, onNavigate, onOwnerChange, onNoteChange, clientName }: {
+function ProgressSection({ fw, onNavigate, onOwnerChange, onNoteChange, clientName, sectionStatus = {} }: {
   fw: FrameworkData
   onNavigate: (num: string) => void
   onOwnerChange: (num: string, val: string) => void
   onNoteChange: (num: string, val: string) => void
   clientName: string
+  sectionStatus?: Record<string, string>
 }) {
-  const statuses = SECTIONS.map((s) => getSectionStatus(fw, s.num))
+  const statuses = SECTIONS.map((s) => getSectionStatus(fw, s.num, sectionStatus))
   const complete = statuses.filter((s) => s === 'complete').length
   const inProgress = statuses.filter((s) => s === 'in-progress').length
   const notStarted = statuses.filter((s) => s === 'not-started').length
@@ -629,7 +641,7 @@ function ProgressSection({ fw, onNavigate, onOwnerChange, onNoteChange, clientNa
           </thead>
           <tbody>
             {SECTIONS.map((sec) => {
-              const st = getSectionStatus(fw, sec.num)
+              const st = getSectionStatus(fw, sec.num, sectionStatus)
               return (
                 <tr
                   key={sec.num}
@@ -644,10 +656,11 @@ function ProgressSection({ fw, onNavigate, onOwnerChange, onNoteChange, clientNa
                       <span className={cn(
                         'text-[11px]',
                         st === 'complete'    ? 'text-green-600'  :
-                        st === 'in-progress' ? 'text-amber-600'  :
+                        st === 'ai-draft'   ? 'text-amber-600'  :
+                        st === 'in-progress' ? 'text-blue-600'   :
                                               'text-muted-foreground',
                       )}>
-                        {st === 'complete' ? 'Complete' : st === 'in-progress' ? 'In progress' : 'Not started'}
+                        {st === 'complete' ? 'Complete' : st === 'ai-draft' ? 'AI Draft' : st === 'in-progress' ? 'In progress' : 'Not started'}
                       </span>
                     </span>
                   </td>
@@ -2090,6 +2103,22 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [pendingDrafts, setPendingDrafts] = useState<Record<string, string>>({})
   const websitePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Enhanced research run state
+  type ResearchRun = { id: string; status: string; researchMode: string; sectionResults: Record<string, string | null> | null; researchedAt: string | null; createdAt: string }
+  type UploadedGtm = { id: string; filename: string; status: string; conflictLog: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation?: string }> | null; uploadedAt: string; processedAt: string | null; errorMessage: string | null }
+  const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([])
+  const [researchRunning, setResearchRunning] = useState(false)
+  const [showResearchDialog, setShowResearchDialog] = useState<'mode' | 'merge-warning' | null>(null)
+  const [pendingResearchMerge, setPendingResearchMerge] = useState<boolean>(false)
+  const [uploadedGtm, setUploadedGtm] = useState<UploadedGtm | null>(null)
+  const [uploadingClientGtm, setUploadingClientGtm] = useState(false)
+  const [pilotOpen, setPilotOpen] = useState(false)
+  const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({})
+  const clientGtmInputRef = useRef<HTMLInputElement>(null)
+  const researchPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const latestRun = researchRuns.find((r) => r.status === 'ready') ?? null
+
   // Load verticals assigned to this client
   useEffect(() => {
     apiFetch(`/api/v1/clients/${clientId}/verticals`)
@@ -2129,11 +2158,11 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   // Load framework when vertical selected
   useEffect(() => {
-    if (!selectedVertical) { setFwRaw(null); return }
+    if (!selectedVertical) { setFwRaw(null); setSectionStatus({}); return }
     setFwRaw(null)
     apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`)
       .then((r) => r.json())
-      .then(({ data }) => {
+      .then(({ data, sectionStatus: ss }) => {
         const base = defaultFramework()
         if (data && typeof data === 'object') {
           const merged = { ...base, ...(data as Partial<FrameworkData>) }
@@ -2143,11 +2172,13 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
           setFwRaw(base)
           latestFwRef.current = base
         }
+        setSectionStatus((ss && typeof ss === 'object') ? ss as Record<string, string> : {})
       })
       .catch(() => {
         const base = defaultFramework()
         setFwRaw(base)
         latestFwRef.current = base
+        setSectionStatus({})
       })
   }, [clientId, selectedVertical])
 
@@ -2202,6 +2233,37 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     return () => { if (websitePollRef.current) { clearInterval(websitePollRef.current); websitePollRef.current = null } }
   }, [clientId, selectedVertical])
 
+  // Load research runs + uploaded GTM when vertical changes
+  useEffect(() => {
+    if (!selectedVertical) { setResearchRuns([]); setUploadedGtm(null); return }
+    const base = `/api/v1/clients/${clientId}/framework/${selectedVertical.id}`
+    Promise.all([
+      apiFetch(`${base}/research/runs`).then((r) => r.json()).catch(() => ({ data: [] })),
+      apiFetch(`${base}/uploaded-client-gtm`).then((r) => r.json()).catch(() => ({ data: null })),
+    ]).then(([runsRes, gtmRes]) => {
+      setResearchRuns(runsRes.data ?? [])
+      setUploadedGtm(gtmRes.data ?? null)
+    })
+  }, [clientId, selectedVertical])
+
+  // Poll research runs while one is running
+  useEffect(() => {
+    if (!researchRunning || !selectedVertical) return
+    researchPollRef.current = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/research/runs`)
+        const { data } = await res.json()
+        setResearchRuns(data ?? [])
+        const hasRunning = (data ?? []).some((r: ResearchRun) => r.status === 'running' || r.status === 'pending')
+        if (!hasRunning) {
+          setResearchRunning(false)
+          if (researchPollRef.current) { clearInterval(researchPollRef.current); researchPollRef.current = null }
+        }
+      } catch { /* ignore */ }
+    }, 4000)
+    return () => { if (researchPollRef.current) { clearInterval(researchPollRef.current); researchPollRef.current = null } }
+  }, [researchRunning, clientId, selectedVertical])
+
   // Scroll content area to top whenever section changes
   useEffect(() => {
     contentScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' })
@@ -2232,6 +2294,49 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     })
     startWebsitePolling()
   }, [clientId, selectedVertical, startWebsitePolling])
+
+  const fireResearch = useCallback(async (researchMode: 'established' | 'new_vertical', mergeWithExisting: boolean) => {
+    if (!selectedVertical) return
+    setShowResearchDialog(null)
+    setResearchRunning(true)
+    // Get website URL from existing research record for continuity
+    const websiteUrl = (() => {
+      const el = document.querySelector<HTMLInputElement>('[data-website-url]')
+      return el?.value ?? undefined
+    })()
+    await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ researchMode, mergeWithExisting, websiteUrl }),
+    }).catch(() => { setResearchRunning(false) })
+  }, [clientId, selectedVertical])
+
+  const handleClientGtmUpload = useCallback(async (file: File) => {
+    if (!selectedVertical || !file) return
+    if (!file.name.toLowerCase().endsWith('.docx')) { alert('Only .docx files are supported for GTM upload'); return }
+    setUploadingClientGtm(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/upload-client-gtm`, {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) { const b = await res.json().catch(() => ({})); alert('Upload failed: ' + ((b as any).error ?? res.status)); return }
+      const { data } = await res.json()
+      setUploadedGtm({ id: data.id, filename: file.name, status: 'processing', conflictLog: null, uploadedAt: new Date().toISOString(), processedAt: null, errorMessage: null })
+      // Poll for completion
+      const poll = setInterval(async () => {
+        const r = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/uploaded-client-gtm`).then((x) => x.json()).catch(() => ({}))
+        if (r.data?.status === 'ready' || r.data?.status === 'failed') {
+          setUploadedGtm(r.data)
+          clearInterval(poll)
+        }
+      }, 3000)
+    } finally {
+      setUploadingClientGtm(false)
+    }
+  }, [clientId, selectedVertical])
 
   const handleReadyChange = useCallback((hasReady: boolean) => {
     setHasReadyAttachment(hasReady)
@@ -2418,7 +2523,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const getDraft = useCallback((fieldId: string): string | null => pendingDrafts[fieldId] ?? null, [pendingDrafts])
 
   // Save (debounced)
-  const scheduleSave = useCallback((data: FrameworkData) => {
+  const scheduleSave = useCallback((data: FrameworkData, delayMs = 1500) => {
     if (!selectedVertical) return
     latestFwRef.current = data
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -2436,7 +2541,22 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       } catch {
         setSaveStatus('error')
       }
-    }, 1500)
+    }, delayMs)
+  }, [clientId, selectedVertical])
+
+  const flushSave = useCallback(() => {
+    if (!saveTimer.current || !latestFwRef.current || !selectedVertical) return
+    scheduleSave(latestFwRef.current, 0)
+  }, [scheduleSave, selectedVertical])
+
+  const patchSectionStatus = useCallback(async (sectionNum: string, status: string) => {
+    if (!selectedVertical) return
+    setSectionStatus((prev) => ({ ...prev, [sectionNum]: status }))
+    await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/section-status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sectionNum, status }),
+    }).catch(() => {})
   }, [clientId, selectedVertical])
 
   // Immutable update helper
@@ -2466,7 +2586,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     if (!fw) return null
     const props = { fw, set, clientName }
     switch (activeSection) {
-      case '00': return <ProgressSection fw={fw} onNavigate={setActiveSection} onOwnerChange={handleOwnerChange} onNoteChange={handleNoteChange} clientName={clientName} />
+      case '00': return <ProgressSection fw={fw} onNavigate={setActiveSection} onOwnerChange={handleOwnerChange} onNoteChange={handleNoteChange} clientName={clientName} sectionStatus={sectionStatus} />
       case '01': return <S01 {...props} />
       case '02': return <S02 {...props} />
       case '03': return <S03 {...props} />
@@ -2515,6 +2635,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const emptySections = SECTION_KEYS.filter((k) => !filledSections.includes(k))
 
   return (
+    <SaveContext.Provider value={{ flushSave }}>
     <DraftContext.Provider value={draftContextValue}>
     <div className="flex h-full flex-col" style={{ minHeight: 0 }}>
 
@@ -2535,6 +2656,70 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                 {saveStatus === 'error'  && <span className="text-red-500">Save failed</span>}
               </span>
             )}
+
+            {/* Hidden file input for client GTM upload */}
+            <input
+              ref={clientGtmInputRef}
+              type="file"
+              accept=".docx"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleClientGtmUpload(f); if (clientGtmInputRef.current) clientGtmInputRef.current.value = '' }}
+            />
+
+            {/* Generate Research button */}
+            <button
+              onClick={() => {
+                if (researchRuns.some((r) => r.status === 'ready')) {
+                  setShowResearchDialog('merge-warning')
+                } else {
+                  setShowResearchDialog('mode')
+                }
+              }}
+              disabled={researchRunning}
+              className={cn(
+                'flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition-colors',
+                researchRunning
+                  ? 'cursor-not-allowed border-blue-300 bg-blue-50 text-blue-400'
+                  : 'border-border bg-background hover:bg-muted/40',
+              )}
+              title="Run AI research across all brain sources to pre-fill the GTM Framework"
+            >
+              {researchRunning ? (
+                <>
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                  </span>
+                  <span>Researching…</span>
+                </>
+              ) : (
+                <>
+                  <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  <span>Generate Research</span>
+                  {latestRun && (
+                    <span className="flex items-center gap-1 text-[10px] text-green-600">
+                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                      {new Date(latestRun.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+
+            {/* Launch gtmPILOT button */}
+            <button
+              onClick={() => setPilotOpen(true)}
+              className="flex items-center gap-1.5 rounded border border-border bg-background px-2.5 py-1 text-xs transition-colors hover:bg-muted/40"
+              title="Open GTM PILOT — AI-guided section-by-section completion"
+            >
+              <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span>Launch PILOT</span>
+            </button>
+
             {/* Hidden file input */}
             <input
               ref={templateInputRef}
@@ -2752,7 +2937,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
           {/* Section nav items */}
           {SECTIONS.map((sec) => {
-            const status = fw ? getSectionStatus(fw, sec.num) : 'not-started'
+            const status = fw ? getSectionStatus(fw, sec.num, sectionStatus) : 'not-started'
             return (
               <button
                 key={sec.num}
@@ -2776,7 +2961,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       {/* Content */}
       <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-8 py-6">
         {activeSection === 'brain' ? (
-          <div className="mx-auto max-w-4xl">
+          <div className="mx-auto max-w-4xl space-y-8">
             <AttachmentsSection
               clientId={clientId}
               verticalId={selectedVertical?.id ?? null}
@@ -2784,6 +2969,83 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
               onScrapeWebsite={scrapeWebsite}
               onReadyChange={handleReadyChange}
             />
+
+            {/* Upload Client GTM — separate surface from supporting files */}
+            {selectedVertical && (
+              <div className="rounded-xl border border-border p-5">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Client-Supplied GTM</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Upload a GTM Framework the client already has. We'll analyse it and surface conflicts against your research.
+                  </p>
+                </div>
+
+                {uploadedGtm ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2.5 rounded-lg border border-border bg-background px-3 py-2.5">
+                      <svg className="h-4 w-4 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-xs font-medium text-foreground">{uploadedGtm.filename}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {uploadedGtm.status === 'processing' && 'Analysing…'}
+                          {uploadedGtm.status === 'ready' && uploadedGtm.conflictLog && (
+                            uploadedGtm.conflictLog.length > 0
+                              ? `${uploadedGtm.conflictLog.length} conflict${uploadedGtm.conflictLog.length !== 1 ? 's' : ''} found — open PILOT to review`
+                              : 'Analysis complete — no conflicts found'
+                          )}
+                          {uploadedGtm.status === 'ready' && !uploadedGtm.conflictLog && 'Analysis complete'}
+                          {uploadedGtm.status === 'failed' && `Failed: ${uploadedGtm.errorMessage ?? 'unknown error'}`}
+                        </p>
+                      </div>
+                      {uploadedGtm.status === 'processing' && (
+                        <svg className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                      )}
+                      {uploadedGtm.status === 'ready' && uploadedGtm.conflictLog && uploadedGtm.conflictLog.length > 0 && (
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                          {uploadedGtm.conflictLog.length} conflicts
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => clientGtmInputRef.current?.click()}
+                      disabled={uploadingClientGtm}
+                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Replace with new file
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => clientGtmInputRef.current?.click()}
+                    disabled={uploadingClientGtm}
+                    className={cn(
+                      'flex w-full flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border py-6 text-center transition-colors',
+                      uploadingClientGtm ? 'cursor-not-allowed opacity-50' : 'hover:border-blue-300 hover:bg-blue-50/30',
+                    )}
+                  >
+                    {uploadingClientGtm ? (
+                      <svg className="h-5 w-5 animate-spin text-muted-foreground" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                    ) : (
+                      <svg className="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                    )}
+                    <div>
+                      <p className="text-xs font-medium text-foreground">{uploadingClientGtm ? 'Uploading…' : 'Upload client GTM (.docx)'}</p>
+                      <p className="text-[11px] text-muted-foreground">We'll extract sections and flag conflicts with your research</p>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : !selectedVertical ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -2813,8 +3075,81 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         verticalName={selectedVertical?.name ?? null}
         filledSections={filledSections}
         emptySections={emptySections}
-        onNavigateToSection={(num) => setActiveSection(num)}
+        onNavigateToSection={(num) => { setActiveSection(num); setPilotOpen(false) }}
+        open={pilotOpen}
+        onOpenChange={setPilotOpen}
+        activeSection={activeSection !== 'brain' && activeSection !== '00' ? activeSection : null}
+        researchRun={latestRun}
+        conflictLog={uploadedGtm?.status === 'ready' ? (uploadedGtm.conflictLog ?? null) : null}
+        sectionStatus={sectionStatus}
+        onSectionStatusChange={patchSectionStatus}
       />
+
+      {/* Research mode dialog */}
+      {showResearchDialog === 'mode' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white border border-border rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-base font-bold text-foreground mb-1">What type of research do you need?</h3>
+            <p className="text-xs text-muted-foreground mb-5">Choose based on how established this vertical is in your client's market.</p>
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <button
+                onClick={() => void fireResearch('established', pendingResearchMerge)}
+                className="flex flex-col gap-2 rounded-lg border-2 border-border p-4 text-left hover:border-blue-400 transition-colors"
+              >
+                <span className="text-lg">📊</span>
+                <span className="text-sm font-semibold text-foreground">Established vertical</span>
+                <span className="text-[11px] text-muted-foreground">Client has existing presence. Research draws from brain + website.</span>
+              </button>
+              <button
+                onClick={() => void fireResearch('new_vertical', pendingResearchMerge)}
+                className="flex flex-col gap-2 rounded-lg border-2 border-border p-4 text-left hover:border-blue-400 transition-colors"
+              >
+                <span className="text-lg">🔭</span>
+                <span className="text-sm font-semibold text-foreground">New market entry</span>
+                <span className="text-[11px] text-muted-foreground">Expanding into new space. Adds live market stats from Brave Search.</span>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowResearchDialog(null)}
+              className="w-full rounded-lg border border-border px-4 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Merge warning dialog */}
+      {showResearchDialog === 'merge-warning' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white border border-border rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="text-base font-bold text-foreground mb-1">Research already exists</h3>
+            <p className="text-xs text-muted-foreground mb-5">
+              There is already a completed research run for this vertical. How would you like to proceed?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => { setPendingResearchMerge(false); setShowResearchDialog('mode') }}
+                className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+              >
+                Replace — run fresh research
+              </button>
+              <button
+                onClick={() => { setPendingResearchMerge(true); setShowResearchDialog('mode') }}
+                className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/40 transition-colors"
+              >
+                Merge — add new findings to existing
+              </button>
+              <button
+                onClick={() => setShowResearchDialog(null)}
+                className="rounded-lg px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Re-import preview modal */}
       {reimportResult && (
@@ -2938,5 +3273,6 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       )}
     </div>
     </DraftContext.Provider>
+    </SaveContext.Provider>
   )
 }

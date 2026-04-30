@@ -8,7 +8,7 @@ import ExcelJS from 'exceljs'
 import { prisma, withAgency } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
-import type { FrameworkResearchJobData, AttachmentProcessJobData } from './queues.js'
+import type { FrameworkResearchJobData, AttachmentProcessJobData, ClientGtmUploadJobData } from './queues.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -140,7 +140,7 @@ async function transcribeAudio(buffer: Buffer, apiKey: string): Promise<{ text: 
 // Website scrape (basic — fetch home + /services or /solutions)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function scrapeWebsite(url: string): Promise<string> {
+async function scrapeWebsite(url: string, maxPages = 10): Promise<string> {
   const strip = (html: string) =>
     html
       .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -148,22 +148,58 @@ async function scrapeWebsite(url: string): Promise<string> {
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim()
-      .slice(0, 8000)
+      .slice(0, 6000)
 
-  const pages = [url, `${url.replace(/\/$/, '')}/services`, `${url.replace(/\/$/, '')}/solutions`]
+  const extractLinks = (html: string, base: string): string[] => {
+    const hrefs: string[] = []
+    const re = /href=["']([^"'#?]+)["']/gi
+    let m: RegExpExecArray | null
+    while ((m = re.exec(html)) !== null) {
+      try {
+        const abs = new URL(m[1], base).href
+        if (abs.startsWith(base.replace(/\/$/, ''))) hrefs.push(abs)
+      } catch { /* invalid URL */ }
+    }
+    return hrefs
+  }
+
+  const origin = new URL(url).origin
+  const visited = new Set<string>()
+  const queue: string[] = [url, `${url.replace(/\/$/, '')}/services`, `${url.replace(/\/$/, '')}/solutions`, `${url.replace(/\/$/, '')}/about`]
   const texts: string[] = []
 
-  for (const page of pages) {
+  for (const page of queue) {
+    if (visited.has(page) || texts.length >= maxPages) break
+    visited.add(page)
     try {
       const res = await fetch(page, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Mozilla/5.0' } })
-      if (res.ok) {
-        const html = await res.text()
-        const text = strip(html)
-        if (text.length > 200) texts.push(`[${page}]\n${text}`)
+      if (!res.ok) continue
+      const html = await res.text()
+      const text = strip(html)
+      if (text.length > 200) texts.push(`[${page}]\n${text}`)
+      // BFS: add discovered links from same origin
+      const links = extractLinks(html, origin).filter((l) => !visited.has(l))
+      for (const link of links.slice(0, 5)) {
+        if (!queue.includes(link)) queue.push(link)
       }
     } catch { /* skip unreachable pages */ }
   }
   return texts.join('\n\n---\n\n')
+}
+
+async function braveSearch(query: string): Promise<string> {
+  const apiKey = process.env.BRAVE_SEARCH_API_KEY
+  if (!apiKey) return ''
+  try {
+    const res = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&result_filter=web`,
+      { headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey }, signal: AbortSignal.timeout(8000) },
+    )
+    if (!res.ok) return ''
+    const data = await res.json() as { web?: { results?: Array<{ title: string; description: string; url: string }> } }
+    const results = data.web?.results ?? []
+    return results.map((r) => `${r.title} — ${r.description} (${r.url})`).join('\n')
+  } catch { return '' }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,20 +356,20 @@ export async function processAttachment(job: AttachmentProcessJobData): Promise<
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function runFrameworkResearch(job: FrameworkResearchJobData): Promise<void> {
-  const { agencyId, clientId, verticalId, websiteUrl } = job
-  console.log(`[framework-research] starting website scrape for client=${clientId}`)
-
-  if (!websiteUrl) {
-    console.log('[framework-research] no website URL provided — nothing to do')
-    return
-  }
+  const { agencyId, clientId, verticalId, websiteUrl, researchMode = 'established', mergeWithExisting = false } = job
+  console.log(`[framework-research] starting for client=${clientId} mode=${researchMode} merge=${mergeWithExisting}`)
 
   await withAgency(agencyId, async () => {
-    // Mark as running
+    // Mark legacy research record as running (keeps researchReady/DraftButton working)
     await prisma.clientFrameworkResearch.upsert({
       where: { clientId_verticalId: { clientId, verticalId } },
-      create: { agencyId, clientId, verticalId, status: 'running', websiteUrl, sources: [] },
-      update: { status: 'running', errorMessage: null, websiteUrl },
+      create: { agencyId, clientId, verticalId, status: 'running', websiteUrl: websiteUrl ?? null, sources: [] },
+      update: { status: 'running', errorMessage: null, websiteUrl: websiteUrl ?? undefined },
+    })
+
+    // Create versioned run record
+    const runRecord = await prisma.clientFrameworkResearchRun.create({
+      data: { agencyId, clientId, verticalId, status: 'running', researchMode },
     })
 
     const [client, vertical] = await Promise.all([
@@ -341,27 +377,358 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
       prisma.vertical.findFirstOrThrow({ where: { id: verticalId, agencyId }, select: { name: true } }),
     ])
 
-    let sources: DocumentSource[] = []
+    const contextParts: string[] = []
+    const sources: DocumentSource[] = []
+
+    // 1. Agency brain (corporate identity)
     try {
-      const rawText = await scrapeWebsite(websiteUrl)
-      if (rawText.length > 200) {
-        const summary = await summarise(rawText, websiteUrl, client.name, vertical.name)
-        sources = [{ type: 'website', filename: websiteUrl, summary }]
+      const agencyAttachments = await prisma.agencyBrainAttachment.findMany({
+        where: { agencyId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true },
+        take: 10,
+      })
+      for (const a of agencyAttachments) {
+        if (a.summary) {
+          contextParts.push(`[AGENCY BRAIN — ${a.filename}]\n${a.summary}`)
+          sources.push({ type: 'document', filename: a.filename, summary: a.summary.slice(0, 200) })
+        }
       }
-    } catch (err) {
-      console.error('[framework-research] website scrape failed:', err)
+    } catch (err) { console.error('[framework-research] agency brain fetch failed:', err) }
+
+    // 2. Client-vertical brain
+    try {
+      const verticalAttachments = await prisma.clientVerticalBrainAttachment.findMany({
+        where: { agencyId, clientId, verticalId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true },
+        take: 15,
+      })
+      for (const a of verticalAttachments) {
+        if (a.summary) {
+          contextParts.push(`[VERTICAL BRAIN — ${a.filename}]\n${a.summary}`)
+          sources.push({ type: 'document', filename: a.filename, summary: a.summary.slice(0, 200) })
+        }
+      }
+    } catch (err) { console.error('[framework-research] vertical brain fetch failed:', err) }
+
+    // 3. Full client brain (all sources)
+    try {
+      const clientAttachments = await prisma.clientBrainAttachment.findMany({
+        where: { agencyId, clientId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true, source: true },
+        take: 20,
+      })
+      for (const a of clientAttachments) {
+        if (a.summary) {
+          contextParts.push(`[CLIENT BRAIN (${a.source}) — ${a.filename}]\n${a.summary}`)
+          sources.push({ type: 'document', filename: a.filename, summary: a.summary.slice(0, 200) })
+        }
+      }
+    } catch (err) { console.error('[framework-research] client brain fetch failed:', err) }
+
+    // 4. Framework attachments (Research & Supporting Files)
+    try {
+      const fwAttachments = await prisma.clientFrameworkAttachment.findMany({
+        where: { agencyId, clientId, verticalId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true },
+        take: 15,
+      })
+      for (const a of fwAttachments) {
+        if (a.summary) {
+          contextParts.push(`[FRAMEWORK ATTACHMENT — ${a.filename}]\n${a.summary}`)
+          sources.push({ type: 'document', filename: a.filename, summary: a.summary.slice(0, 200) })
+        }
+      }
+    } catch (err) { console.error('[framework-research] framework attachments fetch failed:', err) }
+
+    // 5. Company website BFS scrape
+    if (websiteUrl) {
+      try {
+        const rawText = await scrapeWebsite(websiteUrl, 10)
+        if (rawText.length > 200) {
+          const summary = await summarise(rawText, websiteUrl, client.name, vertical.name)
+          contextParts.push(`[WEBSITE — ${websiteUrl}]\n${summary}`)
+          sources.push({ type: 'website', filename: websiteUrl, summary: summary.slice(0, 200) })
+        }
+      } catch (err) { console.error('[framework-research] website scrape failed:', err) }
     }
 
-    await prisma.clientFrameworkResearch.update({
-      where: { clientId_verticalId: { clientId, verticalId } },
-      data: {
-        status: sources.length > 0 ? 'ready' : 'failed',
-        sources: sources as object[],
-        errorMessage: sources.length === 0 ? 'Could not extract content from the website.' : null,
-        researchedAt: new Date(),
-      },
-    })
+    // 6. Brave vertical stats (new_vertical mode only)
+    if (researchMode === 'new_vertical') {
+      const queries = [
+        `${vertical.name} market size statistics 2025`,
+        `${vertical.name} IT buyer challenges pain points`,
+        `${vertical.name} compliance regulatory requirements`,
+      ]
+      for (const q of queries) {
+        try {
+          const results = await braveSearch(q)
+          if (results) {
+            contextParts.push(`[VERTICAL MARKET RESEARCH — "${q}"]\n${results}`)
+            sources.push({ type: 'website', filename: `Brave: ${q}`, summary: results.slice(0, 200) })
+          }
+        } catch { /* non-fatal */ }
+      }
+    }
 
-    console.log(`[framework-research] website scrape done for client=${clientId}`)
+    if (contextParts.length === 0 && !websiteUrl) {
+      await Promise.all([
+        prisma.clientFrameworkResearch.update({
+          where: { clientId_verticalId: { clientId, verticalId } },
+          data: { status: 'failed', errorMessage: 'No research context available. Add brain attachments or a website URL.', researchedAt: new Date() },
+        }),
+        prisma.clientFrameworkResearchRun.update({
+          where: { id: runRecord.id },
+          data: { status: 'failed', errorMessage: 'No research context available.' },
+        }),
+      ])
+      return
+    }
+
+    // Section-mapped synthesis
+    const fullContext = contextParts.join('\n\n' + '─'.repeat(60) + '\n\n')
+    const truncatedContext = fullContext.slice(0, 40000)
+
+    let sectionResults: Record<string, string | null> = {}
+    try {
+      const synthesis = await callModel(
+        {
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-6',
+          api_key_ref: 'ANTHROPIC_API_KEY',
+          max_tokens: 4000,
+          temperature: 0.2,
+        },
+        `You are a senior GTM strategist analyzing research to fill in a Go-to-Market Framework for a sales and marketing team.
+
+CLIENT: ${client.name}
+VERTICAL: ${vertical.name}
+MODE: ${researchMode === 'new_vertical' ? 'New market entry — client is entering this vertical' : 'Established vertical — client already operates here'}
+
+RESEARCH CONTEXT:
+${truncatedContext}
+
+Based on this research, extract findings for each GTM Framework section below.
+Output ONLY valid JSON — no markdown, no explanation, no code fences.
+Return null for any section where the research contains insufficient data.
+
+{
+  "01": "Positioning signals: what the company does, what it is not, how it should be positioned in this vertical. Include any 'what we are not' signals.",
+  "02": "ICP signals: target company size, buyer roles and titles, IT posture, compliance status, contract signals, geography.",
+  "03": "Market pressures and statistics. Include any specific numbers, percentages, or dollar figures found WITH their sources and URLs.",
+  "04": "Core challenge signals: what pain points drive buying decisions in this vertical. Include why they exist and business consequences.",
+  "06": "Competitive differentiation signals: how the client stands out vs alternatives in this vertical.",
+  "07": "Sub-segment vocabulary and buyer framing: specific language buyers in this vertical use, segment names, entry point signals.",
+  "08": "Messaging signals: core narrative language, outcome language, value proposition signals from community or reviews.",
+  "10": "Objection signals: common pushback buyers give in this vertical. Include any rebuttals found.",
+  "12": "Competitor signals: who the alternatives are in this vertical, how they position, where they are weak.",
+  "17": "Regulatory and compliance signals: frameworks, requirements, acronyms, enforcement bodies relevant to this vertical."
+}`,
+      )
+      try {
+        sectionResults = JSON.parse(synthesis.text.trim()) as Record<string, string | null>
+      } catch {
+        console.error('[framework-research] synthesis JSON parse failed, storing raw')
+        sectionResults = { '01': synthesis.text }
+      }
+    } catch (err) {
+      console.error('[framework-research] synthesis failed:', err)
+    }
+
+    // If merging: blend with prior run
+    let mergedFromIds: string[] = []
+    if (mergeWithExisting) {
+      try {
+        const priorRun = await prisma.clientFrameworkResearchRun.findFirst({
+          where: { agencyId, clientId, verticalId, status: 'ready' },
+          orderBy: { createdAt: 'desc' },
+        })
+        if (priorRun?.sectionResults) {
+          mergedFromIds = [priorRun.id]
+          const prior = priorRun.sectionResults as Record<string, string | null>
+          for (const key of Object.keys(prior)) {
+            if (!sectionResults[key]) sectionResults[key] = prior[key]
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    const now = new Date()
+    await Promise.all([
+      prisma.clientFrameworkResearchRun.update({
+        where: { id: runRecord.id },
+        data: {
+          status: 'ready',
+          sectionResults: sectionResults as object,
+          sources: sources as object[],
+          mergedFromIds,
+          researchedAt: now,
+        },
+      }),
+      prisma.clientFrameworkResearch.update({
+        where: { clientId_verticalId: { clientId, verticalId } },
+        data: {
+          status: 'ready',
+          sources: sources as object[],
+          errorMessage: null,
+          researchedAt: now,
+        },
+      }),
+    ])
+
+    console.log(`[framework-research] done for client=${clientId} — ${Object.keys(sectionResults).length} sections populated`)
+  })
+}
+
+export async function processClientGtmUpload(job: ClientGtmUploadJobData): Promise<void> {
+  const { agencyId, clientId, verticalId, uploadId } = job
+  console.log(`[client-gtm-upload] processing upload=${uploadId}`)
+
+  await withAgency(agencyId, async () => {
+    const upload = await prisma.clientFrameworkUploadedGtm.findFirst({
+      where: { id: uploadId, agencyId },
+    })
+    if (!upload) throw new Error(`Upload ${uploadId} not found`)
+
+    try {
+      const buffer = await downloadBuffer(upload.storageKey)
+      const rawText = await extractText(buffer, upload.filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      if (!rawText || rawText.trim().length < 100) {
+        await prisma.clientFrameworkUploadedGtm.update({
+          where: { id: uploadId },
+          data: { status: 'failed', errorMessage: 'Could not extract text from uploaded document.' },
+        })
+        return
+      }
+
+      // Map extracted text → 18 sections
+      const mappingResult = await callModel(
+        {
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-6',
+          api_key_ref: 'ANTHROPIC_API_KEY',
+          max_tokens: 4000,
+          temperature: 0.1,
+        },
+        `You are analyzing a client-provided GTM Framework document to extract its content section by section.
+
+Extract the content for each of the 18 GTM Framework sections below.
+Return ONLY valid JSON — no markdown, no code fences.
+Use null for sections with no content found.
+
+{
+  "01": "content from Vertical Overview / Positioning section",
+  "02": "content from Customer Definition / ICP / Target Profile section",
+  "03": "content from Market Pressures / Statistics section",
+  "04": "content from Core Challenges / Pain Points section",
+  "05": "content from Solutions / Service Stack / Pillars section",
+  "06": "content from Why [Company] / Differentiators section",
+  "07": "content from Segments / Buyer Profiles section",
+  "08": "content from Messaging Framework / Value Proposition section",
+  "09": "content from Proof Points / Case Studies section",
+  "10": "content from Objection Handling section",
+  "11": "content from Brand Voice / Tone of Voice section",
+  "12": "content from Competitive Differentiation section",
+  "13": "content from Customer Quotes / Testimonials section",
+  "14": "content from Campaign Themes / Asset Mapping section",
+  "15": "content from FAQs section",
+  "16": "content from Content Funnel / Buyer Journey section",
+  "17": "content from Regulatory / Compliance section",
+  "18": "content from CTAs / Next Steps / Contact section"
+}
+
+DOCUMENT CONTENT:
+${rawText.slice(0, 35000)}`,
+      )
+
+      let extractedSections: Record<string, string | null> = {}
+      try {
+        extractedSections = JSON.parse(mappingResult.text.trim()) as Record<string, string | null>
+      } catch {
+        extractedSections = { '01': rawText.slice(0, 2000) }
+      }
+
+      // Compare against current framework + latest research run to generate conflict log
+      const [framework, latestRun] = await Promise.all([
+        prisma.clientFramework.findFirst({
+          where: { clientId, verticalId, agencyId },
+          select: { data: true },
+        }),
+        prisma.clientFrameworkResearchRun.findFirst({
+          where: { agencyId, clientId, verticalId, status: 'ready' },
+          orderBy: { createdAt: 'desc' },
+          select: { sectionResults: true },
+        }),
+      ])
+
+      const conflictLog: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation: string }> = []
+      const researchResults = (latestRun?.sectionResults ?? {}) as Record<string, string | null>
+
+      // Generate conflict analysis using Claude
+      if (Object.keys(researchResults).length > 0) {
+        const conflictableSections = ['01', '02', '03', '04', '06', '07', '12']
+        for (const sec of conflictableSections) {
+          const clientText = extractedSections[sec]
+          const researchText = researchResults[sec]
+          if (!clientText || !researchText) continue
+
+          try {
+            const conflictCheck = await callModel(
+              {
+                provider: 'anthropic',
+                model: 'claude-sonnet-4-6',
+                api_key_ref: 'ANTHROPIC_API_KEY',
+                max_tokens: 500,
+                temperature: 0.1,
+              },
+              `You are comparing what a client claims about their market vs. what independent research shows.
+
+SECTION: §${sec}
+
+CLIENT'S VERSION:
+${clientText.slice(0, 1500)}
+
+INDEPENDENT RESEARCH:
+${researchText.slice(0, 1500)}
+
+If there is a meaningful conflict (not just different wording), return JSON:
+{"conflict": true, "clientClaim": "brief summary of client's position", "researchFinds": "brief summary of what research shows", "recommendation": "which to trust and why"}
+
+If no meaningful conflict, return: {"conflict": false}
+
+Return ONLY valid JSON.`,
+            )
+            const parsed = JSON.parse(conflictCheck.text.trim()) as { conflict: boolean; clientClaim?: string; researchFinds?: string; recommendation?: string }
+            if (parsed.conflict && parsed.clientClaim && parsed.researchFinds) {
+              conflictLog.push({
+                sectionNum: sec,
+                clientClaim: parsed.clientClaim,
+                researchFinds: parsed.researchFinds,
+                recommendation: parsed.recommendation ?? '',
+              })
+            }
+          } catch { /* non-fatal per section */ }
+        }
+      }
+
+      await prisma.clientFrameworkUploadedGtm.update({
+        where: { id: uploadId },
+        data: {
+          status: 'ready',
+          extractedSections: extractedSections as object,
+          conflictLog: conflictLog as object[],
+          processedAt: new Date(),
+          errorMessage: null,
+        },
+      })
+
+      console.log(`[client-gtm-upload] done — upload=${uploadId} conflicts=${conflictLog.length}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      await prisma.clientFrameworkUploadedGtm.update({
+        where: { id: uploadId },
+        data: { status: 'failed', errorMessage: msg },
+      })
+      throw err
+    }
   })
 }

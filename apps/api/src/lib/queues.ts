@@ -16,6 +16,7 @@ export const QUEUE_WORKFLOW_RUNS = 'workflow-runs'
 export const QUEUE_PATTERN_DETECTION = 'pattern-detection'
 export const QUEUE_EDIT_ANALYSIS = 'edit-analysis'
 export const QUEUE_FRAMEWORK_RESEARCH = 'framework-research'
+export const QUEUE_CLIENT_GTM_UPLOAD = 'client-gtm-upload'
 export const QUEUE_ATTACHMENT_PROCESS = 'attachment-process'
 export const QUEUE_BRAND_ATTACHMENT_PROCESS = 'brand-attachment-process'
 export const QUEUE_CAMPAIGN_BRAIN_PROCESS = 'campaign-brain-process'
@@ -50,6 +51,15 @@ export interface FrameworkResearchJobData {
   clientId: string
   verticalId: string
   websiteUrl?: string
+  researchMode?: 'established' | 'new_vertical'
+  mergeWithExisting?: boolean
+}
+
+export interface ClientGtmUploadJobData {
+  agencyId: string
+  clientId: string
+  verticalId: string
+  uploadId: string
 }
 
 export interface AttachmentProcessJobData {
@@ -152,6 +162,7 @@ let agencyBrainProcessQueue: Queue<AgencyBrainProcessJobData> | null = null
 let verticalBrainProcessQueue: Queue<VerticalBrainProcessJobData> | null = null
 let clientVerticalBrainProcessQueue: Queue<ClientVerticalBrainProcessJobData> | null = null
 let boxDiffQueue: Queue<BoxDiffJobData> | null = null
+let clientGtmUploadQueue: Queue<ClientGtmUploadJobData> | null = null
 
 /**
  * Returns the singleton Queue instance for dispatching workflow run jobs.
@@ -316,4 +327,11 @@ export function getStoryboardQueue(): Queue<StoryboardJobData> {
     storyboardQueue = new Queue<StoryboardJobData>(QUEUE_STORYBOARD_GENERATION, { connection: getBullMQConnection() })
   }
   return storyboardQueue
+}
+
+export function getClientGtmUploadQueue(): Queue<ClientGtmUploadJobData> {
+  if (!clientGtmUploadQueue) {
+    clientGtmUploadQueue = new Queue<ClientGtmUploadJobData>(QUEUE_CLIENT_GTM_UPLOAD, { connection: getBullMQConnection() })
+  }
+  return clientGtmUploadQueue
 }

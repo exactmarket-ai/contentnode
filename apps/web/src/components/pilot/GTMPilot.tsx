@@ -27,6 +27,14 @@ interface GtmMessage {
   suggestions?: GtmSuggestion[]
 }
 
+export interface ConflictEntry {
+  sectionNum: string
+  field?: string
+  clientClaim: string
+  researchFinds: string
+  recommendation?: string
+}
+
 export interface GTMPilotProps {
   clientId: string
   verticalId: string | null
@@ -34,18 +42,15 @@ export interface GTMPilotProps {
   filledSections: string[]
   emptySections: string[]
   onNavigateToSection: (sectionNum: string) => void
-}
-
-// ─── Bold renderer ────────────────────────────────────────────────────────────
-
-function renderBold(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g)
-  if (parts.length === 1) return text
-  return parts.map((part, i) =>
-    part.startsWith('**') && part.endsWith('**')
-      ? <b key={i} className="font-semibold">{part.slice(2, -2)}</b>
-      : part,
-  )
+  // Controlled open state
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  // Research context
+  activeSection?: string | null
+  researchRun?: { sectionResults: Record<string, string | null> | null } | null
+  conflictLog?: ConflictEntry[] | null
+  sectionStatus?: Record<string, string>
+  onSectionStatusChange?: (sectionNum: string, status: string) => void
 }
 
 // ─── Section display names ────────────────────────────────────────────────────
@@ -69,6 +74,29 @@ const SECTION_LABELS: Record<string, string> = {
   '16': 'Content Funnel',
   '17': 'Regulatory',
   '18': 'CTAs + Next Steps',
+}
+
+const SECTION_NUMS = Object.keys(SECTION_LABELS)
+
+// ─── Status dot ───────────────────────────────────────────────────────────────
+
+function PilotStatusDot({ status }: { status: string }) {
+  if (status === 'complete') return <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+  if (status === 'ai-draft') return <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+  if (status === 'in-progress') return <span className="h-2 w-2 rounded-full bg-blue-400 shrink-0" />
+  return <span className="h-2 w-2 rounded-full border border-muted-foreground/40 shrink-0" />
+}
+
+// ─── Bold renderer ────────────────────────────────────────────────────────────
+
+function renderBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  if (parts.length === 1) return text
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <b key={i} className="font-semibold">{part.slice(2, -2)}</b>
+      : part,
+  )
 }
 
 // ─── Suggestion card ──────────────────────────────────────────────────────────
@@ -169,15 +197,35 @@ export function GTMPilot({
   filledSections,
   emptySections,
   onNavigateToSection,
+  open: openProp,
+  onOpenChange,
+  activeSection,
+  researchRun,
+  conflictLog,
+  sectionStatus = {},
+  onSectionStatusChange,
 }: GTMPilotProps) {
-  const [open, setOpen]         = useState(false)
-  const [messages, setMessages] = useState<GtmMessage[]>([])
-  const [loading, setLoading]   = useState(false)
-  const [input, setInput]       = useState('')
+  const [openInternal, setOpenInternal] = useState(false)
+  const [messages, setMessages]         = useState<GtmMessage[]>([])
+  const [loading, setLoading]           = useState(false)
+  const [input, setInput]               = useState('')
+  const [researchPanelOpen, setResearchPanelOpen] = useState(true)
 
-  const scrollRef   = useRef<HTMLDivElement>(null)
-  const lastMsgRef  = useRef<HTMLDivElement>(null)
-  const inputRef    = useRef<HTMLTextAreaElement>(null)
+  const scrollRef  = useRef<HTMLDivElement>(null)
+  const lastMsgRef = useRef<HTMLDivElement>(null)
+  const inputRef   = useRef<HTMLTextAreaElement>(null)
+
+  // Controlled vs uncontrolled open state
+  const open = openProp !== undefined ? openProp : openInternal
+  const setOpen = (v: boolean) => {
+    if (onOpenChange) onOpenChange(v)
+    else setOpenInternal(v)
+  }
+
+  // When openProp flips to true from parent (Launch PILOT button), open
+  useEffect(() => {
+    if (openProp === true) setOpenInternal(true)
+  }, [openProp])
 
   useEffect(() => {
     if (lastMsgRef.current) {
@@ -194,6 +242,16 @@ export function GTMPilot({
     setMessages([])
   }, [verticalId])
 
+  // Research findings for active section
+  const activeSectionResearch = activeSection && researchRun?.sectionResults
+    ? researchRun.sectionResults[activeSection] ?? null
+    : null
+
+  // Conflicts for active section
+  const activeSectionConflicts = activeSection && conflictLog
+    ? conflictLog.filter((c) => c.sectionNum === activeSection)
+    : []
+
   const sendMessage = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim()
     if (!text || loading || !verticalId) return
@@ -206,6 +264,12 @@ export function GTMPilot({
 
     try {
       const history = [...messages, userMsg]
+
+      // Build research context for active section
+      const researchBySection: Record<string, string> | undefined = (activeSection && activeSectionResearch)
+        ? { [activeSection]: activeSectionResearch }
+        : undefined
+
       const res = await apiFetch('/api/v1/gtm-pilot/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -216,6 +280,9 @@ export function GTMPilot({
           verticalName,
           filledSections,
           emptySections,
+          activeSection: activeSection ?? undefined,
+          researchBySection,
+          conflictLog: activeSectionConflicts.length > 0 ? activeSectionConflicts : undefined,
         }),
       })
 
@@ -234,7 +301,7 @@ export function GTMPilot({
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, clientId, verticalId, verticalName, filledSections, emptySections])
+  }, [input, loading, messages, clientId, verticalId, verticalName, filledSections, emptySections, activeSection, activeSectionResearch, activeSectionConflicts])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -247,9 +314,15 @@ export function GTMPilot({
     void sendMessage(text)
   }, [sendMessage])
 
+  const handleNavToSection = (num: string) => {
+    onNavigateToSection(num)
+    void sendMessage(`I'm looking at section ${num} — ${SECTION_LABELS[num] ?? num}. What should I focus on here?`)
+  }
+
   // ── Collapsed ──────────────────────────────────────────────────────────────
   if (!open) {
     const lastMsg = [...messages].reverse().find((m) => m.role === 'assistant')
+    const conflictCount = conflictLog?.length ?? 0
     return (
       <div
         className="relative flex shrink-0 items-center gap-3 border-t border-border bg-card px-4 cursor-pointer hover:bg-muted/40 transition-colors"
@@ -268,6 +341,12 @@ export function GTMPilot({
           <Icons.Compass className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">gtmPILOT</span>
         </div>
+
+        {conflictCount > 0 && (
+          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
+          </span>
+        )}
 
         <span className="flex-1 truncate text-[11px] text-muted-foreground">
           {!verticalId
@@ -306,9 +385,16 @@ export function GTMPilot({
           <span className="text-xs font-bold tracking-wide">gtmPILOT</span>
         </div>
         <span className="text-[10px] text-muted-foreground ml-0.5">AI GTM Framework strategist</span>
-        <span className="ml-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[9px] font-medium text-blue-700">
-          {verticalName}
-        </span>
+        {verticalName && (
+          <span className="ml-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[9px] font-medium text-blue-700">
+            {verticalName}
+          </span>
+        )}
+        {activeSection && (
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+            §{activeSection} {SECTION_LABELS[activeSection] ?? ''}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {emptySections.length > 0 && (
             <span className="text-[9px] text-muted-foreground">
@@ -327,48 +413,154 @@ export function GTMPilot({
         </div>
       </div>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
-            <Icons.Compass className="h-6 w-6 text-blue-300" />
-            <p className="text-xs font-medium text-muted-foreground">I'm your GTM Framework strategist.</p>
-            <p className="text-[10px] text-muted-foreground/60 max-w-[240px]">
-              I'll use the client brain, vertical knowledge, and GTM best practices to guide you through all 18 sections.
-            </p>
-            <button
-              onClick={() => void sendMessage("Which sections should we focus on first?")}
-              className="mt-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-medium text-blue-600 hover:bg-blue-100 transition-colors"
-            >
-              Which sections should we focus on first?
-            </button>
-          </div>
-        )}
-        {messages.map((msg, i) => (
-          <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined}>
-            <MessageBubble
-              msg={msg}
-              onNavigateToSection={onNavigateToSection}
-              onSendMessage={handleSendMessage}
-            />
-          </div>
-        ))}
-        {loading && (
-          <div className="flex gap-2 items-start">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500">
-              <Icons.Compass className="h-3.5 w-3.5 text-white" />
+      {/* Research context banner — active section findings */}
+      {activeSectionResearch && (
+        <div className="border-b border-blue-100 bg-blue-50/60 shrink-0">
+          <button
+            onClick={() => setResearchPanelOpen((v) => !v)}
+            className="flex w-full items-center gap-2 px-4 py-1.5 text-left"
+          >
+            <Icons.BookOpen className="h-3 w-3 text-blue-500 shrink-0" />
+            <span className="flex-1 text-[10px] font-semibold text-blue-700">Research findings for §{activeSection}</span>
+            {researchPanelOpen
+              ? <Icons.ChevronUp className="h-3 w-3 text-blue-400 shrink-0" />
+              : <Icons.ChevronDown className="h-3 w-3 text-blue-400 shrink-0" />
+            }
+          </button>
+          {researchPanelOpen && (
+            <div className="max-h-20 overflow-y-auto px-4 pb-2">
+              <p className="text-[10px] text-blue-800 leading-relaxed whitespace-pre-wrap">{activeSectionResearch}</p>
             </div>
-            <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
+          )}
+        </div>
+      )}
+
+      {/* Conflict banner — conflicts for active section */}
+      {activeSectionConflicts.length > 0 && (
+        <div className="border-b border-amber-200 bg-amber-50/80 px-4 py-2 shrink-0 space-y-1.5">
+          {activeSectionConflicts.map((c, i) => (
+            <div key={i} className="text-[10px]">
+              <span className="font-semibold text-amber-800">Client says:</span>{' '}
+              <span className="text-amber-700">{c.clientClaim}</span>
+              {c.researchFinds && (
+                <>
+                  {' · '}
+                  <span className="font-semibold text-amber-800">Research shows:</span>{' '}
+                  <span className="text-amber-700">{c.researchFinds}</span>
+                </>
+              )}
+              <div className="mt-1 flex gap-2">
+                <button
+                  onClick={() => void sendMessage(`On §${c.sectionNum}, I accept the client's version: "${c.clientClaim}"`)}
+                  className="rounded bg-amber-200 px-1.5 py-0.5 text-[9px] font-medium text-amber-800 hover:bg-amber-300 transition-colors"
+                >
+                  Accept client
+                </button>
+                <button
+                  onClick={() => void sendMessage(`On §${c.sectionNum}, I'll go with what the research shows: "${c.researchFinds}"`)}
+                  className="rounded bg-amber-200 px-1.5 py-0.5 text-[9px] font-medium text-amber-800 hover:bg-amber-300 transition-colors"
+                >
+                  Accept research
+                </button>
+                <button
+                  onClick={() => void sendMessage(`Let's discuss the conflict in §${c.sectionNum}: the client says "${c.clientClaim}" but research shows "${c.researchFinds}". Help me decide.`)}
+                  className="rounded bg-transparent px-1.5 py-0.5 text-[9px] font-medium text-amber-700 hover:text-amber-900 transition-colors"
+                >
+                  Discuss
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
+      )}
+
+      {/* Body: section nav rail + chat */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
+
+        {/* Section nav rail */}
+        <div className="w-40 shrink-0 overflow-y-auto border-r border-border py-1">
+          {SECTION_NUMS.map((num) => {
+            const status = sectionStatus[num] ?? (filledSections.includes(num) ? 'complete' : (emptySections.includes(num) ? 'not-started' : 'not-started'))
+            const isActive = activeSection === num
+            return (
+              <button
+                key={num}
+                onClick={() => handleNavToSection(num)}
+                className={cn(
+                  'flex w-full items-center gap-1.5 px-2 py-1 text-left text-[10px] transition-colors',
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 font-semibold'
+                    : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+                )}
+              >
+                <span className="shrink-0 w-4 font-mono text-[9px] text-muted-foreground">{num}</span>
+                <PilotStatusDot status={status} />
+                <span className="truncate">{SECTION_LABELS[num]}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Messages */}
+        <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
+              <Icons.Compass className="h-6 w-6 text-blue-300" />
+              <p className="text-xs font-medium text-muted-foreground">I'm your GTM Framework strategist.</p>
+              <p className="text-[10px] text-muted-foreground/60 max-w-[240px]">
+                {activeSection
+                  ? `I can see you're on §${activeSection} — ${SECTION_LABELS[activeSection] ?? ''}. Ask me anything about this section.`
+                  : 'I\'ll use the client brain, vertical knowledge, and GTM best practices to guide you through all 18 sections.'
+                }
+              </p>
+              <button
+                onClick={() => void sendMessage(
+                  activeSection
+                    ? `Help me fill in §${activeSection} — ${SECTION_LABELS[activeSection] ?? ''}`
+                    : "Which sections should we focus on first?"
+                )}
+                className="mt-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-medium text-blue-600 hover:bg-blue-100 transition-colors"
+              >
+                {activeSection ? `Help me with §${activeSection}` : 'Which sections should we focus on first?'}
+              </button>
+            </div>
+          )}
+          {messages.map((msg, i) => (
+            <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined}>
+              <MessageBubble
+                msg={msg}
+                onNavigateToSection={onNavigateToSection}
+                onSendMessage={handleSendMessage}
+              />
+            </div>
+          ))}
+          {loading && (
+            <div className="flex gap-2 items-start">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500">
+                <Icons.Compass className="h-3.5 w-3.5 text-white" />
+              </div>
+              <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Input */}
       <div className="flex items-end gap-2 border-t border-border px-3 py-2 shrink-0">
+        {activeSection && onSectionStatusChange && (
+          <button
+            onClick={() => void onSectionStatusChange(activeSection, 'complete')}
+            title="Mark section complete"
+            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-green-200 bg-green-50 px-2 text-[10px] font-medium text-green-700 hover:bg-green-100 transition-colors whitespace-nowrap"
+          >
+            <Icons.CheckCircle2 className="h-3.5 w-3.5" />
+            Mark §{activeSection} done
+          </button>
+        )}
         <textarea
           ref={inputRef}
           value={input}

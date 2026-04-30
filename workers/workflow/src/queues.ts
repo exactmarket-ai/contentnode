@@ -15,6 +15,7 @@ export const QUEUE_PATTERN_DETECTION              = `${_p}pattern-detection`
 export const QUEUE_EDIT_ANALYSIS                  = `${_p}edit-analysis`
 export const QUEUE_SCHEDULE_CHECKER               = `${_p}schedule-checker`
 export const QUEUE_FRAMEWORK_RESEARCH             = `${_p}framework-research`
+export const QUEUE_CLIENT_GTM_UPLOAD              = `${_p}client-gtm-upload`
 export const QUEUE_ATTACHMENT_PROCESS             = `${_p}attachment-process`
 export const QUEUE_BRAND_ATTACHMENT_PROCESS       = `${_p}brand-attachment-process`
 export const QUEUE_CAMPAIGN_BRAIN_PROCESS         = `${_p}campaign-brain-process`
@@ -108,6 +109,15 @@ export interface FrameworkResearchJobData {
   clientId: string
   verticalId: string
   websiteUrl?: string
+  researchMode?: 'established' | 'new_vertical'
+  mergeWithExisting?: boolean
+}
+
+export interface ClientGtmUploadJobData {
+  agencyId: string
+  clientId: string
+  verticalId: string
+  uploadId: string
 }
 
 export interface AttachmentProcessJobData {

@@ -24,13 +24,23 @@ const messageSchema = z.object({
   content: z.string().max(10000),
 })
 
+const conflictEntrySchema = z.object({
+  sectionNum:    z.string(),
+  clientClaim:   z.string(),
+  researchFinds: z.string(),
+  recommendation: z.string().optional(),
+})
+
 const chatBody = z.object({
-  messages:       z.array(messageSchema).min(1).max(40),
-  clientId:       z.string(),
-  verticalId:     z.string(),
-  verticalName:   z.string().optional().nullable(),
-  filledSections: z.array(z.string()).optional(), // ['01', '03', ...]
-  emptySections:  z.array(z.string()).optional(), // ['02', '04', ...]
+  messages:          z.array(messageSchema).min(1).max(40),
+  clientId:          z.string(),
+  verticalId:        z.string(),
+  verticalName:      z.string().optional().nullable(),
+  filledSections:    z.array(z.string()).optional(),
+  emptySections:     z.array(z.string()).optional(),
+  activeSection:     z.string().optional().nullable(),        // current section user is viewing
+  researchBySection: z.record(z.string()).optional().nullable(), // { "03": "research findings..." }
+  conflictLog:       z.array(conflictEntrySchema).optional().nullable(),
 })
 
 // ─── Section reference ────────────────────────────────────────────────────────
@@ -175,11 +185,24 @@ async function buildContext(
 
 // ─── System prompt builder ────────────────────────────────────────────────────
 
+const SECTION_DEPENDENCIES: Record<string, string[]> = {
+  '07': ['02'],
+  '08': ['01', '02', '04'],
+  '10': ['02', '04'],
+  '12': ['01', '06'],
+  '14': ['01', '08'],
+  '16': ['08'],
+  '18': ['01', '08'],
+}
+
 function buildSystemPrompt(
   contextParts: string[],
   filledSections: string[],
   emptySections: string[],
   verticalName: string,
+  activeSection?: string | null,
+  researchBySection?: Record<string, string> | null,
+  conflictLog?: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation?: string }> | null,
 ): string {
   const filledList = filledSections.length > 0
     ? filledSections.join(', ')
@@ -191,6 +214,36 @@ function buildSystemPrompt(
   const contextBlock = contextParts.length > 0
     ? contextParts.join('\n')
     : 'No brain context available yet — encourage the user to upload documents in the Brain section.'
+
+  // Section-specific research context
+  let researchBlock = ''
+  if (activeSection && researchBySection?.[activeSection]) {
+    researchBlock = `\nRESEARCH FINDINGS FOR §${activeSection} (from automated research run):\n${researchBySection[activeSection]}\n`
+  }
+
+  // Conflict log for active section
+  let conflictBlock = ''
+  const activeSectionConflicts = conflictLog?.filter((c) => c.sectionNum === activeSection) ?? []
+  if (activeSectionConflicts.length > 0) {
+    conflictBlock = `\nCONFLICTS FOR §${activeSection} (client-supplied GTM vs. research):\n` +
+      activeSectionConflicts.map((c) =>
+        `⚠ Client says: "${c.clientClaim}"\n  Research shows: "${c.researchFinds}"\n  Recommendation: ${c.recommendation ?? 'Ask the strategist to adjudicate.'}`
+      ).join('\n\n') + '\n'
+  }
+
+  // Section dependency warning
+  let dependencyBlock = ''
+  if (activeSection && SECTION_DEPENDENCIES[activeSection]) {
+    const unfilledDeps = SECTION_DEPENDENCIES[activeSection].filter((dep) => !filledSections.includes(dep))
+    if (unfilledDeps.length > 0) {
+      const depNames: Record<string, string> = {
+        '01': '§01 Vertical Overview', '02': '§02 Customer Definition + Profile',
+        '04': '§04 Core Challenges', '06': '§06 Why [Client]', '08': '§08 Messaging Framework',
+      }
+      const depList = unfilledDeps.map((d) => depNames[d] ?? `§${d}`).join(' and ')
+      dependencyBlock = `\nSECTION DEPENDENCY ALERT: The user is viewing §${activeSection} but ${depList} ${unfilledDeps.length === 1 ? 'is' : 'are'} not yet filled. §${activeSection} cannot be done well without ${depList} being defined first. Guide the user to complete the prerequisite section(s) before working on §${activeSection}.\n`
+    }
+  }
 
   return `You are gtmPILOT, the AI GTM Framework strategist built into ContentNode. You help agency teams complete 18-section GTM Frameworks with precision and real strategic depth — drawing on client brain context, vertical knowledge, and your built-in expertise in B2B go-to-market strategy.
 
@@ -205,6 +258,7 @@ CURRENT FRAMEWORK STATE:
 Vertical: ${verticalName}
 Sections already filled: ${filledList}
 Sections still empty: ${emptyList}
+${activeSection ? `User is currently viewing: §${activeSection}` : ''}${researchBlock}${conflictBlock}${dependencyBlock}
 
 YOUR ROLE — GUIDE, DON'T FILL:
 You are not a form assistant. You are a GTM thinking partner. The difference matters:
@@ -264,7 +318,11 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Invalid request body', details: parsed.error.issues })
     }
 
-    const { messages, clientId, verticalId, verticalName, filledSections = [], emptySections = [] } = parsed.data
+    const {
+      messages, clientId, verticalId, verticalName,
+      filledSections = [], emptySections = [],
+      activeSection, researchBySection, conflictLog,
+    } = parsed.data
 
     // Verify client and vertical belong to this agency
     const [client, vertical] = await Promise.all([
@@ -280,6 +338,9 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       filledSections,
       emptySections,
       verticalName ?? vertical.name,
+      activeSection,
+      researchBySection as Record<string, string> | null | undefined,
+      conflictLog,
     )
 
     const levelHint = `[GTM Framework — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`

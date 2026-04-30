@@ -10,6 +10,7 @@ import {
   QUEUE_EDIT_ANALYSIS,
   QUEUE_SCHEDULE_CHECKER,
   QUEUE_FRAMEWORK_RESEARCH,
+  QUEUE_CLIENT_GTM_UPLOAD,
   QUEUE_ATTACHMENT_PROCESS,
   QUEUE_BRAND_ATTACHMENT_PROCESS,
   QUEUE_CAMPAIGN_BRAIN_PROCESS,
@@ -27,6 +28,7 @@ import {
   type PatternDetectionJobData,
   type EditAnalysisJobData,
   type FrameworkResearchJobData,
+  type ClientGtmUploadJobData,
   type AttachmentProcessJobData,
   type BrandAttachmentProcessJobData,
   type CampaignBrainProcessJobData,
@@ -39,7 +41,7 @@ import { WorkflowRunner } from './runner.js'
 import { detectPatterns, detectEditPatterns } from './patternDetector.js'
 import { runScheduleChecker, runOrphanSweeper } from './scheduleChecker.js'
 import { runFileCleanup } from './fileCleanup.js'
-import { runFrameworkResearch, processAttachment } from './frameworkResearch.js'
+import { runFrameworkResearch, processAttachment, processClientGtmUpload } from './frameworkResearch.js'
 import { processBrandAttachment } from './brandExtraction.js'
 import { processCampaignBrainAttachment } from './campaignBrainExtraction.js'
 import {
@@ -231,6 +233,22 @@ const frameworkResearchWorker = createWorker<FrameworkResearchJobData>(
     }
   },
   2
+)
+
+// ── client-gtm-upload ─────────────────────────────────────────────────────────
+const clientGtmUploadWorker = createWorker<ClientGtmUploadJobData>(
+  QUEUE_CLIENT_GTM_UPLOAD,
+  async (job: Job<ClientGtmUploadJobData>) => {
+    console.log(`[client-gtm-upload] job started for upload=${job.data.uploadId}`)
+    try {
+      await processClientGtmUpload(job.data)
+    } catch (err) {
+      console.error('[client-gtm-upload] job failed:', err)
+      throw err
+    }
+  },
+  2,
+  { lockDuration: 5 * 60 * 1000 }
 )
 
 // ── attachment-process ────────────────────────────────────────────────────────
@@ -546,6 +564,7 @@ async function shutdown() {
     editAnalysisWorker.close(),
     scheduleCheckerWorker.close(),
     frameworkResearchWorker.close(),
+    clientGtmUploadWorker.close(),
     attachmentProcessWorker.close(),
     brandAttachmentProcessWorker.close(),
     agencyBrainProcessWorker.close(),
