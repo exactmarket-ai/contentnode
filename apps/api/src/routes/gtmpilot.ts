@@ -41,6 +41,7 @@ const chatBody = z.object({
   activeSection:     z.string().optional().nullable(),        // current section user is viewing
   researchBySection: z.record(z.string()).optional().nullable(), // { "03": "research findings..." }
   conflictLog:       z.array(conflictEntrySchema).optional().nullable(),
+  companyBrief:      z.string().optional().nullable(),
 })
 
 // ─── Section reference ────────────────────────────────────────────────────────
@@ -203,6 +204,7 @@ function buildSystemPrompt(
   activeSection?: string | null,
   researchBySection?: Record<string, string> | null,
   conflictLog?: Array<{ sectionNum: string; clientClaim: string; researchFinds: string; recommendation?: string }> | null,
+  companyBrief?: string | null,
 ): string {
   const filledList = filledSections.length > 0
     ? filledSections.join(', ')
@@ -214,6 +216,21 @@ function buildSystemPrompt(
   const contextBlock = contextParts.length > 0
     ? contextParts.join('\n')
     : 'No brain context available yet — encourage the user to upload documents in the Brain section.'
+
+  // Company brief block
+  const briefBlock = companyBrief
+    ? `\nCOMPANY BRIEF (what this company does in plain language):\n${companyBrief}\n`
+    : ''
+
+  // Intake mode: no brief, no filled sections, very little context
+  const needsIntake = !companyBrief && filledSections.length === 0 && contextParts.length < 3
+  const intakeInstructions = needsIntake
+    ? `\nINTAKE MODE: This is a brand new framework with no brief and no context yet. Before doing any strategic work, you need to build a foundation. Ask 3 focused intake questions (one at a time, in order):
+1. What does this company sell or do? (product/service, target market, business model)
+2. What makes them different from others who do the same thing?
+3. Who is the ideal buyer for this vertical — their title, their biggest pain, and what they've tried before?
+After the user answers all 3, synthesize their answers into a company brief, output it on a new line starting with: "BRIEF_SAVE: " followed by the brief text (2-3 sentences). Do NOT include the BRIEF_SAVE line in what you show to the user — it is a silent signal to the system.`
+    : ''
 
   // Section-specific research context
   let researchBlock = ''
@@ -253,12 +270,12 @@ ${SECTION_REFERENCE}
 
 CLIENT CONTEXT (in priority order — use this to ground every response):
 ${contextBlock}
-
+${briefBlock}
 CURRENT FRAMEWORK STATE:
 Vertical: ${verticalName}
 Sections already filled: ${filledList}
 Sections still empty: ${emptyList}
-${activeSection ? `User is currently viewing: §${activeSection}` : ''}${researchBlock}${conflictBlock}${dependencyBlock}
+${activeSection ? `User is currently viewing: §${activeSection}` : ''}${researchBlock}${conflictBlock}${dependencyBlock}${intakeInstructions}
 
 YOUR ROLE — GUIDE, DON'T FILL:
 You are not a form assistant. You are a GTM thinking partner. The difference matters:
@@ -321,7 +338,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     const {
       messages, clientId, verticalId, verticalName,
       filledSections = [], emptySections = [],
-      activeSection, researchBySection, conflictLog,
+      activeSection, researchBySection, conflictLog, companyBrief,
     } = parsed.data
 
     // Verify client and vertical belong to this agency
@@ -341,6 +358,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       activeSection,
       researchBySection as Record<string, string> | null | undefined,
       conflictLog,
+      companyBrief,
     )
 
     const levelHint = `[GTM Framework — Client: ${client.name} — Vertical: ${verticalName ?? vertical.name}]`

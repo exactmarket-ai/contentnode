@@ -51,6 +51,9 @@ export interface GTMPilotProps {
   conflictLog?: ConflictEntry[] | null
   sectionStatus?: Record<string, string>
   onSectionStatusChange?: (sectionNum: string, status: string) => void
+  // Company brief
+  companyBrief?: string | null
+  onBriefSaved?: (brief: string) => void
 }
 
 // ─── Section display names ────────────────────────────────────────────────────
@@ -204,6 +207,8 @@ export function GTMPilot({
   conflictLog,
   sectionStatus = {},
   onSectionStatusChange,
+  companyBrief,
+  onBriefSaved,
 }: GTMPilotProps) {
   const [openInternal, setOpenInternal] = useState(false)
   const [messages, setMessages]         = useState<GtmMessage[]>([])
@@ -283,6 +288,7 @@ export function GTMPilot({
           activeSection: activeSection ?? undefined,
           researchBySection,
           conflictLog: activeSectionConflicts.length > 0 ? activeSectionConflicts : undefined,
+          companyBrief: companyBrief ?? undefined,
         }),
       })
 
@@ -294,14 +300,23 @@ export function GTMPilot({
 
       const { data: respData } = await res.json() as { data: { reply: string; suggestions: GtmSuggestion[] } }
       const suggestions: GtmSuggestion[] = Array.isArray(respData.suggestions) ? respData.suggestions : []
-      const replyContent = (respData.reply ?? '').trim()
+      let replyContent = (respData.reply ?? '').trim()
+
+      // Parse BRIEF_SAVE: marker — PILOT built a brief during intake
+      const briefMatch = replyContent.match(/BRIEF_SAVE:\s*(.+?)(?:\n|$)/s)
+      if (briefMatch && onBriefSaved) {
+        const savedBrief = briefMatch[1].trim()
+        onBriefSaved(savedBrief)
+        replyContent = replyContent.replace(/BRIEF_SAVE:\s*.+?(?:\n|$)/s, '').trim()
+      }
+
       setMessages((prev) => [...prev, { role: 'assistant', content: replyContent, suggestions }])
     } catch {
       setMessages((prev) => [...prev, { role: 'assistant', content: 'Network error — check your connection and try again.' }])
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, clientId, verticalId, verticalName, filledSections, emptySections, activeSection, activeSectionResearch, activeSectionConflicts])
+  }, [input, loading, messages, clientId, verticalId, verticalName, filledSections, emptySections, activeSection, activeSectionResearch, activeSectionConflicts, companyBrief, onBriefSaved])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

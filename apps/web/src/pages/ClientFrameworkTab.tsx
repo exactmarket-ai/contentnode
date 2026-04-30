@@ -1677,12 +1677,16 @@ function AttachmentRow({ attachment: a, base, brandBase, deletingId, onDelete, o
   )
 }
 
-function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsite, onReadyChange }: {
+function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsite, onReadyChange, companyBrief, onBriefChange, onBriefBlur, briefSaved }: {
   clientId: string
   verticalId: string | null
   websiteStatus: 'none' | 'pending' | 'running' | 'ready' | 'failed'
   onScrapeWebsite: (websiteUrl: string) => Promise<void>
   onReadyChange: (hasReady: boolean) => void
+  companyBrief?: string
+  onBriefChange?: (v: string) => void
+  onBriefBlur?: (v: string) => void
+  briefSaved?: boolean
 }) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [loading, setLoading] = useState(true)
@@ -1855,6 +1859,27 @@ function AttachmentsSection({ clientId, verticalId, websiteStatus, onScrapeWebsi
           </button>
         </div>
       </div>}
+
+      {/* Company brief — only shown for vertical-specific brain */}
+      {verticalId && onBriefChange && (
+        <div className="mb-6 rounded-xl border border-border bg-muted/20 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Company brief <span className="text-[10px] font-normal text-muted-foreground ml-1">optional</span></p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">A short plain-language description of what this company does. Injected as the first context in every research run. You can also build this with gtmPILOT.</p>
+            </div>
+            {briefSaved && <span className="text-[11px] text-green-500 font-medium shrink-0">Brief saved ✓</span>}
+          </div>
+          <textarea
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            rows={4}
+            placeholder="e.g. We are a managed service provider serving mid-market healthcare organizations, specialising in HIPAA compliance, network security, and Microsoft 365 management. We compete against regional MSPs and in-house IT teams…"
+            value={companyBrief ?? ''}
+            onChange={(e) => onBriefChange?.(e.target.value)}
+            onBlur={(e) => onBriefBlur?.(e.target.value)}
+          />
+        </div>
+      )}
 
       {/* Drop zone */}
       <div
@@ -2099,6 +2124,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   // Research + draft state
   const [websiteStatus, setWebsiteStatus] = useState<'none' | 'pending' | 'running' | 'ready' | 'failed'>('none')
   const [hasReadyAttachment, setHasReadyAttachment] = useState(false)
+  const websiteUrlRef = useRef<string>('')   // tracks the URL the user typed in the Brain tab
   const [draftingField, setDraftingField] = useState<string | null>(null)
   const [pendingDrafts, setPendingDrafts] = useState<Record<string, string>>({})
   const websitePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -2114,6 +2140,8 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [uploadingClientGtm, setUploadingClientGtm] = useState(false)
   const [pilotOpen, setPilotOpen] = useState(false)
   const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({})
+  const [companyBrief, setCompanyBrief] = useState('')
+  const [briefSaved, setBriefSaved] = useState(false)
   const clientGtmInputRef = useRef<HTMLInputElement>(null)
   const researchPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -2216,13 +2244,15 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   // Load website scrape status when vertical changes, and poll while running
   useEffect(() => {
-    if (!selectedVertical) { setWebsiteStatus('none'); return }
+    if (!selectedVertical) { setWebsiteStatus('none'); setCompanyBrief(''); setBriefSaved(false); return }
     const endpoint = `/api/v1/clients/${clientId}/framework/${selectedVertical.id}/research`
 
     const fetchStatus = () => {
       apiFetch(endpoint).then((r) => r.json()).then(({ data }) => {
         const s = data?.status ?? 'none'
         setWebsiteStatus(s as typeof websiteStatus)
+        if (data?.websiteUrl && !websiteUrlRef.current) websiteUrlRef.current = data.websiteUrl
+        if (data?.companyBrief) setCompanyBrief(data.companyBrief)
         if (s !== 'running' && s !== 'pending') {
           if (websitePollRef.current) { clearInterval(websitePollRef.current); websitePollRef.current = null }
         }
@@ -2286,6 +2316,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   const scrapeWebsite = useCallback(async (websiteUrl: string) => {
     if (!selectedVertical || !websiteUrl) return
+    websiteUrlRef.current = websiteUrl   // remember for subsequent Generate Research calls
     setWebsiteStatus('pending')
     await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/research`, {
       method: 'POST',
@@ -2295,19 +2326,26 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     startWebsitePolling()
   }, [clientId, selectedVertical, startWebsitePolling])
 
+  const saveBrief = useCallback(async (brief: string) => {
+    if (!selectedVertical) return
+    await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/research/brief`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyBrief: brief }),
+    }).catch(() => {})
+    setBriefSaved(true)
+    setTimeout(() => setBriefSaved(false), 3000)
+  }, [clientId, selectedVertical])
+
   const fireResearch = useCallback(async (researchMode: 'established' | 'new_vertical', mergeWithExisting: boolean) => {
     if (!selectedVertical) return
     setShowResearchDialog(null)
     setResearchRunning(true)
-    // Get website URL from existing research record for continuity
-    const websiteUrl = (() => {
-      const el = document.querySelector<HTMLInputElement>('[data-website-url]')
-      return el?.value ?? undefined
-    })()
+    const websiteUrl = websiteUrlRef.current || undefined
     await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/research`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ researchMode, mergeWithExisting, websiteUrl }),
+      body: JSON.stringify({ researchMode, mergeWithExisting, ...(websiteUrl ? { websiteUrl } : {}), ...(companyBrief ? { companyBrief } : {}) }),
     }).catch(() => { setResearchRunning(false) })
   }, [clientId, selectedVertical])
 
@@ -2968,6 +3006,10 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
               websiteStatus={websiteStatus}
               onScrapeWebsite={scrapeWebsite}
               onReadyChange={handleReadyChange}
+              companyBrief={companyBrief}
+              onBriefChange={setCompanyBrief}
+              onBriefBlur={saveBrief}
+              briefSaved={briefSaved}
             />
 
             {/* Upload Client GTM — separate surface from supporting files */}
@@ -3083,6 +3125,8 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         conflictLog={uploadedGtm?.status === 'ready' ? (uploadedGtm.conflictLog ?? null) : null}
         sectionStatus={sectionStatus}
         onSectionStatusChange={patchSectionStatus}
+        companyBrief={companyBrief || null}
+        onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
       />
 
       {/* Research mode dialog */}

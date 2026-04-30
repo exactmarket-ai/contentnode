@@ -109,6 +109,7 @@ export interface FrameworkResearchJobData {
   clientId: string
   verticalId: string
   websiteUrl?: string
+  companyBrief?: string
   researchMode?: 'established' | 'new_vertical'
   mergeWithExisting?: boolean
 }

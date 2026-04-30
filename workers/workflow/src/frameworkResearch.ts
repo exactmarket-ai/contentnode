@@ -356,15 +356,15 @@ export async function processAttachment(job: AttachmentProcessJobData): Promise<
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function runFrameworkResearch(job: FrameworkResearchJobData): Promise<void> {
-  const { agencyId, clientId, verticalId, websiteUrl, researchMode = 'established', mergeWithExisting = false } = job
+  const { agencyId, clientId, verticalId, websiteUrl, companyBrief, researchMode = 'established', mergeWithExisting = false } = job
   console.log(`[framework-research] starting for client=${clientId} mode=${researchMode} merge=${mergeWithExisting}`)
 
   await withAgency(agencyId, async () => {
     // Mark legacy research record as running (keeps researchReady/DraftButton working)
     await prisma.clientFrameworkResearch.upsert({
       where: { clientId_verticalId: { clientId, verticalId } },
-      create: { agencyId, clientId, verticalId, status: 'running', websiteUrl: websiteUrl ?? null, sources: [] },
-      update: { status: 'running', errorMessage: null, ...(websiteUrl ? { websiteUrl } : {}) },
+      create: { agencyId, clientId, verticalId, status: 'running', websiteUrl: websiteUrl ?? null, companyBrief: companyBrief ?? null, sources: [] },
+      update: { status: 'running', errorMessage: null, ...(websiteUrl ? { websiteUrl } : {}), ...(companyBrief ? { companyBrief } : {}) },
     })
 
     // Create versioned run record
@@ -377,7 +377,7 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
       prisma.vertical.findFirstOrThrow({ where: { id: verticalId, agencyId }, select: { name: true } }),
       prisma.clientFrameworkResearch.findUnique({
         where: { clientId_verticalId: { clientId, verticalId } },
-        select: { websiteUrl: true },
+        select: { websiteUrl: true, companyBrief: true },
       }),
       prisma.clientFramework.findUnique({
         where: { clientId_verticalId: { clientId, verticalId } },
@@ -387,11 +387,18 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
 
     // Resolve website URL: job data takes priority, then fall back to stored URL from prior research
     const resolvedWebsiteUrl = websiteUrl || existingResearch?.websiteUrl || null
+    // Resolve company brief: job data takes priority, then fall back to stored brief
+    const resolvedBrief = companyBrief || existingResearch?.companyBrief || null
 
     const contextParts: string[] = []
     const sources: DocumentSource[] = []
 
-    // 0. Existing framework data — what the strategist has already filled in
+    // 0a. Company brief — what the client does in plain language (highest-signal context)
+    if (resolvedBrief) {
+      contextParts.push(`[COMPANY BRIEF — what this company does]\n${resolvedBrief}`)
+    }
+
+    // 0b. Existing framework data — what the strategist has already filled in
     if (existingFramework?.data) {
       const fw = existingFramework.data as Record<string, unknown>
       const fwParts: string[] = []
@@ -509,7 +516,7 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
       }
     }
 
-    if (contextParts.length === 0 && !resolvedWebsiteUrl) {
+    if (contextParts.length === 0 && !resolvedWebsiteUrl && !resolvedBrief) {
       await Promise.all([
         prisma.clientFrameworkResearch.update({
           where: { clientId_verticalId: { clientId, verticalId } },
@@ -542,7 +549,7 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
 CLIENT: ${client.name}${client.industry ? ` (${client.industry})` : ''}
 VERTICAL BEING RESEARCHED: ${vertical.name}
 WEBSITE: ${resolvedWebsiteUrl ?? 'not available'}
-MODE: ${researchMode === 'new_vertical' ? 'New market entry — client is expanding into this vertical' : 'Established vertical — client already operates here'}
+${resolvedBrief ? `COMPANY BRIEF: ${resolvedBrief}\n` : ''}MODE: ${researchMode === 'new_vertical' ? 'New market entry — client is expanding into this vertical' : 'Established vertical — client already operates here'}
 GOAL: Extract intelligence that helps a strategist complete the 18-section GTM Framework for ${client.name} targeting the ${vertical.name} vertical.
 
 RESEARCH CONTEXT:

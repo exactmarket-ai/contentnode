@@ -3772,7 +3772,7 @@ ${docText.slice(0, 12000)}`
 
     const research = await prisma.clientFrameworkResearch.findUnique({
       where: { clientId_verticalId: { clientId, verticalId } },
-      select: { id: true, status: true, sources: true, websiteUrl: true, researchedAt: true, errorMessage: true, updatedAt: true },
+      select: { id: true, status: true, sources: true, websiteUrl: true, companyBrief: true, researchedAt: true, errorMessage: true, updatedAt: true },
     })
     return reply.send({ data: research ?? null })
   })
@@ -3781,8 +3781,9 @@ ${docText.slice(0, 12000)}`
   app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/research', async (req, reply) => {
     const { agencyId } = req.auth
     const { id: clientId, verticalId } = req.params
-    const { websiteUrl, researchMode, mergeWithExisting } = (req.body ?? {}) as {
+    const { websiteUrl, companyBrief, researchMode, mergeWithExisting } = (req.body ?? {}) as {
       websiteUrl?: string
+      companyBrief?: string
       researchMode?: 'established' | 'new_vertical'
       mergeWithExisting?: boolean
     }
@@ -3796,16 +3797,38 @@ ${docText.slice(0, 12000)}`
 
     await prisma.clientFrameworkResearch.upsert({
       where: { clientId_verticalId: { clientId, verticalId } },
-      create: { agencyId, clientId, verticalId, status: 'pending', sources: [], websiteUrl: websiteUrl ?? null },
-      update: { status: 'pending', errorMessage: null, websiteUrl: websiteUrl ?? null },
+      create: { agencyId, clientId, verticalId, status: 'pending', sources: [], websiteUrl: websiteUrl ?? null, companyBrief: companyBrief ?? null },
+      update: { status: 'pending', errorMessage: null, ...(websiteUrl ? { websiteUrl } : {}), ...(companyBrief ? { companyBrief } : {}) },
     })
 
-    await getFrameworkResearchQueue().add('research', { agencyId, clientId, verticalId, websiteUrl, researchMode, mergeWithExisting }, {
+    await getFrameworkResearchQueue().add('research', { agencyId, clientId, verticalId, websiteUrl, companyBrief, researchMode, mergeWithExisting }, {
       removeOnComplete: { count: 20 },
       removeOnFail: { count: 20 },
     })
 
     return reply.code(202).send({ data: { status: 'pending' } })
+  })
+
+  // ── PATCH /:id/framework/:verticalId/research/brief — save company brief
+  app.patch<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/research/brief', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const { companyBrief } = (req.body ?? {}) as { companyBrief: string }
+    if (typeof companyBrief !== 'string') return reply.code(400).send({ error: 'companyBrief required' })
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { id: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { id: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    await prisma.clientFrameworkResearch.upsert({
+      where: { clientId_verticalId: { clientId, verticalId } },
+      create: { agencyId, clientId, verticalId, status: 'not_started', sources: [], companyBrief },
+      update: { companyBrief },
+    })
+    return reply.send({ data: { ok: true } })
   })
 
   // ── GET /:id/framework/:verticalId/research/runs — versioned research run history
