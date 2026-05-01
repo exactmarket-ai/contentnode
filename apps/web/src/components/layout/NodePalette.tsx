@@ -42,7 +42,7 @@ const sortedByLabel = (nodes: PaletteNodeDef[]) =>
   [...nodes].sort((a, b) => a.label.localeCompare(b.label))
 
 // Category display order — Output listed after Media
-const CATEGORY_ORDER: NodeCategory[] = ['source', 'logic', 'media', 'video', 'output']
+const CATEGORY_ORDER: NodeCategory[] = ['source', 'logic', 'review', 'media', 'video', 'output']
 
 // Number of nodes shown when a category section is collapsed
 const COLLAPSED_PREVIEW = 3
@@ -57,12 +57,13 @@ function writeCollapsed(cats: Set<NodeCategory>) {
 }
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
-  source: 'Source', logic: 'Logic', output: 'Output', media: 'Media', video: 'Video', insight: 'Insight', canvas: 'Canvas',
+  source: 'Source', logic: 'Logic', review: 'Review', output: 'Output', media: 'Media', video: 'Video', insight: 'Insight', canvas: 'Canvas',
 }
 
 const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
   source:  NODE_SPEC['input'],
   logic:   NODE_SPEC['ai-model'],
+  review:  NODE_SPEC['review'],
   output:  NODE_SPEC['transform'],
   media:   NODE_SPEC['media'],
   video:   NODE_SPEC['media'],
@@ -76,6 +77,7 @@ type IconComponent = React.ComponentType<{ className?: string; style?: React.CSS
 const CATEGORY_TOOLBAR_ICONS: Record<string, IconComponent> = {
   source: Icons.Database,
   logic:  Icons.GitBranch,
+  review: Icons.CheckCircle,
   output: Icons.Share2,
   media:  Icons.Film,
   video:  Icons.Clapperboard,

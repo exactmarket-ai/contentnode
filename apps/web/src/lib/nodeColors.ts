@@ -2,7 +2,7 @@
 // Implements the ContentNodeAI card spec exactly.
 // Each node subtype maps to one of 5 types: prompt | input | ai-model | transform | eval
 
-export type NodeSpecType = 'prompt' | 'input' | 'ai-model' | 'transform' | 'eval' | 'generate' | 'media'
+export type NodeSpecType = 'prompt' | 'input' | 'ai-model' | 'transform' | 'eval' | 'generate' | 'media' | 'review'
 
 export interface NodeSpec {
   accent: string
@@ -94,7 +94,20 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
     badgeText:      '#6b21a8',
     label:          'Media',
   },
+  review: {
+    accent:         '#0891b2',   // cyan-600
+    headerBg:       '#ecfeff',   // cyan-50
+    headerBorder:   '#a5f3fc',   // cyan-200
+    headerBgHover:  '#cffafe',   // cyan-100
+    activeRing:     'rgba(8,145,178,0.12)',
+    activeTextColor:'#ffffff',
+    badgeBg:        '#cffafe',   // cyan-100
+    badgeText:      '#164e63',   // cyan-900
+    label:          'Review',
+  },
 }
+
+const REVIEW_SUBTYPES = new Set(['seo-review', 'geo-review'])
 
 const MEDIA_SUBTYPES = new Set([
   'audio-input', 'voice-output', 'music-generation', 'audio-mix', 'audio-replace',
@@ -113,7 +126,9 @@ const MEDIA_TYPES = new Set([
 export function getNodeSpec(type: string, subtype?: string): NodeSpec {
   let specType: NodeSpecType = 'eval'
 
-  if (MEDIA_TYPES.has(type) || (subtype && MEDIA_SUBTYPES.has(subtype))) {
+  if (subtype && REVIEW_SUBTYPES.has(subtype)) {
+    specType = 'review'
+  } else if (MEDIA_TYPES.has(type) || (subtype && MEDIA_SUBTYPES.has(subtype))) {
     specType = 'media'
   } else if (
     type === 'source' || type === 'gtm_framework' || type === 'brand_context' ||

@@ -65,6 +65,16 @@ function getPortConfig(subtype: string): PortConfig {
           { id: 'fail', label: 'fail', top: '67%' },
         ],
       }
+    case 'seo-review':
+    case 'geo-review':
+      return {
+        inputs:  [{ id: 'input', top: '50%' }],
+        outputs: [
+          { id: 'pass',  label: 'pass',  top: '25%' },
+          { id: 'flag',  label: 'flag',  top: '50%' },
+          { id: 'block', label: 'block', top: '75%' },
+        ],
+      }
     default:
       return {
         inputs:  [{ id: 'input',  top: '50%' }],
@@ -256,6 +266,67 @@ export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
           return passLabel !== 'pass' || failLabel !== 'fail' ? (
             <p className="mt-0.5 text-[10px]" style={{ color: portLblColor }}>{passLabel} / {failLabel}</p>
           ) : null
+        })()}
+
+        {/* SEO / GEO Review: mode subtext + score badge + Optimize/Review toggle */}
+        {(subtype === 'seo-review' || subtype === 'geo-review') && (() => {
+          const cfg = (data.config as Record<string, unknown>) ?? {}
+          const mode = (cfg.mode as string) ?? 'optimize'
+          const reviewOut = nodeStatuses[id]?.output as Record<string, unknown> | undefined
+          const score = reviewOut?.score as number | undefined
+          const notApplicable = reviewOut?.not_applicable as boolean | undefined
+
+          return (
+            <div className="mt-1 space-y-1.5">
+              {/* Mode label */}
+              <p className="text-[10px]" style={{ color: spec.accent + 'cc' }}>
+                {mode === 'optimize' ? 'Optimizing' : 'Review only'}
+              </p>
+
+              {/* Score badge (post-run) */}
+              {score !== undefined && !notApplicable && (
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums"
+                    style={{
+                      backgroundColor: score >= 80 ? '#dcfce7' : score >= 60 ? '#fef9c3' : '#fee2e2',
+                      color:           score >= 80 ? '#166534' : score >= 60 ? '#854d0e' : '#991b1b',
+                    }}
+                  >
+                    {score}
+                  </span>
+                  <span className="text-[10px]" style={{ color: '#b4b2a9' }}>/ 100</span>
+                </div>
+              )}
+              {notApplicable && (
+                <span className="text-[10px]" style={{ color: '#b4b2a9' }}>N/A for this type</span>
+              )}
+
+              {/* Optimize / Review toggle */}
+              <button
+                className="nodrag flex items-center gap-1.5"
+                title={mode === 'optimize' ? 'Click to switch to Review only mode' : 'Click to switch to Optimize mode'}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const newMode = mode === 'optimize' ? 'review_only' : 'optimize'
+                  updateNodeData(id, { config: { ...cfg, mode: newMode } })
+                }}
+              >
+                <div
+                  className="relative inline-flex h-3.5 w-6 shrink-0 rounded-full border border-transparent transition-colors"
+                  style={{ backgroundColor: mode === 'optimize' ? spec.accent : '#d1d5db' }}
+                >
+                  <span
+                    className="pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform mt-px"
+                    style={{ transform: mode === 'optimize' ? 'translateX(10px)' : 'translateX(1px)' }}
+                  />
+                </div>
+                <span className="text-[9px]" style={{ color: mode === 'optimize' ? spec.accent : '#9ca3af' }}>
+                  {mode === 'optimize' ? 'Optimize' : 'Review'}
+                </span>
+              </button>
+            </div>
+          )
         })()}
       </div>
 

@@ -54,6 +54,8 @@ import { StoryboardPdfBuilderExecutor } from './executors/storyboardPdfBuilder.j
 import { DocxReaderExecutor } from './executors/docxReader.js'
 import { StoryboardSceneParserExecutor } from './executors/storyboardSceneParser.js'
 import { StoryboardImagePromptBuilderExecutor } from './executors/storyboardImagePromptBuilder.js'
+import { SeoReviewNodeExecutor } from './executors/seoReview.js'
+import { GeoReviewNodeExecutor } from './executors/geoReview.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -147,6 +149,9 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   'logic:video-trimmer':           VideoTrimmerExecutor,
   'logic:video-resize':            VideoResizeExecutor,
   'audio_replace':                 AudioReplaceExecutor,
+  // SEO / GEO Review gates
+  'logic:seo-review':              SeoReviewNodeExecutor,
+  'logic:geo-review':              GeoReviewNodeExecutor,
   // Phase 3 — Intelligence Tools
   'deep_web_scrape':               DeepWebScrapeExecutor,
   'review_miner':                  ReviewMinerExecutor,
@@ -202,6 +207,98 @@ interface GraphEdge {
   sourceNodeId: string
   targetNodeId: string
   label?: string | null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEO / GEO prompt injection helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SEO_REQUIREMENTS_INJECTION = `SEO REQUIREMENTS — apply these to the content you generate:
+- Open with a clear H1 that contains or closely matches the target keyword
+- Place the target keyword or a direct variant in the first 100 words naturally
+- Use H2 headings to organize major sections; use H3s for subsections where relevant
+- Write a meta description of 150–160 characters that includes the keyword and summarizes the page
+- Keep paragraphs to 3–5 sentences maximum; use bullets or numbered lists where they aid scanning
+- Target keyword density of 1–2% — use it naturally, not repetitively
+- Structure the content so it maps cleanly to a schema type (Article, FAQPage, or HowTo depending on content type)
+- If image placeholders are included, label them with descriptive alt text`
+
+const GEO_REQUIREMENTS_INJECTION = `GEO REQUIREMENTS — structure this content so AI engines can cite it accurately:
+- Answer the primary question directly in the first 30–50 words. Do not build up to it.
+- Include a FAQ section at the end with 3–5 questions. Each answer must be 35–55 words, self-contained, and directly address the question without requiring context from the rest of the article.
+- Phrase H2 and H3 headings as questions or clear declarative statements that match how a person would ask an AI about this topic.
+- Include at least one cited statistic with a named source (e.g. "According to [Source], X% of..."). Do not invent statistics.
+- Define key terms, products, and concepts explicitly within the body — do not assume the reader has prior knowledge.
+- Include a named author and their relevant credential or role in the byline or author field.
+- Place the core answer, key definition, or primary claim in the first 30% of the content.
+- Use specific examples, direct experience language, or named case references rather than generic claims wherever possible.`
+
+/**
+ * BFS forward from nodeId looking for a downstream SEO or GEO review node in
+ * 'optimize' mode. Returns the injection text to append to the prompt, or null.
+ */
+function findDownstreamReviewInjection(
+  nodeId: string,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): string | null {
+  const forward = new Map<string, string[]>()
+  for (const n of nodes) forward.set(n.id, [])
+  for (const e of edges) forward.get(e.sourceNodeId)?.push(e.targetNodeId)
+
+  const visited = new Set<string>([nodeId])
+  const queue = [nodeId]
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    for (const next of forward.get(cur) ?? []) {
+      if (visited.has(next)) continue
+      visited.add(next)
+      const node = nodes.find((n) => n.id === next)
+      if (!node) continue
+      const cfg = (node.config ?? {}) as Record<string, unknown>
+      if (cfg.subtype === 'seo-review' && (cfg.mode as string) !== 'review_only') {
+        const kw = (cfg.target_keyword as string | undefined) ?? ''
+        if (kw) {
+          return `${SEO_REQUIREMENTS_INJECTION}\n- The target keyword is: "${kw}"`
+        }
+        return SEO_REQUIREMENTS_INJECTION
+      }
+      if (cfg.subtype === 'geo-review' && (cfg.mode as string) !== 'review_only') {
+        return GEO_REQUIREMENTS_INJECTION
+      }
+      queue.push(next)
+    }
+  }
+  return null
+}
+
+/**
+ * BFS backward from a review node to find the upstream content type
+ * (from a content-output node's output_type config field).
+ */
+function detectUpstreamContentType(
+  nodeId: string,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): string {
+  const backward = new Map<string, string[]>()
+  for (const n of nodes) backward.set(n.id, [])
+  for (const e of edges) backward.get(e.targetNodeId)?.push(e.sourceNodeId)
+
+  const visited = new Set<string>([nodeId])
+  const queue = [...(backward.get(nodeId) ?? [])]
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    if (visited.has(cur)) continue
+    visited.add(cur)
+    const node = nodes.find((n) => n.id === cur)
+    if (!node) continue
+    const cfg = (node.config ?? {}) as Record<string, unknown>
+    // content-output node stores the type in output_type
+    if (cfg.output_type && typeof cfg.output_type === 'string') return cfg.output_type
+    for (const src of backward.get(cur) ?? []) queue.push(src)
+  }
+  return ''
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -788,8 +885,32 @@ export class WorkflowRunner {
           await this.persistOutput(runOutput)
 
           try {
-            const executor = getExecutor(node.type, config)
-            const result = await executor.execute(input, config, ctx)
+            // ── SEO/GEO prompt injection (Optimize mode) ─────────────────────
+            // Before an ai-generate or content-output node executes, check for a
+            // downstream SEO or GEO review node in 'optimize' mode and append its
+            // requirements block to the node's additional_instructions.
+            let effectiveConfig = config
+            if (nodeSubtype === 'ai-generate' || nodeSubtype === 'content-output') {
+              const injection = findDownstreamReviewInjection(node.id, workflow.nodes, workflow.edges)
+              if (injection) {
+                const existing = (config.additional_instructions as string) ?? ''
+                effectiveConfig = {
+                  ...config,
+                  additional_instructions: existing ? `${existing}\n\n${injection}` : injection,
+                }
+              }
+            }
+
+            // ── Inject upstream content type for SEO/GEO review nodes ─────────
+            // The executor uses this to decide whether the content is short-form
+            // and should bypass scoring.
+            if (nodeSubtype === 'seo-review' || nodeSubtype === 'geo-review') {
+              const upstreamType = detectUpstreamContentType(node.id, workflow.nodes, workflow.edges)
+              effectiveConfig = { ...effectiveConfig, upstream_content_type: upstreamType }
+            }
+
+            const executor = getExecutor(node.type, effectiveConfig)
+            const result = await executor.execute(input, effectiveConfig, ctx)
 
             // ── Pause: node requires human input before workflow continues ───
             if (result.paused) {

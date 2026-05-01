@@ -41,6 +41,8 @@ import { DetectionConfig } from './config/logic/DetectionConfig'
 import { ConditionalBranchConfig } from './config/logic/ConditionalBranchConfig'
 import { TranslateConfig } from './config/logic/TranslateConfig'
 import { QualityReviewConfig } from './config/logic/QualityReviewConfig'
+import { SeoReviewConfig } from './config/logic/SeoReviewConfig'
+import { GeoReviewConfig } from './config/logic/GeoReviewConfig'
 import { ImagePromptBuilderConfig } from './config/logic/ImagePromptBuilderConfig'
 import { VideoPromptBuilderConfig } from './config/logic/VideoPromptBuilderConfig'
 import { VideoTranscriptionConfig } from './config/logic/VideoTranscriptionConfig'
@@ -145,6 +147,10 @@ function NodeConfigForm({
         return <TranslateConfig config={config} onChange={onChange} />
       if (subtype === 'quality-review')
         return <QualityReviewConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'seo-review')
+        return <SeoReviewConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'geo-review')
+        return <GeoReviewConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'image-prompt-builder')
         return <ImagePromptBuilderConfig config={config} onChange={onChange} />
       if (subtype === 'video-prompt-builder')
@@ -283,6 +289,7 @@ export function ConfigPanel() {
   const CATEGORY_COLOR: Record<string, string> = {
     source: 'text-emerald-400',
     logic: 'text-blue-400',
+    review: 'text-cyan-500',
     output: 'text-purple-400',
     insight: 'text-yellow-400',
     gtm_framework:    'text-blue-500',

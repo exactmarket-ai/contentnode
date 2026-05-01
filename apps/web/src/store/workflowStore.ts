@@ -67,7 +67,7 @@ export interface NodeRunStatus {
 
 // ─── Node palette definition (used by NodePalette + node factories) ───────────
 
-export type NodeCategory = 'source' | 'logic' | 'output' | 'media' | 'video' | 'insight' | 'canvas'
+export type NodeCategory = 'source' | 'logic' | 'output' | 'media' | 'video' | 'insight' | 'canvas' | 'review'
 
 export interface PaletteNodeDef {
   type: string         // matches executor registry key prefix
@@ -413,6 +413,32 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
       pass_label: 'pass',
       fail_label: 'fail',
       fallback_humanizer_id: '',
+    },
+  },
+  // SEO / GEO Review gates
+  {
+    type: 'logic', subtype: 'seo-review',
+    label: 'SEO Review', description: 'Score content for SEO quality — injects requirements into generation when Optimize is on',
+    category: 'review', icon: 'SearchCheck',
+    defaultConfig: {
+      subtype: 'seo-review',
+      mode: 'optimize',
+      threshold: 70,
+      below_threshold_action: 'flag',
+      show_breakdown: true,
+      target_keyword: '',
+    },
+  },
+  {
+    type: 'logic', subtype: 'geo-review',
+    label: 'GEO Review', description: 'Score content for AI search optimization — injects GEO requirements into generation when Optimize is on',
+    category: 'review', icon: 'Bot',
+    defaultConfig: {
+      subtype: 'geo-review',
+      mode: 'optimize',
+      threshold: 70,
+      below_threshold_action: 'flag',
+      show_breakdown: true,
     },
   },
   // Video Upload (source type — uploads a video file and passes the reference downstream)
