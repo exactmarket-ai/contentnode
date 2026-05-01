@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '@contentnode/database'
-import { getContentPackGenQueue } from '../lib/queues.js'
+import { getContentPackGenQueue, getThoughtLeaderSocialSyncQueue } from '../lib/queues.js'
+import { callModel } from '@contentnode/ai'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas
@@ -413,6 +414,14 @@ export async function contentPackRoutes(app: FastifyInstance) {
         WHERE id = ${req.params.id} AND agency_id = ${agencyId}
       `
     } catch { /* table not yet created */ }
+
+    // Capture edit signal when a member-targeted run is approved
+    if (reviewStatus === 'approved') {
+      captureEditSignal(agencyId, req.params.id).catch((err) => {
+        console.error(`[content-packs] edit signal capture failed for run ${req.params.id}:`, err)
+      })
+    }
+
     return reply.send({ data: { ok: true } })
   })
 
@@ -495,4 +504,110 @@ export async function contentPackRoutes(app: FastifyInstance) {
 
     return reply.code(201).send({ data: { runId } })
   })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edit signal capture — fired async on stage → approved for member runs
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function captureEditSignal(agencyId: string, runId: string): Promise<void> {
+  // Load run metadata
+  const runRows = await prisma.$queryRaw<Array<{
+    target_type: string; target_id: string | null; client_id: string; topic_title: string;
+  }>>`
+    SELECT target_type, target_id, client_id, topic_title
+    FROM content_pack_runs
+    WHERE id = ${runId} AND agency_id = ${agencyId}
+    LIMIT 1
+  `
+  const run = runRows[0]
+  if (!run || run.target_type !== 'member' || !run.target_id) return
+
+  // Find items where content was edited (content differs from original_content)
+  const editedItems = await prisma.$queryRaw<Array<{
+    id: string; prompt_name: string; content: string | null; original_content: string | null;
+  }>>`
+    SELECT id, prompt_name, content, original_content
+    FROM content_pack_run_items
+    WHERE run_id = ${runId}
+      AND status = 'completed'
+      AND original_content IS NOT NULL
+      AND content IS DISTINCT FROM original_content
+  `
+
+  if (!editedItems.length) return
+
+  for (const item of editedItems) {
+    const original = (item.original_content ?? '').trim()
+    const approved = (item.content ?? '').trim()
+    if (!original || !approved) continue
+
+    // Summarize the diff with a small Claude call (non-fatal)
+    let keyDifferences = ''
+    try {
+      const diffResult = await callModel(
+        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 100, temperature: 0 },
+        `Compare these two versions of content for the same thought leader. Write ONE sentence describing what changed and why it matters for capturing their authentic voice.
+
+GENERATED:
+${original.slice(0, 500)}
+
+APPROVED:
+${approved.slice(0, 500)}
+
+One sentence:`,
+      )
+      keyDifferences = diffResult.text.trim()
+    } catch {
+      // Non-fatal — omit the diff line
+    }
+
+    const signalContent = [
+      `EDIT SIGNAL`,
+      ``,
+      `Date: ${new Date().toISOString().split('T')[0]}`,
+      `Prompt type: ${item.prompt_name}`,
+      `Topic: ${run.topic_title}`,
+      ``,
+      `What was generated:`,
+      original.slice(0, 500),
+      ``,
+      `What was approved:`,
+      approved.slice(0, 500),
+      keyDifferences ? `\nKey differences: ${keyDifferences}` : '',
+    ].join('\n')
+
+    await prisma.$executeRaw`
+      INSERT INTO thought_leader_brain_attachments
+        (id, agency_id, client_id, leadership_member_id, source, content, metadata, created_at)
+      VALUES (
+        ${crypto.randomUUID()},
+        ${agencyId},
+        ${run.client_id},
+        ${run.target_id},
+        'edit_signal',
+        ${signalContent},
+        ${JSON.stringify({ contentPackRunId: runId, itemId: item.id })}::jsonb,
+        NOW()
+      )
+    `
+    console.log(`[content-packs] edit signal written for member ${run.target_id} item ${item.id}`)
+  }
+
+  // Trigger synthesis after all edit signals are written
+  if (editedItems.length > 0) {
+    try {
+      const queue = getThoughtLeaderSocialSyncQueue()
+      await queue.add('synthesize-after-edit', {
+        agencyId,
+        leadershipMemberId: run.target_id,
+        synthesizeOnly: true,
+      }, {
+        removeOnComplete: { count: 10 },
+        removeOnFail:     { count: 10 },
+      })
+    } catch (err) {
+      console.error(`[content-packs] synthesis queue failed for member ${run.target_id}:`, err)
+    }
+  }
 }

@@ -40,6 +40,7 @@ export const QUEUE_BRIEF_EXTRACT                  = `${_p}brief-extract`
 export const QUEUE_NEWSROOM_RESEARCH              = 'newsroom-research'
 export const QUEUE_CONTENT_PACK_GENERATION        = `${_p}content-pack-generation`
 export const QUEUE_PROMPT_PROPAGATION             = `${_p}prompt-propagation`
+export const QUEUE_THOUGHT_LEADER_SOCIAL_SYNC     = `${_p}thought-leader-social-sync`
 
 export interface ContentPackGenJobData {
   agencyId:         string
@@ -269,6 +270,12 @@ export interface BriefExtractJobData {
 export interface PromptPropagationJobData {
   agencyId:   string
   templateId: string
+}
+
+export interface ThoughtLeaderSocialSyncJobData {
+  agencyId:            string
+  leadershipMemberId:  string
+  synthesizeOnly?:     boolean  // when true, skip the social fetch and only run synthesis
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

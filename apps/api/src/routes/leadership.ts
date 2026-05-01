@@ -2,16 +2,23 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
+import { getThoughtLeaderSocialSyncQueue } from '../lib/queues.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas
 // ─────────────────────────────────────────────────────────────────────────────
 
+const socialProfileSchema = z.object({
+  platform:    z.enum(['linkedin', 'x', 'substack', 'website', 'other']),
+  url:         z.string().url(),
+  syncEnabled: z.boolean().default(true),
+})
+
 const memberBody = z.object({
   clientId:        z.string(),
   name:            z.string().min(1).max(200),
   role:            z.string().min(1).max(200),
-  linkedInUrl:     z.string().url().optional().or(z.literal('')),
+  socialProfiles:  z.array(socialProfileSchema).default([]),
   headshotUrl:     z.string().url().optional().or(z.literal('')),
   bio:             z.string().max(1000).optional(),
   personalTone:    z.string().max(1000).optional(),
@@ -21,7 +28,6 @@ const memberBody = z.object({
 })
 
 const memberPatch = memberBody.partial().omit({ clientId: true }).extend({
-  // Integration / content pack fields (new columns added by migration)
   defaultContentPackId: z.string().nullable().optional(),
   mondayBoardId:        z.string().nullable().optional(),
   mondayColumnMapping:  z.record(z.unknown()).nullable().optional(),
@@ -36,10 +42,6 @@ const CONTENT_TYPES = [
   'speaking_bio',
   'email_intro',
 ] as const
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Routes
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: fetch extended integration fields for a leadership member
@@ -83,6 +85,44 @@ function emptyMemberExtended(): MemberExtended {
   return { defaultContentPackId: null, mondayBoardId: null, mondayColumnMapping: null, boxFolderId: null }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Brain seed helper — builds initial profile attachment text
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildProfileSeedText(member: {
+  name: string
+  role: string
+  clientName: string
+  bio: string | null
+  personalTone: string | null
+  signatureTopics: unknown
+  signatureStories: unknown
+  avoidPhrases: unknown
+  socialProfiles: unknown
+}): string {
+  const topics  = Array.isArray(member.signatureTopics)  ? (member.signatureTopics  as string[]).join(', ')  : ''
+  const stories = Array.isArray(member.signatureStories) ? (member.signatureStories as string[]).join(', ')  : ''
+  const avoid   = Array.isArray(member.avoidPhrases)     ? (member.avoidPhrases     as string[]).join(', ')  : ''
+  const profiles = Array.isArray(member.socialProfiles)
+    ? (member.socialProfiles as Array<{ platform: string; url: string }>).map((p) => `${p.platform}: ${p.url}`).join(', ')
+    : ''
+
+  return [
+    `THOUGHT LEADER PROFILE SEED`,
+    ``,
+    `Name: ${member.name}`,
+    `Title: ${member.role}`,
+    `Company: ${member.clientName}`,
+    member.bio         ? `\nBio: ${member.bio}` : null,
+    member.personalTone ? `\nVoice and tone: ${member.personalTone}` : null,
+    topics             ? `\nSignature topics: ${topics}` : null,
+    stories            ? `\nSignature stories and examples they reference: ${stories}` : null,
+    avoid              ? `\nThings they would never say: ${avoid}` : null,
+    profiles           ? `\nSocial profiles: ${profiles}` : null,
+  ].filter((l) => l !== null).join('\n')
+}
+
+
 export async function leadershipRoutes(app: FastifyInstance) {
   // ── GET / — list members for a client ─────────────────────────────────────
   app.get('/', async (req, reply) => {
@@ -107,7 +147,6 @@ export async function leadershipRoutes(app: FastifyInstance) {
     const parsed = memberBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
 
-    // Verify client belongs to this agency
     const client = await prisma.client.findFirst({ where: { id: parsed.data.clientId, agencyId } })
     if (!client) return reply.code(404).send({ error: 'Client not found' })
 
@@ -117,7 +156,7 @@ export async function leadershipRoutes(app: FastifyInstance) {
         clientId:        parsed.data.clientId,
         name:            parsed.data.name,
         role:            parsed.data.role,
-        linkedInUrl:     parsed.data.linkedInUrl || null,
+        socialProfiles:  parsed.data.socialProfiles as never,
         headshotUrl:     parsed.data.headshotUrl || null,
         bio:             parsed.data.bio ?? null,
         personalTone:    parsed.data.personalTone ?? null,
@@ -126,6 +165,10 @@ export async function leadershipRoutes(app: FastifyInstance) {
         avoidPhrases:    parsed.data.avoidPhrases,
       },
     })
+
+    // Seed brain asynchronously — don't block the response
+    seedOrUpdateBrainViaAttachment(agencyId, parsed.data.clientId, member.id, member).catch(() => {})
+
     return reply.code(201).send({ data: member })
   })
 
@@ -138,7 +181,6 @@ export async function leadershipRoutes(app: FastifyInstance) {
     const parsed = memberPatch.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
 
-    // Separate extended fields from Prisma-managed fields
     const {
       defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId,
       ...coreData
@@ -148,8 +190,8 @@ export async function leadershipRoutes(app: FastifyInstance) {
       where: { id: existing.id },
       data: {
         ...coreData,
-        linkedInUrl:  coreData.linkedInUrl  !== undefined ? (coreData.linkedInUrl  || null) : undefined,
-        headshotUrl:  coreData.headshotUrl  !== undefined ? (coreData.headshotUrl  || null) : undefined,
+        socialProfiles: coreData.socialProfiles !== undefined ? (coreData.socialProfiles as never) : undefined,
+        headshotUrl:    coreData.headshotUrl !== undefined ? (coreData.headshotUrl || null) : undefined,
       },
     })
 
@@ -172,8 +214,16 @@ export async function leadershipRoutes(app: FastifyInstance) {
           await prisma.$executeRaw`UPDATE leadership_members SET box_folder_id = ${boxFolderId} WHERE id = ${req.params.id}`
         }
       } catch {
-        // Columns not yet created — ignore, schema migration needed
+        // Columns not yet created — ignore
       }
+    }
+
+    // Write profile update attachment and trigger re-synthesis asynchronously
+    const profileFieldsChanged = ['name', 'role', 'bio', 'personalTone', 'signatureTopics', 'signatureStories', 'avoidPhrases', 'socialProfiles']
+      .some((k) => k in coreData)
+
+    if (profileFieldsChanged) {
+      seedOrUpdateBrainViaAttachment(agencyId, existing.clientId, existing.id, updated).catch(() => {})
     }
 
     const extended = await getMemberExtended(req.params.id)
@@ -190,6 +240,91 @@ export async function leadershipRoutes(app: FastifyInstance) {
     return reply.code(204).send()
   })
 
+  // ── GET /:id/brain — brain status + attachment counts + compiled context ────
+  app.get<{ Params: { id: string } }>('/:id/brain', async (req, reply) => {
+    const { agencyId } = req.auth
+    const member = await prisma.leadershipMember.findFirst({
+      where: { id: req.params.id, agencyId },
+      select: { id: true, socialSyncLastRanAt: true },
+    })
+    if (!member) return reply.code(404).send({ error: 'Member not found' })
+
+    const [brain, attachmentCounts] = await Promise.all([
+      prisma.thoughtLeaderBrain.findFirst({
+        where: { leadershipMemberId: req.params.id },
+        select: { context: true, lastSynthesisAt: true },
+      }),
+      prisma.$queryRaw<Array<{ source: string; cnt: bigint }>>`
+        SELECT source, COUNT(*) AS cnt
+        FROM thought_leader_brain_attachments
+        WHERE leadership_member_id = ${req.params.id} AND agency_id = ${agencyId}
+        GROUP BY source
+      `,
+    ])
+
+    const counts = attachmentCounts.map((r) => ({ source: r.source, count: Number(r.cnt) }))
+
+    return reply.send({
+      data: {
+        exists:             !!brain,
+        lastSynthesisAt:    brain?.lastSynthesisAt ?? null,
+        context:            brain?.context ?? null,
+        attachments:        counts,
+        socialSyncLastRanAt: member.socialSyncLastRanAt,
+      },
+    })
+  })
+
+  // ── GET /:id/brain/attachments — chronological attachment feed ───────────
+  app.get<{ Params: { id: string } }>('/:id/brain/attachments', async (req, reply) => {
+    const { agencyId } = req.auth
+    const member = await prisma.leadershipMember.findFirst({
+      where: { id: req.params.id, agencyId },
+      select: { id: true },
+    })
+    if (!member) return reply.code(404).send({ error: 'Member not found' })
+
+    const attachments = await prisma.thoughtLeaderBrainAttachment.findMany({
+      where: { leadershipMemberId: req.params.id, agencyId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, source: true, content: true, metadata: true, createdAt: true },
+    })
+
+    return reply.send({ data: attachments })
+  })
+
+  // ── POST /:id/sync-now — manual social profile sync (or synthesis-only) ──
+  app.post<{ Params: { id: string } }>('/:id/sync-now', async (req, reply) => {
+    const { agencyId } = req.auth
+    const body = req.body as { synthesizeOnly?: boolean } | null
+    const synthesizeOnly = (body as { synthesizeOnly?: boolean } | null)?.synthesizeOnly === true
+
+    const member = await prisma.leadershipMember.findFirst({
+      where: { id: req.params.id, agencyId },
+      select: { id: true, socialProfiles: true },
+    })
+    if (!member) return reply.code(404).send({ error: 'Member not found' })
+
+    if (!synthesizeOnly) {
+      const profiles = member.socialProfiles as Array<{ syncEnabled: boolean }>
+      const hasSync = profiles.some((p) => p.syncEnabled)
+      if (!hasSync) return reply.code(400).send({ error: 'No sync-enabled social profiles on this member' })
+    }
+
+    const queue = getThoughtLeaderSocialSyncQueue()
+    await queue.add(synthesizeOnly ? 'synthesize' : 'sync-now', {
+      agencyId,
+      leadershipMemberId: member.id,
+      ...(synthesizeOnly ? { synthesizeOnly: true } : {}),
+    }, {
+      removeOnComplete: { count: 10 },
+      removeOnFail:     { count: 10 },
+    })
+
+    return reply.code(202).send({ data: { queued: true, synthesizeOnly } })
+  })
+
   // ── POST /:id/generate — generate content in the member's voice ────────────
   app.post<{ Params: { id: string } }>('/:id/generate', async (req, reply) => {
     const { agencyId } = req.auth
@@ -203,7 +338,6 @@ export async function leadershipRoutes(app: FastifyInstance) {
     const member = await prisma.leadershipMember.findFirst({ where: { id: req.params.id, agencyId } })
     if (!member) return reply.code(404).send({ error: 'Member not found' })
 
-    // Pull client brain for company context
     const client = await prisma.client.findFirst({
       where: { id: member.clientId, agencyId },
       select: { name: true },
@@ -217,16 +351,26 @@ export async function leadershipRoutes(app: FastifyInstance) {
       ...((brandBuilder?.dataJson ?? {}) as object),
     } as Record<string, unknown>
 
-    // Build context block
-    const execContext = [
-      `Name: ${member.name}`,
-      `Role: ${member.role}`,
-      member.bio             ? `Bio: ${member.bio}` : null,
-      member.personalTone    ? `Personal tone: ${member.personalTone}` : null,
-      (member.signatureTopics as string[]).length  ? `Signature topics: ${(member.signatureTopics as string[]).join(', ')}` : null,
-      (member.signatureStories as string[]).length ? `Signature stories/examples they reference: ${(member.signatureStories as string[]).join(' | ')}` : null,
-      (member.avoidPhrases as string[]).length     ? `Things this person would never say: ${(member.avoidPhrases as string[]).join(', ')}` : null,
-    ].filter(Boolean).join('\n')
+    // Use Thought Leader brain context if available, otherwise fall back to profile fields
+    const brainRecord = await prisma.thoughtLeaderBrain.findFirst({
+      where: { leadershipMemberId: req.params.id },
+      select: { context: true },
+    })
+
+    let execContext: string
+    if (brainRecord?.context) {
+      execContext = `THOUGHT LEADER VOICE PROFILE:\n${brainRecord.context}`
+    } else {
+      execContext = [
+        `Name: ${member.name}`,
+        `Role: ${member.role}`,
+        member.bio             ? `Bio: ${member.bio}` : null,
+        member.personalTone    ? `Personal tone: ${member.personalTone}` : null,
+        (member.signatureTopics as string[]).length  ? `Signature topics: ${(member.signatureTopics as string[]).join(', ')}` : null,
+        (member.signatureStories as string[]).length ? `Signature stories/examples they reference: ${(member.signatureStories as string[]).join(' | ')}` : null,
+        (member.avoidPhrases as string[]).length     ? `Things this person would never say: ${(member.avoidPhrases as string[]).join(', ')}` : null,
+      ].filter(Boolean).join('\n')
+    }
 
     const companyContext = [
       client?.name ? `Company: ${client.name}` : null,
@@ -276,4 +420,48 @@ Write it now.`
 
     return reply.send({ data: { content: result.text.trim(), contentType, memberId: member.id } })
   })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Brain seed via attachment — called from API routes (no direct worker import)
+// The worker process handles synthesis; we just write the attachment here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function seedOrUpdateBrainViaAttachment(
+  agencyId: string,
+  clientId: string,
+  memberId: string,
+  member: {
+    name: string
+    role: string
+    bio: string | null
+    personalTone: string | null
+    signatureTopics: unknown
+    signatureStories: unknown
+    avoidPhrases: unknown
+    socialProfiles: unknown
+  },
+): Promise<void> {
+  try {
+    const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { name: true } })
+    const seedText = buildProfileSeedText({ ...member, clientName: client?.name ?? '' })
+
+    await prisma.thoughtLeaderBrainAttachment.create({
+      data: { agencyId, clientId, leadershipMemberId: memberId, source: 'profile', content: seedText },
+    })
+    console.log(`[leadership] brain profile attachment written for member ${memberId}`)
+
+    // Enqueue synthesis — worker picks it up and runs synthesiseThoughtLeaderContext
+    const queue = getThoughtLeaderSocialSyncQueue()
+    await queue.add('synthesize', {
+      agencyId,
+      leadershipMemberId: memberId,
+      synthesizeOnly: true,
+    }, {
+      removeOnComplete: { count: 10 },
+      removeOnFail:     { count: 10 },
+    })
+  } catch (err) {
+    console.error(`[leadership] brain attachment failed for member ${memberId}:`, err)
+  }
 }

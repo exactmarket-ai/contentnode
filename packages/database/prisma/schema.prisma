@@ -2221,7 +2221,8 @@ model LeadershipMember {
   clientId         String   @map("client_id")
   name             String
   role             String
-  linkedInUrl      String?  @map("linkedin_url")
+  socialProfiles       Json     @default("[]") @map("social_profiles")
+  socialSyncLastRanAt  DateTime? @map("social_sync_last_ran_at")
   headshotUrl      String?  @map("headshot_url")
   bio              String?  @db.Text
   personalTone     String?  @db.Text @map("personal_tone")
@@ -2238,10 +2239,52 @@ model LeadershipMember {
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   defaultContentPack   ContentPack? @relation("MemberDefaultPack", fields: [defaultContentPackId], references: [id], onDelete: SetNull)
+  brain            ThoughtLeaderBrain?
+  brainAttachments ThoughtLeaderBrainAttachment[]
 
   @@index([agencyId])
   @@index([clientId])
   @@map("leadership_members")
+}
+
+// ─────────────────────────────────────────────
+// ThoughtLeaderBrain — compiled voice profile for a leadership member
+// ─────────────────────────────────────────────
+model ThoughtLeaderBrain {
+  id                 String    @id @default(cuid())
+  agencyId           String    @map("agency_id")
+  clientId           String    @map("client_id")
+  leadershipMemberId String    @unique @map("leadership_member_id")
+  context            String?   @db.Text
+  lastSynthesisAt    DateTime? @map("last_synthesis_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  member LeadershipMember @relation(fields: [leadershipMemberId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("thought_leader_brains")
+}
+
+// ─────────────────────────────────────────────
+// ThoughtLeaderBrainAttachment — individual signal entries for a leader's brain
+// ─────────────────────────────────────────────
+model ThoughtLeaderBrainAttachment {
+  id                 String   @id @default(cuid())
+  agencyId           String   @map("agency_id")
+  clientId           String   @map("client_id")
+  leadershipMemberId String   @map("leadership_member_id")
+  source             String   // profile | content_run | edit_signal | social_sync
+  content            String   @db.Text
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  member LeadershipMember @relation(fields: [leadershipMemberId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([leadershipMemberId])
+  @@map("thought_leader_brain_attachments")
 }
 
 // ─────────────────────────────────────────────
@@ -2822,6 +2865,7 @@ model ContentPackRunItem {
   promptName       String    @map("prompt_name")
   status           String    @default("pending") // pending | running | completed | failed
   content          String?   @db.Text
+  originalContent  String?   @db.Text @map("original_content")
   errorMessage     String?   @db.Text @map("error_message")
   mondaySubItemId  String?   @map("monday_sub_item_id")
   boxFileId        String?   @map("box_file_id")

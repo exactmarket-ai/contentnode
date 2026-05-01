@@ -1,5 +1,6 @@
 import { prisma, withAgency } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
+import { synthesiseThoughtLeaderContext } from './clientBrainExtraction.js'
 import type { Job } from 'bullmq'
 
 // Job data type mirrors the API's ContentPackGenJobData
@@ -26,31 +27,74 @@ const SONNET = {
   max_tokens: 2000,
 }
 
-// ── Build voice/tone context from a leadership member ─────────────────────────
+// ── Build four-context block for a leadership member assignment ───────────────
 
-async function buildMemberContext(memberId: string, agencyId: string): Promise<string> {
-  const rows = await prisma.$queryRaw<Array<{
-    name: string; role: string; bio: string | null; personal_tone: string | null;
-    signature_topics: unknown; signature_stories: unknown; avoid_phrases: unknown;
-  }>>`
-    SELECT name, role, bio, personal_tone, signature_topics, signature_stories, avoid_phrases
-    FROM leadership_members
-    WHERE id = ${memberId} AND agency_id = ${agencyId}
-    LIMIT 1
-  `
-  if (!rows.length) return ''
-  const m = rows[0]
-  const topics  = Array.isArray(m.signature_topics)  ? (m.signature_topics  as string[]).join(', ')  : ''
-  const stories = Array.isArray(m.signature_stories) ? (m.signature_stories as string[]).join(' | ') : ''
-  const avoid   = Array.isArray(m.avoid_phrases)     ? (m.avoid_phrases     as string[]).join(', ')  : ''
-  return [
-    `Writing voice: ${m.name} (${m.role})`,
-    m.bio               ? `Bio: ${m.bio}` : null,
-    m.personal_tone     ? `Personal tone: ${m.personal_tone}` : null,
-    topics              ? `Signature topics: ${topics}` : null,
-    stories             ? `Signature stories/examples: ${stories}` : null,
-    avoid               ? `Never say: ${avoid}` : null,
-  ].filter(Boolean).join('\n')
+async function buildMemberFourContextBlock(
+  memberId: string,
+  agencyId: string,
+  clientId: string,
+  verticalId: string | null,
+): Promise<{ systemBlock: string; fallbackVoice: string }> {
+  const [memberRows, agencyRow, clientRow, verticalRow, brainRow] = await Promise.all([
+    prisma.$queryRaw<Array<{
+      name: string; role: string; bio: string | null; personal_tone: string | null;
+      signature_topics: unknown; signature_stories: unknown; avoid_phrases: unknown;
+    }>>`
+      SELECT name, role, bio, personal_tone, signature_topics, signature_stories, avoid_phrases
+      FROM leadership_members WHERE id = ${memberId} AND agency_id = ${agencyId} LIMIT 1`,
+    prisma.$queryRaw<Array<{ brain_context: string | null }>>`
+      SELECT brain_context FROM agencies WHERE id = ${agencyId} LIMIT 1`,
+    prisma.$queryRaw<Array<{ brain_context: string | null }>>`
+      SELECT brain_context FROM clients WHERE id = ${clientId} AND agency_id = ${agencyId} LIMIT 1`,
+    verticalId
+      ? prisma.$queryRaw<Array<{ brain_context: string | null }>>`
+          SELECT brain_context FROM verticals WHERE id = ${verticalId} AND agency_id = ${agencyId} LIMIT 1`
+      : Promise.resolve([] as Array<{ brain_context: string | null }>),
+    prisma.$queryRaw<Array<{ context: string | null }>>`
+      SELECT context FROM thought_leader_brains WHERE leadership_member_id = ${memberId} LIMIT 1`,
+  ])
+
+  const m = memberRows[0]
+  const agencyCtx   = (agencyRow[0]?.brain_context ?? '').slice(0, 400)
+  const clientCtx   = (clientRow[0]?.brain_context ?? '').slice(0, 800)
+  const verticalCtx = (verticalRow[0]?.brain_context ?? '').slice(0, 800)
+  const tlBrain     = brainRow[0]?.context ?? null
+
+  // Fallback voice block (used when no thought leader brain exists yet)
+  let fallbackVoice = ''
+  if (m) {
+    const topics  = Array.isArray(m.signature_topics)  ? (m.signature_topics  as string[]).join(', ')  : ''
+    const stories = Array.isArray(m.signature_stories) ? (m.signature_stories as string[]).join(' | ') : ''
+    const avoid   = Array.isArray(m.avoid_phrases)     ? (m.avoid_phrases     as string[]).join(', ')  : ''
+    fallbackVoice = [
+      `Writing voice: ${m.name} (${m.role})`,
+      m.bio           ? `Bio: ${m.bio}` : null,
+      m.personal_tone ? `Personal tone: ${m.personal_tone}` : null,
+      topics          ? `Signature topics: ${topics}` : null,
+      stories         ? `Signature stories/examples: ${stories}` : null,
+      avoid           ? `Never say: ${avoid}` : null,
+    ].filter(Boolean).join('\n')
+  }
+
+  // Build the four-context block
+  const parts: string[] = []
+  if (agencyCtx) {
+    parts.push(`AGENCY CONTEXT (baseline):\n${agencyCtx}`)
+  }
+  if (clientCtx) {
+    parts.push(`CLIENT / COMPANY CONTEXT:\n${clientCtx}`)
+  }
+  if (verticalCtx) {
+    parts.push(`VERTICAL CONTEXT:\n${verticalCtx}`)
+  }
+  if (tlBrain) {
+    parts.push(`THOUGHT LEADER VOICE PROFILE (apply with highest priority):\n${tlBrain}`)
+    parts.push(`When the above contexts conflict, the Thought Leader Voice Profile takes precedence on all voice, tone, and style decisions.\nThe Vertical Context takes precedence on topic positioning and audience framing.`)
+  } else if (fallbackVoice) {
+    parts.push(`THOUGHT LEADER VOICE PROFILE (apply with highest priority):\n${fallbackVoice}`)
+  }
+
+  return { systemBlock: parts.join('\n\n'), fallbackVoice }
 }
 
 // ── Build voice/tone context from a vertical ──────────────────────────────────
@@ -111,35 +155,42 @@ export async function runContentPackGeneration(job: Job<ContentPackGenJobData>):
       })
       if (!template) throw new Error(`Prompt template ${promptTemplateId} not found`)
 
-      // ── Fetch client brain context ────────────────────────────────────────
+      // ── Fetch client + topic vertical for context ─────────────────────────
       const client = await prisma.client.findFirst({
         where: { id: clientId, agencyId },
         select: { name: true, brainContext: true },
       })
 
-      // ── Build target voice context ────────────────────────────────────────
-      let targetContext = ''
-      if (targetType === 'member' && targetId) {
-        targetContext = await buildMemberContext(targetId, agencyId)
-      } else if (targetType === 'vertical' && targetId) {
-        targetContext = await buildVerticalContext(targetId, agencyId)
-      } else if (targetType === 'company') {
-        targetContext = `Writing for: ${targetName ?? client?.name ?? 'Company'} (company-level content)`
-      }
-
-      // ── Fetch topic sources (for research context) ────────────────────────
-      const topicRows = await prisma.$queryRaw<Array<{ sources: unknown }>>`
-        SELECT sources FROM topic_queue WHERE id = ${job.data.topicId} LIMIT 1
+      const topicRows = await prisma.$queryRaw<Array<{ sources: unknown; vertical_id: string | null }>>`
+        SELECT sources, vertical_id FROM topic_queue WHERE id = ${job.data.topicId} LIMIT 1
       `
+      const topicVerticalId = topicRows[0]?.vertical_id ?? null
       const sources = Array.isArray(topicRows[0]?.sources) ? topicRows[0].sources as Array<{ title: string; url: string; publication: string }> : []
       const sourcesText = sources.slice(0, 5).map((s) => `- ${s.title} (${s.publication})`).join('\n')
 
-      // ── Build the generation prompt ───────────────────────────────────────
-      const systemPrompt = `You are a senior B2B content strategist and ghostwriter. Generate high-quality content following the prompt template exactly.
+      // ── Build system prompt — four-context for member, legacy for others ──
+      let systemPrompt: string
+
+      if (targetType === 'member' && targetId) {
+        const { systemBlock } = await buildMemberFourContextBlock(targetId, agencyId, clientId, topicVerticalId)
+        systemPrompt = `You are a senior B2B content strategist and ghostwriter. Generate high-quality content following the prompt template exactly.
+
+${systemBlock}
+
+Output only the finished content — no preamble, no meta-commentary.`
+      } else {
+        let targetContext = ''
+        if (targetType === 'vertical' && targetId) {
+          targetContext = await buildVerticalContext(targetId, agencyId)
+        } else if (targetType === 'company') {
+          targetContext = `Writing for: ${targetName ?? client?.name ?? 'Company'} (company-level content)`
+        }
+        systemPrompt = `You are a senior B2B content strategist and ghostwriter. Generate high-quality content following the prompt template exactly.
 
 ${targetContext ? `Voice/audience context:\n${targetContext}\n` : ''}
 ${client?.brainContext ? `Company context:\n${client.brainContext.slice(0, 600)}\n` : ''}
 Output only the finished content — no preamble, no meta-commentary.`
+      }
 
       const userMessage = `Topic: ${topicTitle}
 
@@ -153,10 +204,10 @@ Generate the content now.`
       const result = await callModel({ ...SONNET, system_prompt: systemPrompt }, userMessage)
       const content = result.text.trim()
 
-      // ── Save completed item ────────────────────────────────────────────────
+      // ── Save completed item — store original_content snapshot at generation time
       await prisma.$executeRaw`
         UPDATE content_pack_run_items
-        SET status = 'completed', content = ${content}, completed_at = NOW()
+        SET status = 'completed', content = ${content}, original_content = ${content}, completed_at = NOW()
         WHERE id = ${itemId}
       `
 
@@ -174,6 +225,13 @@ Generate the content now.`
           SET status = 'completed', completed_at = NOW()
           WHERE id = ${runId}
         `
+
+        // Write content_run brain attachment for member assignments
+        if (targetType === 'member' && targetId) {
+          writeMemberContentRunSignal(agencyId, clientId, targetId, runId, topicTitle, topicSummary, promptName).catch((err) => {
+            console.error(`[content-pack-gen] brain signal failed for run ${runId}:`, err)
+          })
+        }
 
         // Trigger Monday + Box integrations
         await onRunComplete(agencyId, clientId, runId, targetType, targetId).catch((err) => {
@@ -213,6 +271,62 @@ Generate the content now.`
       }
     }
   })
+}
+
+// ── Write content_run brain signal after all items complete ───────────────────
+
+async function writeMemberContentRunSignal(
+  agencyId: string,
+  clientId: string,
+  memberId: string,
+  runId: string,
+  topicTitle: string,
+  topicSummary: string,
+  promptName: string,
+): Promise<void> {
+  const runRows = await prisma.$queryRaw<Array<{
+    pack_names: unknown; completed_at: Date | null; topic_title: string;
+  }>>`
+    SELECT pack_names, completed_at, topic_title FROM content_pack_runs WHERE id = ${runId} LIMIT 1
+  `
+  const run = runRows[0]
+  if (!run) return
+
+  const packNames = Array.isArray(run.pack_names) ? (run.pack_names as string[]).join(', ') : ''
+  const completedAt = (run.completed_at ?? new Date()).toISOString().split('T')[0]
+
+  const promptTypes = await prisma.$queryRaw<Array<{ prompt_name: string }>>`
+    SELECT prompt_name FROM content_pack_run_items WHERE run_id = ${runId} AND status = 'completed'
+  `
+  const promptList = promptTypes.map((r) => r.prompt_name).join(', ')
+
+  const content = `CONTENT RUN SIGNAL
+
+Date: ${completedAt}
+Topic: ${topicTitle}
+Summary: ${topicSummary}
+Prompt types generated: ${promptList || promptName}
+Pack: ${packNames || 'N/A'}`
+
+  const member = await prisma.leadershipMember.findFirst({
+    where: { id: memberId, agencyId },
+    select: { clientId: true },
+  })
+  if (!member) return
+
+  await prisma.thoughtLeaderBrainAttachment.create({
+    data: {
+      agencyId,
+      clientId,
+      leadershipMemberId: memberId,
+      source: 'content_run',
+      content,
+      metadata: { contentPackRunId: runId },
+    },
+  })
+
+  await synthesiseThoughtLeaderContext(agencyId, clientId, memberId)
+  console.log(`[content-pack-gen] brain content_run signal written for member ${memberId}`)
 }
 
 // ── Post-completion: Monday + Box ─────────────────────────────────────────────

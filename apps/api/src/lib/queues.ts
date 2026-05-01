@@ -30,8 +30,9 @@ export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
 export const QUEUE_BOX_DIFF            = 'box-diff'
 export const QUEUE_BOX_VERSION_SCAN    = 'box-version-scan'
 export const QUEUE_NEWSROOM_RESEARCH      = 'newsroom-research'
-export const QUEUE_CONTENT_PACK_GENERATION  = 'content-pack-generation'
-export const QUEUE_PROMPT_PROPAGATION       = 'prompt-propagation'
+export const QUEUE_CONTENT_PACK_GENERATION        = 'content-pack-generation'
+export const QUEUE_PROMPT_PROPAGATION             = 'prompt-propagation'
+export const QUEUE_THOUGHT_LEADER_SOCIAL_SYNC     = 'thought-leader-social-sync'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -423,4 +424,18 @@ export function getPromptPropagationQueue(): Queue<PromptPropagationJobData> {
     promptPropagationQueue = new Queue<PromptPropagationJobData>(QUEUE_PROMPT_PROPAGATION, { connection: getBullMQConnection() })
   }
   return promptPropagationQueue
+}
+
+export interface ThoughtLeaderSocialSyncJobData {
+  agencyId:           string
+  leadershipMemberId: string
+  synthesizeOnly?:    boolean
+}
+
+let thoughtLeaderSocialSyncQueue: Queue<ThoughtLeaderSocialSyncJobData> | null = null
+export function getThoughtLeaderSocialSyncQueue(): Queue<ThoughtLeaderSocialSyncJobData> {
+  if (!thoughtLeaderSocialSyncQueue) {
+    thoughtLeaderSocialSyncQueue = new Queue<ThoughtLeaderSocialSyncJobData>(QUEUE_THOUGHT_LEADER_SOCIAL_SYNC, { connection: getBullMQConnection() })
+  }
+  return thoughtLeaderSocialSyncQueue
 }

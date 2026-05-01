@@ -20,6 +20,7 @@ import {
   synthesiseAgencyContext,
   synthesiseVerticalContext,
 } from './clientBrainExtraction.js'
+import { runThoughtLeaderSocialSync } from './thoughtLeaderSocialSync.js'
 import type { NodeExecutionContext } from './executors/base.js'
 
 const SONNET: ModelConfig = {
@@ -383,6 +384,13 @@ async function runResearch(
       usageCtx.clientId,
       usageCtx.taskId,
     )
+  }
+
+  if (type === 'thought_leader_social_sync') {
+    const leadershipMemberId = config.leadershipMemberId as string | undefined
+    if (!leadershipMemberId) throw new Error('thought_leader_social_sync requires config.leadershipMemberId')
+    await runThoughtLeaderSocialSync(usageCtx.agencyId, leadershipMemberId)
+    return `Social sync completed for member ${leadershipMemberId}`
   }
 
   let result: { output?: unknown } | null = null

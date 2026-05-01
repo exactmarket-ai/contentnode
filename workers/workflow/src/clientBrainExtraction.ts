@@ -97,7 +97,7 @@ async function extractTextFromBuffer(buffer: Buffer, filename: string, mimeType:
   return null
 }
 
-async function fetchUrlText(url: string): Promise<string> {
+export async function fetchUrlText(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: { 'User-Agent': 'ContentNodeBot/1.0' },
     signal: AbortSignal.timeout(15000),
@@ -332,6 +332,86 @@ export async function assembleLayeredContext(
   })
 
   return sections.join('\n\n---\n\n')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Thought Leader brain synthesis
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function synthesiseThoughtLeaderContext(
+  agencyId: string,
+  clientId: string,
+  leadershipMemberId: string,
+): Promise<void> {
+  const attachments = await prisma.thoughtLeaderBrainAttachment.findMany({
+    where: { agencyId, leadershipMemberId },
+    orderBy: { createdAt: 'asc' },
+    select: { source: true, content: true, createdAt: true },
+  })
+  if (attachments.length === 0) return
+
+  const member = await prisma.leadershipMember.findFirst({
+    where: { id: leadershipMemberId, agencyId },
+    select: { name: true, role: true },
+  })
+  if (!member) return
+
+  const parts = attachments.map((a) => {
+    const label = a.source.replace(/_/g, ' ').toUpperCase()
+    return `[${label} — ${a.createdAt.toISOString().split('T')[0]}]\n${a.content}`
+  })
+  const combined = parts.join('\n\n---\n\n').slice(0, 50000)
+
+  const result = await callModel(
+    { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 1500, temperature: 0.3 },
+    `You are building a voice and positioning profile for a thought leader.
+This profile will be used to generate content that sounds authentically
+like them — not a generic executive, not their company's marketing voice,
+but specifically this person.
+
+THOUGHT LEADER ATTACHMENTS (all signal sources, chronological):
+${combined}
+
+Synthesize everything above into a compiled voice profile. Cover:
+
+1. VOICE AND STYLE
+   How this person writes and speaks. Sentence length, vocabulary level,
+   use of data vs narrative, formality level, how they open and close.
+   Be specific — use examples from their actual content where available.
+
+2. PERSPECTIVE AND WORLDVIEW
+   What they believe about their industry. What conventional wisdom they
+   reject. What they are willing to say that peers won't. What they
+   consistently come back to.
+
+3. SIGNATURE PATTERNS
+   Topics they own. Stories or examples they return to. Frameworks or
+   mental models they apply repeatedly.
+
+4. HARD CONSTRAINTS
+   Words, phrases, and approaches they would never use. Non-negotiable
+   voice rules derived from their profile and edit history.
+
+5. RECENT CONTEXT
+   What they are actively thinking and posting about right now. Current
+   preoccupations. Timely angles that would be authentic for them.
+
+6. GENERATION GUIDANCE
+   3-5 specific instructions for a content generator writing in this
+   person's voice. E.g. "Always open with an observation, never a
+   question." "Use short declarative sentences in the first paragraph."
+   "Reference operational reality before strategy."
+
+Keep the profile under 600 words. Be specific. Use their actual words
+and topics as examples wherever the signal supports it.
+Return the profile text only. No preamble, no headers.`,
+  )
+
+  await prisma.thoughtLeaderBrain.upsert({
+    where: { leadershipMemberId },
+    create: { agencyId, clientId, leadershipMemberId, context: result.text, lastSynthesisAt: new Date() },
+    update: { context: result.text, lastSynthesisAt: new Date() },
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

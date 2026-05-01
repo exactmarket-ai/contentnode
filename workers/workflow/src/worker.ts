@@ -81,6 +81,11 @@ import { runStoryboardJob, runStoryboardSceneJob, runStoryboardAssembleJob } fro
 import { QUEUE_KIT_GENERATION, QUEUE_STORYBOARD_GENERATION, QUEUE_STORYBOARD_SCENE, QUEUE_STORYBOARD_ASSEMBLE, type KitGenerationJobData, type StoryboardJobData, type StoryboardSceneJobData, type StoryboardAssembleJobData } from './queues.js'
 import { renewExpiringChannels } from './googleDriveChannelRenewal.js'
 import { propagateAgencyTemplate } from './promptPropagation.js'
+import { runThoughtLeaderSocialSync } from './thoughtLeaderSocialSync.js'
+import {
+  QUEUE_THOUGHT_LEADER_SOCIAL_SYNC,
+  type ThoughtLeaderSocialSyncJobData,
+} from './queues.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -643,6 +648,18 @@ const promptPropagationWorker = createWorker<PromptPropagationJobData>(
   2
 )
 
+// ── thought-leader-social-sync ────────────────────────────────────────────────
+const thoughtLeaderSocialSyncWorker = createWorker<ThoughtLeaderSocialSyncJobData>(
+  QUEUE_THOUGHT_LEADER_SOCIAL_SYNC,
+  async (job: Job<ThoughtLeaderSocialSyncJobData>) => {
+    const { agencyId, leadershipMemberId, synthesizeOnly } = job.data
+    console.log(`[tl-social-sync] ${synthesizeOnly ? 'synthesis-only' : 'full sync'} for member ${leadershipMemberId}`)
+    await runThoughtLeaderSocialSync(agencyId, leadershipMemberId, { synthesizeOnly })
+  },
+  3,
+  { lockDuration: 120_000 },
+)
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -678,6 +695,7 @@ async function shutdown() {
     gdriveRenewalWorker.close(),
     fileCleanupWorker.close(),
     promptPropagationWorker.close(),
+    thoughtLeaderSocialSyncWorker.close(),
   ])
   process.exit(0)
 }
