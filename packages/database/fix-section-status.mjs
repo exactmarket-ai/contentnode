@@ -19,10 +19,10 @@ try {
   for (const fw of frameworks) {
     if (filterName && !fw.client.name.toLowerCase().includes(filterName)) continue
 
-    const sectionStatus = (fw.sectionStatus ?? {}) as Record<string, string>
-    const data = (fw.data ?? {}) as Record<string, unknown>
+    const sectionStatus = fw.sectionStatus ?? {}
+    const data = fw.data ?? {}
 
-    const toFix: string[] = []
+    const toFix = []
 
     for (const [secNum, status] of Object.entries(sectionStatus)) {
       if (status !== 'complete') continue
@@ -31,13 +31,13 @@ try {
       if (!sec || typeof sec !== 'object') { toFix.push(secNum); continue }
 
       let hasContent = false
-      const check = (val: unknown): void => {
+      const check = (val) => {
         if (hasContent) return
         if (typeof val === 'string' && val.trim().length > 0) { hasContent = true; return }
         if (Array.isArray(val)) val.forEach(check)
-        else if (val && typeof val === 'object') Object.values(val as Record<string, unknown>).forEach(check)
+        else if (val && typeof val === 'object') Object.values(val).forEach(check)
       }
-      Object.values(sec as Record<string, unknown>).forEach(check)
+      Object.values(sec).forEach(check)
       if (!hasContent) toFix.push(secNum)
     }
 
