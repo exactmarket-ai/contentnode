@@ -2401,6 +2401,9 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [reimportResult, setReimportResult] = useState<ReimportResult | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestFwRef = useRef<FrameworkData | null>(null)
+  const prevVerticalRef = useRef<Vertical | null>(null)
+  // Always-current save fn — safe to call from effects/event listeners without stale closures
+  const saveNowRef = useRef<() => void>(() => {})
   const contentScrollRef = useRef<HTMLDivElement>(null)
   const templateInputRef = useRef<HTMLInputElement>(null)
   const reimportInputRef = useRef<HTMLInputElement>(null)
@@ -2501,9 +2504,21 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   // Load framework when vertical selected
   useEffect(() => {
-    // Cancel any pending debounced save for the PREVIOUS vertical before loading new data.
-    // Without this, the old timer fires 1500ms later using latestFwRef (which by then holds
-    // the new vertical's data) and writes it to the old vertical's API endpoint — data corruption.
+    // If switching FROM a vertical that has unsaved data, flush it immediately to the OLD endpoint
+    // before we clear latestFwRef. This is the primary data-loss guard on vertical switch.
+    const prevVertical = prevVerticalRef.current
+    if (prevVertical && prevVertical.id !== selectedVertical?.id && latestFwRef.current) {
+      const dataSnapshot = latestFwRef.current
+      apiFetch(`/api/v1/clients/${clientId}/framework/${prevVertical.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataSnapshot),
+      }).catch(() => {})
+    }
+    prevVerticalRef.current = selectedVertical ?? null
+
+    // Cancel any pending debounce timer — it would fire 1500ms later with the new vertical's
+    // data and write it to the old endpoint. The explicit save above already covers the flush.
     if (saveTimer.current) {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
@@ -3057,6 +3072,22 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   const getDraft = useCallback((fieldId: string): string | null => pendingDrafts[fieldId] ?? null, [pendingDrafts])
 
+  // Always-current save — updated each render so effects/event-listeners get the live closure.
+  // Cancels any pending debounce timer and fires immediately.
+  saveNowRef.current = () => {
+    if (!latestFwRef.current || !selectedVertical) return
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    const data = latestFwRef.current
+    const verticalId = selectedVertical.id
+    apiFetch(`/api/v1/clients/${clientId}/framework/${verticalId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+      .then((r) => { if (r.ok) { setLastSavedAt(new Date()); setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000) } else { setSaveStatus('error') } })
+      .catch(() => { setSaveStatus('error') })
+  }
+
   // Save (debounced)
   const scheduleSave = useCallback((data: FrameworkData, delayMs = 1500) => {
     if (!selectedVertical) return
@@ -3084,6 +3115,36 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     if (!saveTimer.current || !latestFwRef.current || !selectedVertical) return
     scheduleSave(latestFwRef.current, 0)
   }, [scheduleSave, selectedVertical])
+
+  // Save on section navigation — user moving between sections means they're done with the current one.
+  // Use saveNowRef so we always have the live vertical/clientId without adding them as deps
+  // (which would re-fire the effect on vertical changes, handled separately above).
+  useEffect(() => {
+    if (activeSection === 'brain' || activeSection === '00') return
+    saveNowRef.current()
+  }, [activeSection]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Save on tab close — fetch with keepalive survives page unload.
+  // Clerk's lastActiveToken is synchronous so no async needed in the handler.
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!latestFwRef.current || !prevVerticalRef.current) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const token = (window as any).Clerk?.session?.lastActiveToken?.getRawString?.() ?? null
+      const url   = `${(import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')}/api/v1/clients/${clientId}/framework/${prevVerticalRef.current.id}`
+      fetch(url, {
+        method:   'PUT',
+        keepalive: true,
+        headers: {
+          'Content-Type':  'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(latestFwRef.current),
+      }).catch(() => {})
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [clientId]) // clientId is stable for the lifetime of this tab
 
   // Heartbeat save — every 30s, persist whatever is in latestFwRef regardless of edit activity.
   // Guards against data loss when the tab is closed between debounce triggers.
