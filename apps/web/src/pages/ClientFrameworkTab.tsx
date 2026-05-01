@@ -2500,6 +2500,15 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   // Load framework when vertical selected
   useEffect(() => {
+    // Cancel any pending debounced save for the PREVIOUS vertical before loading new data.
+    // Without this, the old timer fires 1500ms later using latestFwRef (which by then holds
+    // the new vertical's data) and writes it to the old vertical's API endpoint — data corruption.
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+      saveTimer.current = null
+    }
+    latestFwRef.current = null
+
     if (!selectedVertical) { setFwRaw(null); setSectionStatus({}); return }
     setFwRaw(null)
     apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`)

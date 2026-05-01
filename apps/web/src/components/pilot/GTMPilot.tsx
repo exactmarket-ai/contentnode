@@ -21,12 +21,14 @@ function formatResearchForDisplay(raw: unknown): string {
     if (depth > 4 || lines.length >= 6) return
 
     if (typeof val === 'string') {
-      const trimmed = val.trimStart()
+      // Strip markdown code fences before any processing
+      const stripped = val.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
+      const trimmed = stripped.trimStart()
       // Looks like JSON — try to parse and recurse rather than displaying raw syntax
-      if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && val.length < 100_000) {
-        try { extract(JSON.parse(val), label, depth); return } catch { /* fall through to regex */ }
+      if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && stripped.length < 100_000) {
+        try { extract(JSON.parse(stripped), label, depth); return } catch { /* fall through to regex */ }
         // Parse failed (truncated / malformed) — pull out quoted values via regex instead
-        const extracted = (val.match(/:\s*"([^"\\]{15,}(?:\\.[^"\\]*)*)"/g) ?? [])
+        const extracted = (stripped.match(/:\s*"([^"\\]{15,}(?:\\.[^"\\]*)*)"/g) ?? [])
           .map((m) => m.replace(/^:\s*"/, '').replace(/"$/, '').replace(/\\"/g, '"'))
         extracted.slice(0, 3).forEach((v) => {
           if (lines.length < 6) lines.push(v.length > 140 ? v.slice(0, 140) + '…' : v)
@@ -34,8 +36,8 @@ function formatResearchForDisplay(raw: unknown): string {
         return
       }
       // Plain content string — show if long enough to be meaningful
-      if (val.length > 15) {
-        const text = val.length > 140 ? val.slice(0, 140) + '…' : val
+      if (stripped.length > 15) {
+        const text = stripped.length > 140 ? stripped.slice(0, 140) + '…' : stripped
         lines.push(label ? `${label}: ${text}` : text)
       }
       return
