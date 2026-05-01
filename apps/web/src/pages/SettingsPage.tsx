@@ -881,10 +881,7 @@ function PromptsSection() {
                                       ? <Icons.Eye className="h-3 w-3" />
                                       : <Icons.EyeOff className="h-3 w-3" />
                                     }
-                                    {t.visibleToClients
-                                      ? `Visible to all clients${t.clientCopyCount > 0 ? ` (${t.clientCopyCount})` : ''}`
-                                      : 'Hidden from clients'
-                                    }
+                                    {t.visibleToClients ? 'Visible to all clients' : 'Hidden from clients'}
                                   </button>
                                 )}
                                 {t.useCount > 0 && (

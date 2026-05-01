@@ -167,6 +167,7 @@ export async function agencyPromptTemplateRoutes(app: FastifyInstance) {
       category:         z.string().optional(),
       description:      z.string().max(300).nullable().optional(),
       visibleToClients: z.boolean().optional(),
+      agencyLevel:      z.boolean().optional(),
     }).safeParse(req.body)
 
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
@@ -180,10 +181,20 @@ export async function agencyPromptTemplateRoutes(app: FastifyInstance) {
         ...(patch.category !== undefined    ? { category: patch.category }       : {}),
         ...(patch.description !== undefined ? { description: patch.description } : {}),
         ...(patch.visibleToClients !== undefined ? { visibleToClients: patch.visibleToClients } : {}),
+        ...(patch.agencyLevel !== undefined ? { agencyLevel: patch.agencyLevel } : {}),
       },
     })
 
-    // Handle visibility toggle if agencyLevel template
+    // Demoting to non-agency: hide all client copies so they become independent
+    if (patch.agencyLevel === false) {
+      await prisma.promptTemplate.updateMany({
+        where: { agencyId, agencyTemplateId: template.id },
+        data: { isHidden: true },
+      })
+      return reply.send({ data: updated })
+    }
+
+    // Handle visibility toggle on an agencyLevel template
     if (template.agencyLevel && patch.visibleToClients !== undefined) {
       if (patch.visibleToClients) {
         // Turning ON — un-hide existing copies + propagate to any clients without one

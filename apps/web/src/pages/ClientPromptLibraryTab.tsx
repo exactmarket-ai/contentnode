@@ -19,6 +19,7 @@ interface PromptTemplate {
   category: string
   description: string | null
   source: 'user' | 'ai' | 'global' | 'agency'
+  agencyTemplateId: string | null
   isStale: boolean
   useCount: number
   packUsageCount: number
@@ -425,11 +426,12 @@ interface CardProps {
   onOpen: (t: PromptTemplate) => void
   onDelete: (t: PromptTemplate) => void
   onCopyToGlobal: (t: PromptTemplate) => void
+  onRemoveFromGlobal: (agencyTemplateId: string) => void
   onUse: (id: string) => void
   onFork: (t: PromptTemplate) => void
 }
 
-function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onUse: _onUse, onFork }: CardProps) {
+function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onRemoveFromGlobal, onUse: _onUse, onFork }: CardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -503,13 +505,22 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
                 >
                   <Icons.Copy className="h-3.5 w-3.5" /> Save as new
                 </button>
-                {isAdmin && template.clientId !== null && template.source !== 'agency' && (
-                  <button
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
-                    onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onCopyToGlobal(template) }}
-                  >
-                    <Icons.Globe className="h-3.5 w-3.5" /> Copy to Global Library
-                  </button>
+                {isAdmin && template.clientId !== null && (
+                  template.source === 'agency' && template.agencyTemplateId ? (
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
+                      onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onRemoveFromGlobal(template.agencyTemplateId!) }}
+                    >
+                      <Icons.MinusCircle className="h-3.5 w-3.5" /> Remove from Global Library
+                    </button>
+                  ) : (
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
+                      onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onCopyToGlobal(template) }}
+                    >
+                      <Icons.Globe className="h-3.5 w-3.5" /> Copy to Global Library
+                    </button>
+                  )
                 )}
                 {(isAdmin || template.source === 'user') && template.source !== 'agency' && (
                   <button
@@ -740,6 +751,20 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
       })
   }
 
+  const handleRemoveFromGlobal = (agencyTemplateId: string) => {
+    if (!confirm('Remove this template from the Global Library? It will stay in all client libraries where it currently exists but will no longer be managed at the agency level.')) return
+    apiFetch(`/api/v1/agency/prompt-templates/${agencyTemplateId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agencyLevel: false, visibleToClients: false }),
+    }).then((r) => {
+      if (r.ok) setTemplates((prev) => prev.map((t) =>
+        t.agencyTemplateId === agencyTemplateId ? { ...t, source: 'user' as const, agencyTemplateId: null } : t
+      ))
+      else r.json().then(({ error }) => alert(error ?? 'Failed to remove from Global Library'))
+    })
+  }
+
   const handleSaved = (updated: PromptTemplate) => {
     setTemplates((prev) => prev.map((t) => t.id === updated.id ? { ...t, ...updated } : t))
     setOpenTemplate({ ...updated, packUsageCount: updated.packUsageCount ?? 0, packNames: updated.packNames ?? [] })
@@ -885,6 +910,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
               onOpen={setOpenTemplate}
               onDelete={handleDelete}
               onCopyToGlobal={setCopyToGlobalTemplate}
+              onRemoveFromGlobal={handleRemoveFromGlobal}
               onUse={handleUse}
               onFork={(tmpl) => { setOpenTemplate(null); setForkTemplate(tmpl) }}
             />
