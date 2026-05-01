@@ -2864,8 +2864,10 @@ model ContentPackRunItem {
   promptTemplateId String    @map("prompt_template_id")
   promptName       String    @map("prompt_name")
   status           String    @default("pending") // pending | running | completed | failed
+  publishStatus    String    @default("draft") @map("publish_status") // draft | approved | archived
   content          String?   @db.Text
   originalContent  String?   @db.Text @map("original_content")
+  wordCount        Int?      @map("word_count")
   errorMessage     String?   @db.Text @map("error_message")
   mondaySubItemId  String?   @map("monday_sub_item_id")
   boxFileId        String?   @map("box_file_id")

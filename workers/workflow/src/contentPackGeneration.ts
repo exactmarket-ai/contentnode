@@ -204,10 +204,12 @@ Generate the content now.`
       const result = await callModel({ ...SONNET, system_prompt: systemPrompt }, userMessage)
       const content = result.text.trim()
 
-      // ── Save completed item — store original_content snapshot at generation time
+      // ── Save completed item — store original_content snapshot and word count at generation time
+      const wordCount = content.trim().split(/\s+/).filter(Boolean).length
       await prisma.$executeRaw`
         UPDATE content_pack_run_items
-        SET status = 'completed', content = ${content}, original_content = ${content}, completed_at = NOW()
+        SET status = 'completed', content = ${content}, original_content = ${content},
+            word_count = ${wordCount}, completed_at = NOW()
         WHERE id = ${itemId}
       `
 
