@@ -1003,20 +1003,20 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
       {/* ── Right column — sidebar ─────────────────────────────────── */}
       <div style={{ width: 320, flexShrink: 0, borderLeft: '0.5px solid var(--border)', paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-        {/* Section 1: Research Tasks */}
-        <ResearchTasksSidebar
-          clientId={clientId}
-          onAddTask={onAddTask}
-          onToggleNewsroom={async () => { /* state update handled inside component */ }}
-          onRunTask={() => { /* could refresh topics after a delay */ }}
-        />
-
-        {/* Section 2: Research Topic flow */}
+        {/* Section 1: Research Topic flow */}
         <ResearchTopicFlow
           clientId={clientId}
           verticals={verticals}
           onTopicsAdded={handleTopicsAdded}
           flowRef={pilotRef}
+        />
+
+        {/* Section 2: Research Tasks */}
+        <ResearchTasksSidebar
+          clientId={clientId}
+          onAddTask={onAddTask}
+          onToggleNewsroom={async () => { /* state update handled inside component */ }}
+          onRunTask={() => { /* could refresh topics after a delay */ }}
         />
       </div>
     </div>
