@@ -89,6 +89,8 @@ model Agency {
   verticalProgramTemplates VerticalProgramTemplate[]
   agencyCredentials        AgencyCredential[]
   imagePrompts             ImagePrompt[]
+  topicQueue               TopicQueue[]
+  topicPreferenceLogs      TopicPreferenceLog[]
 
   @@map("agencies")
 }
@@ -232,6 +234,8 @@ model Client {
   preferenceProfile   ClientPreferenceProfile?
   imagePrompts        ImagePrompt[]
   clientBriefs        ClientBrief[]
+  topicQueue          TopicQueue[]
+  topicPreferenceLogs TopicPreferenceLog[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -264,6 +268,8 @@ model Vertical {
   frameworkRevisions       FrameworkRevision[]
   programs                 Program[]
   programTemplates         VerticalProgramTemplate[]
+  topicQueue               TopicQueue[]
+  topicPreferenceLogs      TopicPreferenceLog[]
 
   @@index([agencyId])
   @@map("verticals")
@@ -2055,6 +2061,7 @@ model ScheduledTask {
   changeDetected         Boolean  @default(false) @map("change_detected")
   autoGenerate           Boolean  @default(false) @map("auto_generate")
   autoGenerateBlogCount  Int      @default(2)     @map("auto_generate_blog_count")
+  contentMode            String   @default("off") @map("content_mode") // 'off' | 'auto_generate' | 'evaluate_and_queue'
   scheduledDay           Int?                     @map("scheduled_day")
   assigneeId             String?                  @map("assignee_id")
   createdAt         DateTime  @default(now()) @map("created_at")
@@ -2066,7 +2073,8 @@ model ScheduledTask {
   assignee     User?         @relation("ScheduledTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   usageRecords UsageRecord[]
 
-  programs           Program[]
+  programs    Program[]
+  topicQueue  TopicQueue[]
 
   @@index([agencyId])
   @@index([clientId])
@@ -2594,4 +2602,59 @@ model ClientBrief {
 
   @@index([agencyId, clientId])
   @@map("client_briefs")
+}
+
+// ─────────────────────────────────────────────
+// TopicQueue — candidate topics from the evaluator awaiting review
+// ─────────────────────────────────────────────
+model TopicQueue {
+  id              String    @id @default(cuid())
+  agencyId        String    @map("agency_id")
+  clientId        String    @map("client_id")
+  verticalId      String?   @map("vertical_id")
+  scheduledTaskId String?   @map("scheduled_task_id")
+  title           String
+  summary         String    @db.Text
+  score           Int       @default(0)
+  scoreRationale  String    @default("") @map("score_rationale")
+  sources         Json      @default("[]")
+  status          String    @default("pending") // 'pending' | 'approved' | 'rejected'
+  createdAt       DateTime  @default(now()) @map("created_at")
+  reviewedAt      DateTime? @map("reviewed_at")
+
+  agency        Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical      Vertical?      @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  scheduledTask ScheduledTask? @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
+  prefLogs      TopicPreferenceLog[]
+
+  @@index([agencyId, clientId])
+  @@index([clientId, verticalId])
+  @@index([status])
+  @@map("topic_queue")
+}
+
+// ─────────────────────────────────────────────
+// TopicPreferenceLog — approve/reject history used to train the preference profile
+// ─────────────────────────────────────────────
+model TopicPreferenceLog {
+  id            String    @id @default(cuid())
+  agencyId      String    @map("agency_id")
+  clientId      String    @map("client_id")
+  verticalId    String?   @map("vertical_id")
+  topicQueueId  String    @map("topic_queue_id")
+  decision      String    // 'approved' | 'rejected'
+  title         String
+  summary       String    @db.Text
+  score         Int       @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  agency     Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client     Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical   Vertical?  @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  topicQueue TopicQueue @relation(fields: [topicQueueId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, verticalId])
+  @@index([agencyId])
+  @@map("topic_preference_log")
 }

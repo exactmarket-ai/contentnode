@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import Anthropic from '@anthropic-ai/sdk'
 import { prisma, withAgency } from '@contentnode/database'
 import { callModel, type ModelConfig } from '@contentnode/ai'
 import {
@@ -734,6 +735,301 @@ Return ONLY valid JSON:
   console.log(`[manual-program-cycle] ${program.name} → ${blogs.length} blog(s) → Pipeline + ContentPack created`)
 }
 
+// ─── Topic Preference Profile Updater ────────────────────────────────────────
+
+export async function updateTopicPreferenceProfile(
+  agencyId: string,
+  clientId: string,
+  verticalId: string | null,
+): Promise<void> {
+  const count = await prisma.topicPreferenceLog.count({
+    where: { agencyId, clientId, ...(verticalId ? { verticalId } : {}) },
+  })
+  // Only update on every 10th decision
+  if (count === 0 || count % 10 !== 0) return
+
+  const recent = await prisma.topicPreferenceLog.findMany({
+    where: { agencyId, clientId, ...(verticalId ? { verticalId } : {}) },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+    select: { title: true, summary: true, score: true, decision: true },
+  })
+
+  const existing = await prisma.clientBrainAttachment.findFirst({
+    where: {
+      agencyId,
+      clientId,
+      source: 'scheduled',
+      filename: `[Preference] topic_preference_profile:${verticalId ?? 'all'}`,
+    },
+    select: { extractedText: true },
+  })
+  const currentProfile = existing?.extractedText ?? ''
+
+  const decisionLog = recent.map((d) =>
+    `- Title: ${d.title}\n  Summary: ${d.summary}\n  Score: ${d.score}\n  Decision: ${d.decision}`,
+  ).join('\n\n')
+
+  const result = await callModel(
+    { ...SONNET, system_prompt: undefined },
+    `You maintain a topic preference profile for a content team.
+Review their recent selections and update the profile.
+
+CURRENT PROFILE:
+${currentProfile || '(none — this is the first update)'}
+
+RECENT DECISIONS (last 10):
+${decisionLog}
+
+Write an updated preference profile in plain English. Cover:
+- Topic angles they consistently approve
+- Topic angles they consistently reject
+- Tone or framing preferences visible in approvals
+- Patterns in the sources or publications they favor
+- A diversity note: flag if approvals are becoming too narrow
+
+Keep it under 200 words. Be specific. Use their actual topic titles as examples where relevant.
+Return the profile text only. No preamble.`,
+  )
+
+  const profileText = result.text.trim()
+  const profileLabel = `[Preference] topic_preference_profile:${verticalId ?? 'all'}`
+
+  if (existing) {
+    await prisma.clientBrainAttachment.updateMany({
+      where: { agencyId, clientId, source: 'scheduled', filename: profileLabel },
+      data: { extractedText: profileText, summary: profileText.slice(0, 3000), summaryStatus: 'ready', extractionStatus: 'ready' },
+    })
+  } else {
+    await prisma.clientBrainAttachment.create({
+      data: {
+        agencyId,
+        clientId,
+        ...(verticalId ? { verticalId } : {}),
+        filename: profileLabel,
+        mimeType: 'text/plain',
+        source: 'scheduled',
+        uploadMethod: 'url',
+        extractionStatus: 'ready',
+        extractedText: profileText,
+        summaryStatus: 'ready',
+        summary: profileText.slice(0, 3000),
+      },
+    })
+  }
+
+  await synthesiseClientContext(agencyId, clientId)
+  console.log(`[topic-preference] updated profile for client ${clientId} vertical ${verticalId ?? 'all'} (${count} decisions)`)
+}
+
+// ─── Topic Evaluator ──────────────────────────────────────────────────────────
+
+interface TopicCandidate {
+  title: string
+  summary: string
+  score: number
+  score_rationale: string
+  sources: Array<{ title: string; publication: string; url: string; publish_date: string }>
+}
+
+export async function runTopicEvaluator(
+  agencyId: string,
+  taskId: string,
+  clientId: string,
+  verticalId: string | null,
+  researchOutput: string,
+): Promise<void> {
+  // Load brain context
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, agencyId },
+    select: { brainContext: true, name: true },
+  })
+  const brainContext = client?.brainContext ?? ''
+
+  // Load preference profile
+  const prefAtt = await prisma.clientBrainAttachment.findFirst({
+    where: {
+      agencyId,
+      clientId,
+      source: 'scheduled',
+      filename: `[Preference] topic_preference_profile:${verticalId ?? 'all'}`,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { extractedText: true },
+  })
+  const preferenceProfile = prefAtt?.extractedText ?? ''
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set')
+
+  const anthropic = new Anthropic({ apiKey, timeout: 5 * 60 * 1000, maxRetries: 0 })
+
+  const userMessage = `CLIENT CONTEXT:
+${brainContext || '(no brain context yet)'}
+
+TOPIC PREFERENCE PROFILE:
+${preferenceProfile || '(none — use vertical best practices as baseline)'}
+
+RESEARCH OUTPUT:
+${researchOutput.slice(0, 12000)}
+
+Your task: Propose 5-10 blog topic candidates from this research.
+For each topic return:
+- title: A specific, publishable blog post title. Not generic.
+- summary: 2-3 sentences — the exact angle, who it is for, and what the reader gets from it.
+- score: 1-100 based on relevance to client, timeliness, differentiation, and match to the preference profile.
+- score_rationale: One sentence explaining the score.
+- sources: 2-4 sources supporting this topic. Each source must include title, publication, url, and publish_date.
+
+Rules:
+- Every topic must have at least 2 sources. Discard any topic that does not.
+- Sources must come from the research output or from web search. Do not invent sources.
+- Score against the preference profile if one exists. If not, score against vertical best practices.
+- Include at least 2 topics outside the established approval pattern to prevent the topic range from narrowing over time.
+- Return valid JSON only. No preamble, no markdown fencing.
+
+Return format:
+{
+  "topics": [
+    {
+      "title": "",
+      "summary": "",
+      "score": 0,
+      "score_rationale": "",
+      "sources": [
+        {
+          "title": "",
+          "publication": "",
+          "url": "",
+          "publish_date": ""
+        }
+      ]
+    }
+  ]
+}`
+
+  let responseText = ''
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8000,
+      system: 'You are a content strategist evaluating research findings to identify the strongest blog topic candidates for a specific client.',
+      tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 5 } as never],
+      messages: [{ role: 'user', content: userMessage }],
+    })
+
+    responseText = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+  } catch (err) {
+    // If web_search tool is unavailable, fall back to plain call
+    console.warn('[topic-evaluator] web_search tool unavailable, falling back to plain call:', err instanceof Error ? err.message : err)
+    const fallback = await callModel(
+      {
+        ...SONNET,
+        system_prompt: 'You are a content strategist evaluating research findings to identify the strongest blog topic candidates for a specific client.',
+        max_tokens: 8000,
+      },
+      userMessage,
+    )
+    responseText = fallback.text
+  }
+
+  // Parse JSON response
+  let topics: TopicCandidate[] = []
+  try {
+    const text = responseText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim()
+    const start = text.indexOf('{')
+    if (start === -1) throw new Error('no opening brace')
+    let depth = 0, inStr = false, esc = false, end = -1
+    for (let i = start; i < text.length; i++) {
+      if (esc) { esc = false; continue }
+      if (inStr && text[i] === '\\') { esc = true; continue }
+      if (text[i] === '"') { inStr = !inStr; continue }
+      if (!inStr) {
+        if (text[i] === '{') depth++
+        else if (text[i] === '}') { if (--depth === 0) { end = i; break } }
+      }
+    }
+    if (end === -1) throw new Error('unclosed JSON')
+    const parsed = JSON.parse(text.slice(start, end + 1)) as { topics?: TopicCandidate[] }
+    topics = Array.isArray(parsed.topics) ? parsed.topics : []
+  } catch (parseErr) {
+    console.warn(`[topic-evaluator] JSON parse failed: ${parseErr instanceof Error ? parseErr.message : parseErr}`)
+    console.warn(`[topic-evaluator] Response snippet: ${responseText.slice(0, 400)}`)
+    return
+  }
+
+  // Filter: must have at least 2 sources
+  const valid = topics.filter((t) => Array.isArray(t.sources) && t.sources.length >= 2)
+  if (valid.length === 0) {
+    console.warn(`[topic-evaluator] no valid topics after source filter (had ${topics.length} before filter)`)
+    return
+  }
+
+  // Write to TopicQueue
+  for (const t of valid) {
+    await prisma.topicQueue.create({
+      data: {
+        agencyId,
+        clientId,
+        ...(verticalId ? { verticalId } : {}),
+        scheduledTaskId: taskId,
+        title: t.title,
+        summary: t.summary,
+        score: Math.min(100, Math.max(0, Number(t.score) || 0)),
+        scoreRationale: t.score_rationale ?? '',
+        sources: t.sources as never,
+        status: 'pending',
+      },
+    })
+  }
+
+  // Pipeline card: "Topic Review" batch card
+  if (clientId) {
+    try {
+      const reviewWorkflow = await prisma.workflow.findFirst({
+        where: { agencyId, clientId, name: 'Topic Review' },
+        select: { id: true, defaultAssigneeId: true },
+      }) ?? await prisma.workflow.create({
+        data: { agencyId, clientId, name: 'Topic Review', connectivityMode: 'online' },
+        select: { id: true, defaultAssigneeId: true },
+      })
+
+      const task = await prisma.scheduledTask.findFirst({ where: { id: taskId, agencyId }, select: { label: true, assigneeId: true } })
+
+      await prisma.workflowRun.create({
+        data: {
+          agencyId,
+          workflowId: reviewWorkflow.id,
+          status: 'completed',
+          reviewStatus: 'none',
+          itemName: `Topic Review: ${task?.label ?? 'Research run'} — ${valid.length} candidates`,
+          output: {
+            topicReview: true,
+            topicCount: valid.length,
+            scheduledTaskId: taskId,
+            clientId,
+            verticalId,
+          },
+          ...(task?.assigneeId
+            ? { assigneeId: task.assigneeId }
+            : reviewWorkflow.defaultAssigneeId
+              ? { assigneeId: reviewWorkflow.defaultAssigneeId }
+              : {}),
+        },
+      })
+    } catch (cardErr) {
+      console.error('[topic-evaluator] Pipeline card creation failed:', cardErr)
+    }
+  }
+
+  console.log(`[topic-evaluator] task ${taskId} → ${valid.length} topic candidates written to queue`)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function runScheduledResearch(job: { data: ScheduledResearchJobData }): Promise<void> {
   const { taskId, agencyId } = job.data
 
@@ -851,8 +1147,10 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
         }
       }
 
-      // Auto-generate blogs if enabled — non-fatal if it fails
-      if (task.autoGenerate && task.clientId) {
+      // Content mode dispatch — auto_generate (existing) or evaluate_and_queue (new)
+      const contentMode = (task as unknown as { contentMode?: string }).contentMode ?? (task.autoGenerate ? 'auto_generate' : 'off')
+
+      if (contentMode === 'auto_generate' && task.clientId) {
         try {
           await autoGenerateBlogs(agencyId, {
             id: taskId,
@@ -866,6 +1164,14 @@ export async function runScheduledResearch(job: { data: ScheduledResearchJobData
           const msg = genErr instanceof Error ? genErr.message : String(genErr)
           console.error(`[auto-generate] task ${taskId} blog generation failed:`, genErr)
           await prisma.scheduledTask.update({ where: { id: taskId }, data: { lastChangeSummary: `[blog-error] ${msg}` } }).catch(() => {})
+        }
+      } else if (contentMode === 'evaluate_and_queue' && task.clientId) {
+        try {
+          await runTopicEvaluator(agencyId, taskId, task.clientId, task.verticalId, output)
+        } catch (evalErr) {
+          const msg = evalErr instanceof Error ? evalErr.message : String(evalErr)
+          console.error(`[topic-evaluator] task ${taskId} evaluation failed:`, evalErr)
+          await prisma.scheduledTask.update({ where: { id: taskId }, data: { lastChangeSummary: `[eval-error] ${msg}` } }).catch(() => {})
         }
       }
 

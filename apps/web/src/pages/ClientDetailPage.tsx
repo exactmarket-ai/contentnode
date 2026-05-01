@@ -19,6 +19,7 @@ import { CampaignsTab } from './CampaignsTab'
 import { ProgramsTab } from './tabs/ProgramsTab'
 import { ContentBoardTab } from './ContentBoardTab'
 import { ThoughtLeadershipTab } from './ThoughtLeadershipTab'
+import { ContentNewsroomTab } from './ContentNewsroomTab'
 import { ClientBrainTab } from './ClientBrainTab'
 import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
 import { ProductMarketingTab } from './tabs/ProductMarketingTab'
@@ -5745,6 +5746,7 @@ interface ScheduledTask {
   clientId: string | null; verticalId: string | null
   vertical?: { id: string; name: string } | null
   autoGenerate: boolean; autoGenerateBlogCount: number
+  contentMode: string
   scheduledDay: number | null
   assigneeId: string | null
 }
@@ -5933,7 +5935,9 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
   const [config, setConfig] = useState<Record<string, unknown>>(editTask?.config ?? initialDraft?.config ?? {})
   const [verticalId, setVerticalId] = useState<string>(editTask?.verticalId ?? '__client__')
   const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
-  const [autoGenerate, setAutoGenerate] = useState(editTask?.autoGenerate ?? false)
+  const [contentMode, setContentMode] = useState<'off' | 'auto_generate' | 'evaluate_and_queue'>(
+    (editTask?.contentMode as 'off' | 'auto_generate' | 'evaluate_and_queue') ?? (editTask?.autoGenerate ? 'auto_generate' : 'off'),
+  )
   const [autoGenerateBlogCount, setAutoGenerateBlogCount] = useState(editTask?.autoGenerateBlogCount ?? 2)
   const [assigneeId, setAssigneeId] = useState<string>(editTask?.assigneeId ?? '')
   const [members, setMembers] = useState<{ id: string; name: string | null; email: string; avatarStorageKey?: string | null }[]>([])
@@ -5966,7 +5970,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             frequency,
             config,
             verticalId: isVertical ? verticalId : null,
-            autoGenerate,
+            contentMode,
             autoGenerateBlogCount,
             assigneeId: assigneeId || null,
           }),
@@ -5987,7 +5991,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             clientId,
             ...(isVertical ? { verticalId } : {}),
             config,
-            autoGenerate,
+            contentMode,
             autoGenerateBlogCount,
             assigneeId: assigneeId || null,
           }),
@@ -6018,7 +6022,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
           clientId,
           ...(isVertical ? { verticalId } : {}),
           config,
-          autoGenerate,
+          contentMode,
           autoGenerateBlogCount,
           assigneeId: assigneeId || null,
         }),
@@ -6121,31 +6125,34 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             <TaskConfigFields type={type} config={config} onChange={setConfig} />
           </div>
 
-          {/* Auto-generate blogs toggle */}
+          {/* Content mode — three-way segmented control */}
           <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#111827' }}>Auto-generate blogs after each run</p>
-                <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>Automatically generate blog posts from the research output and send to review queue.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAutoGenerate(!autoGenerate)}
-                style={{
-                  width: 40, height: 22, borderRadius: 11,
-                  backgroundColor: autoGenerate ? '#a200ee' : '#d1d5db',
-                  border: 'none', cursor: 'pointer', position: 'relative',
-                  transition: 'background-color 0.2s', flexShrink: 0,
-                }}
-              >
-                <span style={{
-                  position: 'absolute', top: 2, left: autoGenerate ? 20 : 2,
-                  width: 18, height: 18, borderRadius: '50%', backgroundColor: '#ffffff',
-                  transition: 'left 0.2s', display: 'block',
-                }} />
-              </button>
+            <p className="text-xs font-medium mb-2" style={{ color: '#111827' }}>After each research run</p>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {([
+                { value: 'off',                  label: 'Off',                   sub: 'No content generated' },
+                { value: 'auto_generate',         label: 'Auto-generate',         sub: 'Blogs sent to review queue' },
+                { value: 'evaluate_and_queue',    label: 'Evaluate and queue',    sub: 'Topics sent to Content Newsroom for review' },
+              ] as const).map(({ value, label, sub }) => {
+                const active = contentMode === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setContentMode(value)}
+                    style={{
+                      flex: 1, borderRadius: 8, padding: '8px 10px', textAlign: 'left', cursor: 'pointer',
+                      border: active ? '1.5px solid #a200ee' : '1px solid #e5e7eb',
+                      backgroundColor: active ? '#fdf5ff' : '#f9fafb',
+                    }}
+                  >
+                    <p style={{ fontSize: 12, fontWeight: 600, color: active ? '#7c00cc' : '#111827', margin: 0 }}>{label}</p>
+                    <p style={{ fontSize: 10, color: active ? '#9333ea' : '#9ca3af', margin: '2px 0 0' }}>{sub}</p>
+                  </button>
+                )
+              })}
             </div>
-            {autoGenerate && (
+            {contentMode === 'auto_generate' && (
               <div className="mt-3 flex items-center gap-3">
                 <p className="text-xs font-medium" style={{ color: '#6b7280', flexShrink: 0 }}>Number of blogs</p>
                 <select
@@ -7360,7 +7367,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
 // ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'newsroom', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 // ── Agency-level prompt library (no clientId — shows global templates) ────────
@@ -7459,6 +7466,7 @@ export function ClientDetailPage() {
     programs:      'Programs',
     deliverables:  'Deliverables',
     'thought-leadership': 'Thought Leadership',
+    newsroom:              'Content Newsroom',
     framework:     'GTM Framework',
     'product-marketing': 'productPILOT',
     demandgen:     'Demand Gen',
@@ -7486,6 +7494,8 @@ export function ClientDetailPage() {
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment', 'scheduled-tasks']
   // Tabs that live under the "Settings" group (admin-only via Settings entry point)
   const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
+  // Tabs that live under the "Thought Leadership" group (admin-only)
+  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom']
   // Tabs rendered before the Demand Gen group button
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
@@ -7496,6 +7506,7 @@ export function ClientDetailPage() {
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
+  const inThoughtLeadership = THOUGHT_LEADERSHIP_TABS.includes(activeTab)
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -7555,13 +7566,14 @@ export function ClientDetailPage() {
           <button
             onClick={() => switchTab('thought-leadership')}
             className={cn(
-              'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              activeTab === 'thought-leadership'
+              'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+              inThoughtLeadership
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {TAB_LABELS['thought-leadership']}
+            <Icons.Lightbulb className="h-3 w-3" />
+            Thought Leadership
           </button>
         )}
         {/* Research group entry point */}
@@ -7621,6 +7633,28 @@ export function ClientDetailPage() {
           </button>
         )}
       </div>
+
+      {/* Thought Leadership sub-tab row — only visible when a thought leadership tab is active */}
+      {inThoughtLeadership && (
+        <div className="flex items-center border-b border-border bg-muted/30 px-6 print:hidden">
+          <div className="flex gap-0">
+            {THOUGHT_LEADERSHIP_TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => switchTab(tab)}
+                className={cn(
+                  'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Demand Gen sub-tab row — only visible when a demand gen tab is active */}
       {inDemandGen && (
@@ -7752,6 +7786,7 @@ export function ClientDetailPage() {
         {activeTab === 'programs' && <ProgramsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'thought-leadership' && <ThoughtLeadershipTab clientId={client.id} />}
+        {activeTab === 'newsroom' && <ContentNewsroomTab clientId={client.id} />}
         {activeTab === 'product-marketing' && <ProductMarketingTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'gtm-assessment' && <ClientGTMAssessmentTab clientId={client.id} clientName={client.name} />}

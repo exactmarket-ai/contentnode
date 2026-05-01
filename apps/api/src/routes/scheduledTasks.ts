@@ -18,6 +18,7 @@ const createBody = z.object({
   config:               z.record(z.unknown()).default({}),
   autoGenerate:         z.boolean().optional(),
   autoGenerateBlogCount: z.number().int().min(1).max(5).optional(),
+  contentMode:          z.enum(['off', 'auto_generate', 'evaluate_and_queue']).optional(),
   scheduledDay:         z.number().int().min(0).max(27).nullish(),
   assigneeId:           z.string().nullish(),
 })
@@ -25,7 +26,7 @@ const createBody = z.object({
 const updateBody = createBody
   .partial()
   .omit({ scope: true, type: true })
-  .extend({ enabled: z.boolean().optional() })
+  .extend({ enabled: z.boolean().optional(), contentMode: z.enum(['off', 'auto_generate', 'evaluate_and_queue']).optional() })
 
 function computeNextRunAt(frequency: string, scheduledDay?: number | null): Date {
   const now = new Date()
@@ -80,7 +81,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const parsed = createBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
-    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount, scheduledDay, assigneeId } = parsed.data
+    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount, contentMode, scheduledDay, assigneeId } = parsed.data
 
     if (scope === 'client' && !clientId) {
       return reply.code(400).send({ error: 'clientId required for client-scoped tasks' })
@@ -88,6 +89,9 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     if (scope === 'vertical' && (!clientId || !verticalId)) {
       return reply.code(400).send({ error: 'clientId and verticalId required for vertical-scoped tasks' })
     }
+
+    // Derive contentMode: explicit value wins; fall back to autoGenerate boolean for backward compat
+    const resolvedMode = contentMode ?? (autoGenerate ? 'auto_generate' : 'off')
 
     const task = await prisma.scheduledTask.create({
       data: {
@@ -100,7 +104,8 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         frequency,
         config: config as object,
         nextRunAt: computeNextRunAt(frequency, scheduledDay),
-        ...(autoGenerate !== undefined ? { autoGenerate } : {}),
+        autoGenerate: resolvedMode === 'auto_generate',
+        contentMode: resolvedMode,
         ...(autoGenerateBlogCount !== undefined ? { autoGenerateBlogCount } : {}),
         ...(scheduledDay !== undefined ? { scheduledDay: scheduledDay ?? null } : {}),
         ...(assigneeId !== undefined ? { assigneeId: assigneeId ?? null } : {}),
@@ -119,7 +124,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const existing = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
     if (!existing) return reply.code(404).send({ error: 'Task not found' })
 
-    const { label, frequency, config, enabled, clientId, verticalId, autoGenerate, autoGenerateBlogCount, scheduledDay, assigneeId } = parsed.data
+    const { label, frequency, config, enabled, clientId, verticalId, autoGenerate, autoGenerateBlogCount, contentMode, scheduledDay, assigneeId } = parsed.data
     const updateData: Record<string, unknown> = {}
     if (label !== undefined) updateData.label = label
     if (scheduledDay !== undefined) updateData.scheduledDay = scheduledDay ?? null
@@ -128,7 +133,6 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
       const effectiveDay = scheduledDay !== undefined ? (scheduledDay ?? null) : (existing.scheduledDay ?? null)
       updateData.nextRunAt = computeNextRunAt(frequency, effectiveDay)
     } else if (scheduledDay !== undefined) {
-      // scheduledDay changed without frequency change — recompute nextRunAt
       updateData.nextRunAt = computeNextRunAt(existing.frequency, scheduledDay ?? null)
     }
     if (config !== undefined) updateData.config = config
@@ -136,10 +140,16 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     if (clientId !== undefined) updateData.clientId = clientId
     if (verticalId !== undefined) {
       updateData.verticalId = verticalId ?? null
-      // Scope follows vertical selection: vertical set → 'vertical', cleared → 'client'
       updateData.scope = verticalId ? 'vertical' : 'client'
     }
-    if (autoGenerate !== undefined) updateData.autoGenerate = autoGenerate
+    // contentMode wins; fall back to autoGenerate boolean for backward compat
+    if (contentMode !== undefined) {
+      updateData.contentMode = contentMode
+      updateData.autoGenerate = contentMode === 'auto_generate'
+    } else if (autoGenerate !== undefined) {
+      updateData.autoGenerate = autoGenerate
+      updateData.contentMode = autoGenerate ? 'auto_generate' : 'off'
+    }
     if (autoGenerateBlogCount !== undefined) updateData.autoGenerateBlogCount = autoGenerateBlogCount
     if (assigneeId !== undefined) updateData.assigneeId = assigneeId ?? null
 
