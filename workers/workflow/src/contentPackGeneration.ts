@@ -173,12 +173,14 @@ export async function runContentPackGeneration(job: Job<ContentPackGenJobData>):
 
       if (targetType === 'member' && targetId) {
         const { systemBlock } = await buildMemberFourContextBlock(targetId, agencyId, clientId, topicVerticalId)
+        console.log(`[content-pack-gen] PATH=four-context-member memberId=${targetId} itemId=${itemId}`)
         systemPrompt = `You are a senior B2B content strategist and ghostwriter. Generate high-quality content following the prompt template exactly.
 
 ${systemBlock}
 
 Output only the finished content — no preamble, no meta-commentary.`
       } else {
+        console.log(`[content-pack-gen] PATH=standard targetType=${targetType} targetId=${targetId ?? 'none'} itemId=${itemId}`)
         let targetContext = ''
         if (targetType === 'vertical' && targetId) {
           targetContext = await buildVerticalContext(targetId, agencyId)
