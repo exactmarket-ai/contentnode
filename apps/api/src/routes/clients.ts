@@ -4133,6 +4133,196 @@ Rules:
     return reply.send({ data: { sectionNum, status } })
   })
 
+  // ── POST /:id/framework/:verticalId/draft-section — batch draft all fields for a section
+  app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/draft-section', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id: clientId, verticalId } = req.params
+    const { sectionNum, sectionTitle, sectionResearch } =
+      (req.body ?? {}) as { sectionNum?: string; sectionTitle?: string; sectionResearch?: unknown }
+
+    if (!sectionNum) return reply.code(400).send({ error: 'sectionNum is required' })
+
+    const SECTION_FIELDS: Record<string, Array<{ key: string; label: string; type: 'string' | 'array'; arraySchema?: string }>> = {
+      '01': [
+        { key: 'platformName',          label: 'Platform / product name for this vertical',              type: 'string' },
+        { key: 'platformBenefit',       label: 'Core platform benefit (one sentence)',                   type: 'string' },
+        { key: 'positioningStatement',  label: 'Positioning statement (2-3 sentences)',                  type: 'string' },
+        { key: 'taglineOptions',        label: 'Tagline options (2-3 variations, separated by newlines)', type: 'string' },
+        { key: 'howToUse',             label: 'How this framework section should be used by the team',   type: 'string' },
+        { key: 'whatIsNot',            label: 'What this vertical / solution is NOT (3-5 items)',        type: 'string' },
+      ],
+      '02': [
+        { key: 'industry',            label: 'Target industry description',                              type: 'string' },
+        { key: 'companySize',         label: 'Target company size (employees, revenue, or both)',        type: 'string' },
+        { key: 'geography',           label: 'Target geography',                                         type: 'string' },
+        { key: 'itPosture',           label: 'IT posture / infrastructure profile',                      type: 'string' },
+        { key: 'complianceStatus',    label: 'Compliance / regulatory status typical of these buyers',   type: 'string' },
+        { key: 'contractProfile',     label: 'Typical contract / procurement profile',                   type: 'string' },
+        { key: 'secondaryTargets',    label: 'Secondary target audiences',                               type: 'string' },
+        { key: 'buyerTable',         label: 'Buyer segments', type: 'array',
+          arraySchema: '{"segment":"","primaryBuyer":"","corePain":"","entryPoint":""}' },
+      ],
+      '03': [
+        { key: 'marketPressureNarrative', label: 'Market pressure narrative (2-4 paragraphs with data and context)', type: 'string' },
+        { key: 'additionalContext',       label: 'Additional market context',                                          type: 'string' },
+        { key: 'statsTable', label: 'Key statistics', type: 'array',
+          arraySchema: '{"stat":"","context":"","source":"","year":""}' },
+      ],
+      '04': [
+        { key: 'challenges', label: 'Core IT challenges', type: 'array',
+          arraySchema: '{"name":"","whyExists":"","consequence":"","solution":"","pillarsText":""}' },
+      ],
+      '05': [
+        { key: 'pillars', label: 'Value pillars', type: 'array',
+          arraySchema: '{"pillar":"","valueProp":"","keyServices":"","relevantTo":""}' },
+        { key: 'serviceStack', label: 'Service stack', type: 'array',
+          arraySchema: '{"service":"","regulatoryDomain":"","whatItDelivers":"","priority":""}' },
+      ],
+      '06': [
+        { key: 'differentiators', label: 'Differentiators', type: 'array',
+          arraySchema: '{"label":"","position":""}' },
+      ],
+      '07': [
+        { key: 'segments', label: 'Buyer segments', type: 'array',
+          arraySchema: '{"name":"","primaryBuyerTitles":"","whatIsDifferent":"","keyPressures":"","leadHook":"","complianceNotes":""}' },
+      ],
+      '08': [
+        { key: 'problems',  label: 'Core problems / pains this vertical faces (1-2 paragraphs)',  type: 'string' },
+        { key: 'solution',  label: 'How the solution addresses these problems (1-2 paragraphs)',   type: 'string' },
+        { key: 'outcomes',  label: 'Key outcomes clients achieve (1-2 paragraphs)',                type: 'string' },
+        { key: 'valuePropTable', label: 'Value propositions by pillar', type: 'array',
+          arraySchema: '{"pillar":"","meaning":"","proofPoint":"","citation":""}' },
+      ],
+      '09': [
+        { key: 'proofPoints', label: 'Proof points (specific stats or results)', type: 'array',
+          arraySchema: '{"text":"","source":""}' },
+      ],
+      '10': [
+        { key: 'objections', label: 'Objections and responses', type: 'array',
+          arraySchema: '{"objection":"","response":"","followUp":""}' },
+      ],
+      '11': [
+        { key: 'toneTarget',       label: 'Tone target description',          type: 'string' },
+        { key: 'vocabularyLevel',  label: 'Vocabulary level and style',       type: 'string' },
+        { key: 'sentenceStyle',    label: 'Sentence structure and style',     type: 'string' },
+        { key: 'whatToAvoid',      label: 'Phrases and styles to avoid',      type: 'string' },
+      ],
+      '12': [
+        { key: 'competitors', label: 'Competitors and differentiation', type: 'array',
+          arraySchema: '{"type":"","positioning":"","counter":"","whenComesUp":""}' },
+      ],
+      '14': [
+        { key: 'campaigns', label: 'Campaign themes', type: 'array',
+          arraySchema: '{"theme":"","targetAudience":"","primaryAssets":"","keyMessage":""}' },
+      ],
+      '15': [
+        { key: 'faqs', label: 'Frequently asked questions', type: 'array',
+          arraySchema: '{"question":"","answer":"","bestAddressedIn":""}' },
+      ],
+      '16': [
+        { key: 'ctaSequencing', label: 'CTA sequencing notes (how assets lead buyers through the funnel)', type: 'string' },
+        { key: 'funnelStages', label: 'Funnel stages', type: 'array',
+          arraySchema: '{"stage":"","assets":"","primaryCTA":"","buyerState":""}' },
+      ],
+      '17': [
+        { key: 'regulatorySalesNote', label: 'Regulatory sales note (how compliance creates urgency)', type: 'string' },
+        { key: 'regulations', label: 'Regulatory requirements', type: 'array',
+          arraySchema: '{"requirement":"","capability":"","servicePillar":"","salesNote":""}' },
+      ],
+      '18': [
+        { key: 'ctas', label: 'CTAs', type: 'array',
+          arraySchema: '{"ctaName":"","description":"","targetAudienceTrigger":"","assets":""}' },
+      ],
+    }
+
+    const fields = SECTION_FIELDS[sectionNum]
+    if (!fields || fields.length === 0) {
+      return reply.code(422).send({ error: `No field definitions for section ${sectionNum}` })
+    }
+
+    const [client, vertical] = await Promise.all([
+      prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { name: true } }),
+      prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { name: true } }),
+    ])
+    if (!client) return reply.code(404).send({ error: 'Client not found' })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+
+    const [attachments, clientBrain] = await Promise.all([
+      prisma.clientFrameworkAttachment.findMany({
+        where: { clientId, verticalId, agencyId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true },
+        orderBy: { createdAt: 'asc' },
+        take: 8,
+      }),
+      prisma.clientBrainAttachment.findMany({
+        where: { clientId, agencyId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+      }),
+    ])
+
+    const contextParts: string[] = []
+    if (clientBrain.length > 0) {
+      contextParts.push('CLIENT BRAIN:')
+      clientBrain.forEach((b) => { if (b.summary?.trim()) contextParts.push(`[${b.filename}]\n${b.summary.trim()}`) })
+    }
+    if (attachments.length > 0) {
+      contextParts.push('RESEARCH ATTACHMENTS:')
+      attachments.forEach((a) => { if (a.summary?.trim()) contextParts.push(`[${a.filename}]\n${a.summary.trim()}`) })
+    }
+    if (sectionResearch) {
+      const researchStr = typeof sectionResearch === 'string'
+        ? sectionResearch
+        : JSON.stringify(sectionResearch, null, 2)
+      contextParts.push(`SECTION ${sectionNum} RESEARCH FINDINGS:\n${researchStr}`)
+    }
+
+    if (contextParts.length === 0) {
+      return reply.code(422).send({ error: 'No context available to draft from. Upload brain documents or run research first.' })
+    }
+
+    const fieldsList = fields.map((f) =>
+      f.type === 'array'
+        ? `"${f.key}": [${f.arraySchema}]  // ${f.label} — draft 3-5 items`
+        : `"${f.key}": "..."  // ${f.label}`
+    ).join(',\n  ')
+
+    const result = await callModel(
+      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 3000, temperature: 0.2 },
+      `You are auto-drafting GTM Framework Section ${sectionNum} (${sectionTitle ?? ''}) for a client.
+
+CLIENT: ${client.name}
+VERTICAL: ${vertical.name}
+
+${contextParts.join('\n\n')}
+
+---
+
+Draft all fields below using the context above. Be specific — use exact language, stats, and details from the research. Write in professional GTM document voice. For array fields, draft 3-5 concrete items. Do not use placeholder text.
+
+Return ONLY a valid JSON object. No preamble. No explanation. No markdown fences. No trailing commas.
+
+{
+  ${fieldsList}
+}`
+    )
+
+    let fieldUpdates: Array<{ s: string; f: string; v: unknown }> = []
+    try {
+      const cleaned = result.text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+      const parsed = JSON.parse(cleaned) as Record<string, unknown>
+      fieldUpdates = Object.entries(parsed)
+        .filter(([, v]) => v !== null && v !== undefined && v !== '')
+        .map(([f, v]) => ({ s: sectionNum, f, v }))
+    } catch (err) {
+      req.log.error({ err, raw: result.text.slice(0, 500) }, '[draft-section] JSON parse failed')
+      return reply.code(500).send({ error: 'Draft generation failed — could not parse AI response' })
+    }
+
+    return reply.send({ data: { fieldUpdates } })
+  })
+
   // ── POST /:id/framework/:verticalId/draft — draft a single field using stored research
   app.post<{ Params: { id: string; verticalId: string } }>('/:id/framework/:verticalId/draft', async (req, reply) => {
     const { agencyId } = req.auth

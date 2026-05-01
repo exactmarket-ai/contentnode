@@ -125,7 +125,7 @@ export interface GTMPilotProps {
   // Section skip (e.g. §17 "no regulations apply" → mark complete)
   onSectionSkipped?: (sectionNum: string) => void
   // Field population — PILOT writes confirmed content directly into framework fields
-  onFwUpdate?: (updates: Array<{ s: string; f: string; v: string }>) => void
+  onFwUpdate?: (updates: Array<{ s: string; f: string; v: unknown }>) => void
   // Split layout mode — when true, panel uses normal flow instead of position:fixed
   splitMode?: boolean
 }
@@ -405,6 +405,8 @@ export function GTMPilot({
   const [historyOpen, setHistoryOpen]   = useState(false)
   const [fieldsWrittenCount, setFieldsWrittenCount] = useState(0)
   const fieldsWrittenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoDraftedRef = useRef<Set<string>>(new Set())
+  const [autoDrafting, setAutoDrafting] = useState(false)
   const [priorSessions, setPriorSessions] = useState<PriorSession[]>([])
 
   const scrollRef    = useRef<HTMLDivElement>(null)
@@ -458,6 +460,48 @@ export function GTMPilot({
   const activeSectionConflicts = activeSection && conflictLog
     ? conflictLog.filter((c) => c.sectionNum === activeSection)
     : []
+
+  // Auto-draft all section fields when research findings are available and section is empty
+  useEffect(() => {
+    if (!activeSection || !activeSectionResearch || !verticalId || autoDrafting) return
+    if (!emptySections.includes(activeSection)) return
+    if (autoDraftedRef.current.has(activeSection)) return
+
+    autoDraftedRef.current.add(activeSection)
+    setAutoDrafting(true)
+
+    const researchStr = typeof activeSectionResearch === 'string'
+      ? activeSectionResearch
+      : JSON.stringify(activeSectionResearch)
+
+    const sectionLabel = SECTION_LABELS[activeSection] ?? ''
+
+    apiFetch(`/api/v1/clients/${clientId}/framework/${verticalId}/draft-section`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sectionNum: activeSection, sectionTitle: sectionLabel, sectionResearch: researchStr }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return
+        const { data } = await res.json() as { data: { fieldUpdates: Array<{ s: string; f: string; v: unknown }> } }
+        const updates = data?.fieldUpdates ?? []
+        if (updates.length > 0 && onFwUpdate) {
+          onFwUpdate(updates)
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant' as const,
+              content: `I've drafted ${updates.length} field${updates.length !== 1 ? 's' : ''} for Section ${activeSection} from the research findings. Review what's been filled in — edit anything that needs adjustment, then we can work through the details together.`,
+            },
+          ])
+          if (fieldsWrittenTimer.current) clearTimeout(fieldsWrittenTimer.current)
+          setFieldsWrittenCount(updates.length)
+          fieldsWrittenTimer.current = setTimeout(() => setFieldsWrittenCount(0), 4000)
+        }
+      })
+      .catch(() => { /* non-fatal */ })
+      .finally(() => setAutoDrafting(false))
+  }, [activeSection, activeSectionResearch, verticalId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendMessage = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim()
@@ -572,7 +616,7 @@ export function GTMPilot({
         return
       }
 
-      const { data: respData } = await res.json() as { data: { reply: string; suggestions: GtmSuggestion[]; fieldUpdates?: Array<{ s: string; f: string; v: string }> } }
+      const { data: respData } = await res.json() as { data: { reply: string; suggestions: GtmSuggestion[]; fieldUpdates?: Array<{ s: string; f: string; v: unknown }> } }
       const suggestions: GtmSuggestion[] = Array.isArray(respData.suggestions) ? respData.suggestions : []
       let replyContent = (respData.reply ?? '').trim()
 
@@ -712,6 +756,12 @@ export function GTMPilot({
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {autoDrafting && (
+            <span className="flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-2 py-0.5 text-[9px] font-medium text-blue-700">
+              <Icons.Loader2 className="h-3 w-3 animate-spin" />
+              Drafting fields…
+            </span>
+          )}
           {fieldsWrittenCount > 0 && (
             <span className="flex items-center gap-1 rounded bg-green-100 border border-green-300 px-2 py-0.5 text-[9px] font-medium text-green-800 animate-pulse">
               <Icons.CheckCircle2 className="h-3 w-3" />
@@ -934,7 +984,20 @@ export function GTMPilot({
 
           return (
             <button
-              onClick={() => { if (!isSaving) void onSectionStatusChange(activeSection, 'complete') }}
+              onClick={() => {
+                if (isSaving) return
+                if (emptySections.includes(activeSection)) {
+                  setMessages((prev) => [...prev, {
+                    role: 'assistant' as const,
+                    content: `Section ${activeSection} doesn't have any content in the fields yet — I can't mark it done. ${activeSectionResearch ? "I have research findings loaded. Let me draft the fields now." : "Add content to the fields first, or ask me to help draft them."}`,
+                  }])
+                  if (activeSectionResearch && !autoDraftedRef.current.has(activeSection)) {
+                    autoDraftedRef.current.delete(activeSection) // allow re-trigger
+                  }
+                  return
+                }
+                void onSectionStatusChange(activeSection, 'complete')
+              }}
               disabled={isSaving}
               title={isError ? 'Save failed — click to retry' : 'Mark section complete'}
               className={cn(

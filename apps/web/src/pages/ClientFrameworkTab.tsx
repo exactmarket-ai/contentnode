@@ -297,6 +297,7 @@ export type FrameworkData = ReturnType<typeof defaultFramework>
 export function getSectionStatus(fw: FrameworkData, num: string, sectionStatus?: Record<string, string>): 'complete' | 'in-progress' | 'ai-draft' | 'not-started' {
   // DB-persisted status overrides computed status (except 'not-started')
   const dbStatus = sectionStatus?.[num]
+  if (dbStatus === 'complete') return 'complete'
   if (dbStatus === 'ai-draft' || dbStatus === 'pending') return dbStatus === 'ai-draft' ? 'ai-draft' : 'not-started'
   const sKey = `s${num}` as keyof FrameworkData
   const sec = fw[sKey] as Record<string, unknown> | undefined
@@ -3934,7 +3935,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
           companyBrief={companyBrief || null}
           onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
           onSectionSkipped={(num) => void patchSectionStatus(num, 'complete')}
-          onFwUpdate={(updates) => {
+          onFwUpdate={(updates: Array<{ s: string; f: string; v: unknown }>) => {
             set((d) => {
               for (const u of updates) {
                 const sKey = `s${u.s}` as keyof typeof d
