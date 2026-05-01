@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '@contentnode/database'
+import { getContentLibraryEditSignalQueue } from '../lib/queues.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -225,9 +226,20 @@ export async function contentLibraryRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'publishStatus must be draft | approved | archived' })
     }
 
-    // Verify ownership via join
-    const existing = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `SELECT i.id FROM content_pack_run_items i
+    // Fetch current item + run data before update (needed for edit signal capture)
+    type ItemRow = {
+      id: string
+      content: string | null
+      original_content: string | null
+      publish_status: string
+      prompt_name: string
+      target_type: string
+      target_id: string | null
+    }
+    const existing = await prisma.$queryRawUnsafe<ItemRow[]>(
+      `SELECT i.id, i.content, i.original_content, i.publish_status, i.prompt_name,
+              r.target_type, r.target_id
+       FROM content_pack_run_items i
        JOIN content_pack_runs r ON r.id = i.run_id
        WHERE i.id = '${id.replace(/'/g, "''")}' AND r.agency_id = '${agencyId.replace(/'/g, "''")}' AND r.client_id = '${clientId.replace(/'/g, "''")}'`,
     )
@@ -236,6 +248,37 @@ export async function contentLibraryRoutes(app: FastifyInstance) {
     await prisma.$executeRawUnsafe(
       `UPDATE content_pack_run_items SET publish_status = '${publishStatus}' WHERE id = '${id.replace(/'/g, "''")}'`,
     )
+
+    // Capture edit signal when transitioning to approved with edited content
+    const item = existing[0]
+    if (
+      publishStatus === 'approved' &&
+      item.publish_status !== 'approved' &&
+      item.content &&
+      item.original_content &&
+      item.content.trim() !== item.original_content.trim()
+    ) {
+      try {
+        const queue = getContentLibraryEditSignalQueue()
+        await queue.add(
+          `edit-signal-${id}`,
+          {
+            agencyId,
+            clientId,
+            itemId:          id,
+            promptName:      item.prompt_name,
+            targetType:      item.target_type,
+            targetId:        item.target_id,
+            content:         item.content,
+            originalContent: item.original_content,
+          },
+          { removeOnComplete: { count: 20 }, removeOnFail: { count: 20 } },
+        )
+      } catch (err) {
+        // Non-fatal — approval succeeds even if signal capture fails
+        req.log.warn({ err, itemId: id }, 'edit signal enqueue failed')
+      }
+    }
 
     return reply.send({ data: { ok: true, publishStatus } })
   })

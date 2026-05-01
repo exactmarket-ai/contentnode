@@ -145,7 +145,370 @@ const SERVICE_LABELS: Record<string, string> = {
   auto: 'Auto',
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Intelligence Layer types
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface HumanizerProfile {
+  id: string
+  scope: 'agency' | 'client' | 'content_type'
+  scopeId: string | null
+  profile: string | null
+  signalCount: number
+  lastSynthesisAt: string | null
+  updatedAt: string
+}
+
+interface EditSignal {
+  id: string
+  clientId: string
+  clientName: string | null
+  contentType: string | null
+  assignmentType: string | null
+  editSummary: string | null
+  originalExcerpt: string | null
+  approvedExcerpt: string | null
+  createdAt: string
+}
+
+interface ContentTypeRow {
+  contentType: string
+  signalCount: number
+  lastSignalAt: string | null
+  hasProfile: boolean
+  profileSignalCount: number
+  lastSynthesisAt: string | null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Intelligence Layer — profile card
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ProfileCard({
+  scope, scopeId, profile, signalCount, lastSynthesisAt,
+  onResynthesize, synthesizing,
+}: {
+  scope: string; scopeId: string | null; profile: string | null
+  signalCount: number; lastSynthesisAt: string | null
+  onResynthesize: () => void; synthesizing: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const label = scope === 'agency' ? 'Agency-wide' : scope === 'client' ? `Client: ${scopeId ?? ''}` : `Type: ${scopeId ?? ''}`
+
+  return (
+    <div className="rounded-xl border border-border bg-transparent p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="text-xs font-semibold text-foreground">{label}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {signalCount} signal{signalCount !== 1 ? 's' : ''}
+            {lastSynthesisAt ? ` · synthesized ${new Date(lastSynthesisAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ' · never synthesized'}
+          </p>
+        </div>
+        <button
+          onClick={onResynthesize}
+          disabled={synthesizing}
+          className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+        >
+          {synthesizing ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.RefreshCw className="h-3 w-3" />}
+          Synthesize
+        </button>
+      </div>
+      {profile ? (
+        <div>
+          <p className={cn('text-[12px] text-muted-foreground leading-relaxed whitespace-pre-wrap', !expanded && 'line-clamp-4')}>
+            {profile}
+          </p>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-1.5 text-[11px] text-blue-600 hover:underline"
+          >
+            {expanded ? 'Show less' : 'Show full profile'}
+          </button>
+        </div>
+      ) : (
+        <p className="text-[12px] text-muted-foreground italic">No profile yet — needs {Math.max(0, 5 - signalCount)} more edit signal{5 - signalCount !== 1 ? 's' : ''} to synthesize.</p>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Intelligence Layer — signal row
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SignalRow({ signal }: { signal: EditSignal }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="border-b border-border/50 last:border-0 py-3">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            {signal.contentType && (
+              <span className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                {signal.contentType}
+              </span>
+            )}
+            {signal.clientName && (
+              <span className="text-[11px] text-muted-foreground">{signal.clientName}</span>
+            )}
+            <span className="text-[11px] text-muted-foreground ml-auto">
+              {new Date(signal.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </span>
+          </div>
+          <p className={cn('text-[12px] text-foreground leading-relaxed', !expanded && 'line-clamp-2')}>
+            {signal.editSummary ?? 'No summary available'}
+          </p>
+          {expanded && signal.originalExcerpt && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className="rounded-md border border-border/50 bg-muted/20 p-2">
+                <p className="text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wide">Original</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{signal.originalExcerpt}</p>
+              </div>
+              <div className="rounded-md border border-border/50 bg-muted/20 p-2">
+                <p className="text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wide">Approved</p>
+                <p className="text-[11px] text-foreground leading-relaxed">{signal.approvedExcerpt}</p>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-1 text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+          >
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Intelligence Layer tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+function IntelligenceLayer() {
+  const [profiles, setProfiles]             = useState<HumanizerProfile[]>([])
+  const [signals, setSignals]               = useState<EditSignal[]>([])
+  const [contentTypes, setContentTypes]     = useState<ContentTypeRow[]>([])
+  const [loading, setLoading]               = useState(true)
+  const [signalPage, setSignalPage]         = useState(1)
+  const [signalTotal, setSignalTotal]       = useState(0)
+  const [synthesizing, setSynthesizing]     = useState<string | null>(null)
+  const [clientFilter, setClientFilter]     = useState('')
+
+  const fetchAll = useCallback(async (page = 1) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: '25' })
+      if (clientFilter) params.set('clientId', clientFilter)
+
+      const [profRes, sigRes, ctRes] = await Promise.all([
+        apiFetch('/api/v1/cn-humanizer-intelligence/profiles').then((r) => r.json()),
+        apiFetch(`/api/v1/cn-humanizer-intelligence/signals?${params}`).then((r) => r.json()),
+        apiFetch('/api/v1/cn-humanizer-intelligence/content-types').then((r) => r.json()),
+      ])
+      setProfiles(profRes.data ?? [])
+      setSignals(sigRes.data ?? [])
+      setSignalTotal(sigRes.pagination?.total ?? 0)
+      setContentTypes(ctRes.data ?? [])
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }, [clientFilter])
+
+  useEffect(() => { void fetchAll(1) }, [fetchAll])
+
+  const handleResynthesize = async (scope: string, scopeId: string | null) => {
+    const key = `${scope}-${scopeId ?? 'agency'}`
+    setSynthesizing(key)
+    try {
+      await apiFetch(`/api/v1/cn-humanizer-intelligence/profiles/${scope}/synthesize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scopeId }),
+      })
+    } catch { /* ignore */ }
+    finally { setSynthesizing(null) }
+  }
+
+  const agencyProfile = profiles.find((p) => p.scope === 'agency')
+  const clientProfiles = profiles.filter((p) => p.scope === 'client')
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground text-sm">
+        <Icons.Loader2 className="h-4 w-4 animate-spin" />Loading…
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Agency profile */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[13px] font-semibold text-foreground flex items-center gap-1.5">
+            <Icons.Globe className="h-3.5 w-3.5 text-violet-400" />
+            Agency-wide Style Profile
+          </h3>
+          <button onClick={() => void fetchAll(1)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+            <Icons.RefreshCw className="h-3 w-3" />Refresh
+          </button>
+        </div>
+        {agencyProfile ? (
+          <ProfileCard
+            scope="agency"
+            scopeId={null}
+            profile={agencyProfile.profile}
+            signalCount={agencyProfile.signalCount}
+            lastSynthesisAt={agencyProfile.lastSynthesisAt}
+            onResynthesize={() => void handleResynthesize('agency', null)}
+            synthesizing={synthesizing === 'agency-agency'}
+          />
+        ) : (
+          <div className="rounded-xl border border-dashed border-border p-6 text-center">
+            <Icons.BrainCircuit className="h-6 w-6 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No agency profile yet</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Profiles are compiled automatically after 5 edit signals. Approve edited content to start accumulating signal.</p>
+          </div>
+        )}
+      </section>
+
+      {/* Client profiles */}
+      {clientProfiles.length > 0 && (
+        <section>
+          <h3 className="text-[13px] font-semibold text-foreground flex items-center gap-1.5 mb-3">
+            <Icons.Users className="h-3.5 w-3.5 text-blue-400" />
+            Client-level Profiles
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {clientProfiles.map((p) => (
+              <ProfileCard
+                key={p.id}
+                scope="client"
+                scopeId={p.scopeId}
+                profile={p.profile}
+                signalCount={p.signalCount}
+                lastSynthesisAt={p.lastSynthesisAt}
+                onResynthesize={() => void handleResynthesize('client', p.scopeId)}
+                synthesizing={synthesizing === `client-${p.scopeId}`}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Content type breakdown */}
+      {contentTypes.length > 0 && (
+        <section>
+          <h3 className="text-[13px] font-semibold text-foreground flex items-center gap-1.5 mb-3">
+            <Icons.Tag className="h-3.5 w-3.5 text-amber-400" />
+            Content Type Breakdown
+          </h3>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Content Type</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Signals</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Profile</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Last Synthesized</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {contentTypes.map((ct) => (
+                  <tr key={ct.contentType} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-2.5 font-medium">{ct.contentType}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{ct.signalCount}</td>
+                    <td className="px-4 py-2.5">
+                      {ct.hasProfile ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                          <Icons.Check className="h-2.5 w-2.5" />Active
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground/50">
+                          {ct.signalCount < 5 ? `${5 - ct.signalCount} more needed` : 'Pending'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground">
+                      {ct.lastSynthesisAt ? new Date(ct.lastSynthesisAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {ct.signalCount >= 5 && (
+                        <button
+                          onClick={() => void handleResynthesize('content_type', ct.contentType)}
+                          disabled={synthesizing === `content_type-${ct.contentType}`}
+                          className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          {synthesizing === `content_type-${ct.contentType}`
+                            ? <Icons.Loader2 className="h-3 w-3 animate-spin" />
+                            : <Icons.RefreshCw className="h-3 w-3" />
+                          }
+                          Synthesize
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Edit signal feed */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[13px] font-semibold text-foreground flex items-center gap-1.5">
+            <Icons.Activity className="h-3.5 w-3.5 text-emerald-400" />
+            Edit Signal Feed
+            <span className="text-[11px] font-normal text-muted-foreground">{signalTotal} total</span>
+          </h3>
+        </div>
+        {signals.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-6 text-center">
+            <Icons.Activity className="h-6 w-6 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No edit signals yet</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Signals are captured when content is edited before being approved in the Content Library.</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border bg-transparent px-4 py-2">
+            {signals.map((s) => <SignalRow key={s.id} signal={s} />)}
+          </div>
+        )}
+        {signalTotal > 25 && (
+          <div className="flex items-center justify-end gap-2 mt-3">
+            <button
+              disabled={signalPage <= 1}
+              onClick={() => { setSignalPage((p) => p - 1); void fetchAll(signalPage - 1) }}
+              className="h-7 px-2.5 rounded border border-border text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-muted-foreground">Page {signalPage}</span>
+            <button
+              disabled={signalPage * 25 >= signalTotal}
+              onClick={() => { setSignalPage((p) => p + 1); void fetchAll(signalPage + 1) }}
+              className="h-7 px-2.5 rounded border border-border text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main page
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function HumanizerDashboard() {
+  const [activeTab, setActiveTab]   = useState<'training' | 'intelligence'>('training')
   const [stats, setStats] = useState<Stats | null>(null)
   const [examples, setExamples] = useState<Example[]>([])
   const [total, setTotal] = useState(0)
@@ -226,19 +589,49 @@ export function HumanizerDashboard() {
           <div>
             <h1 className="text-base font-semibold flex items-center gap-2">
               <Icons.BrainCircuit className="h-4 w-4 text-violet-400" />
-              cnHumanizer Training Data
+              cnHumanizer
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Before/after pairs used to train and improve the cnHumanizer model.
+              Style intelligence built from real human editorial decisions.
             </p>
           </div>
-          <button onClick={fetchExamples} className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-            <Icons.RefreshCw className="h-3 w-3" />Refresh
-          </button>
+          {activeTab === 'training' && (
+            <button onClick={fetchExamples} className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+              <Icons.RefreshCw className="h-3 w-3" />Refresh
+            </button>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mt-3">
+          {([
+            { key: 'training', label: 'Training Data', icon: Icons.Database },
+            { key: 'intelligence', label: 'Style Intelligence', icon: Icons.Sparkles },
+          ] as const).map(({ key, label, icon: Ic }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                activeTab === key
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+              )}
+            >
+              <Ic className="h-3 w-3" />
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+        {/* Intelligence Layer tab */}
+        {activeTab === 'intelligence' && <IntelligenceLayer />}
+
+        {/* Training data tab */}
+        {activeTab === 'training' && <>
 
         {/* Stats cards */}
         <div className="grid grid-cols-5 gap-3">
@@ -396,6 +789,8 @@ export function HumanizerDashboard() {
             </table>
           </div>
         )}
+
+        </> /* end training tab */}
       </div>
     </div>
   )

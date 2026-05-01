@@ -1,6 +1,7 @@
 import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { synthesiseThoughtLeaderContext } from './clientBrainExtraction.js'
+import { loadHumanizerProfiles } from './humanizerSynthesis.js'
 import type { Job } from 'bullmq'
 
 // Job data type mirrors the API's ContentPackGenJobData
@@ -163,6 +164,12 @@ export async function runContentPackGeneration(job: Job<ContentPackGenJobData>):
       const sources = Array.isArray(topicRows[0]?.sources) ? topicRows[0].sources as Array<{ title: string; url: string; publication: string }> : []
       const sourcesText = sources.slice(0, 5).map((s) => `- ${s.title} (${s.publication})`).join('\n')
 
+      // ── Load humanizer profile for style injection ────────────────────────
+      const humanizerProfile = await loadHumanizerProfiles(agencyId, clientId, promptName).catch(() => null)
+      const humanizerBlock = humanizerProfile
+        ? `WRITING STYLE INSTRUCTIONS (apply throughout — these override default style choices):\n${humanizerProfile}\n`
+        : ''
+
       // ── Build system prompt — four-context for member, legacy for others ──
       let systemPrompt: string
 
@@ -171,7 +178,7 @@ export async function runContentPackGeneration(job: Job<ContentPackGenJobData>):
         console.log(`[content-pack-gen] PATH=four-context-member memberId=${targetId} itemId=${itemId}`)
         systemPrompt = `You are a senior B2B content strategist and ghostwriter. Generate high-quality content following the prompt template exactly.
 
-${systemBlock}
+${humanizerBlock}${systemBlock}
 
 Output only the finished content — no preamble, no meta-commentary.`
       } else {
@@ -184,7 +191,7 @@ Output only the finished content — no preamble, no meta-commentary.`
         }
         systemPrompt = `You are a senior B2B content strategist and ghostwriter. Generate high-quality content following the prompt template exactly.
 
-${targetContext ? `Voice/audience context:\n${targetContext}\n` : ''}
+${humanizerBlock}${targetContext ? `Voice/audience context:\n${targetContext}\n` : ''}
 ${client?.brainContext ? `Company context:\n${client.brainContext.slice(0, 600)}\n` : ''}
 Output only the finished content — no preamble, no meta-commentary.`
       }

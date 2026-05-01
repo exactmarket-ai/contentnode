@@ -65,6 +65,7 @@ import { contentPackRoutes }            from './routes/contentPacks.js'
 import { agencyPromptTemplateRoutes }   from './routes/agencyPromptTemplates.js'
 import { contentLibraryRoutes }         from './routes/contentLibrary.js'
 import { modelRegistryRoutes }          from './routes/modelRegistry.js'
+import { cnHumanizerIntelligenceRoutes } from './routes/cnHumanizerIntelligence.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -200,8 +201,9 @@ await app.register(googleDriveWebhookRoutes,      { prefix: '/api/v1/webhooks/go
 await app.register(imagePromptRoutes,        { prefix: '/api/v1/image-prompts' })
 await app.register(contentPackRoutes,             { prefix: '/api/v1/content-packs' })
 await app.register(agencyPromptTemplateRoutes,    { prefix: '/api/v1/agency/prompt-templates' })
-await app.register(contentLibraryRoutes,          { prefix: '/api/v1/content-library' })
-await app.register(modelRegistryRoutes,           { prefix: '/api/v1/model-registry' })
+await app.register(contentLibraryRoutes,            { prefix: '/api/v1/content-library' })
+await app.register(modelRegistryRoutes,             { prefix: '/api/v1/model-registry' })
+await app.register(cnHumanizerIntelligenceRoutes,   { prefix: '/api/v1/cn-humanizer-intelligence' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

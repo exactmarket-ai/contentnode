@@ -305,9 +305,12 @@ Negative prompt: [what to exclude]`,
 
 **Meta Description:** 150–155 characters, includes primary keyword, compels the click.
 
+**Publication Date:** Include the line "Published: [today's date, formatted as Month DD, YYYY]" immediately after the meta description and before the body.
+
 **Blog Post Body (800–1,200 words):**
 - Opening paragraph: hook immediately — a surprising stat, a counterintuitive statement, or a vivid scenario. No "In today's world" openers.
 - 3–4 main sections with H2 subheadings
+- Structured content requirement: at least 40% of the body must use structured formats — bullet points, numbered lists, definition blocks (Term: explanation), or Q&A pairs. Do not rely on prose alone.
 - Use short paragraphs (2–4 sentences max). Break up text with bullet points where logical.
 - Weave in the Key Messages from the brief — don't force them, make them feel natural.
 - Pull quote: Identify the single most quotable sentence and format it as a pull quote (put it on its own line between --- markers)

@@ -86,6 +86,8 @@ import {
   QUEUE_THOUGHT_LEADER_SOCIAL_SYNC,
   type ThoughtLeaderSocialSyncJobData,
 } from './queues.js'
+import { startEditSignalWorker } from './editSignalProcessor.js'
+import { startHumanizerSynthesisWorker } from './humanizerSynthesis.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -660,6 +662,10 @@ const thoughtLeaderSocialSyncWorker = createWorker<ThoughtLeaderSocialSyncJobDat
   { lockDuration: 120_000 },
 )
 
+// ── Edit signal + humanizer synthesis workers ─────────────────────────────────
+const editSignalWorker          = startEditSignalWorker()
+const humanizerSynthesisWorker  = startHumanizerSynthesisWorker()
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -696,6 +702,8 @@ async function shutdown() {
     fileCleanupWorker.close(),
     promptPropagationWorker.close(),
     thoughtLeaderSocialSyncWorker.close(),
+    editSignalWorker.close(),
+    humanizerSynthesisWorker.close(),
   ])
   process.exit(0)
 }

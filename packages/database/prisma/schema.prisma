@@ -76,6 +76,7 @@ model Agency {
   boxFileTrackings               BoxFileTracking[]
   googleDriveFileTrackings       GoogleDriveFileTracking[]
   humanizerSignals               HumanizerSignal[]
+  humanizerProfiles              HumanizerProfile[]
   stakeholderPreferenceProfiles  StakeholderPreferenceProfile[]
   clientPreferenceProfiles       ClientPreferenceProfile[]
   stakeholderPrinciples          StakeholderPrinciple[]
@@ -2519,6 +2520,8 @@ model HumanizerSignal {
   editorEmail     String?  @map("editor_email")        // raw email from Box — used to retroactively link when stakeholder is added
   boxFileId       String?  @map("box_file_id")        // links back to BoxFileTracking.boxFileId
   documentType    String?  @map("document_type")       // inferred from filename: blog | email | social | ad_copy | landing_page | executive_brief | video_script
+  contentType     String?  @map("content_type")        // prompt name e.g. "Blog — Contrarian Take" (set for content_library_approval source)
+  assignmentType  String?  @map("assignment_type")     // leadership_member | vertical | company (set for content_library_approval source)
   embedding       Unsupported("vector(1536)")? @map("embedding")  // pgvector embedding of originalText — used for few-shot retrieval
   createdAt       DateTime @default(now()) @map("created_at")
 
@@ -2532,6 +2535,29 @@ model HumanizerSignal {
   @@index([stakeholderId])
   @@index([runId])
   @@map("humanizer_signals")
+}
+
+// ─────────────────────────────────────────────
+// HumanizerProfile — compiled style intelligence profile per scope.
+// Synthesized from HumanizerSignal rows (source: content_library_approval).
+// Injected into content generation prompts as a style layer.
+// ─────────────────────────────────────────────
+model HumanizerProfile {
+  id              String    @id @default(cuid())
+  agencyId        String    @map("agency_id")
+  scope           String    // agency | client | content_type
+  scopeId         String?   @map("scope_id")   // clientId or contentType depending on scope; null for agency scope
+  profile         String?   @db.Text           // compiled style instructions injected into generation prompts
+  signalCount     Int       @default(0) @map("signal_count")
+  lastSynthesisAt DateTime? @map("last_synthesis_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, scope, scopeId])
+  @@index([agencyId])
+  @@map("humanizer_profiles")
 }
 
 // ─────────────────────────────────────────────
@@ -2859,20 +2885,21 @@ model ContentPackRun {
 // ContentPackRunItem — one generated piece within a ContentPackRun
 // ─────────────────────────────────────────────
 model ContentPackRunItem {
-  id               String    @id @default(cuid())
-  runId            String    @map("run_id")
-  promptTemplateId String    @map("prompt_template_id")
-  promptName       String    @map("prompt_name")
-  status           String    @default("pending") // pending | running | completed | failed
-  publishStatus    String    @default("draft") @map("publish_status") // draft | approved | archived
-  content          String?   @db.Text
-  originalContent  String?   @db.Text @map("original_content")
-  wordCount        Int?      @map("word_count")
-  errorMessage     String?   @db.Text @map("error_message")
-  mondaySubItemId  String?   @map("monday_sub_item_id")
-  boxFileId        String?   @map("box_file_id")
-  completedAt      DateTime? @map("completed_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
+  id                String    @id @default(cuid())
+  runId             String    @map("run_id")
+  promptTemplateId  String    @map("prompt_template_id")
+  promptName        String    @map("prompt_name")
+  status            String    @default("pending") // pending | running | completed | failed
+  publishStatus     String    @default("draft") @map("publish_status") // draft | approved | archived
+  content           String?   @db.Text
+  originalContent   String?   @db.Text @map("original_content")
+  editSignalSummary String?   @db.Text @map("edit_signal_summary")
+  wordCount         Int?      @map("word_count")
+  errorMessage      String?   @db.Text @map("error_message")
+  mondaySubItemId   String?   @map("monday_sub_item_id")
+  boxFileId         String?   @map("box_file_id")
+  completedAt       DateTime? @map("completed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   run            ContentPackRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   promptTemplate PromptTemplate @relation(fields: [promptTemplateId], references: [id], onDelete: Cascade)

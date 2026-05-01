@@ -439,3 +439,47 @@ export function getThoughtLeaderSocialSyncQueue(): Queue<ThoughtLeaderSocialSync
   }
   return thoughtLeaderSocialSyncQueue
 }
+
+// ── Content Library edit signal processing ────────────────────────────────────
+
+export const QUEUE_CONTENT_LIBRARY_EDIT_SIGNAL = 'content-library-edit-signal'
+export const QUEUE_HUMANIZER_SYNTHESIS          = 'humanizer-synthesis'
+
+export interface ContentLibraryEditSignalJobData {
+  agencyId:       string
+  clientId:       string
+  itemId:         string
+  promptName:     string
+  targetType:     string   // 'member' | 'vertical' | 'company'
+  targetId:       string | null
+  content:        string
+  originalContent: string
+}
+
+export interface HumanizerSynthesisJobData {
+  agencyId:  string
+  scope:     'agency' | 'client' | 'content_type'
+  scopeId:   string | null
+}
+
+let contentLibraryEditSignalQueue: Queue<ContentLibraryEditSignalJobData> | null = null
+export function getContentLibraryEditSignalQueue(): Queue<ContentLibraryEditSignalJobData> {
+  if (!contentLibraryEditSignalQueue) {
+    contentLibraryEditSignalQueue = new Queue<ContentLibraryEditSignalJobData>(
+      QUEUE_CONTENT_LIBRARY_EDIT_SIGNAL,
+      { connection: getBullMQConnection() },
+    )
+  }
+  return contentLibraryEditSignalQueue
+}
+
+let humanizerSynthesisQueue: Queue<HumanizerSynthesisJobData> | null = null
+export function getHumanizerSynthesisQueue(): Queue<HumanizerSynthesisJobData> {
+  if (!humanizerSynthesisQueue) {
+    humanizerSynthesisQueue = new Queue<HumanizerSynthesisJobData>(
+      QUEUE_HUMANIZER_SYNTHESIS,
+      { connection: getBullMQConnection() },
+    )
+  }
+  return humanizerSynthesisQueue
+}

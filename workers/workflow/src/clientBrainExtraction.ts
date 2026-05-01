@@ -365,6 +365,21 @@ export async function synthesiseThoughtLeaderContext(
   })
   const combined = parts.join('\n\n---\n\n').slice(0, 50000)
 
+  // Load agency-level humanizer profile for awareness block
+  const agencyHumanizerRow = await prisma.humanizerProfile.findFirst({
+    where: { agencyId, scope: 'agency', scopeId: null },
+    select: { profile: true },
+  }).catch(() => null)
+  const agencyHumanizerProfile = agencyHumanizerRow?.profile ?? null
+
+  const humanizerAwarenessBlock = agencyHumanizerProfile
+    ? `\nAGENCY HUMANIZER STYLE PROFILE (for awareness only — thought leader voice takes precedence):
+${agencyHumanizerProfile.slice(0, 600)}
+
+Note any cases where the humanizer style instructions conflict with this thought
+leader's established voice patterns. Flag these in the Generation Guidance section.\n`
+    : ''
+
   const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   const result = await callModel(
     { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 1500, temperature: 0.3 },
@@ -375,7 +390,7 @@ but specifically this person.
 
 THOUGHT LEADER ATTACHMENTS (all signal sources, chronological):
 ${combined}
-
+${humanizerAwarenessBlock}
 Synthesize everything above into a compiled voice profile. Cover:
 
 1. VOICE AND STYLE

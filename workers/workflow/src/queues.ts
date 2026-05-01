@@ -41,6 +41,8 @@ export const QUEUE_NEWSROOM_RESEARCH              = 'newsroom-research'
 export const QUEUE_CONTENT_PACK_GENERATION        = `${_p}content-pack-generation`
 export const QUEUE_PROMPT_PROPAGATION             = `${_p}prompt-propagation`
 export const QUEUE_THOUGHT_LEADER_SOCIAL_SYNC     = `${_p}thought-leader-social-sync`
+export const QUEUE_CONTENT_LIBRARY_EDIT_SIGNAL    = `${_p}content-library-edit-signal`
+export const QUEUE_HUMANIZER_SYNTHESIS            = `${_p}humanizer-synthesis`
 
 export interface ContentPackGenJobData {
   agencyId:         string
@@ -276,6 +278,23 @@ export interface ThoughtLeaderSocialSyncJobData {
   agencyId:            string
   leadershipMemberId:  string
   synthesizeOnly?:     boolean  // when true, skip the social fetch and only run synthesis
+}
+
+export interface ContentLibraryEditSignalJobData {
+  agencyId:        string
+  clientId:        string
+  itemId:          string
+  promptName:      string
+  targetType:      string   // 'member' | 'vertical' | 'company'
+  targetId:        string | null
+  content:         string
+  originalContent: string
+}
+
+export interface HumanizerSynthesisJobData {
+  agencyId:  string
+  scope:     'agency' | 'client' | 'content_type'
+  scopeId:   string | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
