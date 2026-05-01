@@ -216,6 +216,34 @@ export async function contentLibraryRoutes(app: FastifyInstance) {
     })
   })
 
+  // ── PATCH /:clientId/:id/content — save edited content before approval ──────
+  app.patch<{ Params: { clientId: string; id: string }; Body: { content: string } }>('/:clientId/:id/content', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { clientId, id } = req.params
+    const { content } = req.body
+
+    if (typeof content !== 'string') {
+      return reply.code(400).send({ error: 'content must be a string' })
+    }
+
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT i.id FROM content_pack_run_items i
+      JOIN content_pack_runs r ON r.id = i.run_id
+      WHERE i.id = ${id} AND r.agency_id = ${agencyId} AND r.client_id = ${clientId}
+      LIMIT 1
+    `
+    if (!rows[0]) return reply.code(404).send({ error: 'Item not found' })
+
+    const wordCount = content.trim().split(/\s+/).filter(Boolean).length
+    await prisma.$executeRaw`
+      UPDATE content_pack_run_items
+      SET content = ${content}, word_count = ${wordCount}
+      WHERE id = ${id}
+    `
+
+    return reply.send({ data: { ok: true } })
+  })
+
   // ── PATCH /:clientId/:id/status — update publish status ───────────────────
   app.patch<{ Params: { clientId: string; id: string }; Body: { publishStatus: string } }>('/:clientId/:id/status', async (req, reply) => {
     const { agencyId } = req.auth

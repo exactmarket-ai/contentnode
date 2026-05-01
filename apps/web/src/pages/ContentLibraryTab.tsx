@@ -245,29 +245,74 @@ function PreviewDrawer({
   const [copied, setCopied] = useState(false)
   const [fullContent, setFullContent] = useState<string | null>(item.content)
   const [loadingFull, setLoadingFull] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedContent, setEditedContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setLoadingFull(true)
     setFullContent(item.content)
+    setIsEditing(false)
+    setEditedContent('')
     // Always fetch full item to get untruncated content
     apiFetch(`/api/v1/content-library/${clientId}/${item.id}`)
       .then((r) => r.json())
-      .then((data) => { setFullContent(data.data?.content ?? item.content) })
-      .catch(() => {})
+      .then((data) => {
+        const c = data.data?.content ?? item.content ?? ''
+        setFullContent(c)
+        setEditedContent(c)
+      })
+      .catch(() => { setEditedContent(item.content ?? '') })
       .finally(() => setLoadingFull(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, clientId])
 
+  // Auto-resize textarea as content grows
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+    }
+  }, [editedContent, isEditing])
+
+  const startEditing = () => { if (!loadingFull) setIsEditing(true) }
+  const cancelEditing = () => { setEditedContent(fullContent ?? ''); setIsEditing(false) }
+
   const copy = async () => {
-    if (fullContent) {
-      await navigator.clipboard.writeText(fullContent)
+    const text = isEditing ? editedContent : (fullContent ?? '')
+    if (text) {
+      await navigator.clipboard.writeText(text)
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     }
   }
 
+  const hasEdits = editedContent !== (fullContent ?? '')
+
   const nextStatus = item.publishStatus === 'draft' ? 'approved' : item.publishStatus === 'approved' ? 'archived' : 'draft'
   const nextLabel  = item.publishStatus === 'draft' ? 'Approve' : item.publishStatus === 'approved' ? 'Archive' : 'Restore to draft'
+
+  const handleStatusAction = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      // When approving with edits, persist the edited content first so the
+      // status PATCH can diff it against original_content for the edit signal.
+      if (nextStatus === 'approved' && hasEdits) {
+        await apiFetch(`/api/v1/content-library/${clientId}/${item.id}/content`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: editedContent }),
+        })
+        setFullContent(editedContent)
+      }
+      onStatusChange(item.id, nextStatus)
+      setIsEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-40 flex">
@@ -306,12 +351,52 @@ function PreviewDrawer({
               <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading full content…
             </div>
-          ) : fullContent ? (
-            <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground whitespace-pre-wrap font-sans">
-              {fullContent}
-            </div>
           ) : (
-            <p className="text-xs text-muted-foreground italic">No content.</p>
+            <>
+              {/* Edit / Cancel toolbar */}
+              <div className="flex items-center justify-end mb-2 min-h-[20px]">
+                {isEditing ? (
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Icons.Undo2 className="h-3 w-3" />
+                    Cancel edits
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startEditing}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Icons.Pencil className="h-3 w-3" />
+                    Edit
+                  </button>
+                )}
+              </div>
+
+              {isEditing ? (
+                <textarea
+                  ref={textareaRef}
+                  value={editedContent}
+                  onChange={(e) => setEditedContent(e.target.value)}
+                  className="w-full text-[13px] leading-relaxed text-foreground font-sans resize-none outline-none border border-input rounded-lg p-3 bg-background focus:ring-1 focus:ring-blue-500"
+                  style={{ minHeight: 200, overflow: 'hidden' }}
+                  autoFocus
+                />
+              ) : fullContent ? (
+                <div
+                  className="prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground whitespace-pre-wrap font-sans cursor-text"
+                  onClick={startEditing}
+                  title="Click to edit"
+                >
+                  {fullContent}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No content.</p>
+              )}
+            </>
           )}
         </div>
 
@@ -339,8 +424,10 @@ function PreviewDrawer({
             variant="outline"
             size="sm"
             className="text-xs h-7 ml-auto"
-            onClick={() => onStatusChange(item.id, nextStatus)}
+            disabled={saving}
+            onClick={handleStatusAction}
           >
+            {saving && <Icons.Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
             {nextLabel}
           </Button>
         </div>
