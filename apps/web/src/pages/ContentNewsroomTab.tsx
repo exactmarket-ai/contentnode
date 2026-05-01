@@ -1373,6 +1373,14 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
     setShowAssignmentPanel(true)
   }
 
+  // Single-card approve: optimistically mark approved locally, select, open panel.
+  // The API status update and generation happen when the user clicks Generate.
+  const handleApproveSingle = (id: string) => {
+    setTopics((prev) => prev.map((t) => t.id === id ? { ...t, status: 'approved' as const } : t))
+    setSelected(new Set([id]))
+    setShowAssignmentPanel(true)
+  }
+
   const handleTopicsAdded = (ids: string[]) => {
     setNewTopicIds(new Set(ids))
     load()
@@ -1492,7 +1500,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
             </div>
             {pendingTopics.map((t) => (
               <TopicCard key={t.id} topic={t} selected={selected.has(t.id)} isNew={newTopicIds.has(t.id)}
-                onSelect={toggleSelect} onApprove={(id) => updateStatus(id, 'approved')} onReject={(id) => updateStatus(id, 'rejected')}
+                onSelect={toggleSelect} onApprove={handleApproveSingle} onReject={(id) => updateStatus(id, 'rejected')}
                 loading={actionLoading === t.id} />
             ))}
           </div>
@@ -1549,8 +1557,16 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
         <AssignmentPanel
           clientId={clientId}
           selectedTopics={topics.filter((t) => selected.has(t.id))}
-          onClose={() => setShowAssignmentPanel(false)}
-          onGenerated={() => {
+          onClose={() => { setShowAssignmentPanel(false); load() }}
+          onGenerated={async () => {
+            // Persist approved status for all selected topics now that generation is confirmed
+            const toApprove = Array.from(selected)
+            for (const id of toApprove) {
+              await apiFetch(`/api/v1/topic-queue/${id}/status`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'approved' }),
+              }).catch(console.error)
+            }
             setGenerating(true)
             setShowAssignmentPanel(false)
             clearSelection()
