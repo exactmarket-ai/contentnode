@@ -1016,8 +1016,9 @@ function AssignmentPanel({
     setGenerating(true)
     try {
       const items = Array.from(checkedItems.values())
+      let anySucceeded = false
       for (const topicId of topicIds) {
-        await apiFetch('/api/v1/content-packs/generate', {
+        const res = await apiFetch('/api/v1/content-packs/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1027,8 +1028,14 @@ function AssignmentPanel({
             ...(targetType !== 'company' && { targetId }),
             checkedItems: items,
           }),
-        }).catch(console.error)
+        })
+        if (res.ok) anySucceeded = true
+        else {
+          const err = await res.json().catch(() => ({})) as { error?: string }
+          console.error('[generate] failed:', res.status, err)
+        }
       }
+      if (!anySucceeded) return
       setSuccessMsg(true)
       setTimeout(() => {
         onGenerated()
