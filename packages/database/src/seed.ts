@@ -125,9 +125,14 @@ async function main() {
   console.log('\n✅ Seed complete.')
 }
 
+function sanitizeError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err)
+  return msg.replace(/postgresql:\/\/[^\s'"]+/gi, '[REDACTED]')
+}
+
 main()
   .catch((err) => {
-    console.error('Seed failed:', err)
+    console.error('Seed failed:', sanitizeError(err))
     process.exit(1)
   })
   .finally(() => prisma.$disconnect())

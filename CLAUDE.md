@@ -297,6 +297,33 @@ Full spec is in docs/contentnode-spec-v4.md
 - Dockerfiles (Dockerfile.api/worker/web): currently run as root — no USER directive.
   See TODO for fix.
 
+## Running production database scripts
+When running any ad-hoc script against the production database, always use `railway run`
+to inject credentials — never extract them into a shell variable or print them.
+
+**Safe pattern (always use this):**
+```sh
+railway run --environment production --service "@contentnode/api" -- npx tsx -e "..."
+```
+Railway injects DATABASE_URL and all other env vars directly into the subprocess.
+Nothing appears in terminal output or shell history.
+
+**Never do this:**
+```sh
+# Prints every production secret to stdout
+railway variables --environment production --json
+
+# Embeds the URL in the command — visible in shell history and process listings
+DATABASE_URL="postgresql://user:password@host/db" npx tsx -e "..."
+```
+
+Scripts that catch Prisma errors must also sanitize before printing — raw
+`PrismaClientInitializationError` messages can embed the full connection string:
+```ts
+const msg = err instanceof Error ? err.message : String(err)
+console.error('Failed:', msg.replace(/postgresql:\/\/[^\s'"]+/gi, '[REDACTED]'))
+```
+
 ## What has been built (continued — Phase 5 Campaign Layer)
 - Campaign layer complete: groups workflows under a shared goal/timeline
   - **DB**: `Campaign` model (id, agencyId, clientId, name, goal, status, brief, startDate, endDate)
