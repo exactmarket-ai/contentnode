@@ -4208,6 +4208,10 @@ Rules:
         { key: 'vocabularyLevel',  label: 'Vocabulary level and style',       type: 'string' },
         { key: 'sentenceStyle',    label: 'Sentence structure and style',     type: 'string' },
         { key: 'whatToAvoid',      label: 'Phrases and styles to avoid',      type: 'string' },
+        { key: 'goodExamples', label: 'On-voice example sentences (sounds like this)', type: 'array',
+          arraySchema: '{"text":""}' },
+        { key: 'badExamples',  label: 'Off-voice examples with correction notes',     type: 'array',
+          arraySchema: '{"bad":"","whyWrong":""}' },
       ],
       '12': [
         { key: 'competitors', label: 'Competitors and differentiation', type: 'array',
@@ -4238,6 +4242,8 @@ Rules:
       '18': [
         { key: 'ctas', label: 'CTAs', type: 'array',
           arraySchema: '{"ctaName":"","description":"","targetAudienceTrigger":"","assets":""}' },
+        { key: 'campaignThemes', label: 'Campaign theme suggestions', type: 'array',
+          arraySchema: '{"campaignName":"","description":""}' },
       ],
     }
 

@@ -2134,6 +2134,8 @@ TABLE FIELDS (v = array of row objects):
 §09 proofPoints:     row schema {"text":"","source":""}
 §09 caseStudies:     row schema {"clientProfile":"","url":"","situation":"","engagement":"","outcomes":"","thirtySecond":"","headlineStat":""}
 §10 objections:      row schema {"objection":"","response":"","followUp":""}
+§11 goodExamples:    row schema {"text":""} — on-voice example sentences (3-5 sentences that sound exactly right)
+§11 badExamples:     row schema {"bad":"","whyWrong":""} — off-voice example + brief note on what makes it wrong
 §12 competitors:     row schema {"type":"","positioning":"","counter":"","whenComesUp":""}
 §13 quotes:          row schema {"quoteText":"","attribution":"","context":"","bestUsedIn":"","approved":""}
 §14 campaigns:       row schema {"theme":"","targetAudience":"","primaryAssets":"","keyMessage":""}
@@ -2141,6 +2143,7 @@ TABLE FIELDS (v = array of row objects):
 §16 funnelStages:    row schema {"stage":"","assets":"","primaryCTA":"","buyerState":""}
 §17 regulations:     row schema {"requirement":"","capability":"","servicePillar":"","salesNote":""}
 §18 ctas:            row schema {"ctaName":"","description":"","targetAudienceTrigger":"","assets":""}
+§18 campaignThemes:  row schema {"campaignName":"","description":""} — campaign name + one-sentence purpose
 
 Rules:
 - Include only the fields the user explicitly confirmed — never bulk-fill
