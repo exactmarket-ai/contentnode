@@ -1013,7 +1013,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     { label: 'Contract Profile', value: fw.s02.contractProfile },
   ])
 
-  const buyerRows = fw.s02.buyerTable.filter((r) => r.segment?.trim() || r.primaryBuyer?.trim() || r.corePain?.trim() || r.entryPoint?.trim())
+  const buyerRows = (Array.isArray(fw.s02?.buyerTable) ? fw.s02.buyerTable : []).filter((r) => r.segment?.trim() || r.primaryBuyer?.trim() || r.corePain?.trim() || r.entryPoint?.trim())
   if (buyerRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Primary Buyer Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1057,7 +1057,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   }))
   if (fw.s03.marketPressureNarrative?.trim()) children.push(gtmSingleCellTable(fw.s03.marketPressureNarrative, bodyFont))
 
-  const statRows = fw.s03.statsTable.filter((r) => r.stat?.trim() || r.context?.trim() || r.source?.trim())
+  const statRows = (Array.isArray(fw.s03?.statsTable) ? fw.s03.statsTable : []).filter((r) => r.stat?.trim() || r.context?.trim() || r.source?.trim())
   if (statRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Key Statistics', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1094,7 +1094,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     children: [new TextRun({ text: `Format guidance: Each challenge should: (1) name the pain, (2) explain why it exists in this vertical, (3) describe the business consequence, (4) map to a ${clientName} service pillar.`, size: 19, color: '374151', italics: true })],
     spacing: { before: 0, after: 80 },
   }))
-  fw.s04.challenges.forEach((ch, i) => {
+  ;(Array.isArray(fw.s04?.challenges) ? fw.s04.challenges : []).forEach((ch, i) => {
     if (!ch.name?.trim() && !ch.whyExists?.trim() && !ch.consequence?.trim() && !ch.solution?.trim()) return
     const label = ch.name?.trim() ? `Challenge ${i + 1} — ${ch.name}` : `Challenge ${i + 1}`
     children.push(new Paragraph({
@@ -1115,7 +1115,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const s05 = SECTIONS.find((s) => s.num === '05')!
   children.push(...sb('05', `${clientName} Solutions + Service Stack`, s05.subtitle.replace('[Client]', clientName), s05.usedIn))
 
-  const filledPillars = fw.s05.pillars.filter((p) => p.pillar?.trim() || p.valueProp?.trim() || p.keyServices?.trim())
+  const filledPillars = (Array.isArray(fw.s05?.pillars) ? fw.s05.pillars : []).filter((p) => p.pillar?.trim() || p.valueProp?.trim() || p.keyServices?.trim())
   if (filledPillars.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Four Solution Pillars — Vertical Positioning', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1132,7 +1132,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     ))
   }
 
-  const serviceRows = fw.s05.serviceStack.filter((r) => r.service?.trim() || r.whatItDelivers?.trim())
+  const serviceRows = (Array.isArray(fw.s05?.serviceStack) ? fw.s05.serviceStack : []).filter((r) => r.service?.trim() || r.whatItDelivers?.trim())
   if (serviceRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Full Service Stack — Mapped to Vertical Needs', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1175,7 +1175,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     children: [new TextRun({ text: '6-8 differentiators specific to this vertical. Generic company-wide proof points go in Section 09.', size: 19, color: '374151', italics: true })],
     spacing: { before: 0, after: 80 },
   }))
-  const filledDiff = fw.s06.differentiators.filter((d) => d.label?.trim() || d.position?.trim())
+  const filledDiff = (Array.isArray(fw.s06?.differentiators) ? fw.s06.differentiators : []).filter((d) => d.label?.trim() || d.position?.trim())
   if (filledDiff.length > 0) {
     const t = gtmFieldTable(filledDiff.map((d, i) => ({
       label: d.label?.trim() || `Differentiator ${i + 1}`,
@@ -1188,7 +1188,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §07 Segments + Buyer Profiles ───────────────────────────────────────────
   const s07 = SECTIONS.find((s) => s.num === '07')!
   children.push(...sb('07', s07.short, s07.subtitle, s07.usedIn))
-  fw.s07.segments.forEach((seg, i) => {
+  ;(Array.isArray(fw.s07?.segments) ? fw.s07.segments : []).forEach((seg, i) => {
     if (!seg.name?.trim() && !seg.primaryBuyerTitles?.trim() && !seg.whatIsDifferent?.trim()) return
     const label = seg.name?.trim() ? `Sub-Segment ${i + 1} — ${seg.name}` : `Sub-Segment ${i + 1}`
     children.push(new Paragraph({
@@ -1228,7 +1228,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     children.push(gtmSingleCellTable(value, bodyFont))
   })
 
-  const vpRows = fw.s08.valuePropTable.filter((r) => r.pillar?.trim() || r.meaning?.trim() || r.proofPoint?.trim())
+  const vpRows = (Array.isArray(fw.s08?.valuePropTable) ? fw.s08.valuePropTable : []).filter((r) => r.pillar?.trim() || r.meaning?.trim() || r.proofPoint?.trim())
   if (vpRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Value Proposition by Pillar', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1246,7 +1246,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const s09 = SECTIONS.find((s) => s.num === '09')!
   children.push(...sb('09', s09.short, s09.subtitle, s09.usedIn))
 
-  const filledProofPoints = fw.s09.proofPoints.filter((p) => p.text?.trim())
+  const filledProofPoints = (Array.isArray(fw.s09?.proofPoints) ? fw.s09.proofPoints : []).filter((p) => p.text?.trim())
   if (filledProofPoints.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: `${clientName} Company-Wide Proof Points`, bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1273,7 +1273,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     spacing: { before: 0, after: 80 },
   }))
 
-  fw.s09.caseStudies.forEach((cs, i) => {
+  ;(Array.isArray(fw.s09?.caseStudies) ? fw.s09.caseStudies : []).forEach((cs, i) => {
     if (!cs.clientProfile?.trim() && !cs.situation?.trim() && !cs.outcomes?.trim()) return
     const t = gtmFieldTable([
       { label: 'Client profile', value: cs.clientProfile },
@@ -1295,7 +1295,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §10 Objection Handling ──────────────────────────────────────────────────
   const s10 = SECTIONS.find((s) => s.num === '10')!
   children.push(...sb('10', s10.short, s10.subtitle, s10.usedIn))
-  const filledObj = fw.s10.objections.filter((o) => o.objection?.trim() || o.response?.trim())
+  const filledObj = (Array.isArray(fw.s10?.objections) ? fw.s10.objections : []).filter((o) => o.objection?.trim() || o.response?.trim())
   if (filledObj.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Objection Handling Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1328,7 +1328,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     { label: 'What to avoid', value: fw.s11.whatToAvoid },
   ])
 
-  const filledGood = fw.s11.goodExamples.filter((e) => e.text?.trim())
+  const filledGood = (Array.isArray(fw.s11?.goodExamples) ? fw.s11.goodExamples : []).filter((e) => e.text?.trim())
   if (filledGood.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Sounds Like — Good Examples', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1339,7 +1339,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     children.push(new Paragraph({ spacing: { after: 80 } }))
   }
 
-  const filledBad = fw.s11.badExamples.filter((e) => e.bad?.trim() || e.whyWrong?.trim())
+  const filledBad = (Array.isArray(fw.s11?.badExamples) ? fw.s11.badExamples : []).filter((e) => e.bad?.trim() || e.whyWrong?.trim())
   if (filledBad.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Does NOT Sound Like — Bad Examples', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1357,7 +1357,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const s12 = SECTIONS.find((s) => s.num === '12')!
   children.push(...sb('12', s12.short, s12.subtitle.replace('[Client]', clientName), s12.usedIn))
 
-  const compRows = fw.s12.competitors.filter((r) => r.type?.trim() || r.positioning?.trim() || r.counter?.trim())
+  const compRows = (Array.isArray(fw.s12?.competitors) ? fw.s12.competitors : []).filter((r) => r.type?.trim() || r.positioning?.trim() || r.counter?.trim())
   if (compRows.length > 0) {
     children.push(st(
       ['Alternative / Competitor Type', 'Their Positioning', `${clientName} Counter`, 'When This Comes Up'],
@@ -1370,7 +1370,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §13 Customer Quotes + Testimonials ──────────────────────────────────────
   const s13 = SECTIONS.find((s) => s.num === '13')!
   children.push(...sb('13', s13.short, s13.subtitle, s13.usedIn))
-  fw.s13.quotes.forEach((q, i) => {
+  ;(Array.isArray(fw.s13?.quotes) ? fw.s13.quotes : []).forEach((q, i) => {
     if (!q.quoteText?.trim() && !q.attribution?.trim()) return
     const t = gtmFieldTable([
       { label: 'Quote text', value: q.quoteText?.trim() ? `"${q.quoteText.trim()}"` : undefined },
@@ -1390,7 +1390,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §14 Campaign Themes + Asset Mapping ─────────────────────────────────────
   const s14 = SECTIONS.find((s) => s.num === '14')!
   children.push(...sb('14', s14.short, s14.subtitle, s14.usedIn))
-  const campaignRows = fw.s14.campaigns.filter((r) => r.theme?.trim() || r.targetAudience?.trim() || r.primaryAssets?.trim())
+  const campaignRows = (Array.isArray(fw.s14?.campaigns) ? fw.s14.campaigns : []).filter((r) => r.theme?.trim() || r.targetAudience?.trim() || r.primaryAssets?.trim())
   if (campaignRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Campaign themes give the asset suite coherence — each theme owns a set of assets and a buyer motion. Define 3-4 themes, then map each to the assets it drives.', size: 19, color: '374151', italics: true })],
@@ -1411,7 +1411,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §15 FAQs ────────────────────────────────────────────────────────────────
   const s15 = SECTIONS.find((s) => s.num === '15')!
   children.push(...sb('15', s15.short, s15.subtitle, s15.usedIn))
-  const filledFaqs = fw.s15.faqs.filter((f) => f.question?.trim() || f.answer?.trim())
+  const filledFaqs = (Array.isArray(fw.s15?.faqs) ? fw.s15.faqs : []).filter((f) => f.question?.trim() || f.answer?.trim())
   if (filledFaqs.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'The closer these are to verbatim questions from real discovery calls, the better. These feed directly into eBook chapter structure, BDR email angles, and objection handling.', size: 19, color: '374151', italics: true })],
@@ -1436,7 +1436,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §16 Content Funnel Mapping ───────────────────────────────────────────────
   const s16 = SECTIONS.find((s) => s.num === '16')!
   children.push(...sb('16', s16.short, s16.subtitle, s16.usedIn))
-  const funnelRows = fw.s16.funnelStages.filter((r) => r.assets?.trim() || r.primaryCTA?.trim() || r.buyerState?.trim())
+  const funnelRows = (Array.isArray(fw.s16?.funnelStages) ? fw.s16.funnelStages : []).filter((r) => r.assets?.trim() || r.primaryCTA?.trim() || r.buyerState?.trim())
   if (funnelRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Mapping assets to funnel stages ensures CTAs point to the right next step. A brochure CTA should not point to a contract — it should point to an assessment.', size: 19, color: '374151', italics: true })],
@@ -1468,7 +1468,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   // ── §17 Regulatory + Compliance ─────────────────────────────────────────────
   const s17 = SECTIONS.find((s) => s.num === '17')!
   children.push(...sb('17', s17.short, s17.subtitle, s17.usedIn))
-  const regRows = fw.s17.regulations.filter((r) => r.requirement?.trim() || r.capability?.trim() || r.servicePillar?.trim())
+  const regRows = (Array.isArray(fw.s17?.regulations) ? fw.s17.regulations : []).filter((r) => r.requirement?.trim() || r.capability?.trim() || r.servicePillar?.trim())
   if (regRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: `Include only frameworks where ${clientName} has a direct service capability. Do not claim compliance or certification authority ${clientName} does not hold.`, size: 19, color: '374151', italics: true })],
@@ -1505,7 +1505,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
   const s18 = SECTIONS.find((s) => s.num === '18')!
   children.push(...sb('18', s18.short, s18.subtitle, s18.usedIn))
 
-  const ctaRows = fw.s18.ctas.filter((r) => r.ctaName?.trim() || r.description?.trim())
+  const ctaRows = (Array.isArray(fw.s18?.ctas) ? fw.s18.ctas : []).filter((r) => r.ctaName?.trim() || r.description?.trim())
   if (ctaRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Primary CTAs Table', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
@@ -1523,7 +1523,7 @@ export async function downloadGTMFrameworkDocx(fw: FrameworkData, clientName: st
     children.push(new Paragraph({ spacing: { after: 80 } }))
   }
 
-  const campaignThemeRows = fw.s18.campaignThemes.filter((r) => r.campaignName?.trim() || r.description?.trim())
+  const campaignThemeRows = (Array.isArray(fw.s18?.campaignThemes) ? fw.s18.campaignThemes : []).filter((r) => r.campaignName?.trim() || r.description?.trim())
   if (campaignThemeRows.length > 0) {
     children.push(new Paragraph({
       children: [new TextRun({ text: 'Campaign Theme Suggestions', bold: true, size: 20, color: secondaryHex, font: { name: headingFont } })],
