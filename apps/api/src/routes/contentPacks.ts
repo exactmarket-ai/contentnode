@@ -96,13 +96,16 @@ function mapItem(item: {
   usage_count?: bigint
 }) {
   return {
-    id:               item.id,
-    packId:           item.content_pack_id,
-    promptTemplateId: item.prompt_template_id,
-    order:            item.order,
-    createdAt:        item.created_at,
-    usageCount:       Number(item.usage_count ?? 0),
-    promptTemplate:   item.pt_id ? {
+    id:                  item.id,
+    packId:              item.content_pack_id,
+    promptTemplateId:    item.prompt_template_id,
+    promptName:          item.pt_name ?? '',
+    promptCategory:      item.pt_category ?? '',
+    promptDescription:   item.pt_description ?? null,
+    order:               item.order,
+    createdAt:           item.created_at,
+    usageCount:          Number(item.usage_count ?? 0),
+    promptTemplate:      item.pt_id ? {
       id:          item.pt_id,
       name:        item.pt_name,
       description: item.pt_description,

@@ -918,6 +918,14 @@ function AssignmentPanel({
   const toggleExpandPack = async (pack: ContentPack) => {
     const isOpen = expandedPacks.has(pack.id)
     if (isOpen) {
+      // Remove this pack's items from the generate list
+      setCheckedItems((prev) => {
+        const next = new Map(prev)
+        for (const key of Array.from(next.keys())) {
+          if (key.startsWith(`${pack.id}:`)) next.delete(key)
+        }
+        return next
+      })
       setExpandedPacks((prev) => { const n = new Set(prev); n.delete(pack.id); return n })
       return
     }
@@ -1162,17 +1170,22 @@ function AssignmentPanel({
                         return (
                           <label
                             key={item.id}
-                            className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                            className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
                           >
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleItem(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: defaultPackId! })}
-                              className="h-3.5 w-3.5 accent-purple-600 shrink-0"
+                              className="h-3.5 w-3.5 accent-purple-600 shrink-0 mt-0.5"
                             />
-                            <span className="text-[13px] font-medium flex-1 truncate">{item.promptName}</span>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[13px] font-medium block truncate">{item.promptName}</span>
+                              {item.promptDescription && (
+                                <span className="text-[11px] text-muted-foreground block truncate">{item.promptDescription}</span>
+                              )}
+                            </div>
                             {item.promptCategory && (
-                              <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
+                              <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-0.5', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
                                 {item.promptCategory}
                               </span>
                             )}
@@ -1219,17 +1232,22 @@ function AssignmentPanel({
                                 return (
                                   <label
                                     key={item.id}
-                                    className="flex items-center gap-2.5 rounded px-2 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors"
+                                    className="flex items-start gap-2.5 rounded px-2 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors"
                                   >
                                     <input
                                       type="checkbox"
                                       checked={checked}
                                       onChange={() => toggleItem(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: pack.id })}
-                                      className="h-3.5 w-3.5 accent-purple-600 shrink-0"
+                                      className="h-3.5 w-3.5 accent-purple-600 shrink-0 mt-0.5"
                                     />
-                                    <span className="text-[12px] flex-1 truncate">{item.promptName}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <span className="text-[12px] font-medium block truncate">{item.promptName}</span>
+                                      {item.promptDescription && (
+                                        <span className="text-[11px] text-muted-foreground block truncate">{item.promptDescription}</span>
+                                      )}
+                                    </div>
                                     {item.promptCategory && (
-                                      <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
+                                      <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-0.5', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
                                         {item.promptCategory}
                                       </span>
                                     )}
@@ -1292,6 +1310,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [showAssignmentPanel, setShowAssignmentPanel] = useState(false)
+  const [panelTopics, setPanelTopics] = useState<TopicItem[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const pilotRef = useRef<HTMLDivElement>(null)
@@ -1368,16 +1387,19 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
   }
 
   const openGeneratePanel = () => {
-    const approvedIds = topics.filter((t) => selected.has(t.id) && t.status === 'approved')
-    if (approvedIds.length === 0) return
+    const approvedTopics = topics.filter((t) => selected.has(t.id) && t.status === 'approved')
+    if (approvedTopics.length === 0) return
+    setPanelTopics(approvedTopics)
     setShowAssignmentPanel(true)
   }
 
-  // Single-card approve: optimistically mark approved locally, select, open panel.
-  // The API status update and generation happen when the user clicks Generate.
+  // Single-card approve: snapshot the topic as 'approved' for the panel only.
+  // topics state is NOT mutated — the topic stays pending in the queue until
+  // the user confirms generation. Closing the panel needs no cleanup.
   const handleApproveSingle = (id: string) => {
-    setTopics((prev) => prev.map((t) => t.id === id ? { ...t, status: 'approved' as const } : t))
-    setSelected(new Set([id]))
+    const topic = topics.find((t) => t.id === id)
+    if (!topic) return
+    setPanelTopics([{ ...topic, status: 'approved' as const }])
     setShowAssignmentPanel(true)
   }
 
@@ -1556,17 +1578,21 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
       {showAssignmentPanel && (
         <AssignmentPanel
           clientId={clientId}
-          selectedTopics={topics.filter((t) => selected.has(t.id))}
-          onClose={() => { setShowAssignmentPanel(false); load() }}
+          selectedTopics={panelTopics}
+          onClose={() => {
+            // topics state was never mutated — just close, no cleanup needed
+            setPanelTopics([])
+            setShowAssignmentPanel(false)
+          }}
           onGenerated={async () => {
-            // Persist approved status for all selected topics now that generation is confirmed
-            const toApprove = Array.from(selected)
-            for (const id of toApprove) {
-              await apiFetch(`/api/v1/topic-queue/${id}/status`, {
+            // Persist approved status for confirmed topics then reload
+            for (const t of panelTopics) {
+              await apiFetch(`/api/v1/topic-queue/${t.id}/status`, {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'approved' }),
               }).catch(console.error)
             }
+            setPanelTopics([])
             setGenerating(true)
             setShowAssignmentPanel(false)
             clearSelection()
