@@ -8,7 +8,7 @@ import { safeDecrypt } from './lib/crypto.js'
 
 const MONDAY_API_URL = 'https://api.monday.com/v2'
 
-async function getMondayToken(agencyId: string): Promise<string | null> {
+export async function getMondayToken(agencyId: string): Promise<string | null> {
   const integration = await prisma.integration.findUnique({
     where: { agencyId_provider: { agencyId, provider: 'monday' } },
   })
@@ -17,7 +17,7 @@ async function getMondayToken(agencyId: string): Promise<string | null> {
   return token || (process.env.MONDAY_API_TOKEN ?? null)
 }
 
-async function mondayGql<T = unknown>(
+export async function mondayGql<T = unknown>(
   token: string,
   query: string,
   variables?: Record<string, unknown>,

@@ -61,10 +61,13 @@ import {
 import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
 import { runScheduledResearch, runResearchChecker } from './scheduledResearch.js'
 import { runNewsroomResearch } from './newsroomResearch.js'
+import { runContentPackGeneration, type ContentPackGenJobData as _ContentPackGenJobData } from './contentPackGeneration.js'
 import {
   QUEUE_SCHEDULED_RESEARCH,
   QUEUE_RESEARCH_CHECKER,
   type ScheduledResearchJobData,
+  QUEUE_CONTENT_PACK_GENERATION,
+  type ContentPackGenJobData,
 } from './queues.js'
 import { startBoxDiffWorker } from './boxDiffProcessor.js'
 import { startPMAgentWorker } from './pmAgent.js'
@@ -274,6 +277,22 @@ const pilotSessionSummaryWorker = createWorker<PilotSessionSummaryJobData>(
   },
   3,
   { lockDuration: 3 * 60 * 1000 }
+)
+
+// ── content-pack-generation ───────────────────────────────────────────────────
+const contentPackGenWorker = createWorker<ContentPackGenJobData>(
+  QUEUE_CONTENT_PACK_GENERATION,
+  async (job: Job<ContentPackGenJobData>) => {
+    console.log(`[content-pack-gen] item ${job.data.itemId} run ${job.data.runId}`)
+    try {
+      await runContentPackGeneration(job)
+    } catch (err) {
+      console.error('[content-pack-gen] job failed:', err)
+      throw err
+    }
+  },
+  5, // up to 5 concurrent pieces
+  { lockDuration: 5 * 60 * 1000 }
 )
 
 // ── newsroom-research ─────────────────────────────────────────────────────────
@@ -624,6 +643,7 @@ async function shutdown() {
     clientGtmUploadWorker.close(),
     pilotSessionSummaryWorker.close(),
     briefExtractWorker.close(),
+    contentPackGenWorker.close(),
     attachmentProcessWorker.close(),
     brandAttachmentProcessWorker.close(),
     agencyBrainProcessWorker.close(),

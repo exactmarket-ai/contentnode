@@ -6,6 +6,39 @@ import { apiFetch } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// AssignmentPanel types
+interface LeadershipTarget {
+  id: string
+  name: string
+  role: string
+  defaultContentPackId: string | null
+}
+
+interface VerticalTarget {
+  id: string
+  name: string
+  color: string | null
+  defaultContentPackId: string | null
+}
+
+interface ContentPackItem {
+  id: string
+  packId: string
+  promptTemplateId: string
+  promptName: string
+  promptCategory: string
+  promptDescription: string | null
+  order: number
+}
+
+interface ContentPack {
+  id: string
+  name: string
+  description: string | null
+  itemCount: number
+  items?: ContentPackItem[]
+}
+
 interface TopicSource {
   title: string
   publication: string
@@ -746,6 +779,506 @@ function ResearchTopicFlow({
   )
 }
 
+// ── AssignmentPanel — right-side drawer for content generation ─────────────────
+
+function getInitials(name: string): string {
+  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
+}
+
+function avatarBgColor(name: string): string {
+  const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#f97316', '#6366f1']
+  const idx = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length
+  return colors[idx]
+}
+
+const CATEGORY_COLORS_AP: Record<string, string> = {
+  Copy:      'bg-blue-500/10 text-blue-600',
+  Creative:  'bg-purple-500/10 text-purple-600',
+  Strategy:  'bg-amber-500/10 text-amber-600',
+  Marketing: 'bg-green-500/10 text-green-600',
+  Design:    'bg-pink-500/10 text-pink-600',
+  Business:  'bg-slate-500/10 text-slate-600',
+}
+
+interface CheckedItem {
+  promptTemplateId: string
+  promptName: string
+  packId: string
+}
+
+function AssignmentPanel({
+  clientId,
+  selectedTopics,
+  onClose,
+  onGenerated,
+}: {
+  clientId: string
+  selectedTopics: TopicItem[]
+  onClose: () => void
+  onGenerated: () => void
+}) {
+  const [members, setMembers] = useState<LeadershipTarget[]>([])
+  const [verticals, setVerticals] = useState<VerticalTarget[]>([])
+  const [packs, setPacks] = useState<ContentPack[]>([])
+  const [loadingTargets, setLoadingTargets] = useState(true)
+
+  type TargetType = 'member' | 'vertical' | 'company'
+  const [targetType, setTargetType] = useState<TargetType | null>(null)
+  const [targetId, setTargetId] = useState<string | null>(null)
+
+  const [defaultPackItems, setDefaultPackItems] = useState<ContentPackItem[]>([])
+  const [loadingPackItems, setLoadingPackItems] = useState(false)
+  const [defaultPackId, setDefaultPackId] = useState<string | null>(null)
+  const [expandedPacks, setExpandedPacks] = useState<Set<string>>(new Set())
+  const [expandedPackItems, setExpandedPackItems] = useState<Record<string, ContentPackItem[]>>({})
+  const [loadingExpandedPack, setLoadingExpandedPack] = useState<string | null>(null)
+  const [checkedItems, setCheckedItems] = useState<Map<string, CheckedItem>>(new Map())
+  const [generating, setGenerating] = useState(false)
+  const [successMsg, setSuccessMsg] = useState(false)
+
+  // Load leadership members, verticals, and all packs
+  useEffect(() => {
+    setLoadingTargets(true)
+    Promise.all([
+      apiFetch(`/api/v1/leadership?clientId=${clientId}`).then((r) => r.json()),
+      apiFetch(`/api/v1/clients/${clientId}/verticals`).then((r) => r.json()),
+      apiFetch(`/api/v1/content-packs?clientId=${clientId}`).then((r) => r.json()),
+    ])
+      .then(([membersRes, verticalsRes, packsRes]) => {
+        setMembers(membersRes.data ?? [])
+        setVerticals(verticalsRes.data ?? [])
+        setPacks(packsRes.data ?? [])
+
+        // Auto-select if only one member and no verticals
+        const mems: LeadershipTarget[] = membersRes.data ?? []
+        const verts: VerticalTarget[]  = verticalsRes.data ?? []
+        if (mems.length === 1 && verts.length === 0) {
+          setTargetType('member')
+          setTargetId(mems[0].id)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoadingTargets(false))
+  }, [clientId])
+
+  // When target changes, load its default pack items
+  useEffect(() => {
+    if (!targetType || (targetType !== 'company' && !targetId)) {
+      setDefaultPackItems([])
+      setDefaultPackId(null)
+      setCheckedItems(new Map())
+      return
+    }
+
+    // Find the defaultContentPackId for the selected target
+    let packId: string | null = null
+    if (targetType === 'member') {
+      packId = members.find((m) => m.id === targetId)?.defaultContentPackId ?? null
+    } else if (targetType === 'vertical') {
+      packId = verticals.find((v) => v.id === targetId)?.defaultContentPackId ?? null
+    }
+    // company: no default pack
+
+    setDefaultPackId(packId)
+    setDefaultPackItems([])
+    setCheckedItems(new Map())
+
+    if (packId) {
+      setLoadingPackItems(true)
+      apiFetch(`/api/v1/content-packs/${packId}/items`)
+        .then((r) => r.json())
+        .then(({ data }) => {
+          const items: ContentPackItem[] = data ?? []
+          setDefaultPackItems(items)
+          // Pre-check all items
+          const map = new Map<string, CheckedItem>()
+          for (const item of items) {
+            map.set(`${packId}:${item.promptTemplateId}`, {
+              promptTemplateId: item.promptTemplateId,
+              promptName: item.promptName,
+              packId: packId!,
+            })
+          }
+          setCheckedItems(map)
+        })
+        .catch(console.error)
+        .finally(() => setLoadingPackItems(false))
+    }
+  }, [targetType, targetId, members, verticals])
+
+  const toggleItem = (key: string, item: CheckedItem) => {
+    setCheckedItems((prev) => {
+      const next = new Map(prev)
+      if (next.has(key)) next.delete(key)
+      else next.set(key, item)
+      return next
+    })
+  }
+
+  const toggleExpandPack = async (pack: ContentPack) => {
+    const isOpen = expandedPacks.has(pack.id)
+    if (isOpen) {
+      setExpandedPacks((prev) => { const n = new Set(prev); n.delete(pack.id); return n })
+      return
+    }
+
+    // Load items for this pack if not yet loaded
+    if (!expandedPackItems[pack.id]) {
+      setLoadingExpandedPack(pack.id)
+      try {
+        const res = await apiFetch(`/api/v1/content-packs/${pack.id}/items`)
+        const { data } = await res.json()
+        const items: ContentPackItem[] = data ?? []
+        setExpandedPackItems((prev) => ({ ...prev, [pack.id]: items }))
+        // Pre-check all items of this newly expanded pack
+        setCheckedItems((prev) => {
+          const next = new Map(prev)
+          for (const item of items) {
+            const key = `${pack.id}:${item.promptTemplateId}`
+            if (!next.has(key)) {
+              next.set(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: pack.id })
+            }
+          }
+          return next
+        })
+      } catch { /* ignore */ }
+      finally { setLoadingExpandedPack(null) }
+    } else {
+      // If already loaded but not checked, pre-check them
+      const items = expandedPackItems[pack.id] ?? []
+      setCheckedItems((prev) => {
+        const next = new Map(prev)
+        for (const item of items) {
+          const key = `${pack.id}:${item.promptTemplateId}`
+          if (!next.has(key)) {
+            next.set(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: pack.id })
+          }
+        }
+        return next
+      })
+    }
+    setExpandedPacks((prev) => { const n = new Set(prev); n.add(pack.id); return n })
+  }
+
+  const handleGenerate = async () => {
+    if (!targetType || checkedItems.size === 0) return
+    const topicIds = selectedTopics.filter((t) => t.status === 'approved').map((t) => t.id)
+    if (topicIds.length === 0) return
+
+    setGenerating(true)
+    try {
+      const items = Array.from(checkedItems.values())
+      for (const topicId of topicIds) {
+        await apiFetch('/api/v1/content-packs/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId,
+            topicId,
+            targetType,
+            targetId: targetType === 'company' ? null : targetId,
+            checkedItems: items,
+          }),
+        }).catch(console.error)
+      }
+      setSuccessMsg(true)
+      setTimeout(() => {
+        onGenerated()
+        onClose()
+      }, 1200)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const approvedSelected = selectedTopics.filter((t) => t.status === 'approved')
+  const checkedCount = checkedItems.size
+  const generateCount = approvedSelected.length * checkedCount
+
+  // Non-default packs (for "More packs" section)
+  const morePacks = packs.filter((p) => p.id !== defaultPackId)
+
+  const selectedTarget =
+    targetType === 'member' ? members.find((m) => m.id === targetId)?.name
+    : targetType === 'vertical' ? verticals.find((v) => v.id === targetId)?.name
+    : targetType === 'company' ? 'Company / Brand'
+    : null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-end"
+      style={{ backgroundColor: 'rgba(0,0,0,0.25)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative flex w-full max-w-md flex-col bg-white border-l border-border shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <div>
+            <h3 className="text-sm font-semibold">Generate content for {approvedSelected.length} topic{approvedSelected.length !== 1 ? 's' : ''}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Choose who it's for, then pick what to generate</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Selected topics pills */}
+        <div className="flex flex-wrap gap-1.5 px-5 py-2.5 border-b border-border shrink-0">
+          {selectedTopics.filter((t) => t.status === 'approved').map((t) => (
+            <span
+              key={t.id}
+              className="flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-0.5 text-[11px] font-medium text-green-700 max-w-[200px]"
+            >
+              <Icons.Check className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{t.title}</span>
+            </span>
+          ))}
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+
+          {/* ── Section 1: Who is this for? ── */}
+          <div>
+            <p className="text-xs font-semibold mb-2.5">Who is this for?</p>
+
+            {loadingTargets ? (
+              <div className="flex items-center gap-2 text-muted-foreground py-4">
+                <Icons.Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-xs">Loading…</span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {/* People group */}
+                {members.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">People</p>
+                    <div className="flex flex-col gap-1.5">
+                      {members.map((m) => {
+                        const isSelected = targetType === 'member' && targetId === m.id
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => { setTargetType('member'); setTargetId(m.id) }}
+                            className={cn(
+                              'flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                              isSelected ? 'border-purple-500 bg-purple-500/8' : 'border-border hover:border-purple-300 hover:bg-muted/30',
+                            )}
+                          >
+                            <div
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white text-xs font-semibold"
+                              style={{ backgroundColor: avatarBgColor(m.name) }}
+                            >
+                              {getInitials(m.name)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={cn('text-[13px] font-medium truncate', isSelected ? 'text-purple-700' : '')}>{m.name}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">{m.role}</p>
+                            </div>
+                            {isSelected && <Icons.CheckCircle className="h-4 w-4 text-purple-500 shrink-0" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Verticals group */}
+                {verticals.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Verticals</p>
+                    <div className="flex flex-col gap-1.5">
+                      {verticals.map((v) => {
+                        const isSelected = targetType === 'vertical' && targetId === v.id
+                        const color = v.color ?? '#8b5cf6'
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => { setTargetType('vertical'); setTargetId(v.id) }}
+                            className={cn(
+                              'flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                              isSelected ? 'border-purple-500 bg-purple-500/8' : 'border-border hover:border-purple-300 hover:bg-muted/30',
+                            )}
+                          >
+                            <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                            <p className={cn('text-[13px] font-medium flex-1', isSelected ? 'text-purple-700' : '')}>{v.name}</p>
+                            {isSelected && <Icons.CheckCircle className="h-4 w-4 text-purple-500 shrink-0" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Company group */}
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Company</p>
+                  <button
+                    type="button"
+                    onClick={() => { setTargetType('company'); setTargetId(null) }}
+                    className={cn(
+                      'w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                      targetType === 'company' ? 'border-purple-500 bg-purple-500/8' : 'border-border hover:border-purple-300 hover:bg-muted/30',
+                    )}
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                      <Icons.Building2 className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <p className={cn('text-[13px] font-medium flex-1', targetType === 'company' ? 'text-purple-700' : '')}>Company / Brand</p>
+                    {targetType === 'company' && <Icons.CheckCircle className="h-4 w-4 text-purple-500 shrink-0" />}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Section 2: What to generate ── */}
+          {targetType && (
+            <div>
+              <p className="text-xs font-semibold mb-2.5">What to generate</p>
+
+              {loadingPackItems ? (
+                <div className="flex items-center gap-2 text-muted-foreground py-4">
+                  <Icons.Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-xs">Loading pack…</span>
+                </div>
+              ) : defaultPackItems.length === 0 && !defaultPackId ? (
+                <p className="text-xs text-muted-foreground mb-3">
+                  No default pack set for {selectedTarget ?? 'this target'}. Add packs below or set a default in their profile.
+                </p>
+              ) : (
+                <>
+                  {/* Default pack items checklist */}
+                  {defaultPackItems.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mb-3">
+                      {defaultPackItems.map((item) => {
+                        const key = `${defaultPackId}:${item.promptTemplateId}`
+                        const checked = checkedItems.has(key)
+                        return (
+                          <label
+                            key={item.id}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleItem(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: defaultPackId! })}
+                              className="h-3.5 w-3.5 accent-purple-600 shrink-0"
+                            />
+                            <span className="text-[13px] font-medium flex-1 truncate">{item.promptName}</span>
+                            {item.promptCategory && (
+                              <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
+                                {item.promptCategory}
+                              </span>
+                            )}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* More packs */}
+              {morePacks.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">
+                    {defaultPackItems.length > 0 ? 'More packs' : 'Available packs'}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {morePacks.map((pack) => {
+                      const isExpanded = expandedPacks.has(pack.id)
+                      const isLoading = loadingExpandedPack === pack.id
+                      const packItems = expandedPackItems[pack.id] ?? []
+                      return (
+                        <div key={pack.id} className="rounded-lg border border-border overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandPack(pack)}
+                            className="w-full flex items-center gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                          >
+                            <Icons.Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-[12px] font-medium flex-1">{pack.name}</span>
+                            {isLoading
+                              ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                              : isExpanded
+                                ? <Icons.ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                : <span className="text-[11px] text-blue-600 font-medium shrink-0">Add</span>
+                            }
+                          </button>
+                          {isExpanded && packItems.length > 0 && (
+                            <div className="flex flex-col gap-1 p-2">
+                              {packItems.map((item) => {
+                                const key = `${pack.id}:${item.promptTemplateId}`
+                                const checked = checkedItems.has(key)
+                                return (
+                                  <label
+                                    key={item.id}
+                                    className="flex items-center gap-2.5 rounded px-2 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleItem(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: pack.id })}
+                                      className="h-3.5 w-3.5 accent-purple-600 shrink-0"
+                                    />
+                                    <span className="text-[12px] flex-1 truncate">{item.promptName}</span>
+                                    {item.promptCategory && (
+                                      <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
+                                        {item.promptCategory}
+                                      </span>
+                                    )}
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {isExpanded && packItems.length === 0 && !isLoading && (
+                            <p className="text-[11px] text-muted-foreground px-3 py-2">No prompts in this pack.</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer — Generate button */}
+        <div className="border-t border-border px-5 py-4 shrink-0">
+          {successMsg ? (
+            <div className="flex items-center gap-2 justify-center py-2 text-green-600">
+              <Icons.CheckCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Generation started!</span>
+            </div>
+          ) : (
+            <Button
+              className="w-full"
+              disabled={generating || checkedCount === 0 || !targetType || approvedSelected.length === 0}
+              onClick={handleGenerate}
+              style={{ backgroundColor: checkedCount > 0 && targetType ? '#a200ee' : undefined }}
+            >
+              {generating
+                ? <><Icons.Loader2 className="h-4 w-4 animate-spin mr-2" />Generating…</>
+                : generateCount > 0
+                  ? `Generate ${generateCount} piece${generateCount !== 1 ? 's' : ''}`
+                  : 'Select prompts to generate'
+              }
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; onAddTask?: () => void }) {
@@ -758,6 +1291,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [showAssignmentPanel, setShowAssignmentPanel] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const pilotRef = useRef<HTMLDivElement>(null)
@@ -833,20 +1367,10 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
     clearSelection()
   }
 
-  const generateBlogs = async () => {
-    const approvedIds = topics.filter((t) => selected.has(t.id) && t.status === 'approved').map((t) => t.id)
+  const openGeneratePanel = () => {
+    const approvedIds = topics.filter((t) => selected.has(t.id) && t.status === 'approved')
     if (approvedIds.length === 0) return
-    setGenerating(true)
-    try {
-      const res = await apiFetch('/api/v1/topic-queue/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topicIds: approvedIds }),
-      })
-      if (!res.ok) throw new Error('Failed to generate')
-      clearSelection()
-      load()
-    } catch { /* ignore */ }
-    finally { setGenerating(false) }
+    setShowAssignmentPanel(true)
   }
 
   const handleTopicsAdded = (ids: string[]) => {
@@ -933,10 +1457,10 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
               <Icons.Check className="h-3 w-3" /> Approve all
             </button>
             {selectedApproved.length > 0 && (
-              <button type="button" onClick={generateBlogs} disabled={generating}
+              <button type="button" onClick={openGeneratePanel} disabled={generating}
                 style={{ fontSize: 12, fontWeight: 600, borderRadius: 6, padding: '5px 14px', cursor: generating ? 'not-allowed' : 'pointer', border: 'none', backgroundColor: '#a200ee', color: '#ffffff', opacity: generating ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
                 {generating ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.Sparkles className="h-3 w-3" />}
-                Generate {selectedApproved.length} blog{selectedApproved.length !== 1 ? 's' : ''}
+                Generate {selectedApproved.length}
               </button>
             )}
             <button type="button" onClick={clearSelection} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>
@@ -1019,6 +1543,21 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
           onRunTask={() => { /* could refresh topics after a delay */ }}
         />
       </div>
+
+      {/* ── Assignment panel ───────────────────────────────────────── */}
+      {showAssignmentPanel && (
+        <AssignmentPanel
+          clientId={clientId}
+          selectedTopics={topics.filter((t) => selected.has(t.id))}
+          onClose={() => setShowAssignmentPanel(false)}
+          onGenerated={() => {
+            setGenerating(true)
+            setShowAssignmentPanel(false)
+            clearSelection()
+            setTimeout(() => { setGenerating(false); load() }, 1500)
+          }}
+        />
+      )}
     </div>
   )
 }

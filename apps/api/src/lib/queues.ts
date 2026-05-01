@@ -29,7 +29,8 @@ export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
 export const QUEUE_BOX_DIFF            = 'box-diff'
 export const QUEUE_BOX_VERSION_SCAN    = 'box-version-scan'
-export const QUEUE_NEWSROOM_RESEARCH   = 'newsroom-research'
+export const QUEUE_NEWSROOM_RESEARCH      = 'newsroom-research'
+export const QUEUE_CONTENT_PACK_GENERATION = 'content-pack-generation'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -385,4 +386,27 @@ export function getNewsroomResearchQueue(): Queue<NewsroomResearchJobData> {
     newsroomResearchQueue = new Queue<NewsroomResearchJobData>(QUEUE_NEWSROOM_RESEARCH, { connection: getBullMQConnection() })
   }
   return newsroomResearchQueue
+}
+
+export interface ContentPackGenJobData {
+  agencyId:         string
+  clientId:         string
+  runId:            string
+  itemId:           string
+  promptTemplateId: string
+  promptName:       string
+  topicId:          string
+  topicTitle:       string
+  topicSummary:     string
+  targetType:       'member' | 'vertical' | 'company'
+  targetId:         string | null
+  targetName:       string | null
+}
+
+let contentPackGenQueue: Queue<ContentPackGenJobData> | null = null
+export function getContentPackGenQueue(): Queue<ContentPackGenJobData> {
+  if (!contentPackGenQueue) {
+    contentPackGenQueue = new Queue<ContentPackGenJobData>(QUEUE_CONTENT_PACK_GENERATION, { connection: getBullMQConnection() })
+  }
+  return contentPackGenQueue
 }

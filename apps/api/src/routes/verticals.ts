@@ -6,7 +6,20 @@ import { uploadStream, deleteObject } from '@contentnode/storage'
 import { getVerticalBrainProcessQueue } from '../lib/queues.js'
 
 const createBody = z.object({ name: z.string().min(1).max(100), dimensionType: z.string().min(1).max(50).optional() })
-const updateBody = z.object({ name: z.string().min(1).max(100).optional(), dimensionType: z.string().min(1).max(50).optional() })
+const updateBody = z.object({
+  name:                  z.string().min(1).max(100).optional(),
+  dimensionType:         z.string().min(1).max(50).optional(),
+  // Voice / tone fields — stored via raw SQL (new columns added by migration)
+  targetAudience:        z.string().max(500).optional(),
+  toneDescriptors:       z.array(z.string()).optional(),
+  keyMessages:           z.array(z.string()).optional(),
+  voiceAvoidPhrases:     z.array(z.string()).optional(),
+  // Integration fields
+  defaultContentPackId:  z.string().nullable().optional(),
+  mondayBoardId:         z.string().nullable().optional(),
+  mondayColumnMapping:   z.record(z.unknown()).nullable().optional(),
+  boxFolderId:           z.string().nullable().optional(),
+})
 
 const VERTICAL_COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#06b6d4','#f97316','#6366f1']
 
@@ -14,6 +27,70 @@ function deriveColor(id: string): string {
   let hash = 0
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
   return VERTICAL_COLORS[hash % VERTICAL_COLORS.length]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: fetch extended voice/tone + integration fields for a vertical
+// (stored in columns added by migration — gracefully degrade if not yet applied)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type VerticalExtended = {
+  targetAudience:       string | null
+  toneDescriptors:      string[]
+  keyMessages:          string[]
+  voiceAvoidPhrases:    string[]
+  defaultContentPackId: string | null
+  mondayBoardId:        string | null
+  mondayColumnMapping:  Record<string, unknown> | null
+  boxFolderId:          string | null
+}
+
+async function getVerticalExtended(verticalId: string): Promise<VerticalExtended> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{
+      target_audience:        string | null
+      tone_descriptors:       unknown
+      key_messages:           unknown
+      voice_avoid_phrases:    unknown
+      default_content_pack_id: string | null
+      monday_board_id:        string | null
+      monday_column_mapping:  unknown
+      box_folder_id:          string | null
+    }>>`
+      SELECT target_audience, tone_descriptors, key_messages, voice_avoid_phrases,
+             default_content_pack_id, monday_board_id, monday_column_mapping, box_folder_id
+      FROM verticals WHERE id = ${verticalId}
+    `
+    const row = rows[0]
+    if (!row) return emptyExtended()
+    return {
+      targetAudience:       row.target_audience,
+      toneDescriptors:      Array.isArray(row.tone_descriptors) ? (row.tone_descriptors as string[]) : [],
+      keyMessages:          Array.isArray(row.key_messages) ? (row.key_messages as string[]) : [],
+      voiceAvoidPhrases:    Array.isArray(row.voice_avoid_phrases) ? (row.voice_avoid_phrases as string[]) : [],
+      defaultContentPackId: row.default_content_pack_id,
+      mondayBoardId:        row.monday_board_id,
+      mondayColumnMapping:  row.monday_column_mapping && typeof row.monday_column_mapping === 'object'
+        ? (row.monday_column_mapping as Record<string, unknown>)
+        : null,
+      boxFolderId:          row.box_folder_id,
+    }
+  } catch {
+    return emptyExtended()
+  }
+}
+
+function emptyExtended(): VerticalExtended {
+  return {
+    targetAudience:       null,
+    toneDescriptors:      [],
+    keyMessages:          [],
+    voiceAvoidPhrases:    [],
+    defaultContentPackId: null,
+    mondayBoardId:        null,
+    mondayColumnMapping:  null,
+    boxFolderId:          null,
+  }
 }
 
 export async function verticalRoutes(app: FastifyInstance) {
@@ -34,7 +111,24 @@ export async function verticalRoutes(app: FastifyInstance) {
       ))
       for (const v of needsColor) (v as typeof v & { color: string }).color = deriveColor(v.id)
     }
-    return reply.send({ data: verticals })
+    // Attach extended fields
+    const withExtended = await Promise.all(verticals.map(async (v) => ({
+      ...v,
+      ...await getVerticalExtended(v.id),
+    })))
+    return reply.send({ data: withExtended })
+  })
+
+  // ── GET /api/v1/verticals/:id ─────────────────────────────────────────────
+  app.get<{ Params: { id: string } }>('/:id', async (req, reply) => {
+    const { agencyId } = req.auth
+    const vertical = await prisma.vertical.findFirst({
+      where: { id: req.params.id, agencyId },
+      select: { id: true, name: true, dimensionType: true, color: true, brainContext: true, createdAt: true, updatedAt: true },
+    })
+    if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
+    const extended = await getVerticalExtended(vertical.id)
+    return reply.send({ data: { ...vertical, ...extended } })
   })
 
   // ── POST /api/v1/verticals ────────────────────────────────────────────────
@@ -55,7 +149,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     // Assign deterministic color based on ID (stable across reloads)
     const color = deriveColor(vertical.id)
     const verticalWithColor = await prisma.vertical.update({ where: { id: vertical.id }, data: { color } })
-    return reply.code(201).send({ data: verticalWithColor })
+    return reply.code(201).send({ data: { ...verticalWithColor, ...emptyExtended() } })
   })
 
   // ── PATCH /api/v1/verticals/:id ───────────────────────────────────────────
@@ -67,6 +161,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     const vertical = await prisma.vertical.findFirst({ where: { id: req.params.id, agencyId } })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
 
+    // Update core Prisma-managed fields
     const updated = await prisma.vertical.update({
       where: { id: req.params.id },
       data: {
@@ -74,7 +169,51 @@ export async function verticalRoutes(app: FastifyInstance) {
         ...(parsed.data.dimensionType ? { dimensionType: parsed.data.dimensionType } : {}),
       },
     })
-    return reply.send({ data: updated })
+
+    // Update extended fields via raw SQL (gracefully skip if columns don't exist yet)
+    const {
+      targetAudience, toneDescriptors, keyMessages, voiceAvoidPhrases,
+      defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId,
+    } = parsed.data
+
+    const hasExtended = [
+      targetAudience, toneDescriptors, keyMessages, voiceAvoidPhrases,
+      defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId,
+    ].some((v) => v !== undefined)
+
+    if (hasExtended) {
+      try {
+        if (targetAudience !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET target_audience = ${targetAudience} WHERE id = ${req.params.id}`
+        }
+        if (toneDescriptors !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET tone_descriptors = ${JSON.stringify(toneDescriptors)}::jsonb WHERE id = ${req.params.id}`
+        }
+        if (keyMessages !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET key_messages = ${JSON.stringify(keyMessages)}::jsonb WHERE id = ${req.params.id}`
+        }
+        if (voiceAvoidPhrases !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET voice_avoid_phrases = ${JSON.stringify(voiceAvoidPhrases)}::jsonb WHERE id = ${req.params.id}`
+        }
+        if (defaultContentPackId !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET default_content_pack_id = ${defaultContentPackId} WHERE id = ${req.params.id}`
+        }
+        if (mondayBoardId !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET monday_board_id = ${mondayBoardId} WHERE id = ${req.params.id}`
+        }
+        if (mondayColumnMapping !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET monday_column_mapping = ${JSON.stringify(mondayColumnMapping)}::jsonb WHERE id = ${req.params.id}`
+        }
+        if (boxFolderId !== undefined) {
+          await prisma.$executeRaw`UPDATE verticals SET box_folder_id = ${boxFolderId} WHERE id = ${req.params.id}`
+        }
+      } catch {
+        // Columns not yet created — ignore, schema migration needed
+      }
+    }
+
+    const extended = await getVerticalExtended(req.params.id)
+    return reply.send({ data: { ...updated, ...extended } })
   })
 
   // ── DELETE /api/v1/verticals/:id ──────────────────────────────────────────

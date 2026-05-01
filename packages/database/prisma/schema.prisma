@@ -92,6 +92,8 @@ model Agency {
   topicQueue               TopicQueue[]
   topicPreferenceLogs      TopicPreferenceLog[]
   researchJobs             ResearchJob[]
+  contentPacks             ContentPack[]
+  contentPackRuns          ContentPackRun[]
 
   @@map("agencies")
 }
@@ -238,6 +240,13 @@ model Client {
   topicQueue          TopicQueue[]
   topicPreferenceLogs TopicPreferenceLog[]
   researchJobs        ResearchJob[]
+  defaultContentPackId       String?  @map("default_content_pack_id")
+  contentMondayBoardId       String?  @map("content_monday_board_id")
+  contentMondayColumnMapping Json?    @map("content_monday_column_mapping")
+  contentBoxFolderId         String?  @map("content_box_folder_id")
+  defaultContentPack         ContentPack? @relation("ClientDefaultPack", fields: [defaultContentPackId], references: [id], onDelete: SetNull)
+  contentPacks               ContentPack[]
+  contentPackRuns            ContentPackRun[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -274,6 +283,15 @@ model Vertical {
   topicQueue               TopicQueue[]
   topicPreferenceLogs      TopicPreferenceLog[]
   researchJobs             ResearchJob[]
+  targetAudience       String?  @db.Text @map("target_audience")
+  toneDescriptors      String[] @map("tone_descriptors")
+  keyMessages          String[] @map("key_messages")
+  voiceAvoidPhrases    String[] @map("voice_avoid_phrases")
+  defaultContentPackId String?  @map("default_content_pack_id")
+  mondayBoardId        String?  @map("monday_board_id")
+  mondayColumnMapping  Json?    @map("monday_column_mapping")
+  boxFolderId          String?  @map("box_folder_id")
+  defaultContentPack   ContentPack? @relation("VerticalDefaultPack", fields: [defaultContentPackId], references: [id], onDelete: SetNull)
 
   @@index([agencyId])
   @@map("verticals")
@@ -1284,6 +1302,8 @@ model PromptTemplate {
 
   agency Agency  @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contentPackItems    ContentPackItem[]
+  contentPackRunItems ContentPackRunItem[]
 
   @@index([agencyId])
   @@index([clientId])
@@ -2201,11 +2221,16 @@ model LeadershipMember {
   signatureTopics  Json     @default("[]") @map("signature_topics")
   signatureStories Json     @default("[]") @map("signature_stories")
   avoidPhrases     Json     @default("[]") @map("avoid_phrases")
+  defaultContentPackId String?  @map("default_content_pack_id")
+  mondayBoardId        String?  @map("monday_board_id")
+  mondayColumnMapping  Json?    @map("monday_column_mapping")
+  boxFolderId          String?  @map("box_folder_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  defaultContentPack   ContentPack? @relation("MemberDefaultPack", fields: [defaultContentPackId], references: [id], onDelete: SetNull)
 
   @@index([agencyId])
   @@index([clientId])
@@ -2693,4 +2718,112 @@ model TopicPreferenceLog {
   @@index([clientId, verticalId])
   @@index([agencyId])
   @@map("topic_preference_log")
+}
+
+// ─────────────────────────────────────────────
+// ContentPack — named collection of prompt templates for content generation
+// ─────────────────────────────────────────────
+model ContentPack {
+  id          String   @id @default(cuid())
+  agencyId    String   @map("agency_id")
+  clientId    String   @map("client_id")
+  name        String
+  description String?  @db.Text
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  items  ContentPackItem[]
+
+  // Back-relations for FK references from Vertical, LeadershipMember, Client
+  verticals      Vertical[]         @relation("VerticalDefaultPack")
+  members        LeadershipMember[] @relation("MemberDefaultPack")
+  clientDefaults Client[]           @relation("ClientDefaultPack")
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("content_packs")
+}
+
+// ─────────────────────────────────────────────
+// ContentPackItem — ordered join between ContentPack and PromptTemplate
+// ─────────────────────────────────────────────
+model ContentPackItem {
+  id               String   @id @default(cuid())
+  contentPackId    String   @map("content_pack_id")
+  promptTemplateId String   @map("prompt_template_id")
+  order            Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  contentPack    ContentPack    @relation(fields: [contentPackId], references: [id], onDelete: Cascade)
+  promptTemplate PromptTemplate @relation(fields: [promptTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([contentPackId])
+  @@index([promptTemplateId])
+  @@map("content_pack_items")
+}
+
+// ─────────────────────────────────────────────
+// ContentPackRun — a generation run from the Newsroom assignment flow
+// targetType: 'member' | 'vertical' | 'company'
+// targetId is a plain String (no Prisma relation) because it can reference
+// either a Vertical or a LeadershipMember — resolved in the API by targetType.
+// ─────────────────────────────────────────────
+model ContentPackRun {
+  id             String    @id @default(cuid())
+  agencyId       String    @map("agency_id")
+  clientId       String    @map("client_id")
+  topicId        String?   @map("topic_id")
+  topicTitle     String    @map("topic_title")
+  topicSummary   String?   @db.Text @map("topic_summary")
+  targetType     String    @map("target_type")    // 'member' | 'vertical' | 'company'
+  targetId       String?   @map("target_id")      // plain string — no Prisma FK
+  targetName     String    @map("target_name")
+  packIds        Json      @default("[]") @map("pack_ids")
+  packNames      Json      @default("[]") @map("pack_names")
+  status         String    @default("pending")     // pending | running | completed | failed
+  reviewStatus   String    @default("none") @map("review_status") // none | pending | approved | closed
+  assigneeId     String?   @map("assignee_id")
+  mondayItemId   String?   @map("monday_item_id")
+  mondayBoardId  String?   @map("monday_board_id")
+  boxRunFolderId String?   @map("box_run_folder_id")
+  errorMessage   String?   @db.Text @map("error_message")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  agency Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  items  ContentPackRunItem[]
+
+  @@index([agencyId])
+  @@index([clientId])
+  @@index([status])
+  @@map("content_pack_runs")
+}
+
+// ─────────────────────────────────────────────
+// ContentPackRunItem — one generated piece within a ContentPackRun
+// ─────────────────────────────────────────────
+model ContentPackRunItem {
+  id               String    @id @default(cuid())
+  runId            String    @map("run_id")
+  promptTemplateId String    @map("prompt_template_id")
+  promptName       String    @map("prompt_name")
+  status           String    @default("pending") // pending | running | completed | failed
+  content          String?   @db.Text
+  errorMessage     String?   @db.Text @map("error_message")
+  mondaySubItemId  String?   @map("monday_sub_item_id")
+  boxFileId        String?   @map("box_file_id")
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  run            ContentPackRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  promptTemplate PromptTemplate @relation(fields: [promptTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@map("content_pack_run_items")
 }

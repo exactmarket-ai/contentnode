@@ -38,6 +38,22 @@ export const QUEUE_STORYBOARD_SCENE               = `${_p}storyboard-scene`
 export const QUEUE_STORYBOARD_ASSEMBLE            = `${_p}storyboard-assemble`
 export const QUEUE_BRIEF_EXTRACT                  = `${_p}brief-extract`
 export const QUEUE_NEWSROOM_RESEARCH              = 'newsroom-research'
+export const QUEUE_CONTENT_PACK_GENERATION        = `${_p}content-pack-generation`
+
+export interface ContentPackGenJobData {
+  agencyId:         string
+  clientId:         string
+  runId:            string
+  itemId:           string
+  promptTemplateId: string
+  promptName:       string
+  topicId:          string
+  topicTitle:       string
+  topicSummary:     string
+  targetType:       'member' | 'vertical' | 'company'
+  targetId:         string | null
+  targetName:       string | null
+}
 
 export interface NewsroomResearchJobData {
   agencyId:      string

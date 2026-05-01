@@ -21,6 +21,8 @@ interface PromptTemplate {
   source: 'user' | 'ai' | 'global'
   isStale: boolean
   useCount: number
+  packUsageCount: number
+  packNames: string[]
   createdAt: string
   updatedAt: string
 }
@@ -45,6 +47,43 @@ const SOURCE_COLORS: Record<string, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PackUsageBadge — shows how many packs use this prompt, with inline tooltip
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PackUsageBadge({ packUsageCount, packNames }: { packUsageCount: number; packNames: string[] }) {
+  const [showTip, setShowTip] = useState(false)
+
+  if (packUsageCount === 0) {
+    return (
+      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+        0 packs
+      </span>
+    )
+  }
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setShowTip((v) => !v) }}
+        className="rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-600 hover:bg-purple-500/20 transition-colors"
+      >
+        {packUsageCount} {packUsageCount === 1 ? 'pack' : 'packs'}
+      </button>
+      {showTip && (
+        <div
+          className="absolute bottom-full left-0 mb-1 z-20 w-max max-w-[220px] rounded-md border border-border bg-white shadow-lg px-3 py-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-[10px] font-semibold text-muted-foreground mb-1">Used in:</p>
+          <p className="text-[11px] text-foreground leading-snug">{packNames.join(', ')}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TemplateDrawer — slide-in panel for viewing / editing a template
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -56,13 +95,53 @@ interface DrawerProps {
   onFork: (template: PromptTemplate) => void
 }
 
-function TemplateDrawer({ template, onClose, onSaved: _onSaved, onUse, onFork }: DrawerProps) {
+function TemplateDrawer({ template, onClose, onSaved, onUse: _onUse, onFork }: DrawerProps) {
   const [copied, setCopied] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+  const [editName, setEditName] = useState(template.name)
+  const [editBody, setEditBody] = useState(template.body)
+  const [editDescription, setEditDescription] = useState(template.description ?? '')
+  const [saving, setSaving] = useState(false)
+  const [showPackConfirm, setShowPackConfirm] = useState(false)
 
   const handleCopy = () => {
     navigator.clipboard.writeText(template.body).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  const doSave = async () => {
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/v1/template-library/${template.id}?confirmPackUpdate=true`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim(),
+          body: editBody.trim(),
+          description: editDescription.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        alert(j.error ?? 'Save failed')
+        return
+      }
+      const { data } = await res.json()
+      onSaved(data)
+      setEditMode(false)
+      setShowPackConfirm(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveChanges = async () => {
+    if (template.packUsageCount > 0) {
+      setShowPackConfirm(true)
+    } else {
+      await doSave()
+    }
   }
 
   return (
@@ -74,16 +153,27 @@ function TemplateDrawer({ template, onClose, onSaved: _onSaved, onUse, onFork }:
         {/* Header */}
         <div className="flex items-center gap-2 border-b border-border px-5 py-3.5">
           <div className="flex-1 min-w-0">
-            <h2 className="truncate text-sm font-semibold">{template.name}</h2>
+            {editMode ? (
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="h-7 text-sm font-semibold"
+                autoFocus
+              />
+            ) : (
+              <h2 className="truncate text-sm font-semibold">{template.name}</h2>
+            )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              onClick={handleCopy}
-              title="Copy prompt text"
-            >
-              {copied ? <Icons.Check className="h-3.5 w-3.5 text-green-500" /> : <Icons.Copy className="h-3.5 w-3.5" />}
-            </button>
+            {!editMode && (
+              <button
+                className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                onClick={handleCopy}
+                title="Copy prompt text"
+              >
+                {copied ? <Icons.Check className="h-3.5 w-3.5 text-green-500" /> : <Icons.Copy className="h-3.5 w-3.5" />}
+              </button>
+            )}
             <button
               className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               onClick={onClose}
@@ -94,7 +184,7 @@ function TemplateDrawer({ template, onClose, onSaved: _onSaved, onUse, onFork }:
         </div>
 
         {/* Meta row */}
-        <div className="flex items-center gap-2 border-b border-border px-5 py-2.5">
+        <div className="flex items-center gap-2 border-b border-border px-5 py-2.5 flex-wrap">
           <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', CATEGORY_COLORS[template.category] ?? 'bg-muted text-muted-foreground')}>
             {template.category}
           </span>
@@ -108,27 +198,88 @@ function TemplateDrawer({ template, onClose, onSaved: _onSaved, onUse, onFork }:
             </span>
           )}
           <span className="ml-auto text-[11px] text-muted-foreground">Used {template.useCount}×</span>
+          <PackUsageBadge packUsageCount={template.packUsageCount} packNames={template.packNames} />
         </div>
 
         {/* Description */}
-        {template.description && (
+        {!editMode && template.description && (
           <div className="border-b border-border px-5 py-3">
             <p className="text-xs text-muted-foreground">{template.description}</p>
           </div>
         )}
 
+        {/* Edit description */}
+        {editMode && (
+          <div className="border-b border-border px-5 py-3">
+            <label className="block text-[11px] font-medium mb-1 text-muted-foreground">Description (optional)</label>
+            <Input
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              className="h-7 text-xs"
+              placeholder="One-line summary"
+            />
+          </div>
+        )}
+
         {/* Body */}
         <div className="flex-1 overflow-auto px-5 py-4">
-          <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-sans">{template.body}</pre>
+          {editMode ? (
+            <Textarea
+              value={editBody}
+              onChange={(e) => setEditBody(e.target.value)}
+              className="min-h-[280px] resize-none text-xs leading-relaxed w-full"
+            />
+          ) : (
+            <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-sans">{template.body}</pre>
+          )}
         </div>
 
+        {/* Pack update confirmation */}
+        {showPackConfirm && (
+          <div className="border-t border-amber-200 bg-amber-50 px-5 py-4 flex flex-col gap-3">
+            <p className="text-xs text-amber-800 leading-relaxed">
+              This prompt is used in <strong>{template.packUsageCount} content pack{template.packUsageCount !== 1 ? 's' : ''}</strong>
+              {template.packNames.length > 0 ? ` (${template.packNames.join(', ')})` : ''}. Your changes will apply to all future runs using those packs.
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" className="h-7 text-xs" onClick={doSave} disabled={saving}>
+                {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                Save changes
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowPackConfirm(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="flex items-center border-t border-border px-5 py-3">
-          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { onFork(template); onClose() }}>
-            <Icons.Copy className="h-3 w-3 mr-1" />
-            Save as
-          </Button>
-        </div>
+        {!showPackConfirm && (
+          <div className="flex items-center gap-2 border-t border-border px-5 py-3">
+            {editMode ? (
+              <>
+                <Button size="sm" className="h-7 text-xs" onClick={handleSaveChanges} disabled={saving || !editName.trim() || !editBody.trim()}>
+                  {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                  Save changes
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setEditMode(false); setEditName(template.name); setEditBody(template.body); setEditDescription(template.description ?? '') }}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditMode(true)}>
+                  <Icons.Pencil className="h-3 w-3 mr-1" />
+                  Edit
+                </Button>
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { onFork(template); onClose() }}>
+                  <Icons.Copy className="h-3 w-3 mr-1" />
+                  Save as
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -211,6 +362,57 @@ function CopyToGlobalModal({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ReplaceInPacksDialog — after save-as-new, offer to swap packs to new template
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ReplaceInPacksDialog({
+  originalTemplate,
+  newTemplateId,
+  onDone,
+}: {
+  originalTemplate: PromptTemplate
+  newTemplateId: string
+  onDone: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+
+  const handleReplace = async () => {
+    setLoading(true)
+    try {
+      await apiFetch(`/api/v1/template-library/${originalTemplate.id}/replace-in-packs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPromptTemplateId: newTemplateId }),
+      }).catch(console.error)
+    } finally {
+      setLoading(false)
+      onDone()
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-white p-5 shadow-2xl flex flex-col gap-3">
+        <h3 className="text-sm font-semibold">Update packs?</h3>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Do you want to update the <strong>{originalTemplate.packUsageCount} pack{originalTemplate.packUsageCount !== 1 ? 's' : ''}</strong>
+          {originalTemplate.packNames.length > 0 ? ` (${originalTemplate.packNames.join(', ')})` : ''} using the original to use this new version instead?
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onDone} disabled={loading}>
+            Keep original
+          </Button>
+          <Button size="sm" className="h-7 text-xs" onClick={handleReplace} disabled={loading}>
+            {loading ? <Icons.Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+            Update packs
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TemplateCard
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -224,7 +426,7 @@ interface CardProps {
   onFork: (t: PromptTemplate) => void
 }
 
-function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onUse, onFork }: CardProps) {
+function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onUse: _onUse, onFork }: CardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -236,8 +438,6 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpen])
-
-  const canEdit = isAdmin || template.source === 'user'
 
   return (
     <div
@@ -270,9 +470,12 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
 
       {/* Footer */}
       <div className="mt-auto flex items-center justify-between pt-1">
-        <span className="text-[11px] text-muted-foreground">
-          {template.useCount > 0 ? `Used ${template.useCount}×` : 'Unused'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            {template.useCount > 0 ? `Used ${template.useCount}×` : 'Unused'}
+          </span>
+          <PackUsageBadge packUsageCount={template.packUsageCount} packNames={template.packNames} />
+        </div>
         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
           {/* More menu */}
           <div className="relative" ref={menuRef}>
@@ -330,17 +533,21 @@ function NewTemplateModal({
   onClose,
   onCreated,
   initialValues,
+  originalTemplate,
 }: {
   clientId: string
   onClose: () => void
   onCreated: (t: PromptTemplate) => void
   initialValues?: { name: string; body: string; description: string; category: string }
+  originalTemplate?: PromptTemplate
 }) {
   const [name, setName] = useState(initialValues ? `Copy of ${initialValues.name}` : '')
   const [body, setBody] = useState(initialValues?.body ?? '')
   const [description, setDescription] = useState(initialValues?.description ?? '')
   const [category, setCategory] = useState(initialValues?.category ?? 'Business')
   const [saving, setSaving] = useState(false)
+  const [createdTemplate, setCreatedTemplate] = useState<PromptTemplate | null>(null)
+  const [showReplaceDialog, setShowReplaceDialog] = useState(false)
 
   const handleSubmit = async () => {
     if (!name.trim() || !body.trim()) return
@@ -357,10 +564,30 @@ function NewTemplateModal({
         return
       }
       const { data } = await res.json()
-      onCreated(data)
+
+      // If forked from a template that's in packs, offer to swap
+      if (originalTemplate && originalTemplate.packUsageCount > 0) {
+        setCreatedTemplate(data)
+        setShowReplaceDialog(true)
+      } else {
+        onCreated(data)
+      }
     } finally {
       setSaving(false)
     }
+  }
+
+  if (showReplaceDialog && createdTemplate && originalTemplate) {
+    return (
+      <ReplaceInPacksDialog
+        originalTemplate={originalTemplate}
+        newTemplateId={createdTemplate.id}
+        onDone={() => {
+          setShowReplaceDialog(false)
+          onCreated(createdTemplate)
+        }}
+      />
+    )
   }
 
   return (
@@ -424,6 +651,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
   const [copyToGlobalTemplate, setCopyToGlobalTemplate] = useState<PromptTemplate | null>(null)
   const [showNewModal, setShowNewModal] = useState(false)
   const [forkTemplate, setForkTemplate] = useState<PromptTemplate | null>(null)
+  const [deleteBlockMsg, setDeleteBlockMsg] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -432,8 +660,16 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
       apiFetch('/api/v1/template-library?global=true').then((r) => r.json()),
     ])
       .then(([clientRes, globalRes]) => {
-        const clientTemplates: PromptTemplate[] = clientRes.data ?? []
-        const globalTemplates: PromptTemplate[] = globalRes.data ?? []
+        const clientTemplates: PromptTemplate[] = (clientRes.data ?? []).map((t: PromptTemplate) => ({
+          ...t,
+          packUsageCount: t.packUsageCount ?? 0,
+          packNames: t.packNames ?? [],
+        }))
+        const globalTemplates: PromptTemplate[] = (globalRes.data ?? []).map((t: PromptTemplate) => ({
+          ...t,
+          packUsageCount: t.packUsageCount ?? 0,
+          packNames: t.packNames ?? [],
+        }))
         const seen = new Set(clientTemplates.map((t) => t.id))
         setTemplates([...clientTemplates, ...globalTemplates.filter((t) => !seen.has(t.id))])
       })
@@ -484,6 +720,13 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
   }
 
   const handleDelete = (template: PromptTemplate) => {
+    // Block deletion if template is in packs
+    if (template.packUsageCount > 0) {
+      const packList = template.packNames.length > 0 ? `: ${template.packNames.join(', ')}` : ''
+      setDeleteBlockMsg(`This prompt is used in ${template.packUsageCount} content pack${template.packUsageCount !== 1 ? 's' : ''}${packList}. Remove it from all packs before deleting.`)
+      return
+    }
+
     const warn = template.useCount > 0 ? ` This template has been used ${template.useCount} time${template.useCount !== 1 ? 's' : ''}.` : ''
     if (!confirm(`Delete "${template.name}"?${warn}`)) return
     apiFetch(`/api/v1/template-library/${template.id}`, { method: 'DELETE' })
@@ -494,8 +737,8 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
   }
 
   const handleSaved = (updated: PromptTemplate) => {
-    setTemplates((prev) => prev.map((t) => t.id === updated.id ? updated : t))
-    setOpenTemplate(updated)
+    setTemplates((prev) => prev.map((t) => t.id === updated.id ? { ...t, ...updated } : t))
+    setOpenTemplate({ ...updated, packUsageCount: updated.packUsageCount ?? 0, packNames: updated.packNames ?? [] })
   }
 
   // Filter
@@ -513,6 +756,17 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Delete block message */}
+      {deleteBlockMsg && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive">
+          <Icons.AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span className="flex-1">{deleteBlockMsg}</span>
+          <button onClick={() => setDeleteBlockMsg(null)} className="shrink-0 hover:opacity-70">
+            <Icons.X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Search */}
@@ -666,6 +920,7 @@ export function ClientPromptLibraryTab({ clientId }: { clientId: string }) {
             description: forkTemplate.description ?? '',
             category: forkTemplate.category,
           } : undefined}
+          originalTemplate={forkTemplate ?? undefined}
         />
       )}
     </div>

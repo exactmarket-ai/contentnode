@@ -20,7 +20,13 @@ const memberBody = z.object({
   avoidPhrases:    z.array(z.string()).default([]),
 })
 
-const memberPatch = memberBody.partial().omit({ clientId: true })
+const memberPatch = memberBody.partial().omit({ clientId: true }).extend({
+  // Integration / content pack fields (new columns added by migration)
+  defaultContentPackId: z.string().nullable().optional(),
+  mondayBoardId:        z.string().nullable().optional(),
+  mondayColumnMapping:  z.record(z.unknown()).nullable().optional(),
+  boxFolderId:          z.string().nullable().optional(),
+})
 
 const CONTENT_TYPES = [
   'linkedin_post',
@@ -35,6 +41,48 @@ const CONTENT_TYPES = [
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: fetch extended integration fields for a leadership member
+// (stored in columns added by migration — gracefully degrade if not yet applied)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type MemberExtended = {
+  defaultContentPackId: string | null
+  mondayBoardId:        string | null
+  mondayColumnMapping:  Record<string, unknown> | null
+  boxFolderId:          string | null
+}
+
+async function getMemberExtended(memberId: string): Promise<MemberExtended> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{
+      default_content_pack_id: string | null
+      monday_board_id:         string | null
+      monday_column_mapping:   unknown
+      box_folder_id:           string | null
+    }>>`
+      SELECT default_content_pack_id, monday_board_id, monday_column_mapping, box_folder_id
+      FROM leadership_members WHERE id = ${memberId}
+    `
+    const row = rows[0]
+    if (!row) return emptyMemberExtended()
+    return {
+      defaultContentPackId: row.default_content_pack_id,
+      mondayBoardId:        row.monday_board_id,
+      mondayColumnMapping:  row.monday_column_mapping && typeof row.monday_column_mapping === 'object'
+        ? (row.monday_column_mapping as Record<string, unknown>)
+        : null,
+      boxFolderId:          row.box_folder_id,
+    }
+  } catch {
+    return emptyMemberExtended()
+  }
+}
+
+function emptyMemberExtended(): MemberExtended {
+  return { defaultContentPackId: null, mondayBoardId: null, mondayColumnMapping: null, boxFolderId: null }
+}
+
 export async function leadershipRoutes(app: FastifyInstance) {
   // ── GET / — list members for a client ─────────────────────────────────────
   app.get('/', async (req, reply) => {
@@ -46,7 +94,11 @@ export async function leadershipRoutes(app: FastifyInstance) {
       where: { agencyId, clientId },
       orderBy: { createdAt: 'asc' },
     })
-    return reply.send({ data: members })
+    const withExtended = await Promise.all(members.map(async (m) => ({
+      ...m,
+      ...await getMemberExtended(m.id),
+    })))
+    return reply.send({ data: withExtended })
   })
 
   // ── POST / — create member ─────────────────────────────────────────────────
@@ -86,15 +138,46 @@ export async function leadershipRoutes(app: FastifyInstance) {
     const parsed = memberPatch.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
 
+    // Separate extended fields from Prisma-managed fields
+    const {
+      defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId,
+      ...coreData
+    } = parsed.data
+
     const updated = await prisma.leadershipMember.update({
       where: { id: existing.id },
       data: {
-        ...parsed.data,
-        linkedInUrl:  parsed.data.linkedInUrl  !== undefined ? (parsed.data.linkedInUrl  || null) : undefined,
-        headshotUrl:  parsed.data.headshotUrl  !== undefined ? (parsed.data.headshotUrl  || null) : undefined,
+        ...coreData,
+        linkedInUrl:  coreData.linkedInUrl  !== undefined ? (coreData.linkedInUrl  || null) : undefined,
+        headshotUrl:  coreData.headshotUrl  !== undefined ? (coreData.headshotUrl  || null) : undefined,
       },
     })
-    return reply.send({ data: updated })
+
+    // Update integration fields via raw SQL
+    const hasExtended = [defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId]
+      .some((v) => v !== undefined)
+
+    if (hasExtended) {
+      try {
+        if (defaultContentPackId !== undefined) {
+          await prisma.$executeRaw`UPDATE leadership_members SET default_content_pack_id = ${defaultContentPackId} WHERE id = ${req.params.id}`
+        }
+        if (mondayBoardId !== undefined) {
+          await prisma.$executeRaw`UPDATE leadership_members SET monday_board_id = ${mondayBoardId} WHERE id = ${req.params.id}`
+        }
+        if (mondayColumnMapping !== undefined) {
+          await prisma.$executeRaw`UPDATE leadership_members SET monday_column_mapping = ${JSON.stringify(mondayColumnMapping)}::jsonb WHERE id = ${req.params.id}`
+        }
+        if (boxFolderId !== undefined) {
+          await prisma.$executeRaw`UPDATE leadership_members SET box_folder_id = ${boxFolderId} WHERE id = ${req.params.id}`
+        }
+      } catch {
+        // Columns not yet created — ignore, schema migration needed
+      }
+    }
+
+    const extended = await getMemberExtended(req.params.id)
+    return reply.send({ data: { ...updated, ...extended } })
   })
 
   // ── DELETE /:id — delete member ────────────────────────────────────────────

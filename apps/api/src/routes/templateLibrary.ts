@@ -5,6 +5,36 @@ import { prisma } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pack usage helpers — gracefully degrade if content_pack_items doesn't exist
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getTemplatePackCount(templateId: string): Promise<number> {
+  try {
+    const rows = await prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*)::bigint AS count FROM content_pack_items
+      WHERE prompt_template_id = ${templateId}
+    `
+    return Number(rows[0]?.count ?? 0)
+  } catch {
+    return 0
+  }
+}
+
+async function getTemplatePackRefs(templateId: string): Promise<{ id: string; name: string }[]> {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; name: string }[]>`
+      SELECT DISTINCT cp.id, cp.name
+      FROM content_pack_items cpi
+      JOIN content_packs cp ON cp.id = cpi.content_pack_id
+      WHERE cpi.prompt_template_id = ${templateId}
+    `
+    return rows
+  } catch {
+    return []
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -358,7 +388,18 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
       orderBy: [{ source: 'asc' }, { createdAt: 'desc' }],
     })
 
-    return reply.send({ data: templates })
+    // Attach pack usage counts (graceful — returns 0 if table not yet migrated)
+    const templatesWithPacks = await Promise.all(
+      templates.map(async (t) => {
+        const [packUsageCount, packs] = await Promise.all([
+          getTemplatePackCount(t.id),
+          getTemplatePackRefs(t.id),
+        ])
+        return { ...t, packUsageCount, packNames: packs.map((p) => p.name) }
+      })
+    )
+
+    return reply.send({ data: templatesWithPacks })
   })
 
   // ── POST / — create template ──────────────────────────────────────────────
@@ -402,6 +443,8 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
   // ── PATCH /:id — update template ──────────────────────────────────────────
   app.patch<{ Params: { id: string } }>('/:id', async (req, reply) => {
     const { agencyId, userId, role } = req.auth
+    const q = req.query as Record<string, string>
+
     const existing = await prisma.promptTemplate.findFirst({
       where: { id: req.params.id, agencyId },
     })
@@ -410,6 +453,19 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
     // Global templates (source === 'global') are agency-wide — only admins can overwrite them
     if (!isAdmin(role) && existing.source === 'global') {
       return reply.code(403).send({ error: 'Only admins can edit global templates' })
+    }
+
+    // Warn before editing a template that lives in content packs
+    if (q.confirmPackUpdate !== 'true') {
+      const packCount = await getTemplatePackCount(existing.id)
+      if (packCount > 0) {
+        const packs = await getTemplatePackRefs(existing.id)
+        return reply.code(409).send({
+          error: 'pack_warning',
+          packUsageCount: packCount,
+          packs,
+        })
+      }
     }
 
     const body = req.body as Record<string, unknown>
@@ -443,8 +499,45 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Only admins can delete AI or global templates' })
     }
 
+    // Block delete if the template is referenced by any content pack
+    const packCount = await getTemplatePackCount(existing.id)
+    if (packCount > 0) {
+      const packs = await getTemplatePackRefs(existing.id)
+      return reply.code(409).send({ error: 'in_use', packUsageCount: packCount, packs })
+    }
+
     await prisma.promptTemplate.delete({ where: { id: existing.id } })
     return reply.code(204).send()
+  })
+
+  // ── POST /:id/replace-in-packs — swap all pack references to a new template ─
+  app.post<{ Params: { id: string } }>('/:id/replace-in-packs', async (req, reply) => {
+    const { agencyId } = req.auth
+    const body = req.body as { newTemplateId?: string }
+
+    if (!body.newTemplateId) {
+      return reply.code(400).send({ error: 'newTemplateId is required' })
+    }
+
+    // Verify both templates belong to this agency
+    const [oldTpl, newTpl] = await Promise.all([
+      prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId } }),
+      prisma.promptTemplate.findFirst({ where: { id: body.newTemplateId, agencyId } }),
+    ])
+    if (!oldTpl) return reply.code(404).send({ error: 'Source template not found' })
+    if (!newTpl) return reply.code(404).send({ error: 'Replacement template not found' })
+
+    try {
+      await prisma.$executeRaw`
+        UPDATE content_pack_items
+        SET prompt_template_id = ${body.newTemplateId}
+        WHERE prompt_template_id = ${req.params.id}
+      `
+    } catch {
+      // Table doesn't exist yet — nothing to update
+    }
+
+    return reply.send({ ok: true })
   })
 
   // ── POST /:id/use — increment use count ────────────────────────────────────

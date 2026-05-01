@@ -302,6 +302,36 @@ const updateBody = createBody.partial()
 
 const ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin', 'org_admin'])
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: fetch pack usageCount for a single prompt template
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getTemplateUsageCount(templateId: string): Promise<number> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ cnt: bigint }>>`
+      SELECT COUNT(*) AS cnt FROM content_pack_items WHERE prompt_template_id = ${templateId}
+    `
+    return Number(rows[0]?.cnt ?? 0)
+  } catch {
+    // Table doesn't exist yet — treat as 0 until migration runs
+    return 0
+  }
+}
+
+async function getTemplatePackRefs(templateId: string): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ id: string; name: string }>>`
+      SELECT DISTINCT cp.id, cp.name
+      FROM content_pack_items cpi
+      JOIN content_packs cp ON cp.id = cpi.content_pack_id
+      WHERE cpi.prompt_template_id = ${templateId}
+    `
+    return rows
+  } catch {
+    return []
+  }
+}
+
 export async function promptRoutes(app: FastifyInstance) {
   // ── GET / — list prompt templates (optional ?clientId= filter) ──────────
   app.get<{ Querystring: { clientId?: string } }>('/', async (req, reply) => {
@@ -312,7 +342,14 @@ export async function promptRoutes(app: FastifyInstance) {
       orderBy: [{ source: 'asc' }, { isStale: 'asc' }, { createdAt: 'desc' }],
       select: { id: true, name: true, category: true, description: true, parentId: true, clientId: true, useCount: true, source: true, isStale: true, createdBy: true, createdAt: true, updatedAt: true, body: true },
     })
-    return reply.send({ data: templates })
+
+    // Attach usageCount for each template
+    const withUsage = await Promise.all(templates.map(async (t) => ({
+      ...t,
+      usageCount: await getTemplateUsageCount(t.id),
+    })))
+
+    return reply.send({ data: withUsage })
   })
 
   // ── GET /trash — soft-deleted templates (admin only) ─────────────────────
@@ -325,7 +362,11 @@ export async function promptRoutes(app: FastifyInstance) {
       orderBy: { deletedAt: 'desc' },
       select: { id: true, name: true, category: true, description: true, createdBy: true, deletedAt: true, deletedBy: true, body: true },
     })
-    return reply.send({ data: templates })
+    const withUsage = await Promise.all(templates.map(async (t) => ({
+      ...t,
+      usageCount: await getTemplateUsageCount(t.id),
+    })))
+    return reply.send({ data: withUsage })
   })
 
   // ── POST /suggest — enqueue brain-powered prompt generation for a client ──
@@ -354,11 +395,11 @@ export async function promptRoutes(app: FastifyInstance) {
     const template = await prisma.promptTemplate.create({
       data: { agencyId, createdBy: userId, ...parsed.data } as any,
     })
-    return reply.code(201).send({ data: template })
+    return reply.code(201).send({ data: { ...template, usageCount: 0 } })
   })
 
   // ── PATCH /:id — update name / body / category / description ─────────────
-  app.patch<{ Params: { id: string } }>('/:id', async (req, reply) => {
+  app.patch<{ Params: { id: string }; Querystring: { confirmPackUpdate?: string } }>('/:id', async (req, reply) => {
     const { agencyId } = req.auth
     const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId, deletedAt: null } })
     if (!existing) return reply.code(404).send({ error: 'Template not found' })
@@ -366,11 +407,25 @@ export async function promptRoutes(app: FastifyInstance) {
     const parsed = updateBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
 
+    // Check if template is used in packs — warn before saving unless confirmed
+    const confirmPackUpdate = req.query.confirmPackUpdate === 'true'
+    if (!confirmPackUpdate) {
+      const usageCount = await getTemplateUsageCount(req.params.id)
+      if (usageCount > 0) {
+        return reply.code(409).send({
+          error:      'pack_warning',
+          message:    `This prompt is used in ${usageCount} content pack(s). Your changes will apply to all future runs.`,
+          usageCount,
+        })
+      }
+    }
+
     const template = await prisma.promptTemplate.update({
       where: { id: req.params.id },
       data: parsed.data,
     })
-    return reply.send({ data: template })
+    const usageCount = await getTemplateUsageCount(req.params.id)
+    return reply.send({ data: { ...template, usageCount } })
   })
 
   // ── POST /:id/use — increment use count (fire-and-forget from frontend) ──
@@ -398,10 +453,50 @@ export async function promptRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: msg })
     }
 
+    // Block delete if template is used in content packs
+    const usageCount = await getTemplateUsageCount(req.params.id)
+    if (usageCount > 0) {
+      const packs = await getTemplatePackRefs(req.params.id)
+      return reply.code(409).send({
+        error:      'in_use',
+        message:    `This prompt is used in ${usageCount} content pack(s). Remove it from all packs before deleting.`,
+        usageCount,
+        packs,
+      })
+    }
+
     await prisma.promptTemplate.update({
       where: { id: req.params.id },
       data: { deletedAt: new Date(), deletedBy: userId },
     })
+    return reply.send({ data: { ok: true } })
+  })
+
+  // ── POST /:id/replace-in-packs — replace all pack refs with a new template ─
+  app.post<{ Params: { id: string } }>('/:id/replace-in-packs', async (req, reply) => {
+    const { agencyId } = req.auth
+    const existing = await prisma.promptTemplate.findFirst({ where: { id: req.params.id, agencyId, deletedAt: null } })
+    if (!existing) return reply.code(404).send({ error: 'Template not found' })
+
+    const parsed = z.object({ newPromptTemplateId: z.string().min(1) }).safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
+
+    const newTemplate = await prisma.promptTemplate.findFirst({
+      where: { id: parsed.data.newPromptTemplateId, agencyId, deletedAt: null },
+      select: { id: true },
+    })
+    if (!newTemplate) return reply.code(404).send({ error: 'Target template not found' })
+
+    try {
+      await prisma.$executeRaw`
+        UPDATE content_pack_items
+        SET prompt_template_id = ${parsed.data.newPromptTemplateId}
+        WHERE prompt_template_id = ${req.params.id}
+      `
+    } catch {
+      // Table not yet created — no-op
+    }
+
     return reply.send({ data: { ok: true } })
   })
 
