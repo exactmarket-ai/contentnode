@@ -864,14 +864,6 @@ function AssignmentPanel({
         setMembers(membersRes.data ?? [])
         setVerticals(verticalsRes.data ?? [])
         setPacks(packsRes.data ?? [])
-
-        // Auto-select if only one member and no verticals
-        const mems: LeadershipTarget[] = membersRes.data ?? []
-        const verts: VerticalTarget[]  = verticalsRes.data ?? []
-        if (mems.length === 1 && verts.length === 0) {
-          setTargetType('member')
-          setTargetId(mems[0].id)
-        }
       })
       .catch(console.error)
       .finally(() => setLoadingTargets(false))
