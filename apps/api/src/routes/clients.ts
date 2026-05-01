@@ -615,6 +615,31 @@ Use empty string "" or empty array [] for any field not found. Never invent info
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Agency template seeding for new clients ───────────────────────────────────
+async function seedAgencyTemplatesForClient(agencyId: string, clientId: string): Promise<void> {
+  const agencyTemplates = await prisma.promptTemplate.findMany({
+    where: { agencyId, clientId: null, agencyLevel: true, visibleToClients: true, deletedAt: null },
+  })
+  if (!agencyTemplates.length) return
+  await prisma.promptTemplate.createMany({
+    data: agencyTemplates.map((t) => ({
+      agencyId,
+      clientId,
+      name:            t.name,
+      body:            t.body,
+      category:        t.category,
+      description:     t.description,
+      source:          'agency',
+      agencyTemplateId: t.id,
+      agencyLevel:     false,
+      visibleToClients: true,
+      isHidden:        false,
+      createdBy:       'system',
+    })),
+    skipDuplicates: true,
+  })
+}
+
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -718,6 +743,8 @@ export async function clientRoutes(app: FastifyInstance) {
     seedDefaultTasksForClient(agencyId, client.id).catch(() => {})
     // Copy global agency image prompts to the new client as their starting set
     seedImagePromptsForClient(agencyId, client.id).catch(() => {})
+    // Copy all visible agency-level prompt templates to the new client
+    seedAgencyTemplatesForClient(agencyId, client.id).catch(() => {})
 
     return reply.code(201).send({ data: client })
   })

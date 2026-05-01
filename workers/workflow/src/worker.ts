@@ -68,6 +68,8 @@ import {
   type ScheduledResearchJobData,
   QUEUE_CONTENT_PACK_GENERATION,
   type ContentPackGenJobData,
+  QUEUE_PROMPT_PROPAGATION,
+  type PromptPropagationJobData,
 } from './queues.js'
 import { startBoxDiffWorker } from './boxDiffProcessor.js'
 import { startPMAgentWorker } from './pmAgent.js'
@@ -78,6 +80,7 @@ import { processKitGenerationJob } from './kitGenerator.js'
 import { runStoryboardJob, runStoryboardSceneJob, runStoryboardAssembleJob } from './kitStoryboardGenerator.js'
 import { QUEUE_KIT_GENERATION, QUEUE_STORYBOARD_GENERATION, QUEUE_STORYBOARD_SCENE, QUEUE_STORYBOARD_ASSEMBLE, type KitGenerationJobData, type StoryboardJobData, type StoryboardSceneJobData, type StoryboardAssembleJobData } from './queues.js'
 import { renewExpiringChannels } from './googleDriveChannelRenewal.js'
+import { propagateAgencyTemplate } from './promptPropagation.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -628,6 +631,18 @@ const fileCleanupWorker = createWorker(
   1
 )
 
+// ── prompt-propagation ────────────────────────────────────────────────────────
+const promptPropagationWorker = createWorker<PromptPropagationJobData>(
+  QUEUE_PROMPT_PROPAGATION,
+  async (job: Job<PromptPropagationJobData>) => {
+    const { agencyId, templateId } = job.data
+    console.log(`[prompt-propagation] propagating template ${templateId} for agency ${agencyId}`)
+    const { propagated } = await propagateAgencyTemplate({ agencyId, templateId })
+    console.log(`[prompt-propagation] done — ${propagated} client copies created`)
+  },
+  2
+)
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -662,6 +677,7 @@ async function shutdown() {
     boxVersionSweepWorker.close(),
     gdriveRenewalWorker.close(),
     fileCleanupWorker.close(),
+    promptPropagationWorker.close(),
   ])
   process.exit(0)
 }

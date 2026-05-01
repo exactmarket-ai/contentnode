@@ -381,7 +381,7 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
     // Team members can only see clients they have access to — enforce via agencyId scope
     const where = isGlobal
       ? { agencyId, clientId: null }
-      : { agencyId, clientId }
+      : { agencyId, clientId, isHidden: false }
 
     const templates = await prisma.promptTemplate.findMany({
       where: { ...where, deletedAt: null },

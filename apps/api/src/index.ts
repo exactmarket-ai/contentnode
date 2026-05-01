@@ -62,6 +62,7 @@ import { boxFileWebhookRoutes }         from './routes/webhooks/boxFile.js'
 import { googleDriveWebhookRoutes }     from './routes/webhooks/googleDrive.js'
 import { imagePromptRoutes }            from './routes/imagePrompts.js'
 import { contentPackRoutes }            from './routes/contentPacks.js'
+import { agencyPromptTemplateRoutes }   from './routes/agencyPromptTemplates.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -195,7 +196,8 @@ await app.register(kitSessionRoutes,              { prefix: '/api/v1/kit-session
 await app.register(boxFileWebhookRoutes,          { prefix: '/api/v1/webhooks/box-file' })
 await app.register(googleDriveWebhookRoutes,      { prefix: '/api/v1/webhooks/google-drive' })
 await app.register(imagePromptRoutes,        { prefix: '/api/v1/image-prompts' })
-await app.register(contentPackRoutes,        { prefix: '/api/v1/content-packs' })
+await app.register(contentPackRoutes,             { prefix: '/api/v1/content-packs' })
+await app.register(agencyPromptTemplateRoutes,    { prefix: '/api/v1/agency/prompt-templates' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

@@ -540,6 +540,10 @@ interface PromptTemplate {
   useCount: number
   createdBy: string | null
   createdAt: string
+  agencyLevel: boolean
+  visibleToClients: boolean
+  propagatedAt: string | null
+  clientCopyCount: number
 }
 
 const PROMPT_CATEGORIES = [
@@ -573,7 +577,7 @@ function PromptsSection() {
 
   const load = () => {
     setLoading(true)
-    apiFetch('/api/v1/prompts')
+    apiFetch('/api/v1/agency/prompt-templates')
       .then((r) => r.json())
       .then(({ data }) => setTemplates(data ?? []))
       .catch(console.error)
@@ -594,7 +598,7 @@ function PromptsSection() {
     if (!editingId) return
     setSavingEdit(true)
     try {
-      const res = await apiFetch(`/api/v1/prompts/${editingId}`, {
+      const res = await apiFetch(`/api/v1/agency/prompt-templates/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editName, body: editBody, description: editDesc || undefined, category: editCategory }),
@@ -609,15 +613,24 @@ function PromptsSection() {
   }
 
   const deleteTemplate = async (id: string) => {
-    if (!confirm('Move this template to Trash?')) return
+    if (!confirm('Delete this template?')) return
     setDeleteError(null)
-    const res = await apiFetch(`/api/v1/prompts/${id}`, { method: 'DELETE' })
+    const res = await apiFetch(`/api/v1/agency/prompt-templates/${id}`, { method: 'DELETE' })
     if (!res.ok) {
       const json = await res.json().catch(() => ({}))
       setDeleteError((json as { error?: string }).error ?? 'Failed to delete template.')
       return
     }
     load()
+  }
+
+  const toggleVisibility = async (t: PromptTemplate) => {
+    const res = await apiFetch(`/api/v1/agency/prompt-templates/${t.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visibleToClients: !t.visibleToClients }),
+    })
+    if (res.ok) load()
   }
 
   const canDelete = (t: PromptTemplate) =>
@@ -635,10 +648,10 @@ function PromptsSection() {
     if (!newName.trim() || !newBody.trim()) return
     setSaving(true)
     try {
-      const res = await apiFetch('/api/v1/prompts', {
+      const res = await apiFetch('/api/v1/agency/prompt-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), body: newBody.trim(), description: newDesc.trim() || undefined, category: newCategory }),
+        body: JSON.stringify({ name: newName.trim(), body: newBody.trim(), description: newDesc.trim() || undefined, category: newCategory, visibleToClients: true }),
       })
       if (res.ok) {
         setCreating(false)
@@ -833,20 +846,47 @@ function PromptsSection() {
                         <div>
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
-                              <button
-                                className="flex items-center gap-1 text-left"
-                                onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
-                              >
-                                <Icons.ChevronRight
-                                  className="h-3.5 w-3.5 shrink-0 transition-transform"
-                                  style={{ color: '#b4b2a9', transform: expandedId === t.id ? 'rotate(90deg)' : 'none' }}
-                                />
-                                <span className="text-[13px] font-medium" style={{ color: '#1a1a14' }}>{t.name}</span>
-                              </button>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  className="flex items-center gap-1 text-left"
+                                  onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
+                                >
+                                  <Icons.ChevronRight
+                                    className="h-3.5 w-3.5 shrink-0 transition-transform"
+                                    style={{ color: '#b4b2a9', transform: expandedId === t.id ? 'rotate(90deg)' : 'none' }}
+                                  />
+                                  <span className="text-[13px] font-medium" style={{ color: '#1a1a14' }}>{t.name}</span>
+                                </button>
+                                {t.agencyLevel && (
+                                  <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: '#f3e8ff', color: '#7e22ce' }}>
+                                    Agency template
+                                  </span>
+                                )}
+                              </div>
                               {t.description && (
                                 <p className="text-[11px] mt-0.5 ml-5" style={{ color: '#b4b2a9' }}>{t.description}</p>
                               )}
-                              <div className="flex items-center gap-3 mt-1 ml-5">
+                              <div className="flex items-center gap-3 mt-1.5 ml-5 flex-wrap">
+                                {t.agencyLevel && (
+                                  <button
+                                    onClick={() => toggleVisibility(t)}
+                                    className="flex items-center gap-1.5 text-[11px] font-medium rounded-full px-2.5 py-1 border transition-colors"
+                                    style={t.visibleToClients
+                                      ? { borderColor: '#a200ee', color: '#a200ee', backgroundColor: '#fdf4ff' }
+                                      : { borderColor: '#e8e7e1', color: '#b4b2a9', backgroundColor: '#fff' }
+                                    }
+                                    title={t.visibleToClients ? 'Visible to all clients — click to hide' : 'Hidden from clients — click to show'}
+                                  >
+                                    {t.visibleToClients
+                                      ? <Icons.Eye className="h-3 w-3" />
+                                      : <Icons.EyeOff className="h-3 w-3" />
+                                    }
+                                    {t.visibleToClients
+                                      ? `Visible to all clients${t.clientCopyCount > 0 ? ` (${t.clientCopyCount})` : ''}`
+                                      : 'Hidden from clients'
+                                    }
+                                  </button>
+                                )}
                                 {t.useCount > 0 && (
                                   <span className="text-[10px]" style={{ color: '#b4b2a9' }}>Used {t.useCount}×</span>
                                 )}
@@ -1790,8 +1830,8 @@ function CredentialsSection() {
                 {PROVIDERS.find((p) => p.value === c.provider)?.label ?? c.provider}
                 {c.keyName !== 'Default' && <span className="ml-1.5 text-[11px]" style={{ color: '#b4b2a9' }}>({c.keyName})</span>}
               </p>
-              {c.meta?.mailgunDomain && (
-                <p className="text-[11px]" style={{ color: '#b4b2a9' }}>Domain: {c.meta.mailgunDomain as string}</p>
+              {(c.meta as { mailgunDomain?: string } | null)?.mailgunDomain && (
+                <p className="text-[11px]" style={{ color: '#b4b2a9' }}>Domain: {(c.meta as { mailgunDomain?: string }).mailgunDomain}</p>
               )}
             </div>
             <div className="flex items-center gap-2">

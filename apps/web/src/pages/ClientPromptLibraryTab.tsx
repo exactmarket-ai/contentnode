@@ -18,7 +18,7 @@ interface PromptTemplate {
   body: string
   category: string
   description: string | null
-  source: 'user' | 'ai' | 'global'
+  source: 'user' | 'ai' | 'global' | 'agency'
   isStale: boolean
   useCount: number
   packUsageCount: number
@@ -28,7 +28,7 @@ interface PromptTemplate {
 }
 
 const CATEGORIES = ['All', 'Copy', 'Creative', 'Strategy', 'Marketing', 'Design', 'Business'] as const
-const SOURCES    = ['all', 'user', 'ai', 'global'] as const
+const SOURCES    = ['all', 'user', 'ai', 'global', 'agency'] as const
 
 const CATEGORY_COLORS: Record<string, string> = {
   Copy:       'bg-blue-500/10 text-blue-600',
@@ -39,11 +39,12 @@ const CATEGORY_COLORS: Record<string, string> = {
   Business:   'bg-slate-500/10 text-slate-600',
 }
 
-const SOURCE_LABELS: Record<string, string> = { user: 'Custom', ai: 'AI', global: 'Global' }
+const SOURCE_LABELS: Record<string, string> = { user: 'Custom', ai: 'AI', global: 'Global', agency: 'Agency' }
 const SOURCE_COLORS: Record<string, string> = {
   user:   'bg-muted text-muted-foreground',
   ai:     'bg-violet-500/10 text-violet-600',
   global: 'bg-sky-500/10 text-sky-600',
+  agency: 'bg-purple-500/10 text-purple-700',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,13 +269,15 @@ function TemplateDrawer({ template, onClose, onSaved, onUse: _onUse, onFork }: D
               </>
             ) : (
               <>
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditMode(true)}>
-                  <Icons.Pencil className="h-3 w-3 mr-1" />
-                  Edit
-                </Button>
+                {template.source !== 'agency' && (
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditMode(true)}>
+                    <Icons.Pencil className="h-3 w-3 mr-1" />
+                    Edit
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { onFork(template); onClose() }}>
                   <Icons.Copy className="h-3 w-3 mr-1" />
-                  Save as
+                  Save as new
                 </Button>
               </>
             )}
@@ -491,7 +494,8 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
                   onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onOpen(template) }}
                 >
-                  <Icons.Eye className="h-3.5 w-3.5" /> View / Edit
+                  <Icons.Eye className="h-3.5 w-3.5" />
+                  {template.source === 'agency' ? 'View' : 'View / Edit'}
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
@@ -499,7 +503,7 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
                 >
                   <Icons.Copy className="h-3.5 w-3.5" /> Save as new
                 </button>
-                {isAdmin && template.clientId !== null && (
+                {isAdmin && template.clientId !== null && template.source !== 'agency' && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted"
                     onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onCopyToGlobal(template) }}
@@ -507,7 +511,7 @@ function TemplateCard({ template, isAdmin, onOpen, onDelete, onCopyToGlobal, onU
                     <Icons.Globe className="h-3.5 w-3.5" /> Copy to Global Library
                   </button>
                 )}
-                {(isAdmin || template.source === 'user') && (
+                {(isAdmin || template.source === 'user') && template.source !== 'agency' && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10"
                     onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(template) }}

@@ -1291,12 +1291,17 @@ model PromptTemplate {
   description          String?
   parentId             String?  @map("parent_id")              // set when saved as new from an existing template
   useCount             Int      @default(0) @map("use_count")
-  source               String   @default("user")               // user | ai | global
+  source               String   @default("user")               // user | ai | global | agency
   brainSnapshotVersion String?  @map("brain_snapshot_version") // SHA-256 of Brain JSON at generation time
   isStale              Boolean  @default(false) @map("is_stale")
   createdBy            String?  @map("created_by")             // userId or 'system'
   deletedAt            DateTime? @map("deleted_at")
   deletedBy            String?  @map("deleted_by")
+  agencyLevel          Boolean  @default(false) @map("agency_level")         // true = created in org settings, propagates to clients
+  visibleToClients     Boolean  @default(true)  @map("visible_to_clients")   // toggle: push to all clients / hide from all
+  propagatedAt         DateTime? @map("propagated_at")                        // set on first propagation
+  isHidden             Boolean  @default(false) @map("is_hidden")             // true = hidden on client copies when org toggles off
+  agencyTemplateId     String?  @map("agency_template_id")                    // on client copies: FK to the originating agency template
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
@@ -1308,6 +1313,8 @@ model PromptTemplate {
   @@index([agencyId])
   @@index([clientId])
   @@index([source])
+  @@index([agencyLevel])
+  @@index([agencyTemplateId])
   @@map("prompt_templates")
 }
 

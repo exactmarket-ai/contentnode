@@ -39,6 +39,7 @@ export const QUEUE_STORYBOARD_ASSEMBLE            = `${_p}storyboard-assemble`
 export const QUEUE_BRIEF_EXTRACT                  = `${_p}brief-extract`
 export const QUEUE_NEWSROOM_RESEARCH              = 'newsroom-research'
 export const QUEUE_CONTENT_PACK_GENERATION        = `${_p}content-pack-generation`
+export const QUEUE_PROMPT_PROPAGATION             = `${_p}prompt-propagation`
 
 export interface ContentPackGenJobData {
   agencyId:         string
@@ -263,6 +264,11 @@ export interface BriefExtractJobData {
   agencyId:  string
   clientId:  string
   briefId:   string
+}
+
+export interface PromptPropagationJobData {
+  agencyId:   string
+  templateId: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
