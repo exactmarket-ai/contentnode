@@ -76,17 +76,24 @@ async function patchStoryboard(sessionId: string, patch: Partial<StoryboardProgr
 }
 
 async function patchScene(sessionId: string, sceneNumber: number, patch: Partial<StoryboardSceneRecord>): Promise<StoryboardProgress> {
-  const { storyboard, files } = await getStoryboard(sessionId)
-  const scenes = (storyboard.scenes ?? []).map(s =>
-    s.sceneNumber === sceneNumber ? { ...s, ...patch } : s,
-  )
-  const completedScenes = scenes.filter(s => s.status === 'complete').length
-  const updated: StoryboardProgress = { ...storyboard, scenes, completedScenes }
-  await prisma.kitSession.update({
-    where: { id: sessionId },
-    data: { generatedFiles: { ...files, storyboard: updated } as object },
+  // Row-level lock prevents concurrent scene completions from overwriting each other's
+  // status in the shared JSON column (classic read-modify-write race)
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT 1 FROM "KitSession" WHERE id = ${sessionId} FOR UPDATE`
+    const session = await tx.kitSession.findUnique({ where: { id: sessionId }, select: { generatedFiles: true } })
+    const files = (session?.generatedFiles ?? {}) as Record<string, unknown>
+    const storyboard = (files.storyboard ?? {}) as StoryboardProgress
+    const scenes = (storyboard.scenes ?? []).map(s =>
+      s.sceneNumber === sceneNumber ? { ...s, ...patch } : s,
+    )
+    const completedScenes = scenes.filter(s => s.status === 'complete').length
+    const updated: StoryboardProgress = { ...storyboard, scenes, completedScenes }
+    await tx.kitSession.update({
+      where: { id: sessionId },
+      data: { generatedFiles: { ...files, storyboard: updated } as object },
+    })
+    return updated
   })
-  return updated
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
