@@ -115,6 +115,7 @@ export interface GTMPilotProps {
   researchRun?: { sectionResults: Record<string, unknown> | null } | null
   conflictLog?: ConflictEntry[] | null
   sectionStatus?: Record<string, string>
+  sectionSaveState?: Record<string, 'saving' | 'saved' | 'error'>
   onSectionStatusChange?: (sectionNum: string, status: string) => void
   // Company brief
   companyBrief?: string | null
@@ -236,12 +237,17 @@ function processReply(raw: string): string {
 
 function renderInline(text: string): React.ReactNode {
   // **bold** → <b>, *italic* → <em>
+  // Unmatched ** (no closing pair on this line) are stripped so they never render as raw asterisks.
   const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g)
-  if (parts.length === 1) return text
+  if (parts.length === 1) {
+    // No matched bold/italic — strip any bare ** that would show as literal asterisks
+    return text.replace(/\*\*/g, '')
+  }
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) return <b key={i} className="font-semibold">{part.slice(2, -2)}</b>
     if (part.startsWith('*') && part.endsWith('*'))   return <em key={i}>{part.slice(1, -1)}</em>
-    return part
+    // Plain-text segment — strip any ** that weren't part of a matched pair
+    return part.replace(/\*\*/g, '')
   })
 }
 
@@ -300,7 +306,7 @@ function SuggestionCard({
         </span>
         <Icons.Compass className="h-3 w-3 text-blue-400 shrink-0 mt-0.5" />
       </div>
-      <p className="text-[10px] text-muted-foreground leading-snug">{suggestion.description}</p>
+      <p className="text-[10px] text-muted-foreground leading-snug">{renderInline(suggestion.description)}</p>
       <button
         onClick={handleNavigate}
         className="w-full rounded-md bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
@@ -377,6 +383,7 @@ export function GTMPilot({
   researchRun,
   conflictLog,
   sectionStatus = {},
+  sectionSaveState = {},
   onSectionStatusChange,
   companyBrief,
   onBriefSaved,
@@ -887,16 +894,36 @@ export function GTMPilot({
 
       {/* Input */}
       <div className="flex items-end gap-2 border-t border-border px-3 py-2 shrink-0">
-        {activeSection && onSectionStatusChange && (
-          <button
-            onClick={() => void onSectionStatusChange(activeSection, 'complete')}
-            title="Mark section complete"
-            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-green-200 bg-green-50 px-2 text-[10px] font-medium text-green-700 hover:bg-green-100 transition-colors whitespace-nowrap"
-          >
-            <Icons.CheckCircle2 className="h-3.5 w-3.5" />
-            Mark Section {activeSection} done
-          </button>
-        )}
+        {activeSection && onSectionStatusChange && (() => {
+          const saveState = sectionSaveState[activeSection]
+          const isSaving = saveState === 'saving'
+          const isSaved  = saveState === 'saved'
+          const isError  = saveState === 'error'
+          return (
+            <button
+              onClick={() => { if (!isSaving) void onSectionStatusChange(activeSection, 'complete') }}
+              disabled={isSaving}
+              title={isError ? 'Save failed — click to retry' : 'Mark section complete'}
+              className={cn(
+                'flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-[10px] font-medium transition-colors whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed',
+                isError  ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' :
+                isSaved  ? 'border-green-300 bg-green-100 text-green-800' :
+                           'border-green-200 bg-green-50 text-green-700 hover:bg-green-100',
+              )}
+            >
+              {isSaving ? (
+                <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : isSaved ? (
+                <Icons.CheckCircle2 className="h-3.5 w-3.5" />
+              ) : isError ? (
+                <Icons.AlertCircle className="h-3.5 w-3.5" />
+              ) : (
+                <Icons.CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              {isSaving ? 'Saving…' : isSaved ? 'Saved' : isError ? 'Save failed — retry' : `Mark Section ${activeSection} done`}
+            </button>
+          )
+        })()}
         <div className="flex-1 flex flex-col gap-1 min-w-0">
           <textarea
             ref={inputRef}

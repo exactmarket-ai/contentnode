@@ -4115,15 +4115,21 @@ Rules:
       where: { clientId, verticalId, agencyId },
       select: { id: true, sectionStatus: true },
     })
-    if (!fw) return reply.code(404).send({ error: 'Framework not found' })
 
-    const current = (fw.sectionStatus ?? {}) as Record<string, string>
+    const current = ((fw?.sectionStatus ?? {}) as Record<string, string>)
     current[sectionNum] = status
 
-    await prisma.clientFramework.update({
-      where: { id: fw.id },
-      data: { sectionStatus: current },
-    })
+    if (fw) {
+      await prisma.clientFramework.update({
+        where: { id: fw.id },
+        data: { sectionStatus: current },
+      })
+    } else {
+      // Framework record doesn't exist yet — create it so the status write succeeds
+      await prisma.clientFramework.create({
+        data: { agencyId, clientId, verticalId, data: {}, sectionStatus: current },
+      })
+    }
     return reply.send({ data: { sectionNum, status } })
   })
 

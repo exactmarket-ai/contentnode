@@ -2423,6 +2423,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [uploadingClientGtm, setUploadingClientGtm] = useState(false)
   const [pilotOpen, setPilotOpen] = useState(true)
   const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({})
+  const [sectionSaveState, setSectionSaveState] = useState<Record<string, 'saving' | 'saved' | 'error'>>({})
   const [companyBrief, setCompanyBrief] = useState('')
   const [briefSaved, setBriefSaved] = useState(false)
   // Brief library state
@@ -2865,11 +2866,63 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   }, [attachedTemplate])
 
   const handleDownload = useCallback(async () => {
-    if (!fw || !selectedVertical) return
+    if (!selectedVertical) return
     setDownloadingDocx(true)
     try {
+      // Flush any pending debounced save first
+      if (saveTimer.current && latestFwRef.current) {
+        clearTimeout(saveTimer.current)
+        saveTimer.current = null
+        try {
+          await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(latestFwRef.current),
+          })
+        } catch { /* non-fatal — proceed with local data */ }
+      }
+
+      // Fetch fresh data from API to ensure we use the authoritative saved version
+      let downloadFw: FrameworkData | null = latestFwRef.current ?? fw
+      try {
+        const freshRes = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`)
+        if (freshRes.ok) {
+          const { data } = await freshRes.json() as { data: Record<string, unknown> | null }
+          if (data && typeof data === 'object') {
+            const base = defaultFramework()
+            const merged = { ...base }
+            for (const key of Object.keys(base) as Array<keyof typeof base>) {
+              if (data[key] && typeof data[key] === 'object' && !Array.isArray(data[key])) {
+                ;(merged as Record<string, unknown>)[key] = { ...(base[key] as Record<string, unknown>), ...(data[key] as Record<string, unknown>) }
+              } else if (data[key] !== undefined) {
+                ;(merged as Record<string, unknown>)[key] = data[key]
+              }
+            }
+            downloadFw = merged
+            // Sync local state with what we fetched
+            setFwRaw(merged)
+            latestFwRef.current = merged
+          }
+        }
+      } catch { /* fall through to local state */ }
+
+      if (!downloadFw) { alert('No framework data to download — please fill in at least one field.'); return }
+
+      // Diagnostic: check if data appears empty
+      const sampleValues = Object.values(downloadFw).flatMap((sec) =>
+        typeof sec === 'object' && sec !== null && !Array.isArray(sec)
+          ? Object.values(sec as Record<string, unknown>)
+          : Array.isArray(sec) ? sec : [sec]
+      )
+      const hasContent = sampleValues.some((v) => typeof v === 'string' && v.trim().length > 0)
+      console.log('[GTM Download] hasContent:', hasContent, 'fw keys:', Object.keys(downloadFw))
+      if (!hasContent) {
+        const proceed = window.confirm('The framework appears to have no content filled in yet.\n\nThe downloaded document will be empty. Download anyway?')
+        if (!proceed) return
+      }
+
       if (attachedTemplate) {
-        const variables = buildGtmVariableValues(fw, clientName, selectedVertical.name)
+        const variables = buildGtmVariableValues(downloadFw, clientName, selectedVertical.name)
         const res = await apiFetch(`/api/v1/doc-templates/${attachedTemplate.id}/fill`, {
           method: 'POST',
           body: JSON.stringify({
@@ -2899,7 +2952,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
           body: JSON.stringify({ revisionType: 'internal' }),
         }).catch(() => {/* non-fatal */})
       } else {
-        await downloadGTMFrameworkDocx(fw, clientName, selectedVertical.name, docStyle)
+        await downloadGTMFrameworkDocx(downloadFw, clientName, selectedVertical.name, docStyle)
         // Fire-and-forget: snapshot this export as a revision for the review lifecycle
         apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/revisions`, {
           method: 'POST',
@@ -2913,7 +2966,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     } finally {
       setDownloadingDocx(false)
     }
-  }, [fw, selectedVertical, attachedTemplate, clientName, docStyle, clientId])
+  }, [fw, selectedVertical, attachedTemplate, clientName, docStyle, clientId, setFwRaw])
 
   const handleReimport = useCallback(async (file: File) => {
     if (!selectedVertical || !fw) return
@@ -3023,12 +3076,30 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
   const patchSectionStatus = useCallback(async (sectionNum: string, status: string) => {
     if (!selectedVertical) return
+    console.log('[patchSectionStatus] clicked — sectionNum:', sectionNum, 'status:', status, 'verticalId:', selectedVertical.id)
+    setSectionSaveState((prev) => ({ ...prev, [sectionNum]: 'saving' }))
     setSectionStatus((prev) => ({ ...prev, [sectionNum]: status }))
-    await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/section-status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sectionNum, status }),
-    }).catch(() => {})
+    try {
+      const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}/section-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sectionNum, status }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        console.error('[patchSectionStatus] API error', res.status, body)
+        setSectionSaveState((prev) => ({ ...prev, [sectionNum]: 'error' }))
+        setSectionStatus((prev) => { const n = { ...prev }; delete n[sectionNum]; return n })
+        return
+      }
+      console.log('[patchSectionStatus] saved OK')
+      setSectionSaveState((prev) => ({ ...prev, [sectionNum]: 'saved' }))
+      setTimeout(() => setSectionSaveState((prev) => { const n = { ...prev }; delete n[sectionNum]; return n }), 2000)
+    } catch (err) {
+      console.error('[patchSectionStatus] fetch error', err)
+      setSectionSaveState((prev) => ({ ...prev, [sectionNum]: 'error' }))
+      setSectionStatus((prev) => { const n = { ...prev }; delete n[sectionNum]; return n })
+    }
   }, [clientId, selectedVertical])
 
   // Immutable update helper
@@ -3746,6 +3817,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
           researchRun={latestRun}
           conflictLog={uploadedGtm?.status === 'ready' ? (uploadedGtm.conflictLog ?? null) : null}
           sectionStatus={sectionStatus}
+          sectionSaveState={sectionSaveState}
           onSectionStatusChange={patchSectionStatus}
           companyBrief={companyBrief || null}
           onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
