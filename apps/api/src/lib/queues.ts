@@ -27,8 +27,9 @@ export const QUEUE_VERTICAL_BRAIN_PROCESS = 'vertical-brain-process'
 export const QUEUE_CLIENT_VERTICAL_BRAIN_PROCESS = 'client-vertical-brain-process'
 export const QUEUE_PROMPT_SUGGEST = 'prompt-suggestion'
 export const QUEUE_SCHEDULED_RESEARCH = 'scheduled-research'
-export const QUEUE_BOX_DIFF          = 'box-diff'
-export const QUEUE_BOX_VERSION_SCAN  = 'box-version-scan'
+export const QUEUE_BOX_DIFF            = 'box-diff'
+export const QUEUE_BOX_VERSION_SCAN    = 'box-version-scan'
+export const QUEUE_NEWSROOM_RESEARCH   = 'newsroom-research'
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -367,4 +368,21 @@ export function getBriefExtractQueue(): Queue<BriefExtractJobData> {
     briefExtractQueue = new Queue<BriefExtractJobData>(QUEUE_BRIEF_EXTRACT, { connection: getBullMQConnection() })
   }
   return briefExtractQueue
+}
+
+export interface NewsroomResearchJobData {
+  agencyId:      string
+  clientId:      string
+  verticalId:    string | null
+  userId:        string | null
+  jobId:         string
+  recencyWindow: string
+}
+
+let newsroomResearchQueue: Queue<NewsroomResearchJobData> | null = null
+export function getNewsroomResearchQueue(): Queue<NewsroomResearchJobData> {
+  if (!newsroomResearchQueue) {
+    newsroomResearchQueue = new Queue<NewsroomResearchJobData>(QUEUE_NEWSROOM_RESEARCH, { connection: getBullMQConnection() })
+  }
+  return newsroomResearchQueue
 }

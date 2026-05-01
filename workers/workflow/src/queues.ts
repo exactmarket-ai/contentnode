@@ -37,6 +37,16 @@ export const QUEUE_STORYBOARD_GENERATION          = `${_p}storyboard-generation`
 export const QUEUE_STORYBOARD_SCENE               = `${_p}storyboard-scene`
 export const QUEUE_STORYBOARD_ASSEMBLE            = `${_p}storyboard-assemble`
 export const QUEUE_BRIEF_EXTRACT                  = `${_p}brief-extract`
+export const QUEUE_NEWSROOM_RESEARCH              = 'newsroom-research'
+
+export interface NewsroomResearchJobData {
+  agencyId:      string
+  clientId:      string
+  verticalId:    string | null
+  userId:        string | null
+  jobId:         string
+  recencyWindow: string
+}
 
 export interface KitGenerationJobData {
   sessionId: string

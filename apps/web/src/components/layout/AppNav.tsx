@@ -18,6 +18,8 @@ interface AppNotification {
   resourceType: string | null
   clientId: string | null
   read: boolean
+  referenceId: string | null
+  referenceStatus: string | null
   createdAt: string
 }
 
@@ -87,13 +89,19 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
   }
 
   const markRead = async (n: AppNotification) => {
+    // Pending notifications are not yet actionable — ignore click
+    if (n.referenceStatus === 'pending') return
     if (!n.read) {
       setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x))
       setUnreadCount((c) => Math.max(0, c - 1))
       await apiFetch(`/api/v1/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {})
     }
     setOpen(false)
-    if (n.clientId) navigate(`/clients/${n.clientId}?tab=board`)
+    if (n.resourceType === 'newsroom_research' && n.clientId) {
+      navigate(`/clients/${n.clientId}?tab=newsroom`)
+    } else if (n.clientId) {
+      navigate(`/clients/${n.clientId}?tab=board`)
+    }
   }
 
   const markAllRead = async () => {
@@ -127,34 +135,43 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
                 <p className="text-[12px] text-gray-400">No notifications yet</p>
               </div>
             ) : (
-              notifications.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => markRead(n)}
-                  className={cn(
-                    'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50',
-                    !n.read && 'bg-blue-50/60',
-                  )}
-                >
-                  <div className={cn(
-                    'mt-0.5 h-8 w-8 rounded-full flex items-center justify-center shrink-0',
-                    n.type === 'assignment' ? 'bg-violet-100' : 'bg-gray-100',
-                  )}>
-                    {n.type === 'assignment'
-                      ? <Icons.UserCheck className="h-4 w-4 text-violet-600" />
-                      : <Icons.Bell className="h-4 w-4 text-gray-500" />
-                    }
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={cn('text-[12px] leading-snug', n.read ? 'text-gray-600' : 'text-gray-900 font-medium')}>
-                      {n.title}
-                    </p>
-                    {n.body && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{n.body}</p>}
-                    <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.createdAt)}</p>
-                  </div>
-                  {!n.read && <div className="h-2 w-2 rounded-full bg-blue-500 shrink-0 mt-1.5" />}
-                </button>
-              ))
+              notifications.map((n) => {
+                const isPending = n.referenceStatus === 'pending'
+                const isFailed  = n.referenceStatus === 'failed'
+                return (
+                  <button
+                    key={n.id}
+                    onClick={() => markRead(n)}
+                    className={cn(
+                      'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50',
+                      !n.read && !isPending && 'bg-blue-50/60',
+                      isPending && 'bg-gray-50/80 cursor-default',
+                    )}
+                  >
+                    <div className={cn(
+                      'mt-0.5 h-8 w-8 rounded-full flex items-center justify-center shrink-0',
+                      n.type === 'assignment' ? 'bg-violet-100' :
+                      n.type === 'newsroom_research' && isPending ? 'bg-gray-100' :
+                      n.type === 'newsroom_research' && isFailed ? 'bg-red-100' :
+                      n.type === 'newsroom_research' ? 'bg-violet-100' : 'bg-gray-100',
+                    )}>
+                      {n.type === 'assignment' ? <Icons.UserCheck className="h-4 w-4 text-violet-600" /> :
+                       n.type === 'newsroom_research' && isPending ? <Icons.Loader2 className="h-4 w-4 text-gray-400 animate-spin" /> :
+                       n.type === 'newsroom_research' && isFailed ? <Icons.AlertTriangle className="h-4 w-4 text-red-500" /> :
+                       n.type === 'newsroom_research' ? <Icons.Newspaper className="h-4 w-4 text-violet-600" /> :
+                       <Icons.Bell className="h-4 w-4 text-gray-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={cn('text-[12px] leading-snug', (n.read || isPending) ? 'text-gray-500' : 'text-gray-900 font-medium')}>
+                        {n.title}
+                      </p>
+                      {n.body && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{n.body}</p>}
+                      <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.createdAt)}</p>
+                    </div>
+                    {!n.read && !isPending && <div className="h-2 w-2 rounded-full bg-blue-500 shrink-0 mt-1.5" />}
+                  </button>
+                )
+              })
             )}
           </div>
         </div>,

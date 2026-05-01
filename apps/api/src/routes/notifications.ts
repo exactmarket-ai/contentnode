@@ -13,8 +13,9 @@ export async function notificationsRoutes(app: FastifyInstance) {
       take: 50,
     })
 
+    // Pending notifications are not actionable yet — exclude from unread badge count
     const unreadCount = await prisma.notification.count({
-      where: { agencyId, userId, read: false },
+      where: { agencyId, userId, read: false, NOT: { referenceStatus: 'pending' } },
     })
 
     return reply.send({ data: notifications, unreadCount })

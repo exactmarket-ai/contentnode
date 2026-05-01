@@ -91,6 +91,7 @@ model Agency {
   imagePrompts             ImagePrompt[]
   topicQueue               TopicQueue[]
   topicPreferenceLogs      TopicPreferenceLog[]
+  researchJobs             ResearchJob[]
 
   @@map("agencies")
 }
@@ -236,6 +237,7 @@ model Client {
   clientBriefs        ClientBrief[]
   topicQueue          TopicQueue[]
   topicPreferenceLogs TopicPreferenceLog[]
+  researchJobs        ResearchJob[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -250,6 +252,7 @@ model Vertical {
   agencyId      String   @map("agency_id")
   name          String
   dimensionType String   @default("vertical") @map("dimension_type")
+  color         String?  @db.VarChar(7)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -270,6 +273,7 @@ model Vertical {
   programTemplates         VerticalProgramTemplate[]
   topicQueue               TopicQueue[]
   topicPreferenceLogs      TopicPreferenceLog[]
+  researchJobs             ResearchJob[]
 
   @@index([agencyId])
   @@map("verticals")
@@ -2212,24 +2216,56 @@ model LeadershipMember {
 // Notification — in-app alerts for team members
 // ─────────────────────────────────────────────
 model Notification {
-  id           String   @id @default(cuid())
-  agencyId     String   @map("agency_id")
-  userId       String   @map("user_id")
-  type         String   // 'assignment' | 'comment' | 'review_ready'
-  title        String
-  body         String?  @db.Text
-  resourceId   String?  @map("resource_id")   // e.g. workflowRunId
-  resourceType String?  @map("resource_type") // e.g. 'run'
-  clientId     String?  @map("client_id")
-  read         Boolean  @default(false)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id              String   @id @default(cuid())
+  agencyId        String   @map("agency_id")
+  userId          String   @map("user_id")
+  type            String   // 'assignment' | 'comment' | 'review_ready' | 'newsroom_research'
+  title           String
+  body            String?  @db.Text
+  resourceId      String?  @map("resource_id")      // e.g. workflowRunId or jobId
+  resourceType    String?  @map("resource_type")    // e.g. 'run' | 'newsroom_research'
+  clientId        String?  @map("client_id")
+  read            Boolean  @default(false)
+  referenceId     String?  @map("reference_id")     // jobId for updateable notifications
+  referenceStatus String?  @map("reference_status") // 'pending' | 'complete' | 'failed'
+  createdAt       DateTime @default(now()) @map("created_at")
 
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([agencyId, userId, read])
   @@index([agencyId, userId, createdAt(sort: Desc)])
+  @@index([referenceId])
   @@map("notifications")
+}
+
+// ─────────────────────────────────────────────
+// ResearchJob — tracks async newsroom research runs
+// ─────────────────────────────────────────────
+model ResearchJob {
+  id            String    @id @default(cuid())
+  agencyId      String    @map("agency_id")
+  clientId      String    @map("client_id")
+  verticalId    String?   @map("vertical_id")
+  userId        String?   @map("user_id")
+  userInput     String    @db.Text @map("user_input")
+  status        String    @default("pending") @map("status") // pending|building|searching|evaluating|complete|failed
+  currentStep   String?   @map("current_step")
+  recencyWindow String    @default("7d") @map("recency_window")
+  topicCount    Int?      @map("topic_count")
+  newTopicIds   Json      @default("[]") @map("new_topic_ids")
+  errorMessage  String?   @db.Text @map("error_message")
+  startedAt     DateTime? @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  agency   Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical? @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId, clientId])
+  @@index([status])
+  @@map("research_jobs")
 }
 
 // ─────────────────────────────────────────────

@@ -22,7 +22,7 @@ interface TopicItem {
   sources: TopicSource[]
   status: 'pending' | 'approved' | 'rejected'
   createdAt: string
-  vertical: { id: string; name: string } | null
+  vertical: { id: string; name: string; color: string | null } | null
 }
 
 interface NewsroomMeta {
@@ -42,12 +42,13 @@ interface TaskRow {
   autoGenerate: boolean
   lastRunAt: string | null
   nextRunAt: string | null
-  vertical: { id: string; name: string } | null
+  vertical: { id: string; name: string; color: string | null } | null
 }
 
 interface VerticalOption {
   id: string
   name: string
+  color: string | null
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -60,7 +61,14 @@ const TASK_TYPE_META: Record<string, { label: string; icon: keyof typeof Icons; 
   research_brief:  { label: 'Research Brief',  icon: 'FileText',    color: 'text-indigo-500' },
 }
 
-const VERTICAL_DOT_COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#06b6d4','#f97316','#6366f1']
+const FALLBACK_COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#06b6d4','#f97316','#6366f1']
+
+function verticalColor(id: string, stored: string | null | undefined): string {
+  if (stored) return stored
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +91,24 @@ function relTime(iso: string | null): string {
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
   return `${Math.floor(diff / 86400000)}d ago`
+}
+
+function fmtElapsed(secs: number): string {
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function lsKey(clientId: string) { return `newsroom_research_durations:${clientId}` }
+
+function loadDurations(clientId: string): number[] {
+  try { return JSON.parse(localStorage.getItem(lsKey(clientId)) ?? '[]') } catch { return [] }
+}
+
+function saveDuration(clientId: string, secs: number) {
+  const prev = loadDurations(clientId)
+  const next = [...prev, secs].slice(-10)
+  try { localStorage.setItem(lsKey(clientId), JSON.stringify(next)) } catch {}
 }
 
 // ── Topic Card ─────────────────────────────────────────────────────────────────
@@ -112,6 +138,8 @@ function TopicCard({
     const t = setTimeout(() => setHighlight(false), 5000)
     return () => clearTimeout(t)
   }, [isNew])
+
+  const vColor = topic.vertical ? verticalColor(topic.vertical.id, topic.vertical.color) : null
 
   return (
     <div
@@ -143,7 +171,7 @@ function TopicCard({
               {topic.score}
             </span>
             {topic.vertical && (
-              <span style={{ fontSize: 10, borderRadius: 10, padding: '1px 8px', backgroundColor: '#ede9fe', color: '#6d28d9', fontWeight: 500, flexShrink: 0 }}>
+              <span style={{ fontSize: 10, borderRadius: 10, padding: '1px 8px', backgroundColor: vColor ? `${vColor}22` : '#ede9fe', color: vColor ?? '#6d28d9', fontWeight: 500, flexShrink: 0 }}>
                 {topic.vertical.name}
               </span>
             )}
@@ -296,17 +324,13 @@ function ResearchTasksSidebar({
     setTimeout(() => setRunning((prev) => { const s = new Set(prev); s.delete(id); return s }), 3000)
   }
 
-  // Group by vertical (null = client-level)
+  // Group by vertical (null = client-level), using stored color
   const groups = new Map<string, { label: string; color: string; tasks: TaskRow[] }>()
-  let colorIdx = 0
   for (const t of tasks) {
     const key = t.vertical?.id ?? '__client__'
     if (!groups.has(key)) {
-      groups.set(key, {
-        label: t.vertical?.name ?? 'Client-level',
-        color: VERTICAL_DOT_COLORS[colorIdx++ % VERTICAL_DOT_COLORS.length],
-        tasks: [],
-      })
+      const color = t.vertical ? verticalColor(t.vertical.id, t.vertical.color) : '#9ca3af'
+      groups.set(key, { label: t.vertical?.name ?? 'Client-level', color, tasks: [] })
     }
     groups.get(key)!.tasks.push(t)
   }
@@ -428,9 +452,15 @@ function ResearchTasksSidebar({
   )
 }
 
-// ── Research Topic Flow (blogPILOT-style stepped form) ────────────────────────
+// ── Research Topic Flow (async with polling + elapsed timer) ──────────────────
 
 type RecencyWindow = '7d' | '30d' | '90d'
+
+type ResearchPhase =
+  | { kind: 'idle' }
+  | { kind: 'polling'; jobId: string; startMs: number }
+  | { kind: 'done'; elapsed: number }
+  | { kind: 'error'; message: string; preservedInput: string }
 
 function ResearchTopicFlow({
   clientId,
@@ -447,9 +477,9 @@ function ResearchTopicFlow({
   const [userInput, setUserInput] = useState('')
   const [selectedVertical, setSelectedVertical] = useState<string | null>(null)
   const [recency, setRecency] = useState<RecencyWindow>('7d')
-  const [running, setRunning] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [phase, setPhase] = useState<ResearchPhase>({ kind: 'idle' })
+  const [currentStep, setCurrentStep] = useState<string | null>(null)
+  const [elapsedSecs, setElapsedSecs] = useState(0)
 
   // Auto-skip step 2 if only one vertical
   useEffect(() => {
@@ -459,17 +489,64 @@ function ResearchTopicFlow({
     }
   }, [step, verticals])
 
-  const reset = () => {
-    setStep(1)
-    setUserInput('')
-    setSelectedVertical(null)
-    setRecency('7d')
-    setError(null)
+  // Live elapsed timer — ticks every second while polling
+  useEffect(() => {
+    if (phase.kind !== 'polling') return
+    const interval = setInterval(() => {
+      setElapsedSecs(Math.floor((Date.now() - phase.startMs) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [phase])
+
+  // Polling loop
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }
 
-  const run = async () => {
-    setRunning(true)
-    setError(null)
+  useEffect(() => {
+    return () => stopPolling() // cleanup on unmount / navigation away
+  }, [])
+
+  const startPolling = (jobId: string, startMs: number) => {
+    stopPolling()
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/api/v1/topic-queue/research/${jobId}`)
+        if (!res.ok) return
+        const { data } = await res.json()
+        if (!data) return
+
+        setCurrentStep(data.currentStep ?? null)
+
+        if (data.status === 'complete') {
+          stopPolling()
+          const elapsed = Math.floor((Date.now() - startMs) / 1000)
+          saveDuration(clientId, elapsed)
+          setPhase({ kind: 'done', elapsed })
+          onTopicsAdded(Array.isArray(data.newTopicIds) ? data.newTopicIds : [])
+          // Reset form after 4s
+          setTimeout(() => {
+            setPhase({ kind: 'idle' })
+            setStep(1)
+            setUserInput('')
+            setSelectedVertical(null)
+            setRecency('7d')
+            setCurrentStep(null)
+          }, 4000)
+        } else if (data.status === 'failed') {
+          stopPolling()
+          setPhase({ kind: 'error', message: data.errorMessage ?? 'Research failed', preservedInput: userInput })
+        }
+      } catch { /* ignore poll errors */ }
+    }, 3000)
+  }
+
+  const handleStart = async () => {
+    setPhase({ kind: 'polling', jobId: '', startMs: Date.now() })
+    setElapsedSecs(0)
+    setCurrentStep('Building your research brief')
     try {
       const res = await apiFetch('/api/v1/topic-queue/research', {
         method: 'POST',
@@ -477,20 +554,22 @@ function ResearchTopicFlow({
         body: JSON.stringify({ clientId, verticalId: selectedVertical, userInput, recencyWindow: recency }),
       })
       const { data, error: err } = await res.json()
-      if (!res.ok) { setError(err ?? 'Research failed'); return }
-      const ids = (data?.newTopicIds ?? []) as string[]
-      onTopicsAdded(ids)
-      setSuccess(true)
-      setTimeout(() => {
-        setSuccess(false)
-        reset()
-      }, 3000)
+      if (!res.ok || !data?.jobId) {
+        setPhase({ kind: 'error', message: err ?? 'Failed to start research', preservedInput: userInput })
+        return
+      }
+      const startMs = Date.now()
+      setPhase({ kind: 'polling', jobId: data.jobId, startMs })
+      setElapsedSecs(0)
+      startPolling(data.jobId, startMs)
     } catch {
-      setError('Network error — try again')
-    } finally {
-      setRunning(false)
+      setPhase({ kind: 'error', message: 'Network error — try again', preservedInput: userInput })
     }
   }
+
+  const durations = loadDurations(clientId)
+  const showAvg = durations.length >= 2
+  const avgSecs = showAvg ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0
 
   const PILL_BTN = (active: boolean) => ({
     fontSize: 12, fontWeight: 500, borderRadius: 8, padding: '6px 14px', cursor: 'pointer',
@@ -498,6 +577,10 @@ function ResearchTopicFlow({
     backgroundColor: active ? '#EEEDFE' : '#f9fafb',
     color: active ? '#534AB7' : '#6b7280',
   } as React.CSSProperties)
+
+  const isPolling = phase.kind === 'polling'
+  const isDone    = phase.kind === 'done'
+  const isError   = phase.kind === 'error'
 
   return (
     <div ref={flowRef} style={{ borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
@@ -509,123 +592,154 @@ function ResearchTopicFlow({
 
       <div style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ── Completed step summaries ─────────────────────────────── */}
-        {step >= 2 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
-            <Icons.CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
-            <span style={{ fontSize: 12, color: '#374151', flex: 1 }}>
-              {userInput.length > 60 ? userInput.slice(0, 60) + '…' : userInput}
-            </span>
-            <button type="button" onClick={() => setStep(1)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-              <Icons.Pencil className="h-3 w-3 text-gray-400 hover:text-gray-600" />
-            </button>
-          </div>
-        )}
-
-        {step >= 3 && verticals.length > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
-            <Icons.CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
-            <span style={{ fontSize: 12, color: '#374151', flex: 1 }}>
-              {verticals.find((v) => v.id === selectedVertical)?.name ?? 'All verticals'}
-            </span>
-            <button type="button" onClick={() => setStep(2)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-              <Icons.Pencil className="h-3 w-3 text-gray-400 hover:text-gray-600" />
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 1 ───────────────────────────────────────────────── */}
-        {step === 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: 0 }}>What do you want to write about?</p>
-            <textarea
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              placeholder="e.g. what the new EU AI Act means for enterprise software buyers"
-              rows={3}
-              style={{ width: '100%', borderRadius: 8, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '10px 12px', fontSize: 12, color: '#111827', outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }}
-              onFocus={(e) => e.target.style.borderColor = '#534AB7'}
-              onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-            />
-            <button
-              type="button"
-              onClick={() => { if (verticals.length <= 1) { setSelectedVertical(verticals[0]?.id ?? null); setStep(3) } else { setStep(2) } }}
-              disabled={userInput.trim().length < 10}
-              style={{ alignSelf: 'flex-end', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '7px 16px', border: 'none', backgroundColor: userInput.trim().length < 10 ? '#e5e7eb' : '#534AB7', color: userInput.trim().length < 10 ? '#9ca3af' : '#ffffff', cursor: userInput.trim().length < 10 ? 'not-allowed' : 'pointer' }}
-            >
-              Continue →
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 2 — vertical picker ─────────────────────────────── */}
-        {step === 2 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: 0 }}>Who is this for?</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {verticals.map((v) => (
-                <button key={v.id} type="button" onClick={() => setSelectedVertical(v.id === selectedVertical ? null : v.id)}
-                  style={PILL_BTN(selectedVertical === v.id)}>
-                  {v.name}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setStep(3)}
-              disabled={!selectedVertical}
-              style={{ alignSelf: 'flex-end', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '7px 16px', border: 'none', backgroundColor: !selectedVertical ? '#e5e7eb' : '#534AB7', color: !selectedVertical ? '#9ca3af' : '#ffffff', cursor: !selectedVertical ? 'not-allowed' : 'pointer' }}
-            >
-              Continue →
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 3 — recency + run ────────────────────────────────── */}
-        {step === 3 && (
+        {/* ── Polling / running state ───────────────────────────────── */}
+        {(isPolling || isDone) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: 0 }}>How recent should the research be?</p>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {([['7d', 'This week'], ['30d', 'This month'], ['90d', 'Last 90 days']] as [RecencyWindow, string][]).map(([val, label]) => (
-                <button key={val} type="button" onClick={() => setRecency(val)} style={PILL_BTN(recency === val)}>{label}</button>
-              ))}
-            </div>
-
-            {error && (
-              <p style={{ fontSize: 11, color: '#dc2626', margin: 0 }}>
-                {error} — <button type="button" onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#534AB7', cursor: 'pointer', fontSize: 11, fontWeight: 500, padding: 0 }}>Try again</button>
-              </p>
-            )}
-
-            {success ? (
+            {isDone ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
                 <Icons.CheckCircle className="h-4 w-4 text-green-600" />
-                <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>Topics added to queue</span>
+                <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>Done in {fmtElapsed(phase.elapsed)}</span>
               </div>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={run}
-                  disabled={running}
-                  style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: 'none', backgroundColor: '#534AB7', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.75 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                >
-                  {running ? <Icons.Loader2 className="h-4 w-4 animate-spin" /> : <Icons.Sparkles className="h-4 w-4" />}
-                  {running ? 'Researching…' : 'Find topics'}
-                </button>
-                {running && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                    <span style={{ display: 'flex', gap: 3 }}>
-                      {[0, 150, 300].map((d) => (
-                        <span key={d} style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#534AB7', display: 'inline-block', animation: `bounce 1s ${d}ms infinite` }} />
-                      ))}
-                    </span>
-                    <span style={{ fontSize: 11, color: '#6b7280' }}>Researching — this usually takes about 30 seconds</span>
-                  </div>
+                <p style={{ fontSize: 12, color: '#6b7280', margin: 0, lineHeight: 1.6 }}>
+                  We're on it. Feel free to keep working — we'll notify you when topics are ready.
+                </p>
+                {currentStep && (
+                  <p style={{ fontSize: 12, color: '#534AB7', fontWeight: 500, margin: 0 }}>
+                    {currentStep}…
+                  </p>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {/* Animated dots */}
+                  <span style={{ display: 'flex', gap: 3 }}>
+                    {[0, 150, 300].map((d) => (
+                      <span key={d} style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#534AB7', display: 'inline-block', animation: `bounce 1s ${d}ms infinite` }} />
+                    ))}
+                  </span>
+                  {/* Live elapsed timer */}
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#374151', fontVariantNumeric: 'tabular-nums', minWidth: 36 }}>
+                    {fmtElapsed(elapsedSecs)}
+                  </span>
+                </div>
+                {showAvg && (
+                  <p style={{ fontSize: 10, color: '#9ca3af', margin: 0 }}>
+                    Your last {durations.length} run{durations.length !== 1 ? 's' : ''} averaged {avgSecs}s
+                  </p>
                 )}
               </>
             )}
           </div>
+        )}
+
+        {/* ── Error state ───────────────────────────────────────────── */}
+        {isError && (
+          <div style={{ padding: '10px 12px', borderRadius: 8, backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+            <p style={{ fontSize: 12, color: '#dc2626', margin: '0 0 6px', fontWeight: 500 }}>Research failed</p>
+            <p style={{ fontSize: 11, color: '#991b1b', margin: '0 0 8px' }}>{phase.message}</p>
+            <button type="button"
+              onClick={() => { setPhase({ kind: 'idle' }); setUserInput(phase.preservedInput); setStep(3) }}
+              style={{ fontSize: 12, fontWeight: 600, color: '#534AB7', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              Try again →
+            </button>
+          </div>
+        )}
+
+        {/* ── Form steps (hidden while polling) ───────────────────── */}
+        {!isPolling && !isDone && !isError && (
+          <>
+            {/* Completed step summaries */}
+            {step >= 2 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
+                <Icons.CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                <span style={{ fontSize: 12, color: '#374151', flex: 1 }}>
+                  {userInput.length > 60 ? userInput.slice(0, 60) + '…' : userInput}
+                </span>
+                <button type="button" onClick={() => setStep(1)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  <Icons.Pencil className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+                </button>
+              </div>
+            )}
+
+            {step >= 3 && verticals.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
+                <Icons.CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                <span style={{ fontSize: 12, color: '#374151', flex: 1 }}>
+                  {verticals.find((v) => v.id === selectedVertical)?.name ?? 'All verticals'}
+                </span>
+                <button type="button" onClick={() => setStep(2)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  <Icons.Pencil className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+                </button>
+              </div>
+            )}
+
+            {/* Step 1 */}
+            {step === 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: 0 }}>What do you want to write about?</p>
+                <textarea
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  placeholder="e.g. what the new EU AI Act means for enterprise software buyers"
+                  rows={3}
+                  style={{ width: '100%', borderRadius: 8, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '10px 12px', fontSize: 12, color: '#111827', outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }}
+                  onFocus={(e) => e.target.style.borderColor = '#534AB7'}
+                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                />
+                <button
+                  type="button"
+                  onClick={() => { if (verticals.length <= 1) { setSelectedVertical(verticals[0]?.id ?? null); setStep(3) } else { setStep(2) } }}
+                  disabled={userInput.trim().length < 10}
+                  style={{ alignSelf: 'flex-end', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '7px 16px', border: 'none', backgroundColor: userInput.trim().length < 10 ? '#e5e7eb' : '#534AB7', color: userInput.trim().length < 10 ? '#9ca3af' : '#ffffff', cursor: userInput.trim().length < 10 ? 'not-allowed' : 'pointer' }}
+                >
+                  Continue →
+                </button>
+              </div>
+            )}
+
+            {/* Step 2 — vertical picker */}
+            {step === 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: 0 }}>Who is this for?</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {verticals.map((v) => (
+                    <button key={v.id} type="button" onClick={() => setSelectedVertical(v.id === selectedVertical ? null : v.id)}
+                      style={PILL_BTN(selectedVertical === v.id)}>
+                      {v.name}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  disabled={!selectedVertical}
+                  style={{ alignSelf: 'flex-end', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '7px 16px', border: 'none', backgroundColor: !selectedVertical ? '#e5e7eb' : '#534AB7', color: !selectedVertical ? '#9ca3af' : '#ffffff', cursor: !selectedVertical ? 'not-allowed' : 'pointer' }}
+                >
+                  Continue →
+                </button>
+              </div>
+            )}
+
+            {/* Step 3 — recency + run */}
+            {step === 3 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: 0 }}>How recent should the research be?</p>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {([['7d', 'This week'], ['30d', 'This month'], ['90d', 'Last 90 days']] as [RecencyWindow, string][]).map(([val, label]) => (
+                    <button key={val} type="button" onClick={() => setRecency(val)} style={PILL_BTN(recency === val)}>{label}</button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStart}
+                  style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: 'none', backgroundColor: '#534AB7', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                >
+                  <Icons.Sparkles className="h-4 w-4" />
+                  Find topics
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -659,7 +773,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
       setTopics(data ?? [])
       setMeta(m ?? null)
 
-      // collect verticals from topics + any already known
+      // Merge verticals from topics
       const seen = new Map<string, VerticalOption>()
       for (const t of (data ?? []) as TopicItem[]) {
         if (t.vertical) seen.set(t.vertical.id, t.vertical)
@@ -676,7 +790,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
     }
   }, [clientId, activeVertical])
 
-  // Load verticals independently so right sidebar has them even before topics
+  // Load verticals independently (includes color field)
   useEffect(() => {
     apiFetch(`/api/v1/clients/${clientId}/verticals`)
       .then((r) => r.json())
@@ -738,7 +852,6 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
   const handleTopicsAdded = (ids: string[]) => {
     setNewTopicIds(new Set(ids))
     load()
-    // Clear new highlights after 8 seconds
     setTimeout(() => setNewTopicIds(new Set()), 8000)
   }
 
@@ -746,7 +859,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
     pilotRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const pendingTopics = topics.filter((t) => t.status === 'pending')
+  const pendingTopics  = topics.filter((t) => t.status === 'pending')
   const approvedTopics = topics.filter((t) => t.status === 'approved')
   const selectedApproved = approvedTopics.filter((t) => selected.has(t.id))
 
@@ -797,12 +910,15 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
               style={{ fontSize: 11, fontWeight: 500, borderRadius: 20, padding: '4px 12px', border: activeVertical === null ? '1.5px solid #a200ee' : '1px solid #e5e7eb', backgroundColor: activeVertical === null ? '#fdf5ff' : '#f9fafb', color: activeVertical === null ? '#7c00cc' : '#6b7280', cursor: 'pointer' }}>
               All verticals
             </button>
-            {verticals.map((v) => (
-              <button key={v.id} type="button" onClick={() => setActiveVertical(activeVertical === v.id ? null : v.id)}
-                style={{ fontSize: 11, fontWeight: 500, borderRadius: 20, padding: '4px 12px', border: activeVertical === v.id ? '1.5px solid #a200ee' : '1px solid #e5e7eb', backgroundColor: activeVertical === v.id ? '#fdf5ff' : '#f9fafb', color: activeVertical === v.id ? '#7c00cc' : '#6b7280', cursor: 'pointer' }}>
-                {v.name}
-              </button>
-            ))}
+            {verticals.map((v) => {
+              const color = verticalColor(v.id, v.color)
+              return (
+                <button key={v.id} type="button" onClick={() => setActiveVertical(activeVertical === v.id ? null : v.id)}
+                  style={{ fontSize: 11, fontWeight: 500, borderRadius: 20, padding: '4px 12px', border: activeVertical === v.id ? `1.5px solid ${color}` : '1px solid #e5e7eb', backgroundColor: activeVertical === v.id ? `${color}18` : '#f9fafb', color: activeVertical === v.id ? color : '#6b7280', cursor: 'pointer' }}>
+                  {v.name}
+                </button>
+              )
+            })}
           </div>
         )}
 

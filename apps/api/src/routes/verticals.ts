@@ -8,6 +8,14 @@ import { getVerticalBrainProcessQueue } from '../lib/queues.js'
 const createBody = z.object({ name: z.string().min(1).max(100), dimensionType: z.string().min(1).max(50).optional() })
 const updateBody = z.object({ name: z.string().min(1).max(100).optional(), dimensionType: z.string().min(1).max(50).optional() })
 
+const VERTICAL_COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#06b6d4','#f97316','#6366f1']
+
+function deriveColor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return VERTICAL_COLORS[hash % VERTICAL_COLORS.length]
+}
+
 export async function verticalRoutes(app: FastifyInstance) {
 
   // ── GET /api/v1/verticals ─────────────────────────────────────────────────
@@ -16,8 +24,16 @@ export async function verticalRoutes(app: FastifyInstance) {
     const verticals = await prisma.vertical.findMany({
       where: { agencyId },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, dimensionType: true, createdAt: true },
+      select: { id: true, name: true, dimensionType: true, color: true, createdAt: true },
     })
+    // Lazy-assign colors for any vertical created before this migration
+    const needsColor = verticals.filter((v) => !v.color)
+    if (needsColor.length > 0) {
+      await Promise.all(needsColor.map((v) =>
+        prisma.vertical.update({ where: { id: v.id }, data: { color: deriveColor(v.id) } }).catch(() => {}),
+      ))
+      for (const v of needsColor) (v as typeof v & { color: string }).color = deriveColor(v.id)
+    }
     return reply.send({ data: verticals })
   })
 
@@ -36,7 +52,10 @@ export async function verticalRoutes(app: FastifyInstance) {
     const vertical = await prisma.vertical.create({
       data: { agencyId, name: parsed.data.name, dimensionType: parsed.data.dimensionType ?? 'vertical' },
     })
-    return reply.code(201).send({ data: vertical })
+    // Assign deterministic color based on ID (stable across reloads)
+    const color = deriveColor(vertical.id)
+    const verticalWithColor = await prisma.vertical.update({ where: { id: vertical.id }, data: { color } })
+    return reply.code(201).send({ data: verticalWithColor })
   })
 
   // ── PATCH /api/v1/verticals/:id ───────────────────────────────────────────

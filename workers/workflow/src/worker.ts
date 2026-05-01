@@ -40,6 +40,8 @@ import {
   type ClientVerticalBrainProcessJobData,
   QUEUE_BRIEF_EXTRACT,
   type BriefExtractJobData,
+  QUEUE_NEWSROOM_RESEARCH,
+  type NewsroomResearchJobData,
 } from './queues.js'
 import { WorkflowRunner } from './runner.js'
 import { detectPatterns, detectEditPatterns } from './patternDetector.js'
@@ -58,6 +60,7 @@ import {
 } from './clientBrainExtraction.js'
 import { generatePromptSuggestions, type PromptSuggestJobData } from './promptSuggester.js'
 import { runScheduledResearch, runResearchChecker } from './scheduledResearch.js'
+import { runNewsroomResearch } from './newsroomResearch.js'
 import {
   QUEUE_SCHEDULED_RESEARCH,
   QUEUE_RESEARCH_CHECKER,
@@ -271,6 +274,22 @@ const pilotSessionSummaryWorker = createWorker<PilotSessionSummaryJobData>(
   },
   3,
   { lockDuration: 3 * 60 * 1000 }
+)
+
+// ── newsroom-research ─────────────────────────────────────────────────────────
+const newsroomResearchWorker = createWorker<NewsroomResearchJobData>(
+  QUEUE_NEWSROOM_RESEARCH,
+  async (job: Job<NewsroomResearchJobData>) => {
+    console.log(`[newsroom-research] job started: jobId=${job.data.jobId} client=${job.data.clientId}`)
+    try {
+      await runNewsroomResearch(job)
+    } catch (err) {
+      console.error('[newsroom-research] job failed:', err)
+      throw err
+    }
+  },
+  3,
+  { lockDuration: 10 * 60 * 1000 } // 10min lock — web search can take time
 )
 
 // ── brief-extract ─────────────────────────────────────────────────────────────

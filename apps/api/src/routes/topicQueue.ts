@@ -1,10 +1,18 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
+import { getNewsroomResearchQueue } from '../lib/queues.js'
+// callModel still used by preference profile helper and /generate endpoint
 
 const SONNET = { provider: 'anthropic' as const, model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.4, max_tokens: 2000 }
+
+const VERTICAL_COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#06b6d4','#f97316','#6366f1']
+function deriveColor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return VERTICAL_COLORS[hash % VERTICAL_COLORS.length]
+}
 
 // ── Preference profile helper (mirrors scheduledResearch.ts logic) ─────────────
 
@@ -85,7 +93,7 @@ export async function topicQueueRoutes(app: FastifyInstance) {
           ...(verticalId ? { verticalId } : {}),
         },
         orderBy: { score: 'desc' },
-        include: { vertical: { select: { id: true, name: true } } },
+        include: { vertical: { select: { id: true, name: true, color: true } } },
       })
 
       const prefCount = await prisma.topicPreferenceLog.count({ where: { agencyId, clientId } })
@@ -159,7 +167,7 @@ export async function topicQueueRoutes(app: FastifyInstance) {
 
       const topics = await prisma.topicQueue.findMany({
         where: { id: { in: topicIds }, agencyId, status: 'approved' },
-        include: { vertical: { select: { id: true, name: true } } },
+        include: { vertical: { select: { id: true, name: true, color: true } } },
       })
       if (topics.length === 0) return reply.code(400).send({ error: 'No approved topics found' })
 
@@ -277,13 +285,12 @@ Use EXACTLY this format with these delimiter lines:
   )
 
   // ── POST /api/v1/topic-queue/research ────────────────────────────────────────
-  // Manual one-off research run for the Content Newsroom.
-  // Builds a focused research prompt → runs web search → writes to brain → evaluates topics.
+  // Enqueues an async research job and returns { jobId } immediately.
 
   app.post<{ Body: unknown }>(
     '/research',
     async (req, reply) => {
-      const { agencyId } = req.auth
+      const { agencyId, userId } = req.auth
       const parsed = z.object({
         clientId:      z.string(),
         verticalId:    z.string().nullable().optional(),
@@ -294,181 +301,82 @@ Use EXACTLY this format with these delimiter lines:
 
       const { clientId, verticalId, userInput, recencyWindow } = parsed.data
 
-      // Fetch client + vertical context
-      const [client, vertical] = await Promise.all([
-        prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { name: true, brainContext: true } }),
-        verticalId ? prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { name: true } }) : null,
-      ])
+      const client = await prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { name: true } })
       if (!client) return reply.code(404).send({ error: 'Client not found' })
 
-      const recencyLabel = recencyWindow === '7d' ? 'last 7 days' : recencyWindow === '30d' ? 'last 30 days' : 'last 90 days'
-
-      // Step A: build focused research prompt
-      const promptResult = await callModel(
-        SONNET,
-        `You are a research strategist for a content agency.
-
-CLIENT: ${client.name}
-${vertical ? `VERTICAL / SOLUTION STACK: ${vertical.name}` : ''}
-${client.brainContext ? `BRAIN CONTEXT SUMMARY: ${client.brainContext.slice(0, 1000)}` : ''}
-RECENCY WINDOW: ${recencyLabel}
-
-The user wants to find blog topic angles on the following:
-"${userInput}"
-
-Convert this into a focused research prompt that:
-- Specifies exactly what to search for and why it matters to this client
-- Names relevant sources, publications, analysts, or data types to prioritize
-- Includes the recency instruction (${recencyLabel})
-- Is written for a web search agent, not a human researcher
-- Stays under 200 words
-
-Return the research prompt text only. No preamble.`,
-      )
-      const researchPrompt = promptResult.text.trim()
-
-      // Step B: run web search research
-      const apiKey = process.env.ANTHROPIC_API_KEY
-      if (!apiKey) return reply.code(500).send({ error: 'ANTHROPIC_API_KEY not configured' })
-
-      const anthropic = new Anthropic({ apiKey, timeout: 5 * 60 * 1000, maxRetries: 0 })
-
-      let researchOutput = ''
-      try {
-        const response = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 8000,
-          system: `You are a research analyst finding the most relevant, recent content on a given topic for a B2B content team. Use web search to find real articles, data, and expert commentary. Summarise your findings in a detailed research brief with specific source URLs, publication names, and publish dates.`,
-          tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 10 } as never],
-          messages: [{ role: 'user', content: researchPrompt }],
-        })
-        researchOutput = response.content
-          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-          .map((b) => b.text)
-          .join('')
-      } catch {
-        // Fallback: use Claude without web search
-        const fallback = await callModel(
-          { ...SONNET, max_tokens: 4000 },
-          researchPrompt,
-        )
-        researchOutput = fallback.text
-      }
-
-      if (!researchOutput.trim()) return reply.code(500).send({ error: 'Research produced no output' })
-
-      // Step C: write to brain (clientBrainAttachment — no synthesise to avoid worker import)
-      const brainLabel = `[Manual Newsroom] ${userInput.slice(0, 80)}`
-      const existing = await prisma.clientBrainAttachment.findFirst({
-        where: { agencyId, clientId, source: 'scheduled', filename: brainLabel, ...(verticalId ? { verticalId } : { verticalId: null }) },
+      // Create ResearchJob record
+      const job = await prisma.researchJob.create({
+        data: {
+          agencyId, clientId,
+          ...(verticalId ? { verticalId } : {}),
+          userId: userId ?? null,
+          userInput,
+          recencyWindow,
+          status: 'pending',
+        },
       })
-      if (existing) {
-        await prisma.clientBrainAttachment.update({
-          where: { id: existing.id },
-          data: { extractedText: researchOutput, summary: researchOutput.slice(0, 3000), summaryStatus: 'ready', extractionStatus: 'ready' },
-        })
-      } else {
-        await prisma.clientBrainAttachment.create({
-          data: {
-            agencyId, clientId, ...(verticalId ? { verticalId } : {}),
-            filename: brainLabel, mimeType: 'text/plain', source: 'scheduled',
-            uploadMethod: 'url', extractionStatus: 'ready',
-            extractedText: researchOutput, summaryStatus: 'ready', summary: researchOutput.slice(0, 3000),
-          },
-        })
-      }
 
-      // Step D: evaluate topics (mirrors runTopicEvaluator)
-      const prefAtt = await prisma.clientBrainAttachment.findFirst({
-        where: { agencyId, clientId, source: 'scheduled', filename: `[Preference] topic_preference_profile:${verticalId ?? 'all'}` },
-        select: { extractedText: true },
+      // Enqueue to BullMQ worker
+      await getNewsroomResearchQueue().add('research', {
+        agencyId, clientId,
+        verticalId: verticalId ?? null,
+        userId: userId ?? null,
+        jobId: job.id,
+        recencyWindow,
       })
-      const preferenceProfile = prefAtt?.extractedText ?? ''
 
-      const evalMessage = `CLIENT CONTEXT:
-${client.brainContext || '(no brain context yet)'}
-
-TOPIC PREFERENCE PROFILE:
-${preferenceProfile || '(none — use vertical best practices as baseline)'}
-
-RESEARCH OUTPUT:
-${researchOutput.slice(0, 12000)}
-
-Your task: Propose 5-10 blog topic candidates from this research.
-For each topic return:
-- title: A specific, publishable blog post title. Not generic.
-- summary: 2-3 sentences — the exact angle, who it is for, and what the reader gets from it.
-- score: 1-100 based on relevance to client, timeliness, differentiation, and match to the preference profile.
-- score_rationale: One sentence explaining the score.
-- sources: 2-4 sources supporting this topic. Each source must include title, publication, url, and publish_date.
-
-Rules:
-- Every topic must have at least 2 sources. Discard any topic that does not.
-- Score against the preference profile if one exists. If not, score against vertical best practices.
-- Return valid JSON only. No preamble, no markdown fencing.
-
-Return format:
-{"topics":[{"title":"","summary":"","score":0,"score_rationale":"","sources":[{"title":"","publication":"","url":"","publish_date":""}]}]}`
-
-      let evalText = ''
-      try {
-        const evalResponse = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 6000,
-          system: 'You are a content strategist evaluating research findings to identify the strongest blog topic candidates for a specific client.',
-          tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 5 } as never],
-          messages: [{ role: 'user', content: evalMessage }],
-        })
-        evalText = evalResponse.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('')
-      } catch {
-        const fb = await callModel({ ...SONNET, max_tokens: 6000 }, evalMessage)
-        evalText = fb.text
-      }
-
-      // Parse topics
-      interface TopicCandidate { title: string; summary: string; score: number; score_rationale: string; sources: Array<{ title: string; publication: string; url: string; publish_date: string }> }
-      let topics: TopicCandidate[] = []
-      try {
-        const text = evalText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim()
-        const start = text.indexOf('{')
-        if (start !== -1) {
-          let depth = 0, inStr = false, esc = false, end = -1
-          for (let i = start; i < text.length; i++) {
-            if (esc) { esc = false; continue }
-            if (inStr && text[i] === '\\') { esc = true; continue }
-            if (text[i] === '"') { inStr = !inStr; continue }
-            if (!inStr) {
-              if (text[i] === '{') depth++
-              else if (text[i] === '}') { if (--depth === 0) { end = i; break } }
-            }
-          }
-          if (end !== -1) {
-            const parsed = JSON.parse(text.slice(start, end + 1)) as { topics?: TopicCandidate[] }
-            topics = Array.isArray(parsed.topics) ? parsed.topics : []
-          }
-        }
-      } catch { topics = [] }
-
-      const valid = topics.filter((t) => Array.isArray(t.sources) && t.sources.length >= 2)
-
-      // Write topics to queue
-      const newTopicIds: string[] = []
-      for (const t of valid) {
-        const row = await prisma.topicQueue.create({
+      // Create pending notification (if userId is known)
+      if (userId) {
+        await prisma.notification.create({
           data: {
-            agencyId, clientId,
-            ...(verticalId ? { verticalId } : {}),
-            title: t.title, summary: t.summary,
-            score: Math.min(100, Math.max(0, Number(t.score) || 0)),
-            scoreRationale: t.score_rationale ?? '',
-            sources: t.sources as never,
-            status: 'pending',
+            agencyId, userId,
+            type: 'newsroom_research',
+            title: `Researching topics for ${client.name}…`,
+            body: userInput.slice(0, 120),
+            clientId,
+            resourceId: job.id,
+            resourceType: 'newsroom_research',
+            referenceId: job.id,
+            referenceStatus: 'pending',
+            read: false,
           },
-        })
-        newTopicIds.push(row.id)
+        }).catch(() => {}) // non-blocking
       }
 
-      return reply.send({ data: { topicCount: valid.length, newTopicIds } })
+      return reply.code(202).send({ data: { jobId: job.id } })
+    },
+  )
+
+  // ── GET /api/v1/topic-queue/research/:jobId ─────────────────────────────────
+  // Polling endpoint — returns current job status and elapsed time.
+
+  app.get<{ Params: { jobId: string } }>(
+    '/research/:jobId',
+    async (req, reply) => {
+      const { agencyId } = req.auth
+      const job = await prisma.researchJob.findFirst({
+        where: { id: req.params.jobId, agencyId },
+      })
+      if (!job) return reply.code(404).send({ error: 'Job not found' })
+
+      const now = new Date()
+      const start = job.startedAt ?? job.createdAt
+      const end   = job.completedAt ?? now
+      const elapsedSeconds = Math.floor((end.getTime() - start.getTime()) / 1000)
+
+      return reply.send({
+        data: {
+          jobId:        job.id,
+          status:       job.status,
+          currentStep:  job.currentStep,
+          topicCount:   job.topicCount,
+          newTopicIds:  Array.isArray(job.newTopicIds) ? job.newTopicIds : [],
+          errorMessage: job.errorMessage,
+          elapsedSeconds,
+          createdAt:    job.createdAt.toISOString(),
+          completedAt:  job.completedAt?.toISOString() ?? null,
+        },
+      })
     },
   )
 }
