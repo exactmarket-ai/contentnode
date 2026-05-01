@@ -2386,6 +2386,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const [fw, setFwRaw] = useState<FrameworkData | null>(null)
   const [activeSection, setActiveSection] = useState<string>('brain')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [verticalsLoading, setVerticalsLoading] = useState(true)
   const [downloadingDocx, setDownloadingDocx] = useState(false)
   const [kitSessionOpen, setKitSessionOpen]   = useState(false)
@@ -3071,6 +3072,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         })
         if (!res.ok) throw new Error('Save failed')
         setSaveStatus('saved')
+        setLastSavedAt(new Date())
         setTimeout(() => setSaveStatus('idle'), 2000)
       } catch {
         setSaveStatus('error')
@@ -3082,6 +3084,34 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
     if (!saveTimer.current || !latestFwRef.current || !selectedVertical) return
     scheduleSave(latestFwRef.current, 0)
   }, [scheduleSave, selectedVertical])
+
+  // Heartbeat save — every 30s, persist whatever is in latestFwRef regardless of edit activity.
+  // Guards against data loss when the tab is closed between debounce triggers.
+  useEffect(() => {
+    if (!selectedVertical) return
+    const interval = setInterval(async () => {
+      if (!latestFwRef.current || !selectedVertical) return
+      // Only fire if there's actual content (skip if still at empty default)
+      const hasContent = Object.values(latestFwRef.current).some((sec) =>
+        typeof sec === 'object' && sec !== null && !Array.isArray(sec)
+          ? Object.values(sec as Record<string, unknown>).some((v) => typeof v === 'string' && v.trim().length > 0)
+          : false
+      )
+      if (!hasContent) return
+      try {
+        const res = await apiFetch(`/api/v1/clients/${clientId}/framework/${selectedVertical.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(latestFwRef.current),
+        })
+        if (res.ok) {
+          setLastSavedAt(new Date())
+          setSaveStatus((prev) => prev === 'error' ? 'saved' : prev)
+        }
+      } catch { /* non-fatal — next heartbeat will retry */ }
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [clientId, selectedVertical])
 
   const patchSectionStatus = useCallback(async (sectionNum: string, status: string) => {
     if (!selectedVertical) return
@@ -3266,13 +3296,24 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       >
         {selectedVertical && (
           <>
-            {saveStatus !== 'idle' && (
-              <span className="text-[10px] text-muted-foreground">
-                {saveStatus === 'saving' && 'Saving…'}
-                {saveStatus === 'saved'  && <span className="text-green-600">Saved</span>}
-                {saveStatus === 'error'  && <span className="text-red-500">Save failed</span>}
-              </span>
-            )}
+            {saveStatus === 'error'
+              ? (
+                <span className="flex items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 border border-red-200">
+                  ⚠ Save failed — your changes may not be stored
+                </span>
+              )
+              : saveStatus === 'saving'
+              ? <span className="text-[10px] text-muted-foreground">Saving…</span>
+              : saveStatus === 'saved'
+              ? <span className="text-[10px] text-green-600">Saved</span>
+              : lastSavedAt
+              ? (
+                <span className="text-[10px] text-muted-foreground" title={lastSavedAt.toLocaleTimeString()}>
+                  Saved {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )
+              : null
+            }
 
             {/* Hidden file input for client GTM upload */}
             <input
