@@ -3941,7 +3941,15 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
                 const sKey = `s${u.s}` as keyof typeof d
                 const section = d[sKey]
                 if (section && typeof section === 'object' && !Array.isArray(section)) {
-                  (section as Record<string, unknown>)[u.f] = u.v
+                  // For table fields, inject _open:true into each row so accordions expand
+                  const value = Array.isArray(u.v)
+                    ? (u.v as unknown[]).map((row) =>
+                        row && typeof row === 'object' && !Array.isArray(row)
+                          ? { ...(row as Record<string, unknown>), _open: true }
+                          : row
+                      )
+                    : u.v
+                  ;(section as Record<string, unknown>)[u.f] = value
                 }
               }
             })

@@ -2106,11 +2106,14 @@ Emit this block ONLY when the user explicitly confirms or approves specific text
 
 <GTMPILOT_FIELD_UPDATES>
 [
-  {"s": "01", "f": "positioningStatement", "v": "The exact confirmed text the user approved"}
+  {"s": "01", "f": "positioningStatement", "v": "The exact confirmed text the user approved"},
+  {"s": "13", "f": "quotes", "v": [{"quoteText":"...","attribution":"...","context":"...","bestUsedIn":"...","approved":"yes"}]}
 ]
 </GTMPILOT_FIELD_UPDATES>
 
-String fields available by section (these populate form fields the user sees — only these, no others):
+Fields available by section. String fields take a plain string value. Table fields take an array of objects — every row must include ALL keys from the schema even if empty.
+
+STRING FIELDS:
 §01: platformName, platformBenefit, positioningStatement, taglineOptions, howToUse, whatIsNot
 §02: industry, companySize, geography, itPosture, complianceStatus, contractProfile, secondaryTargets
 §03: marketPressureNarrative, additionalContext
@@ -2119,9 +2122,31 @@ String fields available by section (these populate form fields the user sees —
 §16: ctaSequencing
 §17: regulatorySalesNote
 
+TABLE FIELDS (v = array of row objects):
+§02 buyerTable:      row schema {"segment":"","primaryBuyer":"","corePain":"","entryPoint":""}
+§03 statsTable:      row schema {"stat":"","context":"","source":"","year":""}
+§04 challenges:      row schema {"name":"","whyExists":"","consequence":"","solution":"","pillarsText":""}
+§05 pillars:         row schema {"pillar":"","valueProp":"","keyServices":"","relevantTo":""}
+§05 serviceStack:    row schema {"service":"","regulatoryDomain":"","whatItDelivers":"","priority":""}
+§06 differentiators: row schema {"label":"","position":""}
+§07 segments:        row schema {"name":"","primaryBuyerTitles":"","whatIsDifferent":"","keyPressures":"","leadHook":"","complianceNotes":""}
+§08 valuePropTable:  row schema {"pillar":"","meaning":"","proofPoint":"","citation":""}
+§09 proofPoints:     row schema {"text":"","source":""}
+§09 caseStudies:     row schema {"clientProfile":"","url":"","situation":"","engagement":"","outcomes":"","thirtySecond":"","headlineStat":""}
+§10 objections:      row schema {"objection":"","response":"","followUp":""}
+§12 competitors:     row schema {"type":"","positioning":"","counter":"","whenComesUp":""}
+§13 quotes:          row schema {"quoteText":"","attribution":"","context":"","bestUsedIn":"","approved":""}
+§14 campaigns:       row schema {"theme":"","targetAudience":"","primaryAssets":"","keyMessage":""}
+§15 faqs:            row schema {"question":"","answer":"","bestAddressedIn":""}
+§16 funnelStages:    row schema {"stage":"","assets":"","primaryCTA":"","buyerState":""}
+§17 regulations:     row schema {"requirement":"","capability":"","servicePillar":"","salesNote":""}
+§18 ctas:            row schema {"ctaName":"","description":"","targetAudienceTrigger":"","assets":""}
+
 Rules:
 - Include only the fields the user explicitly confirmed — never bulk-fill
-- Value must be the exact confirmed text, not a summary or description of it
+- String value must be the exact confirmed text, not a summary or description of it
+- Table value must be a JSON array — include only the rows the user confirmed; write all row keys
+- When the user approves a set of table rows (e.g. "those 5 quotes look good"), write the full approved set
 - Omit this block entirely if no fields were confirmed in this turn
 - Place this block AFTER the suggestion block at the very end of your response`
 }
@@ -2424,7 +2449,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     }
 
     // Extract <GTMPILOT_FIELD_UPDATES> block
-    type FieldUpdate = { s: string; f: string; v: string }
+    type FieldUpdate = { s: string; f: string; v: unknown }
     let fieldUpdates: FieldUpdate[] = []
     const fuMatch = replyText.match(/<GTMPILOT_FIELD_UPDATES>([\s\S]+?)<\/GTMPILOT_FIELD_UPDATES>/i)
     if (fuMatch) {

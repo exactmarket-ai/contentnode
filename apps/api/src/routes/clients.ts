@@ -4196,6 +4196,8 @@ Rules:
       '09': [
         { key: 'proofPoints', label: 'Proof points (specific stats or results)', type: 'array',
           arraySchema: '{"text":"","source":""}' },
+        { key: 'caseStudies', label: 'Case studies', type: 'array',
+          arraySchema: '{"clientProfile":"","url":"","situation":"","engagement":"","outcomes":"","thirtySecond":"","headlineStat":""}' },
       ],
       '10': [
         { key: 'objections', label: 'Objections and responses', type: 'array',
@@ -4210,6 +4212,10 @@ Rules:
       '12': [
         { key: 'competitors', label: 'Competitors and differentiation', type: 'array',
           arraySchema: '{"type":"","positioning":"","counter":"","whenComesUp":""}' },
+      ],
+      '13': [
+        { key: 'quotes', label: 'Customer quotes / testimonials', type: 'array',
+          arraySchema: '{"quoteText":"","attribution":"","context":"","bestUsedIn":"","approved":""}' },
       ],
       '14': [
         { key: 'campaigns', label: 'Campaign themes', type: 'array',
