@@ -1184,11 +1184,6 @@ function AssignmentPanel({
                                 <span className="text-[11px] text-muted-foreground block truncate">{item.promptDescription}</span>
                               )}
                             </div>
-                            {item.promptCategory && (
-                              <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-0.5', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
-                                {item.promptCategory}
-                              </span>
-                            )}
                           </label>
                         )
                       })}
@@ -1217,43 +1212,24 @@ function AssignmentPanel({
                           >
                             <Icons.Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span className="text-[12px] font-medium flex-1">{pack.name}</span>
+                            <span className="text-[11px] text-muted-foreground shrink-0">{pack.itemCount} item{pack.itemCount !== 1 ? 's' : ''}</span>
                             {isLoading
                               ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
                               : isExpanded
-                                ? <Icons.ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                : <span className="text-[11px] text-blue-600 font-medium shrink-0">Add</span>
+                                ? <span className="text-[11px] text-muted-foreground font-medium shrink-0 ml-1">Remove</span>
+                                : <span className="text-[11px] text-blue-600 font-medium shrink-0 ml-1">Add</span>
                             }
                           </button>
                           {isExpanded && packItems.length > 0 && (
-                            <div className="flex flex-col gap-1 p-2">
-                              {packItems.map((item) => {
-                                const key = `${pack.id}:${item.promptTemplateId}`
-                                const checked = checkedItems.has(key)
-                                return (
-                                  <label
-                                    key={item.id}
-                                    className="flex items-start gap-2.5 rounded px-2 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleItem(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: pack.id })}
-                                      className="h-3.5 w-3.5 accent-purple-600 shrink-0 mt-0.5"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <span className="text-[12px] font-medium block truncate">{item.promptName}</span>
-                                      {item.promptDescription && (
-                                        <span className="text-[11px] text-muted-foreground block truncate">{item.promptDescription}</span>
-                                      )}
-                                    </div>
-                                    {item.promptCategory && (
-                                      <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-0.5', CATEGORY_COLORS_AP[item.promptCategory] ?? 'bg-muted text-muted-foreground')}>
-                                        {item.promptCategory}
-                                      </span>
-                                    )}
-                                  </label>
-                                )
-                              })}
+                            <div className="flex flex-col divide-y divide-border">
+                              {packItems.map((item) => (
+                                <div key={item.id} className="px-3 py-2">
+                                  <p className="text-[12px] font-medium truncate">{item.promptName}</p>
+                                  {item.promptDescription && (
+                                    <p className="text-[11px] text-muted-foreground truncate">{item.promptDescription}</p>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           )}
                           {isExpanded && packItems.length === 0 && !isLoading && (
