@@ -117,7 +117,7 @@ async function authPluginFn(app: FastifyInstance) {
     const meta = ((payload as Record<string, unknown>)['publicMetadata'] ?? {}) as Record<string, unknown>
 
     const agencyIdFromToken = (claims['agency_id'] ?? meta['agency_id']) as string | undefined
-    const roleFromToken = ((claims['role'] ?? meta['role']) as string | undefined) ?? 'member'
+    const roleFromToken = (((claims['role'] || meta['role']) as string | undefined) || 'member')
     // DEFAULT_AGENCY_ID always wins in local dev — production JWT agency_id may not exist locally
     const agencyId = process.env.DEFAULT_AGENCY_ID ?? agencyIdFromToken
     // DEFAULT_ROLE env var overrides token role for local dev (when Clerk custom claims aren't configured)
@@ -187,35 +187,16 @@ async function authPluginFn(app: FastifyInstance) {
     // This handles staging/production environments where Clerk custom session claims
     // (agency_id / role) aren't configured — without it every user gets 'member' and
     // admin-only routes silently return empty results.
+    // When role isn't in the JWT (or Clerk renders the shortcode as empty string),
+    // fall back to the DB. Use get_user_by_clerk_id() — SECURITY DEFINER bypasses
+    // FORCE RLS on users table (app.current_agency_id session var not set yet).
     let resolvedRole = role
     if (!process.env.DEFAULT_ROLE && roleFromToken === 'member') {
       try {
-        let dbUser = await prisma.user.findFirst({
-          where: { agencyId, clerkUserId: payload.sub },
-          select: { id: true, role: true },
-        })
-        // Fallback: clerkUserId may be stale (e.g. pending-xxx from invite).
-        // Look up by email from Clerk and auto-fix the stored ID.
-        if (!dbUser) {
-          const { clerkClient } = await import('../lib/clerk.js')
-          if (clerkClient) {
-            try {
-              const clerkUser = await clerkClient.users.getUser(payload.sub)
-              const email = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
-              if (email) {
-                const byEmail = await prisma.user.findFirst({
-                  where: { agencyId, email },
-                  select: { id: true, role: true },
-                })
-                if (byEmail) {
-                  await prisma.user.update({ where: { id: byEmail.id }, data: { clerkUserId: payload.sub } })
-                  dbUser = byEmail
-                }
-              }
-            } catch { /* non-fatal */ }
-          }
-        }
-        if (dbUser?.role) resolvedRole = dbUser.role
+        const rows = await prisma.$queryRaw<{ agency_id: string; role: string }[]>`
+          SELECT agency_id, role FROM get_user_by_clerk_id(${payload.sub})
+        `
+        if (rows.length > 0 && rows[0].role) resolvedRole = rows[0].role
       } catch { /* non-fatal — fall back to JWT role */ }
     }
 
