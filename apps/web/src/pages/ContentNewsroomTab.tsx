@@ -12,6 +12,8 @@ interface LeadershipTarget {
   name: string
   role: string
   defaultContentPackId: string | null
+  mondayBoardId: string | null
+  boxFolderId: string | null
 }
 
 interface VerticalTarget {
@@ -19,6 +21,15 @@ interface VerticalTarget {
   name: string
   color: string | null
   defaultContentPackId: string | null
+  mondayBoardId: string | null
+  boxFolderId: string | null
+}
+
+interface PromptItem {
+  id: string
+  name: string
+  category: string | null
+  body: string
 }
 
 interface ContentPackItem {
@@ -835,6 +846,11 @@ function AssignmentPanel({
   const [checkedItems, setCheckedItems] = useState<Map<string, CheckedItem>>(new Map())
   const [generating, setGenerating] = useState(false)
   const [successMsg, setSuccessMsg] = useState(false)
+  const [contentTabView, setContentTabView] = useState<'packs' | 'prompts'>('packs')
+  const [promptSearch, setPromptSearch] = useState('')
+  const [allPrompts, setAllPrompts] = useState<PromptItem[]>([])
+  const [loadingPrompts, setLoadingPrompts] = useState(false)
+  const [promptsLoaded, setPromptsLoaded] = useState(false)
 
   // Load leadership members, verticals, and all packs
   useEffect(() => {
@@ -968,6 +984,38 @@ function AssignmentPanel({
     setExpandedPacks((prev) => { const n = new Set(prev); n.add(pack.id); return n })
   }
 
+  const removeFromGenerate = (key: string) => {
+    setCheckedItems((prev) => {
+      const next = new Map(prev)
+      next.delete(key)
+      return next
+    })
+  }
+
+  const addIndividualPrompt = (prompt: PromptItem) => {
+    setCheckedItems((prev) => {
+      const next = new Map(prev)
+      next.set(`individual:${prompt.id}`, {
+        promptTemplateId: prompt.id,
+        promptName: prompt.name,
+        packId: '',
+      })
+      return next
+    })
+  }
+
+  const handleContentTabChange = (tab: 'packs' | 'prompts') => {
+    setContentTabView(tab)
+    if (tab === 'prompts' && !promptsLoaded) {
+      setLoadingPrompts(true)
+      apiFetch(`/api/v1/template-library?clientId=${clientId}`)
+        .then((r) => r.json())
+        .then(({ data }) => { setAllPrompts(data ?? []); setPromptsLoaded(true) })
+        .catch(console.error)
+        .finally(() => setLoadingPrompts(false))
+    }
+  }
+
   const handleGenerate = async () => {
     if (!targetType || checkedItems.size === 0) return
     const topicIds = selectedTopics.filter((t) => t.status === 'approved').map((t) => t.id)
@@ -1011,6 +1059,21 @@ function AssignmentPanel({
     : targetType === 'vertical' ? verticals.find((v) => v.id === targetId)?.name
     : targetType === 'company' ? 'Company / Brand'
     : null
+
+  const selectedTargetObj =
+    targetType === 'member' ? (members.find((m) => m.id === targetId) ?? null)
+    : targetType === 'vertical' ? (verticals.find((v) => v.id === targetId) ?? null)
+    : null
+
+  const destMonday = selectedTargetObj?.mondayBoardId ?? null
+  const destBox = selectedTargetObj?.boxFolderId ?? null
+
+  const filteredPrompts = promptSearch.trim()
+    ? allPrompts.filter((p) =>
+        p.name.toLowerCase().includes(promptSearch.toLowerCase()) ||
+        (p.category ?? '').toLowerCase().includes(promptSearch.toLowerCase())
+      )
+    : allPrompts
 
   return (
     <div
@@ -1150,97 +1213,255 @@ function AssignmentPanel({
             <div>
               <p className="text-xs font-semibold mb-2.5">What to generate</p>
 
-              {loadingPackItems ? (
-                <div className="flex items-center gap-2 text-muted-foreground py-4">
-                  <Icons.Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-xs">Loading pack…</span>
+              {/* Generate list */}
+              {checkedItems.size > 0 ? (
+                <div className="flex flex-col gap-1 mb-3">
+                  {Array.from(checkedItems.entries()).map(([key, item]) => (
+                    <div
+                      key={key}
+                      className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 bg-muted/20"
+                    >
+                      <Icons.FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="flex-1 text-[12px] truncate">{item.promptName}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFromGenerate(key)}
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                      >
+                        <Icons.X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ) : defaultPackItems.length === 0 && !defaultPackId ? (
-                <p className="text-xs text-muted-foreground mb-3">
-                  No default pack set for {selectedTarget ?? 'this target'}. Add packs below or set a default in their profile.
-                </p>
               ) : (
+                <p className="text-[11px] text-muted-foreground mb-3 px-1">
+                  Nothing selected yet — add packs or prompts below.
+                </p>
+              )}
+
+              {/* Tab toggle */}
+              <div className="flex border-b border-border mb-3">
+                <button
+                  type="button"
+                  onClick={() => handleContentTabChange('packs')}
+                  className={cn(
+                    'px-3 py-1.5 text-[12px] font-medium border-b-2 -mb-px transition-colors',
+                    contentTabView === 'packs'
+                      ? 'border-purple-500 text-purple-700'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  Packs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleContentTabChange('prompts')}
+                  className={cn(
+                    'px-3 py-1.5 text-[12px] font-medium border-b-2 -mb-px transition-colors',
+                    contentTabView === 'prompts'
+                      ? 'border-purple-500 text-purple-700'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  Prompts
+                </button>
+              </div>
+
+              {/* Packs tab */}
+              {contentTabView === 'packs' && (
                 <>
-                  {/* Default pack items checklist */}
-                  {defaultPackItems.length > 0 && (
-                    <div className="flex flex-col gap-1.5 mb-3">
-                      {defaultPackItems.map((item) => {
-                        const key = `${defaultPackId}:${item.promptTemplateId}`
-                        const checked = checkedItems.has(key)
-                        return (
-                          <label
-                            key={item.id}
-                            className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleItem(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: defaultPackId! })}
-                              className="h-3.5 w-3.5 accent-purple-600 shrink-0 mt-0.5"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-[13px] font-medium block truncate">{item.promptName}</span>
-                              {item.promptDescription && (
-                                <span className="text-[11px] text-muted-foreground block truncate">{item.promptDescription}</span>
+                  {loadingPackItems ? (
+                    <div className="flex items-center gap-2 text-muted-foreground py-4">
+                      <Icons.Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">Loading pack…</span>
+                    </div>
+                  ) : defaultPackItems.length === 0 && !defaultPackId ? (
+                    <p className="text-xs text-muted-foreground mb-3">
+                      No default pack set for {selectedTarget ?? 'this target'}. Add packs below or set a default in their profile.
+                    </p>
+                  ) : (
+                    <>
+                      {defaultPackItems.length > 0 && (
+                        <div className="flex flex-col gap-1.5 mb-3">
+                          {defaultPackItems.map((item) => {
+                            const key = `${defaultPackId}:${item.promptTemplateId}`
+                            const checked = checkedItems.has(key)
+                            return (
+                              <label
+                                key={item.id}
+                                className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleItem(key, { promptTemplateId: item.promptTemplateId, promptName: item.promptName, packId: defaultPackId! })}
+                                  className="h-3.5 w-3.5 accent-purple-600 shrink-0 mt-0.5"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-[13px] font-medium block truncate">{item.promptName}</span>
+                                  {item.promptDescription && (
+                                    <span className="text-[11px] text-muted-foreground block truncate">{item.promptDescription}</span>
+                                  )}
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* More packs */}
+                  {morePacks.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground mb-2">
+                        {defaultPackItems.length > 0 ? 'More packs' : 'Available packs'}
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {morePacks.map((pack) => {
+                          const isExpanded = expandedPacks.has(pack.id)
+                          const isLoading = loadingExpandedPack === pack.id
+                          const packItems = expandedPackItems[pack.id] ?? []
+                          return (
+                            <div key={pack.id} className="rounded-lg border border-border overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandPack(pack)}
+                                className="w-full flex items-center gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                              >
+                                <Icons.Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="text-[12px] font-medium flex-1">{pack.name}</span>
+                                <span className="text-[11px] text-muted-foreground shrink-0">{pack.itemCount} item{pack.itemCount !== 1 ? 's' : ''}</span>
+                                {isLoading
+                                  ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                                  : isExpanded
+                                    ? <span className="text-[11px] text-muted-foreground font-medium shrink-0 ml-1">Remove</span>
+                                    : <span className="text-[11px] text-blue-600 font-medium shrink-0 ml-1">Add</span>
+                                }
+                              </button>
+                              {isExpanded && packItems.length > 0 && (
+                                <div className="flex flex-col divide-y divide-border">
+                                  {packItems.map((item) => (
+                                    <div key={item.id} className="px-3 py-2">
+                                      <p className="text-[12px] font-medium truncate">{item.promptName}</p>
+                                      {item.promptDescription && (
+                                        <p className="text-[11px] text-muted-foreground truncate">{item.promptDescription}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {isExpanded && packItems.length === 0 && !isLoading && (
+                                <p className="text-[11px] text-muted-foreground px-3 py-2">No prompts in this pack.</p>
                               )}
                             </div>
-                          </label>
-                        )
-                      })}
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
                 </>
               )}
 
-              {/* More packs */}
-              {morePacks.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">
-                    {defaultPackItems.length > 0 ? 'More packs' : 'Available packs'}
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    {morePacks.map((pack) => {
-                      const isExpanded = expandedPacks.has(pack.id)
-                      const isLoading = loadingExpandedPack === pack.id
-                      const packItems = expandedPackItems[pack.id] ?? []
-                      return (
-                        <div key={pack.id} className="rounded-lg border border-border overflow-hidden">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpandPack(pack)}
-                            className="w-full flex items-center gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
-                          >
-                            <Icons.Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="text-[12px] font-medium flex-1">{pack.name}</span>
-                            <span className="text-[11px] text-muted-foreground shrink-0">{pack.itemCount} item{pack.itemCount !== 1 ? 's' : ''}</span>
-                            {isLoading
-                              ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
-                              : isExpanded
-                                ? <span className="text-[11px] text-muted-foreground font-medium shrink-0 ml-1">Remove</span>
-                                : <span className="text-[11px] text-blue-600 font-medium shrink-0 ml-1">Add</span>
-                            }
-                          </button>
-                          {isExpanded && packItems.length > 0 && (
-                            <div className="flex flex-col divide-y divide-border">
-                              {packItems.map((item) => (
-                                <div key={item.id} className="px-3 py-2">
-                                  <p className="text-[12px] font-medium truncate">{item.promptName}</p>
-                                  {item.promptDescription && (
-                                    <p className="text-[11px] text-muted-foreground truncate">{item.promptDescription}</p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {isExpanded && packItems.length === 0 && !isLoading && (
-                            <p className="text-[11px] text-muted-foreground px-3 py-2">No prompts in this pack.</p>
-                          )}
-                        </div>
-                      )
-                    })}
+              {/* Prompts tab */}
+              {contentTabView === 'prompts' && (
+                <div className="flex flex-col gap-2">
+                  <div className="relative">
+                    <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <input
+                      type="text"
+                      value={promptSearch}
+                      onChange={(e) => setPromptSearch(e.target.value)}
+                      placeholder="Search prompts…"
+                      className="w-full rounded-lg border border-border pl-8 pr-3 py-1.5 text-[12px] outline-none focus:border-purple-400"
+                    />
                   </div>
+                  {loadingPrompts ? (
+                    <div className="flex items-center gap-2 text-muted-foreground py-4">
+                      <Icons.Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">Loading prompts…</span>
+                    </div>
+                  ) : filteredPrompts.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground py-3 text-center">
+                      {promptSearch ? 'No prompts match your search.' : 'No prompts in this client\'s library.'}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+                      {filteredPrompts.map((prompt) => {
+                        const key = `individual:${prompt.id}`
+                        const isAdded = checkedItems.has(key)
+                        return (
+                          <div
+                            key={prompt.id}
+                            className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[12px] font-medium truncate">{prompt.name}</p>
+                              {prompt.category && (
+                                <p className="text-[11px] text-muted-foreground truncate">{prompt.category}</p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => isAdded ? removeFromGenerate(key) : addIndividualPrompt(prompt)}
+                              className={cn(
+                                'shrink-0 text-[11px] font-medium px-2 py-0.5 rounded border transition-colors',
+                                isAdded
+                                  ? 'border-border text-muted-foreground hover:text-foreground'
+                                  : 'border-blue-400 text-blue-600 hover:bg-blue-50',
+                              )}
+                            >
+                              {isAdded ? 'Added' : 'Add'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Section 3: Destinations ── */}
+          {targetType && (
+            <div>
+              <p className="text-xs font-semibold mb-2.5">Destinations</p>
+              <div className="flex flex-col gap-2">
+                {/* monday.com row */}
+                <div className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2.5">
+                  <div className="h-6 w-6 shrink-0 flex items-center justify-center rounded bg-orange-100">
+                    <span className="text-[10px] font-bold text-orange-600">M</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium">monday.com</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {destMonday ? 'Tasks will be created on completion' : 'Not configured — set up in target profile'}
+                    </p>
+                  </div>
+                  {destMonday
+                    ? <Icons.CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                    : <Icons.Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                  }
+                </div>
+
+                {/* Box row */}
+                <div className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2.5">
+                  <div className="h-6 w-6 shrink-0 flex items-center justify-center rounded bg-blue-100">
+                    <span className="text-[10px] font-bold text-blue-600">B</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium">Box</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {destBox ? 'Files will be exported on completion' : 'Not configured — set up in target profile'}
+                    </p>
+                  </div>
+                  {destBox
+                    ? <Icons.CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                    : <Icons.Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                  }
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -2469,7 +2469,7 @@ Rules:
 
     const assignments = await prisma.clientVertical.findMany({
       where: { clientId: req.params.id, agencyId },
-      include: { vertical: { select: { id: true, name: true, dimensionType: true, color: true } } },
+      include: { vertical: { select: { id: true, name: true, dimensionType: true, color: true, mondayBoardId: true, boxFolderId: true } } },
       orderBy: { vertical: { name: 'asc' } },
     })
     return reply.send({ data: assignments.map((a) => a.vertical) })
