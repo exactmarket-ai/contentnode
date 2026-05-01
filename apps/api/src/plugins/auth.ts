@@ -182,19 +182,40 @@ async function authPluginFn(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Token is missing agency_id claim' })
     }
 
-    // Always resolve role from DB using the SECURITY DEFINER function — it bypasses
-    // FORCE RLS on the users table (the session var app.current_agency_id isn't set
-    // yet at this point in the auth flow, so prisma.user.findFirst() would return null).
-    // JWT role claims are treated as untrusted hints; DB is authoritative.
+    // When role wasn't explicitly provided by the JWT (defaults to 'member') and no
+    // DEFAULT_ROLE env override is set, look up the user's actual role from the database.
+    // This handles staging/production environments where Clerk custom session claims
+    // (agency_id / role) aren't configured — without it every user gets 'member' and
+    // admin-only routes silently return empty results.
     let resolvedRole = role
-    if (!process.env.DEFAULT_ROLE) {
+    if (!process.env.DEFAULT_ROLE && roleFromToken === 'member') {
       try {
-        const rows = await prisma.$queryRaw<{ agency_id: string; role: string }[]>`
-          SELECT agency_id, role FROM get_user_by_clerk_id(${payload.sub})
-        `
-        if (rows.length > 0 && rows[0].role) {
-          resolvedRole = rows[0].role
+        let dbUser = await prisma.user.findFirst({
+          where: { agencyId, clerkUserId: payload.sub },
+          select: { id: true, role: true },
+        })
+        // Fallback: clerkUserId may be stale (e.g. pending-xxx from invite).
+        // Look up by email from Clerk and auto-fix the stored ID.
+        if (!dbUser) {
+          const { clerkClient } = await import('../lib/clerk.js')
+          if (clerkClient) {
+            try {
+              const clerkUser = await clerkClient.users.getUser(payload.sub)
+              const email = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
+              if (email) {
+                const byEmail = await prisma.user.findFirst({
+                  where: { agencyId, email },
+                  select: { id: true, role: true },
+                })
+                if (byEmail) {
+                  await prisma.user.update({ where: { id: byEmail.id }, data: { clerkUserId: payload.sub } })
+                  dbUser = byEmail
+                }
+              }
+            } catch { /* non-fatal */ }
+          }
         }
+        if (dbUser?.role) resolvedRole = dbUser.role
       } catch { /* non-fatal — fall back to JWT role */ }
     }
 
