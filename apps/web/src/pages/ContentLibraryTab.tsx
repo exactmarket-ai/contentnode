@@ -458,15 +458,13 @@ export function ContentLibraryTab({ clientId, clientName }: { clientId: string; 
   }
 
   const handleDownloadSingle = async (item: LibraryItem) => {
-    // Fetch full content if truncated
+    // Always fetch full content — list view truncates to 300 chars
     let fullContent = item.content ?? ''
-    if (!fullContent || fullContent.length < 299) {
-      try {
-        const res  = await apiFetch(`/api/v1/content-library/${clientId}/${item.id}`)
-        const data = await res.json()
-        fullContent = data.data?.content ?? fullContent
-      } catch { /* use truncated */ }
-    }
+    try {
+      const res  = await apiFetch(`/api/v1/content-library/${clientId}/${item.id}`)
+      const data = await res.json()
+      fullContent = data.data?.content ?? fullContent
+    } catch { /* fall back to preview */ }
     await downloadContentLibraryDocx({
       topicTitle:  item.topicTitle,
       contentType: item.contentType,
