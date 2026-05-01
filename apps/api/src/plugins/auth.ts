@@ -123,7 +123,7 @@ async function authPluginFn(app: FastifyInstance) {
     // DEFAULT_ROLE env var overrides token role for local dev (when Clerk custom claims aren't configured)
     const role = process.env.DEFAULT_ROLE ?? roleFromToken
 
-    req.log.info({ agencyId: agencyId ?? 'unset', role, roleFromToken, sub: payload.sub?.slice(-6) }, '[auth] token claims DEBUG')
+    req.log.debug({ agencyId, role, sub: payload.sub }, '[auth] token claims')
 
     if (!agencyId) {
       // Fallback: look up agency_id from the database using the Clerk user ID.
