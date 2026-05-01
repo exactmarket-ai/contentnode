@@ -1,4 +1,4 @@
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel, type ModelResult } from '@contentnode/ai'
 
 const SYSTEM_PROMPT = `You are a world-class content strategist helping a marketing agency build powerful AI writing prompts for their clients.
@@ -96,10 +96,11 @@ export async function generatePromptSuggestions(clientId: string, agencyId: stri
   }
 
   console.log(`[promptSuggester] calling Claude with ${lines.length} context lines`)
+  const { provider: rProv, model: rModel } = await getModelForRole('generation_fast')
   let response: ModelResult
   try {
     response = await callModel(
-      { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', system_prompt: SYSTEM_PROMPT },
+      { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), system_prompt: SYSTEM_PROMPT },
       lines.join('\n')
     )
   } catch (err) {

@@ -1,13 +1,6 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
+import { getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
-
-const MODEL: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.2,
-  max_tokens: 4096,
-}
 
 const REDDIT_HEADERS = {
   'User-Agent': 'ContentNode/1.0 (market research bot; contact: hello@contentnode.ai)',
@@ -149,6 +142,15 @@ export class AudienceSignalExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
+    const { provider: regProvider, model: regModel } = await getModelForRole('research_synthesis')
+    const modelCfg: ModelConfig = {
+      provider: regProvider as 'anthropic' | 'openai' | 'ollama',
+      model: regModel,
+      api_key_ref: defaultApiKeyRefForProvider(regProvider),
+      temperature: 0.2,
+      max_tokens: 4096,
+    }
+
     const searchTerms = ((config.searchTerms as string | undefined) ?? '')
       .split('\n').map((t) => t.trim()).filter(Boolean)
     const subreddits = ((config.subreddits as string | undefined) ?? '')
@@ -253,7 +255,7 @@ export class AudienceSignalExecutor extends NodeExecutor {
 
     // ── Synthesize ────────────────────────────────────────────────────────────
     const systemPrompt = SYNTHESIS_PROMPTS[synthesisGoal] ?? SYNTHESIS_PROMPTS.all
-    const result = await callModel({ ...MODEL }, `${systemPrompt}\n\n${rawData}`)
+    const result = await callModel({ ...modelCfg }, `${systemPrompt}\n\n${rawData}`)
 
     return {
       output: result.text,

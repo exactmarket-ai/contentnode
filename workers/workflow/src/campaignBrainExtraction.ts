@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import PDFParser from 'pdf2json'
 import ExcelJS from 'exceljs'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import type { CampaignBrainProcessJobData } from './queues.js'
@@ -164,8 +164,9 @@ Based on this material, write a rich Campaign Brain context in plain text. This 
 
 Be thorough but clear. Write in structured prose with short labelled sections. 800-1200 words.`
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   const result = await callModel(
-    { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 2048, temperature: 0.2 },
+    { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 2048, temperature: 0.2 },
     synthesisPrompt,
   )
 
@@ -232,8 +233,9 @@ export async function processCampaignBrainAttachment(job: { data: CampaignBrainP
 
     try {
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
+      const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Campaign Brain.
 
 Content source: ${label}

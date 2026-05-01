@@ -1,4 +1,5 @@
 import { callModel } from '@contentnode/ai'
+import { getModelForRole } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 const SYSTEM_PROMPT = `You are an expert at writing prompts for image generation models.
@@ -40,6 +41,7 @@ export class ImagePromptBuilderExecutor extends NodeExecutor {
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const cfg = config as ImagePromptBuilderConfig
+    const { model: regModel } = await getModelForRole('generation_fast')
 
     const stylePrefix = cfg.style_hint ? `Style preference: ${cfg.style_hint}\n\n` : ''
     let userMessage: string
@@ -61,7 +63,7 @@ export class ImagePromptBuilderExecutor extends NodeExecutor {
     const result = await callModel(
       {
         provider: (cfg.provider as 'anthropic' | 'openai' | 'ollama') ?? 'anthropic',
-        model: (cfg.model as string) ?? 'claude-haiku-4-5-20251001',
+        model: (cfg.model as string) ?? regModel,
         api_key_ref: '',
         system_prompt: SYSTEM_PROMPT,
         temperature: 0.7,

@@ -1,5 +1,5 @@
 import { callModel, embedText, type ModelConfig } from '@contentnode/ai'
-import { prisma, withAgency, usageEventService } from '@contentnode/database'
+import { prisma, withAgency, usageEventService, getModelForRole } from '@contentnode/database'
 import type { Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 import type { DetectionOutput } from './detection.js'
@@ -596,6 +596,8 @@ export class HumanizerNodeExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
+    const { model: regModel } = await getModelForRole('humanizer')
+
     // Accept DetectionOutput, raw string, or array of upstream outputs
     const resolvedInput = Array.isArray(input)
       ? input.filter((v) => v != null).join('\n\n')
@@ -640,7 +642,7 @@ export class HumanizerNodeExecutor extends NodeExecutor {
       const modelCfg = config.model_config as Record<string, unknown> | null
       const modelConfig: ModelConfig = {
         provider: ((modelCfg?.provider as string) ?? 'anthropic') as 'anthropic' | 'ollama',
-        model:    (modelCfg?.model as string) ?? 'claude-sonnet-4-6',
+        model:    (modelCfg?.model as string) ?? regModel,
         api_key_ref: 'ANTHROPIC_API_KEY',
         temperature: (modelCfg?.temperature as number) ?? 0.9,
       }
@@ -671,7 +673,7 @@ export class HumanizerNodeExecutor extends NodeExecutor {
       const modelCfg = config.model_config as Record<string, unknown> | null
       const modelConfig: ModelConfig = {
         provider: ((modelCfg?.provider as string) ?? 'anthropic') as 'anthropic' | 'ollama',
-        model:    (modelCfg?.model as string) ?? 'claude-sonnet-4-6',
+        model:    (modelCfg?.model as string) ?? regModel,
         api_key_ref: 'ANTHROPIC_API_KEY',
         temperature: (modelCfg?.temperature as number) ?? 0.95,
       }

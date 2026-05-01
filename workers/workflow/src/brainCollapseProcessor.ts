@@ -12,7 +12,7 @@
  * Job is keyed per client so duplicate enqueues are deduplicated by BullMQ.
  */
 
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { QUEUE_BRAIN_COLLAPSE, type BrainCollapseJobData, getConnection } from './queues.js'
 import { Worker, type Job } from 'bullmq'
@@ -47,8 +47,9 @@ async function collapseBrainAttachments(job: Job<BrainCollapseJobData>) {
       })
       .join('\n\n---\n\n')
 
+    const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
     const result = await callModel(
-      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
+      { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv) },
       `You are synthesizing ${attachments.length} Box document revision notes for a client into a single coherent style profile.
 
 INPUT REVISIONS — chronological order, most recent carries more weight:

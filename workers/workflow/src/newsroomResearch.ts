@@ -1,10 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { synthesiseClientContext } from './clientBrainExtraction.js'
 import type { NewsroomResearchJobData } from './queues.js'
-
-const SONNET = { provider: 'anthropic' as const, model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.4, max_tokens: 2000 }
 
 // ── JSON extractor (same safe parser used throughout scheduledResearch.ts) ────
 interface TopicCandidate {
@@ -46,6 +44,9 @@ async function setStep(jobId: string, status: string, currentStep: string) {
 // ── Main research handler ──────────────────────────────────────────────────────
 export async function runNewsroomResearch(job: { data: NewsroomResearchJobData }): Promise<void> {
   const { agencyId, clientId, verticalId, userId, jobId, recencyWindow } = job.data
+
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.4, max_tokens: 2000 }
 
   await withAgency(agencyId, async () => {
     // Mark started
@@ -104,7 +105,7 @@ Return the research prompt text only. No preamble.`,
       let researchOutput = ''
       try {
         const response = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+          model: SONNET.model,
           max_tokens: 8000,
           system: 'You are a research analyst finding the most relevant, recent content on a given topic for a B2B content team. Use web search to find real articles, data, and expert commentary. Summarise your findings in a detailed research brief with specific source URLs, publication names, and publish dates.',
           tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 10 } as never],
@@ -186,7 +187,7 @@ Return format:
       let evalText = ''
       try {
         const evalResponse = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+          model: SONNET.model,
           max_tokens: 6000,
           system: 'You are a content strategist evaluating research findings to identify the strongest blog topic candidates for a specific client.',
           tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 5 } as never],

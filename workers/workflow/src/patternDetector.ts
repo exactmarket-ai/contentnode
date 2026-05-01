@@ -1,5 +1,5 @@
 import { callModel } from '@contentnode/ai'
-import { prisma, withAgency, type Prisma } from '@contentnode/database'
+import { prisma, withAgency, type Prisma, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Seniority weights — used in collective confidence scoring
@@ -740,8 +740,9 @@ Write a single, concise prompt instruction (2-4 sentences) that, if added to the
 Return only the prompt instruction text, nothing else.`
 
   try {
+    const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
     const result = await callModel(
-      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
+      { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv) },
       prompt,
     )
     const instruction = result.trim()

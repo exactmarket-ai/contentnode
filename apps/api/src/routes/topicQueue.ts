@@ -1,11 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { getNewsroomResearchQueue } from '../lib/queues.js'
 // callModel still used by preference profile helper and /generate endpoint
-
-const SONNET = { provider: 'anthropic' as const, model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.4, max_tokens: 2000 }
 
 const VERTICAL_COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#06b6d4','#f97316','#6366f1']
 function deriveColor(id: string): string {
@@ -43,8 +41,9 @@ async function updateTopicPreferenceProfile(
     `- Title: ${d.title}\n  Summary: ${d.summary}\n  Score: ${d.score}\n  Decision: ${d.decision}`,
   ).join('\n\n')
 
+  const prefProfileModel = await getModelForRole('generation_primary')
   const result = await callModel(
-    { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.3, max_tokens: 1000 },
+    { provider: 'anthropic', model: prefProfileModel, api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.3, max_tokens: 1000 },
     `You maintain a topic preference profile for a content team.\nReview their recent selections and update the profile.\n\nCURRENT PROFILE:\n${currentProfile || '(none — this is the first update)'}\n\nRECENT DECISIONS (last 10):\n${decisionLog}\n\nWrite an updated preference profile in plain English. Cover:\n- Topic angles they consistently approve\n- Topic angles they consistently reject\n- Tone or framing preferences visible in approvals\n- Patterns in the sources or publications they favor\n- A diversity note: flag if approvals are becoming too narrow\n\nKeep it under 200 words. Be specific. Use their actual topic titles as examples where relevant.\nReturn the profile text only. No preamble.`,
   )
 
@@ -227,8 +226,9 @@ Use EXACTLY this format with these delimiter lines:
 %%SOURCES%%
 [one URL per line]`
 
+          const topicGenModel = await getModelForRole('generation_primary')
           const result = await callModel(
-            { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.65, max_tokens: 8192, system_prompt: systemPrompt },
+            { provider: 'anthropic', model: topicGenModel, api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.65, max_tokens: 8192, system_prompt: systemPrompt },
             `Approved topic: ${topic.title}\n\nAngle summary: ${topic.summary}\n\nSource material:\n${sourceBlock}\n\nWrite the blog post now.`,
           )
 

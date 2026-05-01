@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
 import { callModel, type ImageInput } from '@contentnode/ai'
-import { prisma, withAgency, usageEventService, costEstimator, type Prisma } from '@contentnode/database'
+import { prisma, withAgency, usageEventService, costEstimator, getModelForRole, type Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { ImagePromptOutput } from './imagePromptBuilder.js'
 
@@ -174,7 +174,7 @@ function findStructuredPrompt(input: unknown): ImagePromptOutput | null {
   return null
 }
 
-async function extractPrompt(input: unknown, referenceImages: ImageInput[]): Promise<ImagePromptOutput> {
+async function extractPrompt(input: unknown, referenceImages: ImageInput[], genFastModel = ''): Promise<ImagePromptOutput> {
   const hasRefs = referenceImages.length > 0
 
   // If upstream is an image-prompt-builder, use its full structured output
@@ -186,7 +186,7 @@ async function extractPrompt(input: unknown, referenceImages: ImageInput[]): Pro
     const result = await callModel(
       {
         provider: 'anthropic',
-        model: 'claude-haiku-4-5-20251001',
+        model: genFastModel,
         api_key_ref: '',
         system_prompt: 'Describe the key visual subjects in the provided image(s) in one concise sentence. No extra commentary.',
         temperature: 0.3,
@@ -211,7 +211,7 @@ async function extractPrompt(input: unknown, referenceImages: ImageInput[]): Pro
     const result = await callModel(
       {
         provider: 'anthropic',
-        model: 'claude-haiku-4-5-20251001',
+        model: genFastModel,
         api_key_ref: '',
         system_prompt: 'Describe the key visual subjects in the provided image(s) in one concise sentence. No extra commentary.',
         temperature: 0.3,
@@ -785,6 +785,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as ImageGenerationConfig
+    const { model: genFastModel } = await getModelForRole('generation_fast')
 
     // Normalize provider aliases — nodePILOT and node configs may use 'dall-e-3', 'openai', etc.
     const PROVIDER_ALIASES: Record<string, Provider> = {
@@ -809,7 +810,7 @@ export class ImageGenerationExecutor extends NodeExecutor {
     const assetRefs = extractAssetRefs(input)
     const referenceImages = assetRefs.length > 0 ? await fetchImageInputs(assetRefs) : []
 
-    const prompt = await extractPrompt(input, referenceImages)
+    const prompt = await extractPrompt(input, referenceImages, genFastModel)
     console.log(`[imageGeneration] prompt sent to ${provider}:`, JSON.stringify(prompt))
 
     // Guard: if we still have no usable prompt, give the user a clear message

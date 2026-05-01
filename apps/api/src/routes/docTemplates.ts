@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { uploadBuffer, downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 
@@ -122,6 +122,7 @@ function htmlToText(html: string): string {
 
 /** Ask Claude to suggest variable placements based on document text */
 async function suggestVariables(docText: string, docType: string): Promise<VariableSuggestion[]> {
+  const { model: fastModel } = await getModelForRole('generation_fast')
   const variableList = GTM_VARIABLES
     .map((v) => `- ${v.id}: ${v.label} — ${v.description}`)
     .join('\n')
@@ -149,7 +150,7 @@ Respond with ONLY a JSON array, no markdown, no explanation.`
 
   try {
     const result = await callModel(
-      { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', temperature: 0.1, api_key_ref: 'ANTHROPIC_API_KEY' },
+      { provider: 'anthropic', model: fastModel, temperature: 0.1, api_key_ref: 'ANTHROPIC_API_KEY' },
       prompt,
     )
     const raw = result.text

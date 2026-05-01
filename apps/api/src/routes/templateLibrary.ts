@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -346,10 +346,11 @@ Task: ${spec.generationHint}
 
 Write the prompt now.`
 
+  const templateGenModel = await getModelForRole('generation_fast')
   const result = await callModel(
     {
       provider: 'anthropic',
-      model: 'claude-haiku-4-5-20251001',
+      model: templateGenModel,
       api_key_ref: 'ANTHROPIC_API_KEY',
       system_prompt: systemPrompt,
       max_tokens: 600,

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import PDFParser from 'pdf2json'
 import ExcelJS from 'exceljs'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import type { FrameworkResearchJobData, AttachmentProcessJobData, ClientGtmUploadJobData } from './queues.js'
@@ -210,11 +210,12 @@ async function summarise(rawText: string, sourceLabel: string, clientName: strin
   if (rawText.trim().length < 100) return rawText.trim()
 
   const truncated = rawText.slice(0, 28000)
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
   const result = await callModel(
     {
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-6',
-      api_key_ref: 'ANTHROPIC_API_KEY',
+      provider: rProv as 'anthropic' | 'openai' | 'ollama',
+      model: rModel,
+      api_key_ref: defaultApiKeyRefForProvider(rProv),
       max_tokens: 1200,
       temperature: 0.2,
     },
@@ -560,11 +561,12 @@ export async function runFrameworkResearch(job: FrameworkResearchJobData): Promi
 
     let sectionResults: Record<string, string | null> = {}
     try {
+      const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
       const synthesis = await callModel(
         {
-          provider: 'anthropic',
-          model: 'claude-sonnet-4-6',
-          api_key_ref: 'ANTHROPIC_API_KEY',
+          provider: rProv as 'anthropic' | 'openai' | 'ollama',
+          model: rModel,
+          api_key_ref: defaultApiKeyRefForProvider(rProv),
           max_tokens: 4000,
           temperature: 0.2,
         },
@@ -673,11 +675,12 @@ export async function processClientGtmUpload(job: ClientGtmUploadJobData): Promi
       }
 
       // Map extracted text → 18 sections
+      const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
       const mappingResult = await callModel(
         {
-          provider: 'anthropic',
-          model: 'claude-sonnet-4-6',
-          api_key_ref: 'ANTHROPIC_API_KEY',
+          provider: rProv as 'anthropic' | 'openai' | 'ollama',
+          model: rModel,
+          api_key_ref: defaultApiKeyRefForProvider(rProv),
           max_tokens: 4000,
           temperature: 0.1,
         },
@@ -744,11 +747,12 @@ ${rawText.slice(0, 35000)}`,
           if (!clientText || !researchText) continue
 
           try {
+            const { provider: cProv, model: cModel } = await getModelForRole('research_synthesis')
             const conflictCheck = await callModel(
               {
-                provider: 'anthropic',
-                model: 'claude-sonnet-4-6',
-                api_key_ref: 'ANTHROPIC_API_KEY',
+                provider: cProv as 'anthropic' | 'openai' | 'ollama',
+                model: cModel,
+                api_key_ref: defaultApiKeyRefForProvider(cProv),
                 max_tokens: 500,
                 temperature: 0.1,
               },

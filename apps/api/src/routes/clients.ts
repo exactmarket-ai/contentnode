@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import { extname } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma, withAgency, auditService, usageEventService } from '@contentnode/database'
+import { prisma, withAgency, auditService, usageEventService, getModelForRole } from '@contentnode/database'
 import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue, getClientBrainProcessQueue, getClientVerticalBrainProcessQueue } from '../lib/queues.js'
@@ -105,6 +105,7 @@ async function researchCompanyFromUrl(
   clientName: string,
   apiKey: string,
   usageCtx?: { agencyId: string; clientId: string; userId?: string },
+  modelOverrides?: { brainModel?: string; fastModel?: string },
 ): Promise<CompanyResearchResult> {
   // ── HTML helpers ───────────────────────────────────────────────────────────
   const stripHtml = (html: string) =>
@@ -302,7 +303,7 @@ Use empty string "" or empty array [] for any field not found. Never invent info
   const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 5000, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: modelOverrides?.brainModel ?? 'claude-sonnet-4-6', max_tokens: 5000, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -365,7 +366,7 @@ Use empty string "" or empty array [] for any field not found. Never invent info
     const hRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, temperature: 0,
+      body: JSON.stringify({ model: modelOverrides?.fastModel ?? 'claude-haiku-4-5-20251001', max_tokens: maxTokens, temperature: 0,
         messages: [{ role: 'user', content: prompt }] }),
     })
     if (!hRes.ok) return {}
@@ -2111,6 +2112,8 @@ export async function clientRoutes(app: FastifyInstance) {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(500).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
+    const { model: brainModel } = await getModelForRole('brain_processing')
+
     // ── 1. Fetch website content ────────────────────────────────────────────
     let rawHtml = ''
     try {
@@ -2215,7 +2218,7 @@ Rules:
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: brainModel,
         max_tokens: 2000,
         temperature: 0.2,
         messages: [{ role: 'user', content: prompt }],
@@ -2453,8 +2456,13 @@ Rules:
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(500).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
+    const [{ model: brainModel }, { model: fastModel }] = await Promise.all([
+      getModelForRole('brain_processing'),
+      getModelForRole('generation_fast'),
+    ])
+
     // ── Use shared research helper (same logic as GTM Assessment scrape) ──────
-    const r = await researchCompanyFromUrl(url, client.name, apiKey, { agencyId, clientId, userId: req.auth.userId })
+    const r = await researchCompanyFromUrl(url, client.name, apiKey, { agencyId, clientId, userId: req.auth.userId }, { brainModel, fastModel })
 
     const existingCompanyProfile = await prisma.companyProfile.findFirst({ where: { id: profileId, clientId, agencyId } })
     if (!existingCompanyProfile) return reply.code(404).send({ error: 'Company profile not found' })
@@ -2604,7 +2612,7 @@ Rules:
       })
       if (!client) return reply.code(404).send({ error: 'Client not found' })
 
-      const [brainDocs, gtm, dgBase] = await Promise.all([
+      const [brainDocs, gtm, dgBase, { model: fastModel }] = await Promise.all([
         prisma.clientBrainAttachment.findMany({
           where: { clientId, agencyId, summaryStatus: 'ready' },
           select: { filename: true, summary: true, source: true },
@@ -2613,6 +2621,7 @@ Rules:
         }),
         prisma.clientGTMAssessment.findUnique({ where: { clientId } }),
         prisma.clientDemandGenBase.findUnique({ where: { clientId } }),
+        getModelForRole('generation_fast'),
       ])
 
       const brandProfile = client.brandProfiles[0]
@@ -2665,7 +2674,7 @@ Rules:
       const result = await callModel(
         {
           provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
+          model: fastModel,
           api_key_ref: 'ANTHROPIC_API_KEY',
           max_tokens: 1800,
           temperature: 0.4,
@@ -2828,10 +2837,12 @@ Return ONLY the JSON. No explanation, no markdown fences.`,
       .map((d) => `--- ${d.filename} ---\n${d.summary}`)
       .join('\n\n')
 
+    const { model: brainModel } = await getModelForRole('brain_processing')
+
     const result = await callModel(
       {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
+        model: brainModel,
         api_key_ref: 'ANTHROPIC_API_KEY',
         max_tokens: 500,
         temperature: 0.3,
@@ -2872,8 +2883,13 @@ ${brainBlock}
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(500).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
+    const [{ model: brainModel }, { model: fastModel }] = await Promise.all([
+      getModelForRole('brain_processing'),
+      getModelForRole('generation_fast'),
+    ])
+
     const clientId = req.params.id
-    const r = await researchCompanyFromUrl(url, client.name, apiKey, { agencyId, clientId, userId: req.auth.userId })
+    const r = await researchCompanyFromUrl(url, client.name, apiKey, { agencyId, clientId, userId: req.auth.userId }, { brainModel, fastModel })
 
     const uid = () => Math.random().toString(36).slice(2)
     const partial = {
@@ -3073,6 +3089,7 @@ ${brainBlock}
 
     // ── Generate Creative Direction appendix via Claude ───────────────────────
     const apiKey = process.env.ANTHROPIC_API_KEY
+    const { model: brainModel } = await getModelForRole('brain_processing')
     let creativeDirection = ''
     if (apiKey) {
       const snap = [
@@ -3094,7 +3111,7 @@ ${brainBlock}
           method: 'POST',
           headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-6', max_tokens: 2500, temperature: 0.3,
+            model: brainModel, max_tokens: 2500, temperature: 0.3,
             messages: [{ role: 'user', content: `You are a senior creative director producing a presentation design brief for an agency's internal team.
 
 Based on this Company Assessment data, generate slide-by-slide creative direction for a 12-15 slide executive presentation. The presentation should follow a professional GTM strategy deck structure and visually reflect the brand's identity.
@@ -3514,9 +3531,11 @@ ${docText.slice(0, 12000)}`
     let fields: Record<string, string> = {}
     let styleSignals: Array<{ type: string; rule: string; example: string; confidence: string }> = []
 
+    const { model: generationPrimaryModel } = await getModelForRole('generation_primary')
+
     try {
       const result = await callModel(
-        { provider: 'anthropic', model: 'claude-sonnet-4-5', temperature: 0.1, api_key_ref: 'ANTHROPIC_API_KEY' },
+        { provider: 'anthropic', model: generationPrimaryModel, temperature: 0.1, api_key_ref: 'ANTHROPIC_API_KEY' },
         prompt,
       )
       const cleaned = result.text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
@@ -4028,10 +4047,11 @@ ${docText.slice(0, 12000)}`
 
     // Map flat text → structured FrameworkData via Claude
     const sectionsJson = JSON.stringify(sectionsToFill, null, 2)
+    const { model: brainModel } = await getModelForRole('brain_processing')
     const mappingResult = await callModel(
       {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
+        model: brainModel,
         api_key_ref: 'ANTHROPIC_API_KEY',
         max_tokens: 6000,
         temperature: 0.1,
@@ -4327,8 +4347,10 @@ Rules:
         : `"${f.key}": "..."  // ${f.label}`
     ).join(',\n  ')
 
+    const { model: brainModel } = await getModelForRole('brain_processing')
+
     const result = await callModel(
-      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 3000, temperature: 0.2 },
+      { provider: 'anthropic', model: brainModel, api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 3000, temperature: 0.2 },
       `You are auto-drafting GTM Framework Section ${sectionNum} (${sectionTitle ?? ''}) for a client.
 
 CLIENT: ${client.name}
@@ -4407,10 +4429,12 @@ Return ONLY a valid JSON object. No preamble. No explanation. No markdown fences
       ...websiteSources.map((s) => `--- Website: ${s.filename} ---\n${s.summary}`),
     ].join('\n\n')
 
+    const { model: brainModel } = await getModelForRole('brain_processing')
+
     const result = await callModel(
       {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
+        model: brainModel,
         api_key_ref: 'ANTHROPIC_API_KEY',
         max_tokens: 600,
         temperature: 0.3,
@@ -5436,10 +5460,12 @@ ${currentValue ? `CURRENT VALUE (may be partial or placeholder):\n${currentValue
         `${idx + 1}. field="${f.field}" label="${f.label}"${f.placeholder ? ` example="${f.placeholder}"` : ''}`
       ).join('\n')
 
+      const { model: fastModel } = await getModelForRole('generation_fast')
+
       const result = await callModel(
         {
           provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
+          model: fastModel,
           api_key_ref: 'ANTHROPIC_API_KEY',
           max_tokens: 400,
           temperature: 0.4,

@@ -15,7 +15,7 @@
  * Output: StakeholderPrinciple records, upserted by principle text similarity.
  */
 
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { QUEUE_PRINCIPLE_INFERENCE, type PrincipleInferenceJobData, getConnection } from './queues.js'
 import { Worker, type Job } from 'bullmq'
@@ -130,9 +130,10 @@ async function inferPrinciples(job: Job<PrincipleInferenceJobData>) {
       })
       .join('\n')
 
-    // 4. Call Claude Sonnet — never Haiku for brain/signal tasks (CLAUDE.md rule)
+    // 4. Call model via registry — never Haiku for brain/signal tasks (CLAUDE.md rule)
+    const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
     const result = await callModel(
-      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
+      { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv) },
       PRINCIPLE_INFERENCE_PROMPT(signalList, summaryList),
     )
 

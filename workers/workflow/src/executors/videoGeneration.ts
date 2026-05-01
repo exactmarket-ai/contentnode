@@ -1,7 +1,7 @@
 import { randomUUID, createHmac } from 'node:crypto'
 import { saveGeneratedFile, downloadBuffer } from '@contentnode/storage'
 import { callModel, type ImageInput } from '@contentnode/ai'
-import { prisma, withAgency, usageEventService, costEstimator, type Prisma } from '@contentnode/database'
+import { prisma, withAgency, usageEventService, costEstimator, getModelForRole, type Prisma } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult, type GeneratedAsset, asyncPoll } from './base.js'
 import type { VideoPromptOutput } from './videoPromptBuilder.js'
 
@@ -142,7 +142,7 @@ async function fetchImageInputs(refs: AssetRef[]): Promise<ImageInput[]> {
   return results
 }
 
-async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig, referenceImages: ImageInput[] = []): Promise<VideoPromptOutput> {
+async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig, referenceImages: ImageInput[] = [], genFastModel = ''): Promise<VideoPromptOutput> {
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
     // VideoPromptOutput from Video Prompt Builder
@@ -194,7 +194,7 @@ async function extractVideoPrompt(input: unknown, cfg: VideoGenerationConfig, re
       const result = await callModel(
         {
           provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
+          model: genFastModel,
           api_key_ref: '',
           system_prompt: hasRefs ? VIDEO_COMPOSE_SYSTEM_PROMPT : VIDEO_MERGE_SYSTEM_PROMPT,
           temperature: 0.7,
@@ -817,6 +817,7 @@ export class VideoGenerationExecutor extends NodeExecutor {
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const cfg = config as unknown as VideoGenerationConfig
+    const { model: genFastModel } = await getModelForRole('generation_fast')
     const provider: Provider = cfg.provider ?? 'runway'
     const isOnline = !OFFLINE_VIDEO_PROVIDERS.has(provider)
     const svc = VIDEO_SERVICE_MAP[provider] ?? { costProvider: provider, model: provider, displayService: provider }
@@ -826,7 +827,7 @@ export class VideoGenerationExecutor extends NodeExecutor {
     const assetRefs = extractAssetRefs(input)
     const referenceImages = assetRefs.length > 0 ? await fetchImageInputs(assetRefs) : []
 
-    const prompt = await extractVideoPrompt(input, cfg, referenceImages)
+    const prompt = await extractVideoPrompt(input, cfg, referenceImages, genFastModel)
 
     // Merge manual start_frame into prompt if not already set by upstream
     if (cfg.start_frame && !prompt.referenceImageUrl) {

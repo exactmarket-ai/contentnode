@@ -1,17 +1,10 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 import { fetchPage as sharedFetchPage, truncateWords } from '../lib/scraper.js'
 
 const MAX_PAGE_WORDS = 2000
 const TIMEOUT_MS = 15_000
-const MODEL: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.2,
-  max_tokens: 4096,
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTML utilities
@@ -69,6 +62,15 @@ export class DeepWebScrapeExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
+    const { provider: regProvider, model: regModel } = await getModelForRole('research_synthesis')
+    const modelCfg: ModelConfig = {
+      provider: regProvider as 'anthropic' | 'openai' | 'ollama',
+      model: regModel,
+      api_key_ref: defaultApiKeyRefForProvider(regProvider),
+      temperature: 0.2,
+      max_tokens: 4096,
+    }
+
     const seedUrls = ((config.seedUrls as string | undefined) ?? '')
       .split('\n').map((u) => u.trim()).filter(Boolean)
     const maxPages = Math.min(20, Math.max(1, (config.maxPages as number) ?? 10))
@@ -154,7 +156,7 @@ export class DeepWebScrapeExecutor extends NodeExecutor {
       ? `${synthesisInstructions}\n\n${rawContent}`
       : rawContent
 
-    const result = await callModel({ ...MODEL }, `${systemPrompt}\n\n${userPrompt}`)
+    const result = await callModel({ ...modelCfg }, `${systemPrompt}\n\n${userPrompt}`)
 
     return {
       output: result.text,

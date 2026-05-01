@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import crypto from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma, type Prisma, permissionService } from '@contentnode/database'
+import { prisma, type Prisma, permissionService, getModelForRole } from '@contentnode/database'
 import { auditService } from '../services/audit.js'
 import { getWorkflowRunsQueue, getEditAnalysisQueue } from '../lib/queues.js'
 import { sendReviewEmail, sendAssignmentEmail, sendMentionEmail } from '../lib/email.js'
@@ -129,6 +129,10 @@ export async function runRoutes(app: FastifyInstance) {
         workflowId = wf.id
       }
 
+      // Pre-fetch registry default once — used both for model baking and permission checks.
+      // 4-level resolution: node override → workflow default → registry → hardcoded fallback
+      const registryPrimary = await getModelForRole('generation_primary')
+
       // Replace all nodes for this workflow so DB stays in sync with the canvas.
       await prisma.node.deleteMany({ where: { workflowId: workflowId! } })
       if (rfNodes.length > 0) {
@@ -147,17 +151,17 @@ export async function runRoutes(app: FastifyInstance) {
             const { label: _l, description: _d, icon: _i, config: _c, ...dataFields } = data
             const config = nestedConfig ?? dataFields
 
-            // For logic nodes: resolve provider/model from node override → workflow default.
+            // For logic nodes: resolve provider/model from node override → workflow default → registry.
             // If connectivity_mode is offline, always force ollama regardless of node config.
             const nodeModelCfg = (config.model_config as Record<string, unknown> | null) ?? null
-            const resolvedModelCfg = nodeModelCfg ?? defaultModelCfg
+            const resolvedModelCfg = nodeModelCfg ?? (Object.keys(defaultModelCfg).length > 0 ? defaultModelCfg : registryPrimary)
             const isOfflineRun = connectivityMode === 'offline'
-            const resolvedProvider = (resolvedModelCfg.provider as string | undefined) ?? 'anthropic'
+            const resolvedProvider = (resolvedModelCfg.provider as string | undefined) ?? registryPrimary.provider
             const modelFields = n.type === 'logic' ? {
               provider: isOfflineRun ? 'ollama' : resolvedProvider,
               model: isOfflineRun
                 ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
-                : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-6',
+                : (resolvedModelCfg.model as string | undefined) ?? registryPrimary.model,
               temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
             } : {}
 
@@ -273,7 +277,7 @@ export async function runRoutes(app: FastifyInstance) {
         if (n.type === 'logic' && subtype !== 'humanizer' && subtype !== 'humanizer-pro') {
           // LLM node — check provider/model access
           const provider = (cfg.provider as string | undefined) ?? 'anthropic'
-          const model    = (cfg.model    as string | undefined) ?? 'claude-sonnet-4-6'
+          const model    = (cfg.model    as string | undefined) ?? registryPrimary.model
           if (!permissionService.isLlmAllowed(resolvedPermissions, provider, model)) {
             return reply.code(403).send({ error: `LLM provider/model "${provider}/${model}" is not allowed by your permissions.` })
           }

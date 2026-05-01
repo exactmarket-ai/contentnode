@@ -1,4 +1,5 @@
 import { callModel } from '@contentnode/ai'
+import { getModelForRole } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 export interface InstructionObject {
@@ -20,6 +21,7 @@ export class InstructionTranslatorExecutor extends NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const rawText = (config.raw_text as string | undefined)?.trim()
     if (!rawText) throw new Error('Instruction Translator: no brief or notes provided')
+    const { model: regModel } = await getModelForRole('brain_processing')
 
     const prompt = `You are an expert content strategist. Analyze the following brief, notes, or instructions and extract a structured instruction object.
 
@@ -52,7 +54,7 @@ ${rawText}`
     const result = await callModel(
       {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
+        model: regModel,
         api_key_ref: 'ANTHROPIC_API_KEY',
         temperature: 0.2,
         max_tokens: 1200,

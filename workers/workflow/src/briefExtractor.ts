@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import type { BriefExtractJobData } from './queues.js'
 
@@ -34,11 +34,12 @@ export async function extractBrief(job: Job<BriefExtractJobData>) {
   )
 
   try {
+    const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
     const result = await callModel(
       {
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
-        api_key_ref: 'ANTHROPIC_API_KEY',
+        provider: rProv as 'anthropic' | 'openai' | 'ollama',
+        model: rModel,
+        api_key_ref: defaultApiKeyRefForProvider(rProv),
         max_tokens: 1500,
         temperature: 0.1,
       },

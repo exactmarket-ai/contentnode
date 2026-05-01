@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma, type Prisma, auditService } from '@contentnode/database'
+import { prisma, type Prisma, auditService, getModelForRole } from '@contentnode/database'
 import { requireRole } from '../plugins/auth.js'
 import { randomUUID } from 'node:crypto'
 import { getWorkflowRunsQueue } from '../lib/queues.js'
@@ -236,6 +236,8 @@ export async function workflowRoutes(app: FastifyInstance) {
       // Replace all nodes for this workflow
       await prisma.node.deleteMany({ where: { workflowId } })
       if (rfNodes.length > 0) {
+        // 4-level model resolution: node override → workflow default → registry → hardcoded fallback
+        const registryPrimary = await getModelForRole('generation_primary')
         await prisma.node.createMany({
           data: rfNodes.map((n) => {
             const data = (n.data ?? {}) as Record<string, unknown>
@@ -260,7 +262,7 @@ export async function workflowRoutes(app: FastifyInstance) {
               provider: isOfflineSave ? 'ollama' : resolvedProvider,
               model: isOfflineSave
                 ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
-                : (resolvedModelCfg.model as string | undefined) ?? 'claude-sonnet-4-6',
+                : (resolvedModelCfg.model as string | undefined) ?? registryPrimary.model,
               temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
             } : {}
             // Strip file arrays — files are stored in client_workflow_files, not the template

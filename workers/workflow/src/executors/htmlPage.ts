@@ -1,22 +1,6 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
-
-const MODEL: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.3,
-  max_tokens: 8192,
-}
-
-const SLIDE_MODEL: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-6',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.3,
-  max_tokens: 16000,
-}
 
 const SLIDE_BATCH_SIZE = 5
 
@@ -373,6 +357,7 @@ function buildSlidesFromBrief(
 // Fallback: raw presentation text — run Creative Director inline
 async function buildSlidesFromRawContent(
   content: string,
+  slideModel: ModelConfig,
   brand?: BrandContext,
 ): Promise<{ html: string; tokensUsed: number; inputTokens: number; outputTokens: number }> {
   // Pre-parse sections so we can give the model an exact slide count
@@ -415,7 +400,7 @@ palette.background must be dark (e.g. #0F172A or #111827).
 Every slide must have a non-empty title and at least one keyPoint.`
 
   const cdResult = await callModel(
-    { ...SLIDE_MODEL, system_prompt: cdSystem, max_tokens: 16000, temperature: 0.4 },
+    { ...slideModel, system_prompt: cdSystem, max_tokens: 16000, temperature: 0.4 },
     `Create the creative brief and ALL slide objects for this presentation:${sectionList}\n\n${content.slice(0, 14000)}`,
   )
 
@@ -459,6 +444,22 @@ export class HtmlPageExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
+    const { provider: regProvider, model: regModel } = await getModelForRole('generation_primary')
+    const MODEL: ModelConfig = {
+      provider: regProvider as 'anthropic' | 'openai' | 'ollama',
+      model: regModel,
+      api_key_ref: defaultApiKeyRefForProvider(regProvider),
+      temperature: 0.3,
+      max_tokens: 8192,
+    }
+    const SLIDE_MODEL: ModelConfig = {
+      provider: regProvider as 'anthropic' | 'openai' | 'ollama',
+      model: regModel,
+      api_key_ref: defaultApiKeyRefForProvider(regProvider),
+      temperature: 0.3,
+      max_tokens: 16000,
+    }
+
     const pageType       = (config.pageType       as string)  ?? 'landing-page'
     const styleDirection = (config.styleDirection as string)  ?? ''
     const useBrandColors = (config.useBrandColors as boolean) ?? true
@@ -494,7 +495,7 @@ export class HtmlPageExecutor extends NodeExecutor {
 
       const { html, tokensUsed, inputTokens, outputTokens } = isCreativeDirectorBrief(parsed)
         ? buildSlidesFromBrief(parsed as CreativeDirectorBrief, slideBrand)
-        : await buildSlidesFromRawContent(content, slideBrand)
+        : await buildSlidesFromRawContent(content, SLIDE_MODEL, slideBrand)
 
       return { output: { html }, tokensUsed, inputTokens, outputTokens, modelUsed: SLIDE_MODEL.model }
     }

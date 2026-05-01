@@ -15,7 +15,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
-import { prisma }               from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -295,9 +295,10 @@ export async function demandPilotRoutes(app: FastifyInstance) {
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
     const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
+    const { model: researchModel } = await getModelForRole('research_synthesis')
 
     const response = await anthropic.messages.create({
-      model:      'claude-sonnet-4-5',
+      model:      researchModel,
       max_tokens: 2000,
       system:     systemPrompt,
       messages:   anthropicMessages,

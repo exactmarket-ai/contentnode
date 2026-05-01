@@ -1,19 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole } from '@contentnode/database'
 import { fetchUrlText, synthesiseThoughtLeaderContext } from './clientBrainExtraction.js'
 
 interface SocialProfile {
   platform: 'linkedin' | 'x' | 'substack' | 'website' | 'other'
   url: string
   syncEnabled: boolean
-}
-
-const SONNET_WEBSEARCH: Anthropic.MessageCreateParamsNonStreaming = {
-  model: 'claude-sonnet-4-6',
-  max_tokens: 1200,
-  system: 'You are a social media researcher extracting voice and positioning signals from a thought leader\'s public content. Return plain text, no JSON.',
-  tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 3 } as never],
-  messages: [],
 }
 
 async function searchAndSummarize(
@@ -26,6 +18,7 @@ async function searchAndSummarize(
   if (!apiKey) return null
 
   const anthropic = new Anthropic({ apiKey, timeout: 90_000, maxRetries: 0 })
+  const { model: wsModel } = await getModelForRole('brain_processing')
 
   const prompt = `Search for recent public content from ${memberName} on ${platform}.
 Search query: ${query}
@@ -56,7 +49,10 @@ If no content is found for this person on this platform, respond with only: NO_C
 
   try {
     const response = await anthropic.messages.create({
-      ...SONNET_WEBSEARCH,
+      model: wsModel,
+      max_tokens: 1200,
+      system: 'You are a social media researcher extracting voice and positioning signals from a thought leader\'s public content. Return plain text, no JSON.',
+      tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 3 } as never],
       messages: [{ role: 'user', content: prompt }],
     })
     const text = response.content
@@ -85,8 +81,9 @@ async function fetchAndSummarizeUrl(
     if (!apiKey) return null
 
     const anthropic = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 0 })
+    const { model: fuModel } = await getModelForRole('brain_processing')
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: fuModel,
       max_tokens: 1000,
       system: 'You extract voice and positioning signals from web page content.',
       messages: [{

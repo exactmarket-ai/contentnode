@@ -9,7 +9,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
-import { prisma }               from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -279,9 +279,14 @@ export async function nodePilotRoutes(app: FastifyInstance) {
 
     const contextPrefix = contextParts.length > 0 ? `[${contextParts.join(' · ')}]\n\n` : ''
 
-    // Use sonnet when any message has an image attachment (vision requires it)
+    // Use brain_processing (sonnet) when any message has an image attachment (vision requires it)
+    // Use generation_fast (haiku) for text-only queries
     const hasImage = messages.some((m) => m.image)
-    const model = hasImage ? 'claude-sonnet-4-5' : 'claude-haiku-4-5-20251001'
+    const [{ model: brainModel }, { model: fastModel }] = await Promise.all([
+      getModelForRole('brain_processing'),
+      getModelForRole('generation_fast'),
+    ])
+    const model = hasImage ? brainModel : fastModel
 
     const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => {
       const text = i === 0 && (contextPrefix || htmlContextBlock)

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import PDFParser from 'pdf2json'
 import ExcelJS from 'exceljs'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import type {
@@ -161,8 +161,9 @@ Based on this material, write a rich Client Brain context in plain text. This wi
 
 Be thorough but clear. Write in structured prose with short labelled sections. 800-1200 words.`
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   const result = await callModel(
-    { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 2048, temperature: 0.2 },
+    { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 2048, temperature: 0.2 },
     synthesisPrompt,
   )
 
@@ -194,8 +195,9 @@ export async function synthesiseAgencyContext(agencyId: string): Promise<void> {
   const agency = await prisma.agency.findUnique({ where: { id: agencyId }, select: { name: true } })
   if (!agency) return
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   const result = await callModel(
-    { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 2048, temperature: 0.2 },
+    { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 2048, temperature: 0.2 },
     `You are building an Agency Brain context for an AI-powered marketing agency.
 
 Agency: "${agency.name}"
@@ -239,8 +241,9 @@ export async function synthesiseVerticalContext(agencyId: string, verticalId: st
   const vertical = await prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { name: true } })
   if (!vertical) return
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   const result = await callModel(
-    { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 2048, temperature: 0.2 },
+    { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 2048, temperature: 0.2 },
     `You are building a Vertical Brain context for the "${vertical.name}" industry vertical at a marketing agency.
 
 The following documents contain industry research, trends, news, and intelligence for this vertical:
@@ -362,8 +365,9 @@ export async function synthesiseThoughtLeaderContext(
   })
   const combined = parts.join('\n\n---\n\n').slice(0, 50000)
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   const result = await callModel(
-    { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 1500, temperature: 0.3 },
+    { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 1500, temperature: 0.3 },
     `You are building a voice and positioning profile for a thought leader.
 This profile will be used to generate content that sounds authentically
 like them — not a generic executive, not their company's marketing voice,
@@ -471,8 +475,9 @@ export async function processClientBrainAttachment(job: { data: ClientBrainProce
 
     try {
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
+      const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Client Brain for a marketing agency.
 
 Content source: ${label}
@@ -549,8 +554,9 @@ export async function processAgencyBrainAttachment(job: { data: AgencyBrainProce
 
     try {
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
+      const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to an Agency Brain for a marketing agency.
 
 Content source: ${label}
@@ -623,8 +629,9 @@ export async function processVerticalBrainAttachment(job: { data: VerticalBrainP
     try {
       const label = url ? `web page at ${url}` : `document "${attachment.filename}"`
       const vertical = await prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { name: true } })
+      const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Vertical Brain for the "${vertical?.name ?? verticalId}" industry vertical at a marketing agency.
 
 Content source: ${label}
@@ -700,8 +707,9 @@ export async function processClientVerticalBrainAttachment(job: { data: ClientVe
         prisma.client.findFirst({ where: { id: clientId, agencyId }, select: { name: true } }),
         prisma.vertical.findFirst({ where: { id: verticalId, agencyId }, select: { name: true } }),
       ])
+      const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
       const summaryResult = await callModel(
-        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 512, temperature: 0.1 },
+        { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 512, temperature: 0.1 },
         `You are reviewing content uploaded to a Client × Vertical Brain for "${client?.name ?? clientId}" in the "${vertical?.name ?? verticalId}" vertical at a marketing agency.
 
 Content source: ${label}

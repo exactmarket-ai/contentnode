@@ -1,13 +1,6 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
+import { getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
-
-const MODEL: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.3,
-  max_tokens: 4096,
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Google Autocomplete helper (free, no API key)
@@ -74,6 +67,15 @@ export class SeoIntentExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
+    const { provider: regProvider, model: regModel } = await getModelForRole('research_synthesis')
+    const modelCfg: ModelConfig = {
+      provider: regProvider as 'anthropic' | 'openai' | 'ollama',
+      model: regModel,
+      api_key_ref: defaultApiKeyRefForProvider(regProvider),
+      temperature: 0.3,
+      max_tokens: 4096,
+    }
+
     const seedKeywords = ((config.seedKeywords as string | undefined) ?? '')
       .split('\n').map((k) => k.trim()).filter(Boolean)
     const topic = (config.topic as string | undefined)?.trim() ?? ''
@@ -164,7 +166,7 @@ Output format — use this exact structure:
       ? `Topic: ${topic}\n\nSeed keywords: ${seedKeywords.join(', ')}\n\n${keywordData}`
       : `Seed keywords: ${seedKeywords.join(', ')}\n\n${keywordData}`
 
-    const result = await callModel({ ...MODEL }, `${systemPrompt}\n\n${userContent}`)
+    const result = await callModel({ ...modelCfg }, `${systemPrompt}\n\n${userContent}`)
 
     return {
       output: result.text,

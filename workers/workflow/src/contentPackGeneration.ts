@@ -1,4 +1,4 @@
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { synthesiseThoughtLeaderContext } from './clientBrainExtraction.js'
 import type { Job } from 'bullmq'
@@ -17,14 +17,6 @@ export interface ContentPackGenJobData {
   targetType:       'member' | 'vertical' | 'company'
   targetId:         string | null
   targetName:       string | null
-}
-
-const SONNET = {
-  provider: 'anthropic' as const,
-  model: 'claude-sonnet-4-6',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.5,
-  max_tokens: 2000,
 }
 
 // ── Build four-context block for a leadership member assignment ───────────────
@@ -131,6 +123,9 @@ export async function runContentPackGeneration(job: Job<ContentPackGenJobData>):
     topicTitle, topicSummary,
     targetType, targetId, targetName,
   } = job.data
+
+  const { provider: rProv, model: rModel } = await getModelForRole('generation_primary')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.5, max_tokens: 2000 }
 
   await withAgency(agencyId, async () => {
     // Mark item as running

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import {
   getScheduledResearchQueue,
@@ -348,6 +348,7 @@ ${att.extractedText.slice(0, 13000)}`
     }
 
     // One blog per call — single-blog JSON is nearly never malformed
+    const { model: genModel } = await getModelForRole('generation_primary')
     let blogs: unknown[] = []
     let tokensUsed = 0
     for (let i = 0; i < blogCount; i++) {
@@ -357,7 +358,7 @@ ${att.extractedText.slice(0, 13000)}`
         const result = await callModel(
           {
             provider: 'anthropic',
-            model: 'claude-sonnet-4-6',
+            model: genModel,
             api_key_ref: 'ANTHROPIC_API_KEY',
             temperature: 0.65,
             max_tokens: 8192,

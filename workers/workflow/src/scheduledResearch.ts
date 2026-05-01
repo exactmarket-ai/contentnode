@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import Anthropic from '@anthropic-ai/sdk'
-import { prisma, withAgency } from '@contentnode/database'
-import { callModel, type ModelConfig } from '@contentnode/ai'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
+import { callModel } from '@contentnode/ai'
 import {
   createQueue,
   QUEUE_SCHEDULED_RESEARCH,
@@ -22,14 +22,6 @@ import {
 } from './clientBrainExtraction.js'
 import { runThoughtLeaderSocialSync } from './thoughtLeaderSocialSync.js'
 import type { NodeExecutionContext } from './executors/base.js'
-
-const SONNET: ModelConfig = {
-  provider:    'anthropic',
-  model:       'claude-sonnet-4-6',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.65,
-  max_tokens:  16000,
-}
 
 // ─── Auto-generate blogs from a completed scheduled task ──────────────────────
 
@@ -117,6 +109,8 @@ ${sourceUrls.length > 0 ? `\nSource URLs:\n${sourceUrls.map((u, i) => `${i + 1}.
 --- RESEARCH OUTPUT ---
 ${att.extractedText.slice(0, 13000)}`
 
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.65, max_tokens: 16000 }
   const result = await callModel({ ...SONNET, system_prompt: systemPrompt }, userPrompt)
 
   let blogs: unknown[] = []
@@ -265,6 +259,8 @@ Return ONLY valid JSON:
   ]
 }`
 
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.65, max_tokens: 16000 }
   const result = await callModel({ ...SONNET, system_prompt: systemPrompt }, `Research task: ${task.label}\n\n--- RESEARCH ---\n${att.extractedText.slice(0, 13000)}`)
 
   let blogs: unknown[] = []
@@ -412,6 +408,8 @@ async function runResearch(
 }
 
 async function generateChangeSummary(prev: string, next: string): Promise<string> {
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.65, max_tokens: 16000 }
   const res = await callModel(
     SONNET,
     `Compare these two research outputs. Write 1-2 sentences summarising what is NEW or MEANINGFULLY DIFFERENT in the updated version. Focus on substance, not formatting.\n\nPREVIOUS:\n${prev.slice(0, 2000)}\n\nUPDATED:\n${next.slice(0, 2000)}\n\nChange summary:`,
@@ -621,6 +619,8 @@ ${includeImgs ? `For EACH blog also write:\n- Image prompt: blog header (style: 
 Return ONLY valid JSON:
 {"blogs":[{"title":"string","slug":"slug","excerpt":"2-sentence summary","content":"full markdown","sources":["url"],"social":{${platforms.map((p) => `"${p}":{"post":"string"${p === 'instagram' ? ',"hashtags":["string"]' : ''}${includeImgs ? ',"imagePrompt":"string"' : ''}}`).join(',')}}}]}`
 
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.65, max_tokens: 16000 }
   const result = await callModel(
     { ...SONNET, system_prompt: systemPrompt },
     `Context: ${contextAtt?.filename ?? 'GTM Framework'}\n\n--- CONTEXT ---\n${contextText.slice(0, 13000)}`,
@@ -778,6 +778,8 @@ export async function updateTopicPreferenceProfile(
     `- Title: ${d.title}\n  Summary: ${d.summary}\n  Score: ${d.score}\n  Decision: ${d.decision}`,
   ).join('\n\n')
 
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.65, max_tokens: 16000 }
   const result = await callModel(
     { ...SONNET, system_prompt: undefined },
     `You maintain a topic preference profile for a content team.
@@ -847,6 +849,9 @@ export async function runTopicEvaluator(
   verticalId: string | null,
   researchOutput: string,
 ): Promise<void> {
+  const { provider: rProv, model: rModel } = await getModelForRole('research_synthesis')
+  const SONNET = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), temperature: 0.65, max_tokens: 16000 }
+
   // Load brain context
   const client = await prisma.client.findFirst({
     where: { id: clientId, agencyId },
@@ -919,7 +924,7 @@ Return format:
   let responseText = ''
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: rModel,
       max_tokens: 8000,
       system: 'You are a content strategist evaluating research findings to identify the strongest blog topic candidates for a specific client.',
       tools: [{ type: 'web_search_20250305' as never, name: 'web_search', max_uses: 5 } as never],

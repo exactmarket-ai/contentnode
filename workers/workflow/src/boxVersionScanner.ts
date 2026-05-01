@@ -16,7 +16,7 @@
  */
 
 import crypto from 'node:crypto'
-import { prisma, withAgency, auditService } from '@contentnode/database'
+import { prisma, withAgency, auditService, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { Worker, Queue, type Job } from 'bullmq'
 import { QUEUE_BOX_VERSION_SCAN, QUEUE_BOX_DIFF, type BoxVersionScanJobData, type BoxDiffJobData, getConnection } from './queues.js'
@@ -244,9 +244,10 @@ async function extractDiffSignals(originalText: string, editedText: string): Pro
   const prompt = DIFF_EXTRACTION_PROMPT(originalText, editedText)
   console.log(`[boxVersionScanner] diff prompt length=${prompt.length}, original=${originalText.length}chars, edited=${editedText.length}chars`)
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   try {
     const raw = await callModel(
-      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
+      { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv) },
       prompt,
     )
     console.log(`[boxVersionScanner] Claude raw response: ${raw.text.slice(0, 500).replace(/\n/g, ' ')}`)

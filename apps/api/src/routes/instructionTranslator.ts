@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { getModelForRole } from '@contentnode/database'
 
 const instructionObjectSchema = z.object({
   role_context: z.string(),
@@ -97,6 +98,7 @@ export async function instructionTranslatorRoutes(app: FastifyInstance) {
     }
 
     const prompt = buildPrompt(raw_text, baseline, text_contexts, file_hints)
+    const { model: brainModel } = await getModelForRole('brain_processing')
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -106,7 +108,7 @@ export async function instructionTranslatorRoutes(app: FastifyInstance) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: brainModel,
         max_tokens: 1200,
         temperature: 0.2,
         messages: [{ role: 'user', content: prompt }],
@@ -148,6 +150,7 @@ export async function instructionTranslatorRoutes(app: FastifyInstance) {
     if (!apiKey) {
       return reply.status(500).send({ error: 'ANTHROPIC_API_KEY not configured' })
     }
+    const { model: brainModelSuggest } = await getModelForRole('brain_processing')
 
     const context = parsed
       ? Object.entries(parsed)
@@ -178,7 +181,7 @@ Provide a concise, specific suggested value for this missing piece of informatio
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: brainModelSuggest,
         max_tokens: 200,
         temperature: 0.4,
         messages: [{ role: 'user', content: prompt }],

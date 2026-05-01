@@ -1,14 +1,6 @@
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel, type ModelConfig } from '@contentnode/ai'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
-
-const MODEL: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.3,
-  max_tokens: 4096,
-}
 
 const WRIKE_TOKEN_URL = 'https://login.wrike.com/oauth2/token'
 
@@ -76,6 +68,15 @@ export class WrikeSourceExecutor extends NodeExecutor {
     config: Record<string, unknown>,
     ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
+    const { provider: regProvider, model: regModel } = await getModelForRole('research_synthesis')
+    const modelCfg: ModelConfig = {
+      provider: regProvider as 'anthropic' | 'openai' | 'ollama',
+      model: regModel,
+      api_key_ref: defaultApiKeyRefForProvider(regProvider),
+      temperature: 0.3,
+      max_tokens: 4096,
+    }
+
     const { agencyId } = ctx
     const daysBack  = Number(config.days_back ?? 14)
     const synthesis = (config.synthesis ?? 'summary') as string
@@ -112,7 +113,7 @@ export class WrikeSourceExecutor extends NodeExecutor {
       : 'You are a communications specialist. Review these recently updated Wrike tasks and identify completed work and wins. Summarize into a concise narrative suitable for an internal campaign or announcement. Highlight wins and team impact.'
 
     console.log(`[wrike] calling Claude to synthesize ${tasks.length} tasks`)
-    const result = await callModel({ ...MODEL, system_prompt: systemPrompt }, `Recent Wrike tasks (${daysBack}-day window):\n\n${taskList}`)
+    const result = await callModel({ ...modelCfg, system_prompt: systemPrompt }, `Recent Wrike tasks (${daysBack}-day window):\n\n${taskList}`)
     console.log(`[wrike] synthesis complete`)
 
     return {

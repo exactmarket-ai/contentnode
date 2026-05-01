@@ -1,4 +1,5 @@
 import { callModel } from '@contentnode/ai'
+import { getModelForRole } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 import type { SceneObject } from './sceneParser.js'
 
@@ -43,6 +44,7 @@ export class StoryboardImagePromptBuilderExecutor extends NodeExecutor {
     const verticalName = cfg.verticalName || 'the industry'
     const brandStyle   = cfg.brandStyle   || 'modern, professional, clean'
     const modelConfig  = cfg.modelConfig  ?? {}
+    const { model: regModel } = await getModelForRole('generation_primary')
 
     const userPrompt = [
       `Brand context: ${clientName} — ${verticalName}. Visual style: ${brandStyle}.`,
@@ -56,7 +58,7 @@ export class StoryboardImagePromptBuilderExecutor extends NodeExecutor {
     const result = await callModel(
       {
         provider: ((modelConfig as Record<string, unknown>).provider as 'anthropic' | 'openai' | 'ollama') ?? 'anthropic',
-        model: (modelConfig as Record<string, unknown>).model as string ?? 'claude-sonnet-4-6',
+        model: (modelConfig as Record<string, unknown>).model as string ?? regModel,
         api_key_ref: (modelConfig as Record<string, unknown>).apiKeyRef as string | undefined,
         max_tokens: 4096,
         temperature: 0.3,

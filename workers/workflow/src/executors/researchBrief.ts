@@ -1,4 +1,4 @@
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel, type ModelConfig } from '@contentnode/ai'
 
 export interface ResearchBriefConfig {
@@ -30,13 +30,6 @@ const DEFAULT_FORMAT = `Summarize your findings in this format:
 5. One strategic question this raises
 6. Sources — list every source cited above with the article title, publication name, URL, and publish date.`
 
-const SYNTHESIS_MODEL: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  temperature: 0.3,
-  max_tokens: 2048,
-}
 
 function monthBucket(): { periodStart: Date; periodEnd: Date } {
   const now = new Date()
@@ -52,6 +45,15 @@ export async function runResearchBrief(
   clientId: string | null,
   scheduledTaskId: string,
 ): Promise<string> {
+  const { provider: regProvider, model: regModel } = await getModelForRole('research_synthesis')
+  const SYNTHESIS_MODEL: ModelConfig = {
+    provider: regProvider as 'anthropic' | 'openai' | 'ollama',
+    model: regModel,
+    api_key_ref: defaultApiKeyRefForProvider(regProvider),
+    temperature: 0.3,
+    max_tokens: 2048,
+  }
+
   const { prompt, recencyDays = 7, synthesisFormat, apiKeyRef = 'TAVILY_API_KEY' } = config
 
   if (!prompt?.trim()) throw new Error('Research Brief: prompt is required')

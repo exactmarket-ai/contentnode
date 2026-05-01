@@ -1,4 +1,5 @@
 import { callModel } from '@contentnode/ai'
+import { getModelForRole } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,6 +128,7 @@ export class VideoPromptBuilderExecutor extends NodeExecutor {
     _ctx: NodeExecutionContext,
   ): Promise<NodeExecutionResult> {
     const cfg = config as VideoPromptBuilderConfig
+    const { model: regModel } = await getModelForRole('generation_fast')
     const referenceImageUrl = extractReferenceImage(input)
     const inputText = getInputText(input)
 
@@ -142,7 +144,7 @@ export class VideoPromptBuilderExecutor extends NodeExecutor {
     const result = await callModel(
       {
         provider: (cfg.provider as 'anthropic' | 'openai' | 'ollama') ?? 'anthropic',
-        model: (cfg.model as string) ?? 'claude-haiku-4-5-20251001',
+        model: (cfg.model as string) ?? regModel,
         api_key_ref: '',
         system_prompt: SYSTEM_PROMPT,
         temperature: 0.7,

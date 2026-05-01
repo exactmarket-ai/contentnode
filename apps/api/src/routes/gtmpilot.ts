@@ -15,7 +15,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
-import { prisma }               from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { getPilotSessionSummaryQueue } from '../lib/queues.js'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -2306,10 +2306,12 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
         content: i === 0 ? `${levelHint}\n\n${m.content}` : m.content,
       }))
 
+      const { model: researchModel } = await getModelForRole('research_synthesis')
+
       let response: Anthropic.Message
       try {
         response = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5',
+          model: researchModel,
           max_tokens: 3000,
           system: brieferPrompt,
           messages: anthropicMessages,
@@ -2423,11 +2425,12 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
     const anthropic = new Anthropic({ apiKey, timeout: 90_000, maxRetries: 1 })
+    const { model: researchModel } = await getModelForRole('research_synthesis')
 
     let response: Anthropic.Message
     try {
       response = await anthropic.messages.create({
-        model:      'claude-sonnet-4-5',
+        model:      researchModel,
         max_tokens: 4000,
         system:     systemPrompt,
         messages:   anthropicMessages,
@@ -2557,6 +2560,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
     const anthropic = new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 })
+    const { model: brainModel } = await getModelForRole('brain_processing')
 
     // Truncate each message to 800 chars for the summarization prompt so it stays compact
     const transcript = msgs
@@ -2569,7 +2573,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
 
     try {
       const result = await anthropic.messages.create({
-        model:      'claude-sonnet-4-6',
+        model:      brainModel,
         max_tokens: 800,
         messages:   [{
           role:    'user',

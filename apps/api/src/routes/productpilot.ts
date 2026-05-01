@@ -13,7 +13,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
-import { prisma }               from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { findSkill, PRODUCT_MARKETING_SKILLS } from '../skills/productMarketing.js'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -311,6 +311,7 @@ export async function productPilotRoutes(app: FastifyInstance) {
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
     const anthropic = new Anthropic({ apiKey, timeout: 45_000, maxRetries: 1 })
+    const { model: researchModel } = await getModelForRole('research_synthesis')
 
     const levelHint = `[productPILOT — ${skill.name} — Client: ${client.name}]`
     const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => ({
@@ -319,7 +320,7 @@ export async function productPilotRoutes(app: FastifyInstance) {
     }))
 
     const response = await anthropic.messages.create({
-      model:      'claude-sonnet-4-5',
+      model:      researchModel,
       max_tokens: 2500,
       system:     systemPrompt,
       messages:   anthropicMessages,

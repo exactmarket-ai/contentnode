@@ -1,11 +1,9 @@
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { downloadBuffer } from '@contentnode/storage'
 import { Queue, type Job } from 'bullmq'
 import { getConnection, QUEUE_KIT_GENERATION, type KitGenerationJobData } from './queues.js'
 
-const SONNET = 'claude-sonnet-4-6'
-const API_KEY = 'ANTHROPIC_API_KEY'
 
 export interface DocStyle {
   primaryColor: string
@@ -1158,6 +1156,10 @@ export async function processKitGenerationJob(
   const { sessionId, agencyId, assetIndex } = data
   console.log(`[kit-generation] asset ${assetIndex} starting for session ${sessionId}`)
 
+  const { provider: rProv, model: SONNET } = await getModelForRole('generation_primary')
+  const API_KEY = defaultApiKeyRefForProvider(rProv)
+  const PROVIDER = rProv as 'anthropic' | 'openai' | 'ollama'
+
   await withAgency(agencyId, async () => {
     const session = await prisma.kitSession.findFirst({ where: { id: sessionId, agencyId } })
     if (!session) throw new Error(`[kit-generation] session ${sessionId} not found`)
@@ -1220,7 +1222,7 @@ export async function processKitGenerationJob(
         try {
           const result = await callModel(
             {
-              provider: 'anthropic',
+              provider: PROVIDER,
               model: SONNET,
               api_key_ref: API_KEY,
               system_prompt: SYSTEM_PROMPT,
@@ -1235,7 +1237,7 @@ export async function processKitGenerationJob(
             console.warn(`[kit-generation] asset ${assetIndex} truncated — requesting continuation`)
             const cont = await callModel(
               {
-                provider: 'anthropic',
+                provider: PROVIDER,
                 model: SONNET,
                 api_key_ref: API_KEY,
                 system_prompt: SYSTEM_PROMPT,

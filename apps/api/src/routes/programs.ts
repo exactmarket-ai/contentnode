@@ -19,7 +19,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
-import { prisma }               from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 
 // ─── Program types ─────────────────────────────────────────────────────────────
 
@@ -391,13 +391,14 @@ export async function programRoutes(app: FastifyInstance) {
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
     const anthropic = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
+    const { model: primaryModel } = await getModelForRole('generation_primary')
 
     const anthropicMessages: Anthropic.MessageParam[] = messages.length > 0
       ? messages.map((m) => ({ role: m.role, content: m.content }))
       : [{ role: 'user', content: `[Starting programsPILOT session — Client: ${clientName}]` }]
 
     const response = await anthropic.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      primaryModel,
       max_tokens: 3000,
       system:     systemPrompt,
       messages:   anthropicMessages,

@@ -14,7 +14,7 @@
  * 9. Updates Monday item with "Revised ✓" status + comment
  */
 
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel, embedText } from '@contentnode/ai'
 import { QUEUE_BOX_DIFF, QUEUE_BRAIN_COLLAPSE, QUEUE_PRINCIPLE_INFERENCE, type BoxDiffJobData, type BrainCollapseJobData, type PrincipleInferenceJobData, getConnection } from './queues.js'
 import { Worker, Queue, type Job } from 'bullmq'
@@ -281,9 +281,10 @@ async function processBoxDiff(job: Job<BoxDiffJobData>) {
     confidence: number
   } = { summary: '', toneSignals: [], structureSignals: [], rejectPatterns: [], hasFactualCorrections: false, confidence: 0 }
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   try {
     const raw = await callModel(
-      { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY' },
+      { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv) },
       DIFF_EXTRACTION_PROMPT(originalText, editedText),
     )
     const jsonMatch = raw.text.match(/\{[\s\S]*\}/)

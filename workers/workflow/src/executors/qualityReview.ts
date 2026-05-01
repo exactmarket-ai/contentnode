@@ -1,5 +1,5 @@
 import { callModel, type ModelConfig } from '@contentnode/ai'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 
 interface QualityReviewConfig {
@@ -34,6 +34,8 @@ export class QualityReviewNodeExecutor extends NodeExecutor {
       throw new Error(`Quality Review node ${ctx.nodeId}: "goal" is required`)
     }
 
+    const { model: regModel } = await getModelForRole('scoring_review')
+
     const contentStr =
       typeof input === 'string'
         ? input
@@ -44,7 +46,7 @@ export class QualityReviewNodeExecutor extends NodeExecutor {
 
     const modelConfig: ModelConfig = {
       provider: cfg.provider ?? 'anthropic',
-      model: cfg.model ?? 'claude-sonnet-4-6',
+      model: (cfg.model as string | undefined) ?? regModel,
       api_key_ref: cfg.api_key_ref || 'ANTHROPIC_API_KEY',
       system_prompt: 'You are an expert content quality reviewer and prompt engineer. Always respond with valid JSON only.',
       temperature: 0.3,

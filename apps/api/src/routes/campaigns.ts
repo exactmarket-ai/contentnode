@@ -2,7 +2,7 @@ import { extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { auditService } from '@contentnode/database'
 import { uploadStream, deleteObject } from '@contentnode/storage'
@@ -464,8 +464,9 @@ Tone, format guidance, and brand considerations for all assets in this campaign.
 
 Keep the brief actionable and under 600 words. Write for a marketing director reviewing this with their team.`
 
+    const briefModel = await getModelForRole('generation_primary')
     const result = await callModel(
-      { provider: 'anthropic', model: 'claude-sonnet-4-5', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.4 },
+      { provider: 'anthropic', model: briefModel, api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.4 },
       prompt,
     )
 
@@ -545,8 +546,9 @@ Rules:
 - Only include the node types listed above
 - If a value cannot be determined from context, make a reasonable inference from the industry and ICP`
 
+      const preflightModel = await getModelForRole('brain_processing')
       const result = await callModel(
-        { provider: 'anthropic', model: 'claude-sonnet-4-6', api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.3 },
+        { provider: 'anthropic', model: preflightModel, api_key_ref: 'ANTHROPIC_API_KEY', temperature: 0.3 },
         prompt,
       )
 

@@ -1,4 +1,5 @@
 import { callModel } from '@contentnode/ai'
+import { getModelForRole } from '@contentnode/database'
 import { NodeExecutor, type NodeExecutionContext, type NodeExecutionResult } from './base.js'
 import type { SceneObject } from './sceneParser.js'
 
@@ -41,13 +42,14 @@ export class StoryboardSceneParserExecutor extends NodeExecutor {
 
     const cfg = config as StoryboardSceneParserConfig
     const modelConfig = cfg.modelConfig ?? {}
+    const { model: regModel } = await getModelForRole('generation_primary')
 
     console.log('[storyboard-scene-parser] parsing script with Claude...')
 
     const result = await callModel(
       {
         provider: ((modelConfig as Record<string, unknown>).provider as 'anthropic' | 'openai' | 'ollama') ?? 'anthropic',
-        model: (modelConfig as Record<string, unknown>).model as string ?? 'claude-sonnet-4-6',
+        model: (modelConfig as Record<string, unknown>).model as string ?? regModel,
         api_key_ref: (modelConfig as Record<string, unknown>).apiKeyRef as string | undefined,
         max_tokens: 4096,
         temperature: 0,

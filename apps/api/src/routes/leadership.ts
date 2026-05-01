@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { callModel } from '@contentnode/ai'
 import { getThoughtLeaderSocialSyncQueue } from '../lib/queues.js'
 
@@ -407,10 +407,12 @@ ${body.topic ? `Topic / angle for this piece: ${body.topic}\n\n` : ''}Task: ${fo
 
 Write it now.`
 
+    const { model: researchModel } = await getModelForRole('research_synthesis')
+
     const result = await callModel(
       {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-5',
+        model: researchModel,
         api_key_ref: 'ANTHROPIC_API_KEY',
         system_prompt: systemPrompt,
         max_tokens: 1500,

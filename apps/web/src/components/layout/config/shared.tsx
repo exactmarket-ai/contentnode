@@ -32,6 +32,25 @@ export const OPENAI_MODELS = [
   { value: 'o3-pro',       label: 'o3 Pro' },
 ]
 
+export const GOOGLE_MODELS = [
+  { value: 'gemini-2.5-pro',   label: 'Gemini 2.5 Pro' },
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { value: 'gemini-1.5-pro',   label: 'Gemini 1.5 Pro' },
+  { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+]
+
+export const MISTRAL_MODELS = [
+  { value: 'mistral-large-latest', label: 'Mistral Large' },
+  { value: 'mistral-small-latest', label: 'Mistral Small' },
+  { value: 'open-mixtral-8x7b',   label: 'Mixtral 8x7B' },
+]
+
+export const GROQ_MODELS = [
+  { value: 'llama-3.1-70b-versatile', label: 'Llama 3.1 70B' },
+  { value: 'llama-3.1-8b-instant',    label: 'Llama 3.1 8B' },
+  { value: 'mixtral-8x7b-32768',      label: 'Mixtral 8x7B' },
+]
+
 export const OLLAMA_MODELS = [
   { value: 'gemma4:e4b',   label: 'Gemma 4 E4B' },
   { value: 'llama3.1:70b', label: 'Llama 3.1 70B' },
@@ -44,19 +63,25 @@ export const OLLAMA_MODELS = [
 ]
 
 export function modelLabel(provider: string, model: string): string {
-  const all = [...ANTHROPIC_MODELS, ...OPENAI_MODELS, ...OLLAMA_MODELS]
+  const all = [...ANTHROPIC_MODELS, ...OPENAI_MODELS, ...GOOGLE_MODELS, ...MISTRAL_MODELS, ...GROQ_MODELS, ...OLLAMA_MODELS]
   return all.find((m) => m.value === model)?.label ?? model
 }
 
 export function defaultModelForProvider(provider: string): string {
-  if (provider === 'openai') return 'gpt-4o'
-  if (provider === 'ollama') return 'gemma3:12b'
+  if (provider === 'openai')   return 'gpt-4o'
+  if (provider === 'google')   return 'gemini-2.5-flash'
+  if (provider === 'mistral')  return 'mistral-large-latest'
+  if (provider === 'groq')     return 'llama-3.1-70b-versatile'
+  if (provider === 'ollama')   return 'gemma3:12b'
   return 'claude-sonnet-4-5'
 }
 
 export function modelsForProvider(provider: string) {
-  if (provider === 'openai') return OPENAI_MODELS
-  if (provider === 'ollama') return OLLAMA_MODELS
+  if (provider === 'openai')  return OPENAI_MODELS
+  if (provider === 'google')  return GOOGLE_MODELS
+  if (provider === 'mistral') return MISTRAL_MODELS
+  if (provider === 'groq')    return GROQ_MODELS
+  if (provider === 'ollama')  return OLLAMA_MODELS
   return ANTHROPIC_MODELS
 }
 

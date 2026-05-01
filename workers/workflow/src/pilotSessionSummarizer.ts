@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { callModel }          from '@contentnode/ai'
 import type { PilotSessionSummaryJobData } from './queues.js'
 
@@ -10,14 +10,6 @@ const SUMMARY_SCHEMA = `{
   "rejected": ["Option considered and rejected, with the reason — complete sentence", ...],
   "openQuestions": ["Unresolved question to pick up next session — complete sentence", ...]
 }`
-
-const MODEL_CONFIG = {
-  provider:    'anthropic' as const,
-  model:       'claude-sonnet-4-6',
-  api_key_ref: 'ANTHROPIC_API_KEY',
-  max_tokens:  1200,
-  temperature: 0.1,
-}
 
 function cleanJson(raw: string): string {
   return raw.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
@@ -102,6 +94,9 @@ export async function summarizePilotSession(job: Job<PilotSessionSummaryJobData>
   const transcript = messages
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join('\n\n')
+
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
+  const MODEL_CONFIG = { provider: rProv as 'anthropic' | 'openai' | 'ollama', model: rModel, api_key_ref: defaultApiKeyRefForProvider(rProv), max_tokens: 1200, temperature: 0.1 }
 
   type Summary = { decisions: string[]; rejected: string[]; openQuestions: string[] }
   let summary: Summary

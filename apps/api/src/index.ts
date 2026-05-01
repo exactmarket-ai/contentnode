@@ -64,6 +64,7 @@ import { imagePromptRoutes }            from './routes/imagePrompts.js'
 import { contentPackRoutes }            from './routes/contentPacks.js'
 import { agencyPromptTemplateRoutes }   from './routes/agencyPromptTemplates.js'
 import { contentLibraryRoutes }         from './routes/contentLibrary.js'
+import { modelRegistryRoutes }          from './routes/modelRegistry.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -200,6 +201,7 @@ await app.register(imagePromptRoutes,        { prefix: '/api/v1/image-prompts' }
 await app.register(contentPackRoutes,             { prefix: '/api/v1/content-packs' })
 await app.register(agencyPromptTemplateRoutes,    { prefix: '/api/v1/agency/prompt-templates' })
 await app.register(contentLibraryRoutes,          { prefix: '/api/v1/content-library' })
+await app.register(modelRegistryRoutes,           { prefix: '/api/v1/model-registry' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

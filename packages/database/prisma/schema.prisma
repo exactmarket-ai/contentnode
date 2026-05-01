@@ -2880,3 +2880,21 @@ model ContentPackRunItem {
   @@index([runId])
   @@map("content_pack_run_items")
 }
+
+// ─────────────────────────────────────────────
+// ModelRegistry — global (non-tenant) named model role config
+// Each row defines a role and the provider/model assigned to it.
+// No agencyId — this table is not subject to RLS or agency middleware.
+// ─────────────────────────────────────────────
+model ModelRegistry {
+  id           String   @id @default(cuid())
+  roleKey      String   @unique @map("role_key")
+  displayName  String   @map("display_name")
+  description  String?
+  provider     String   @default("anthropic")
+  model        String   @default("claude-sonnet-4-5")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  updatedById  String?  @map("updated_by_id") // Clerk user ID of last editor (no DB FK — users are per-agency)
+
+  @@map("model_registry")
+}

@@ -13,7 +13,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import { z }                   from 'zod'
-import { prisma }              from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { callModel }           from '@contentnode/ai'
 import {
   Document, Paragraph, TextRun, HeadingLevel, AlignmentType,
@@ -428,6 +428,7 @@ ${articleDigest}`
       return { title, slug: slug || autoSlug, excerpt, content, sources, linkedIn: { post, imagePrompt } }
     }
 
+    const generationModel = await getModelForRole('generation_primary')
     let blogs: GeneratedBlog[] = []
     let tokensUsed = 0
     for (let i = 0; i < blogCount; i++) {
@@ -436,7 +437,7 @@ ${articleDigest}`
         const result = await callModel(
           {
             provider:      'anthropic',
-            model:         'claude-sonnet-4-6',
+            model:         generationModel,
             api_key_ref:   'ANTHROPIC_API_KEY',
             temperature:   0.65,
             max_tokens:    8192,

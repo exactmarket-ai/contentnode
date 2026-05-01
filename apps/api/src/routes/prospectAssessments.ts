@@ -20,7 +20,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z }                    from 'zod'
 import Anthropic                from '@anthropic-ai/sdk'
-import { prisma }               from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   BorderStyle, AlignmentType,
@@ -199,9 +199,10 @@ async function generateFindings(
     .slice(0, MAX_CONTENT_CHARS)
 
   const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
+  const { model: researchModel } = await getModelForRole('research_synthesis')
 
   const response = await anthropic.messages.create({
-    model:      'claude-sonnet-4-5',
+    model:      researchModel,
     max_tokens: 3000,
     system:     DIMENSION_RESEARCH_PROMPT,
     messages:   [{
@@ -271,9 +272,10 @@ async function generateFindingsAndScores(
     .slice(0, MAX_CONTENT_CHARS)
 
   const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
+  const { model: researchModel } = await getModelForRole('research_synthesis')
 
   const response = await anthropic.messages.create({
-    model:      'claude-sonnet-4-5',
+    model:      researchModel,
     max_tokens: 4000,
     system:     QUICK_ASSESS_PROMPT,
     messages:   [{
@@ -499,9 +501,10 @@ Numbered list. Each entry: Exact Market service name in bold, one-line rationale
 `
 
   const anthropic = new Anthropic({ apiKey, timeout: 90_000, maxRetries: 1 })
+  const { model: researchModel } = await getModelForRole('research_synthesis')
 
   const response = await anthropic.messages.create({
-    model:      'claude-sonnet-4-5',
+    model:      researchModel,
     max_tokens: 4000,
     system:     SERVICE_MAP_SYSTEM,
     messages:   [{ role: 'user', content: userPrompt }],
@@ -984,9 +987,10 @@ ${EXEC_PRESENTATION_TEMPLATE}
 Fill in all [Insert ...] placeholders and generic text with specific content for ${assessment.name}. Return the complete 13-slide presentation.`
 
   const anthropic = new Anthropic({ apiKey, timeout: 180_000, maxRetries: 1 })
+  const { model: researchModel } = await getModelForRole('research_synthesis')
 
   const response = await anthropic.messages.create({
-    model:      'claude-sonnet-4-5',
+    model:      researchModel,
     max_tokens: 3000,
     system:     EXEC_PRESENTATION_SYSTEM,
     messages:   [{ role: 'user', content: userPrompt }],
@@ -1454,11 +1458,12 @@ export async function prospectAssessmentRoutes(app: FastifyInstance) {
     if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
 
     const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
+    const { model: researchModel } = await getModelForRole('research_synthesis')
 
     // ── Step 1: Creative Director ─────────────────────────────────────────────
     // Reads the slide content and produces a concrete design brief
     const cdResponse = await anthropic.messages.create({
-      model:      'claude-sonnet-4-5',
+      model:      researchModel,
       max_tokens: 2000,
       system: `You are a senior creative director at a top-tier B2B design agency.
 Your job is to produce a concise DESIGN BRIEF for a presentation deck.
@@ -1525,7 +1530,7 @@ Choose layouts that match the slide's PURPOSE, not just its content:
     const googleFonts = `${designBrief.fonts.heading}:wght@400;600;700|${designBrief.fonts.body}:wght@400;500`.replace(/ /g, '+')
 
     const builderResponse = await anthropic.messages.create({
-      model:      'claude-sonnet-4-5',
+      model:      researchModel,
       max_tokens: 8096,
       system: `You are an expert frontend developer turning design briefs into production-quality Reveal.js presentations.
 

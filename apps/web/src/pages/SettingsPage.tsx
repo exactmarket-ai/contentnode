@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api'
 import { formatBytes } from '@/components/layout/config/shared'
 import { DocTemplateEditor } from './DocTemplateEditor'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { ModelRegistrySection } from '@/components/settings/ModelRegistrySection'
 
 interface AgencySettings {
   id: string
@@ -2068,6 +2069,9 @@ export function SettingsPage() {
 
           {/* ── Integrations ─────────────────────────────────────────────── */}
           <CredentialsSection />
+
+          {/* ── Model Registry ────────────────────────────────────────────── */}
+          <ModelRegistrySection />
 
           <IntegrationsSection />
 

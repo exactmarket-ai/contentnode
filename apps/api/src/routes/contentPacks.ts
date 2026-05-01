@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '@contentnode/database'
+import { prisma, getModelForRole } from '@contentnode/database'
 import { getContentPackGenQueue, getThoughtLeaderSocialSyncQueue } from '../lib/queues.js'
 import { callModel } from '@contentnode/ai'
 
@@ -545,8 +545,9 @@ async function captureEditSignal(agencyId: string, runId: string): Promise<void>
     // Summarize the diff with a small Claude call (non-fatal)
     let keyDifferences = ''
     try {
+      const diffModel = await getModelForRole('generation_fast')
       const diffResult = await callModel(
-        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 100, temperature: 0 },
+        { provider: 'anthropic', model: diffModel, api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 100, temperature: 0 },
         `Compare these two versions of content for the same thought leader. Write ONE sentence describing what changed and why it matters for capturing their authentic voice.
 
 GENERATED:

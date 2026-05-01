@@ -6,7 +6,7 @@ import mammoth from 'mammoth'
 import PDFParser from 'pdf2json'
 import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
-import { prisma, withAgency } from '@contentnode/database'
+import { prisma, withAgency, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
 import { downloadBuffer } from '@contentnode/storage'
 import { callModel } from '@contentnode/ai'
 import type { BrandAttachmentProcessJobData } from './queues.js'
@@ -129,11 +129,12 @@ async function describeImageForBrand(buffer: Buffer, mimeType: string, filename:
     ? (mimeType as SupportedMime)
     : 'image/jpeg'
 
+  const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
   const result = await callModel(
     {
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-6',
-      api_key_ref: 'ANTHROPIC_API_KEY',
+      provider: rProv as 'anthropic' | 'openai' | 'ollama',
+      model: rModel,
+      api_key_ref: defaultApiKeyRefForProvider(rProv),
       max_tokens: 1024,
       temperature: 0.2,
       system_prompt: `You are a brand analyst examining a visual asset uploaded to a client's brand profile.
@@ -421,11 +422,12 @@ async function runBrandExtraction(
     let errorMessage: string | null = null
 
     try {
-      const result = await callModel(
+      const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
+    const result = await callModel(
         {
-          provider: 'anthropic',
-          model: 'claude-sonnet-4-6',
-          api_key_ref: 'ANTHROPIC_API_KEY',
+          provider: rProv as 'anthropic' | 'openai' | 'ollama',
+          model: rModel,
+          api_key_ref: defaultApiKeyRefForProvider(rProv),
           max_tokens: 8192,
           temperature: 0.1,
           system_prompt: systemPrompt,
@@ -500,11 +502,12 @@ async function generateFileSummary(
   let summaryStatus = 'failed'
 
   try {
+    const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
     const result = await callModel(
       {
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
-        api_key_ref: 'ANTHROPIC_API_KEY',
+        provider: rProv as 'anthropic' | 'openai' | 'ollama',
+        model: rModel,
+        api_key_ref: defaultApiKeyRefForProvider(rProv),
         max_tokens: 512,
         temperature: 0.2,
         system_prompt: FILE_SUMMARY_SYSTEM_PROMPT,
