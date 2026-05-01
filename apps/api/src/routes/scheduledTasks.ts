@@ -160,6 +160,23 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     return reply.send({ data: task })
   })
 
+  // ── PATCH /api/v1/scheduled-tasks/:id/newsroom-mode ─────────────────────
+  app.patch<{ Params: { id: string }; Body: unknown }>('/:id/newsroom-mode', async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params
+    const parsed = z.object({ feedNewsroom: z.boolean() }).safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
+
+    const existing = await prisma.scheduledTask.findFirst({ where: { id, agencyId } })
+    if (!existing) return reply.code(404).send({ error: 'Task not found' })
+
+    const task = await prisma.scheduledTask.update({
+      where: { id },
+      data: { contentMode: parsed.data.feedNewsroom ? 'evaluate_and_queue' : 'auto_generate' },
+    })
+    return reply.send({ data: task })
+  })
+
   // ── DELETE /api/v1/scheduled-tasks/:id ───────────────────────────────────
   app.delete<{ Params: { id: string } }>('/:id', async (req, reply) => {
     const { agencyId } = req.auth

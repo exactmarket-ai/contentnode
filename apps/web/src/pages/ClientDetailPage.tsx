@@ -7786,7 +7786,7 @@ export function ClientDetailPage() {
         {activeTab === 'programs' && <ProgramsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'deliverables' && <ClientDeliverablesTab clientId={client.id} />}
         {activeTab === 'thought-leadership' && <ThoughtLeadershipTab clientId={client.id} />}
-        {activeTab === 'newsroom' && <ContentNewsroomTab clientId={client.id} />}
+        {activeTab === 'newsroom' && <ContentNewsroomTab clientId={client.id} onAddTask={() => setActiveTab('scheduled-tasks')} />}
         {activeTab === 'product-marketing' && <ProductMarketingTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'gtm-assessment' && <ClientGTMAssessmentTab clientId={client.id} clientName={client.name} />}
