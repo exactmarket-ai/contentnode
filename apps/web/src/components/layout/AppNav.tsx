@@ -214,7 +214,6 @@ function UserAvatar({ avatarUrl, name, email, size = 'sm' }: { avatarUrl: string
 const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d8f5' }
 
 const NAV_ITEMS = [
-  { to: '/my-work',   icon: Icons.House,    label: 'My Work',   ...ACTIVE },
   { to: '/workflows', icon: Icons.Workflow, label: 'Workflows', ...ACTIVE },
   { to: '/clients',   icon: Icons.Users,    label: 'Clients',   ...ACTIVE },
 ]
@@ -343,6 +342,11 @@ export function AppNav({ onSignOut }: AppNavProps) {
       )}
 
       <div className="my-1 h-px w-full bg-border" />
+
+      {/* My Work — Manager and above, plus Client Manager */}
+      {(isLead || role === 'client_manager') && (
+        <NavItem to="/my-work" collapsed={collapsed} icon={Icons.House} label="My Work" {...ACTIVE} />
+      )}
 
       {NAV_ITEMS.map((item) => (
         <NavItem key={item.to} {...item} collapsed={collapsed} />
