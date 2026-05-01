@@ -1024,7 +1024,7 @@ function AssignmentPanel({
             clientId,
             topicId,
             targetType,
-            targetId: targetType === 'company' ? null : targetId,
+            ...(targetType !== 'company' && { targetId }),
             checkedItems: items,
           }),
         }).catch(console.error)
