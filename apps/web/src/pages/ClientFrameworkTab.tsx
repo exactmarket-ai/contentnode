@@ -3192,7 +3192,8 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
         setSectionStatus((prev) => { const n = { ...prev }; delete n[sectionNum]; return n })
         return
       }
-      console.log('[patchSectionStatus] saved OK')
+      const responseBody = await res.json().catch(() => ({}))
+      console.log('[patchSectionStatus] saved OK — server response:', responseBody, '| local sectionStatus after:', { ...sectionStatus, [sectionNum]: status })
       setSectionSaveState((prev) => ({ ...prev, [sectionNum]: 'saved' }))
       setTimeout(() => setSectionSaveState((prev) => { const n = { ...prev }; delete n[sectionNum]; return n }), 2000)
     } catch (err) {

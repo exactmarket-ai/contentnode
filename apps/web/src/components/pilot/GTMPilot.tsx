@@ -917,10 +917,21 @@ export function GTMPilot({
       {/* Input */}
       <div className="flex items-end gap-2 border-t border-border px-3 py-2 shrink-0">
         {activeSection && onSectionStatusChange && (() => {
-          const saveState = sectionSaveState[activeSection]
-          const isSaving = saveState === 'saving'
-          const isSaved  = saveState === 'saved'
-          const isError  = saveState === 'error'
+          const isComplete = sectionStatus[activeSection] === 'complete'
+          const saveState  = sectionSaveState[activeSection]
+          const isSaving   = saveState === 'saving'
+          const isError    = saveState === 'error'
+
+          // Section already marked done — show a static badge, not a clickable button
+          if (isComplete) {
+            return (
+              <span className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-green-300 bg-green-100 px-2 text-[10px] font-medium text-green-800 whitespace-nowrap">
+                <Icons.CheckCircle2 className="h-3.5 w-3.5" />
+                Section {activeSection} done
+              </span>
+            )
+          }
+
           return (
             <button
               onClick={() => { if (!isSaving) void onSectionStatusChange(activeSection, 'complete') }}
@@ -929,20 +940,17 @@ export function GTMPilot({
               className={cn(
                 'flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-[10px] font-medium transition-colors whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed',
                 isError  ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' :
-                isSaved  ? 'border-green-300 bg-green-100 text-green-800' :
                            'border-green-200 bg-green-50 text-green-700 hover:bg-green-100',
               )}
             >
               {isSaving ? (
                 <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : isSaved ? (
-                <Icons.CheckCircle2 className="h-3.5 w-3.5" />
               ) : isError ? (
                 <Icons.AlertCircle className="h-3.5 w-3.5" />
               ) : (
                 <Icons.CheckCircle2 className="h-3.5 w-3.5" />
               )}
-              {isSaving ? 'Saving…' : isSaved ? 'Saved' : isError ? 'Save failed — retry' : `Mark Section ${activeSection} done`}
+              {isSaving ? 'Saving…' : isError ? 'Save failed — retry' : `Mark Section ${activeSection} done`}
             </button>
           )
         })()}
