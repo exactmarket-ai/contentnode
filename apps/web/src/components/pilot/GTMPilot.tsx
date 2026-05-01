@@ -124,6 +124,8 @@ export interface GTMPilotProps {
   onBriefSaved?: (brief: string) => void
   // Section skip (e.g. §17 "no regulations apply" → mark complete)
   onSectionSkipped?: (sectionNum: string) => void
+  // Field population — PILOT writes confirmed content directly into framework fields
+  onFwUpdate?: (updates: Array<{ s: string; f: string; v: string }>) => void
   // Split layout mode — when true, panel uses normal flow instead of position:fixed
   splitMode?: boolean
 }
@@ -390,6 +392,7 @@ export function GTMPilot({
   companyBrief,
   onBriefSaved,
   onSectionSkipped,
+  onFwUpdate,
   splitMode = false,
 }: GTMPilotProps) {
   const [openInternal, setOpenInternal] = useState(true)
@@ -400,6 +403,8 @@ export function GTMPilot({
   const CHAT_MAX_CHARS = 2000
   const [researchPanelOpen, setResearchPanelOpen] = useState(true)
   const [historyOpen, setHistoryOpen]   = useState(false)
+  const [fieldsWrittenCount, setFieldsWrittenCount] = useState(0)
+  const fieldsWrittenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [priorSessions, setPriorSessions] = useState<PriorSession[]>([])
 
   const scrollRef    = useRef<HTMLDivElement>(null)
@@ -567,7 +572,7 @@ export function GTMPilot({
         return
       }
 
-      const { data: respData } = await res.json() as { data: { reply: string; suggestions: GtmSuggestion[] } }
+      const { data: respData } = await res.json() as { data: { reply: string; suggestions: GtmSuggestion[]; fieldUpdates?: Array<{ s: string; f: string; v: string }> } }
       const suggestions: GtmSuggestion[] = Array.isArray(respData.suggestions) ? respData.suggestions : []
       let replyContent = (respData.reply ?? '').trim()
 
@@ -584,6 +589,15 @@ export function GTMPilot({
       if (skipMatch && onSectionSkipped) {
         onSectionSkipped(skipMatch[1].padStart(2, '0'))
         replyContent = replyContent.replace(/^SECTION_SKIP:\s*\d+\s*\n?/m, '').trim()
+      }
+
+      // Apply field updates — PILOT confirmed content written directly into framework fields
+      const updates = respData.fieldUpdates ?? []
+      if (updates.length > 0 && onFwUpdate) {
+        onFwUpdate(updates)
+        if (fieldsWrittenTimer.current) clearTimeout(fieldsWrittenTimer.current)
+        setFieldsWrittenCount(updates.length)
+        fieldsWrittenTimer.current = setTimeout(() => setFieldsWrittenCount(0), 3000)
       }
 
       // Strip JSON blocks and code fences — must never render raw JSON in chat
@@ -698,6 +712,12 @@ export function GTMPilot({
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {fieldsWrittenCount > 0 && (
+            <span className="flex items-center gap-1 rounded bg-green-100 border border-green-300 px-2 py-0.5 text-[9px] font-medium text-green-800 animate-pulse">
+              <Icons.CheckCircle2 className="h-3 w-3" />
+              {fieldsWrittenCount} field{fieldsWrittenCount !== 1 ? 's' : ''} filled
+            </span>
+          )}
           {emptySections.length > 0 && (
             <span className="text-[9px] text-muted-foreground">
               {emptySections.length} section{emptySections.length !== 1 ? 's' : ''} to fill

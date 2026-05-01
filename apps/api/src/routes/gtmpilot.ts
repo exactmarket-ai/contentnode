@@ -2097,7 +2097,33 @@ SUGGESTION BLOCK — always at the very end of your message (2-3 real options, n
 Valid sectionNum values: "01" through "18"
 Valid action values: "navigate" (go to this section)
 Make suggestions feel like real strategic choices — different angles, different tradeoffs — not a queue of sections to complete in order.
-If the conversation is deep in one section and navigation isn't relevant, omit the suggestions block entirely.`
+If the conversation is deep in one section and navigation isn't relevant, omit the suggestions block entirely.
+
+FIELD UPDATE BLOCK — writes confirmed content directly into section fields:
+This is a machine-read output block stripped before display. Like the suggestion block, it never appears in your conversational response — it is invisible operational output only.
+
+Emit this block ONLY when the user explicitly confirms or approves specific text. Confirmation signals: "yes", "that works", "perfect", "let's go with that", "approved", "looks right", or any clear acceptance. Do NOT emit on your first draft, while in discussion, when suggesting options, or when asking a follow-up question. Wait for the user to accept before writing to their fields.
+
+<GTMPILOT_FIELD_UPDATES>
+[
+  {"s": "01", "f": "positioningStatement", "v": "The exact confirmed text the user approved"}
+]
+</GTMPILOT_FIELD_UPDATES>
+
+String fields available by section (these populate form fields the user sees — only these, no others):
+§01: platformName, platformBenefit, positioningStatement, taglineOptions, howToUse, whatIsNot
+§02: industry, companySize, geography, itPosture, complianceStatus, contractProfile, secondaryTargets
+§03: marketPressureNarrative, additionalContext
+§08: problems, solution, outcomes
+§11: toneTarget, vocabularyLevel, sentenceStyle, whatToAvoid
+§16: ctaSequencing
+§17: regulatorySalesNote
+
+Rules:
+- Include only the fields the user explicitly confirmed — never bulk-fill
+- Value must be the exact confirmed text, not a summary or description of it
+- Omit this block entirely if no fields were confirmed in this turn
+- Place this block AFTER the suggestion block at the very end of your response`
 }
 
 // ─── Briefer PILOT system prompt ──────────────────────────────────────────────
@@ -2397,6 +2423,18 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       replyText = fullText.replace(/<GTMPILOT_SUGGESTIONS>[\s\S]*/i, '').trim()
     }
 
+    // Extract <GTMPILOT_FIELD_UPDATES> block
+    type FieldUpdate = { s: string; f: string; v: string }
+    let fieldUpdates: FieldUpdate[] = []
+    const fuMatch = replyText.match(/<GTMPILOT_FIELD_UPDATES>([\s\S]+?)<\/GTMPILOT_FIELD_UPDATES>/i)
+    if (fuMatch) {
+      replyText = replyText.replace(fuMatch[0], '').trim()
+      try {
+        const parsed = JSON.parse(fuMatch[1].trim()) as unknown
+        if (Array.isArray(parsed)) fieldUpdates = parsed as FieldUpdate[]
+      } catch { /* malformed — return empty */ }
+    }
+
     // ── Persist session transcript ────────────────────────────────────────────
     // Guard: skip persist if response is unusually long (malformed/runaway output)
     const SESSION_MSG_MAX_CHARS = 50_000
@@ -2427,7 +2465,7 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
       }
     }
 
-    return reply.send({ data: { reply: replyText, suggestions, brainState } })
+    return reply.send({ data: { reply: replyText, suggestions, fieldUpdates, brainState } })
   })
 
   // ── GET /sessions — list summarized sessions for a client+vertical ─────────

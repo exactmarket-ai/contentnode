@@ -3933,6 +3933,17 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
           companyBrief={companyBrief || null}
           onBriefSaved={(brief) => { setCompanyBrief(brief); void saveBrief(brief); }}
           onSectionSkipped={(num) => void patchSectionStatus(num, 'complete')}
+          onFwUpdate={(updates) => {
+            set((d) => {
+              for (const u of updates) {
+                const sKey = `s${u.s}` as keyof typeof d
+                const section = d[sKey]
+                if (section && typeof section === 'object' && !Array.isArray(section)) {
+                  (section as Record<string, unknown>)[u.f] = u.v
+                }
+              }
+            })
+          }}
           splitMode={isWide}
         />
       </div>
