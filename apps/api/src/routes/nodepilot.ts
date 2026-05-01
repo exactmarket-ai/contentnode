@@ -279,14 +279,13 @@ export async function nodePilotRoutes(app: FastifyInstance) {
 
     const contextPrefix = contextParts.length > 0 ? `[${contextParts.join(' · ')}]\n\n` : ''
 
-    // Use brain_processing (sonnet) when any message has an image attachment (vision requires it)
-    // Use generation_fast (haiku) for text-only queries
+    // Vision requires a capable model; text-only queries use the fast model
     const hasImage = messages.some((m) => m.image)
-    const [{ model: brainModel }, { model: fastModel }] = await Promise.all([
-      getModelForRole('brain_processing'),
+    const [{ model: primaryModel }, { model: fastModel }] = await Promise.all([
+      getModelForRole('generation_primary'),
       getModelForRole('generation_fast'),
     ])
-    const model = hasImage ? brainModel : fastModel
+    const model = hasImage ? primaryModel : fastModel
 
     const anthropicMessages: Anthropic.MessageParam[] = messages.map((m, i) => {
       const text = i === 0 && (contextPrefix || htmlContextBlock)

@@ -2612,7 +2612,7 @@ Rules:
       })
       if (!client) return reply.code(404).send({ error: 'Client not found' })
 
-      const [brainDocs, gtm, dgBase, { model: fastModel }] = await Promise.all([
+      const [brainDocs, gtm, dgBase, { model: researchModel }] = await Promise.all([
         prisma.clientBrainAttachment.findMany({
           where: { clientId, agencyId, summaryStatus: 'ready' },
           select: { filename: true, summary: true, source: true },
@@ -2621,7 +2621,7 @@ Rules:
         }),
         prisma.clientGTMAssessment.findUnique({ where: { clientId } }),
         prisma.clientDemandGenBase.findUnique({ where: { clientId } }),
-        getModelForRole('generation_fast'),
+        getModelForRole('research_synthesis'),
       ])
 
       const brandProfile = client.brandProfiles[0]
@@ -2674,7 +2674,7 @@ Rules:
       const result = await callModel(
         {
           provider: 'anthropic',
-          model: fastModel,
+          model: researchModel,
           api_key_ref: 'ANTHROPIC_API_KEY',
           max_tokens: 1800,
           temperature: 0.4,
@@ -3089,7 +3089,7 @@ ${brainBlock}
 
     // ── Generate Creative Direction appendix via Claude ───────────────────────
     const apiKey = process.env.ANTHROPIC_API_KEY
-    const { model: brainModel } = await getModelForRole('brain_processing')
+    const { model: primaryModel } = await getModelForRole('generation_primary')
     let creativeDirection = ''
     if (apiKey) {
       const snap = [
@@ -3111,7 +3111,7 @@ ${brainBlock}
           method: 'POST',
           headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
           body: JSON.stringify({
-            model: brainModel, max_tokens: 2500, temperature: 0.3,
+            model: primaryModel, max_tokens: 2500, temperature: 0.3,
             messages: [{ role: 'user', content: `You are a senior creative director producing a presentation design brief for an agency's internal team.
 
 Based on this Company Assessment data, generate slide-by-slide creative direction for a 12-15 slide executive presentation. The presentation should follow a professional GTM strategy deck structure and visually reflect the brand's identity.
@@ -4347,10 +4347,10 @@ Rules:
         : `"${f.key}": "..."  // ${f.label}`
     ).join(',\n  ')
 
-    const { model: brainModel } = await getModelForRole('brain_processing')
+    const { model: primaryModel } = await getModelForRole('generation_primary')
 
     const result = await callModel(
-      { provider: 'anthropic', model: brainModel, api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 3000, temperature: 0.2 },
+      { provider: 'anthropic', model: primaryModel, api_key_ref: 'ANTHROPIC_API_KEY', max_tokens: 3000, temperature: 0.2 },
       `You are auto-drafting GTM Framework Section ${sectionNum} (${sectionTitle ?? ''}) for a client.
 
 CLIENT: ${client.name}
