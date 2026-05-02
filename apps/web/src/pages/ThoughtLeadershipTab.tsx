@@ -490,7 +490,7 @@ function MemberModal({ clientId, member, onClose, onSaved }: MemberModalProps) {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">Role / Title *</label>
-              <Input value={role} onChange={(e) => setRole(e.target.value)} className="h-8 text-xs" placeholder="CEO" />
+              <Input value={role} onChange={(e) => setRole(e.target.value)} className="h-8 text-xs" placeholder="e.g. CEO, VP Marketing" />
             </div>
           </div>
 
