@@ -913,15 +913,32 @@ export function TeamPage() {
       </div>
 
       {/* Role legend */}
-      <div className="mb-5 flex flex-wrap gap-x-1.5 gap-y-1.5">
-        {Object.entries(ROLE_STYLES).map(([role, s]) => (
-          <span
-            key={role}
-            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-            style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
-          >
-            {s.label}
-          </span>
+      <div className="mb-5 space-y-2">
+        {([
+          { label: 'Administrative', roles: ['owner', 'org_admin', 'admin'] },
+          { label: 'Operational',    roles: ['strategist', 'campaign_manager', 'project_manager', 'account_manager'] },
+          { label: 'Production',     roles: ['social_media_manager', 'content_manager', 'copywriter', 'seo_specialist', 'performance_marketer', 'compliance_reviewer', 'editor'] },
+          { label: 'Creative',       roles: ['art_director', 'brand_manager', 'designer'] },
+          { label: 'External',       roles: ['client_executive_approver', 'client_legal_reviewer', 'client_brand_reviewer', 'client_creative_reviewer', 'client_marcom_reviewer', 'client_product_reviewer'] },
+        ] as { label: string; roles: string[] }[]).map(({ label, roles }) => (
+          <div key={label}>
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#b4b2a9]">{label}</p>
+            <div className="flex flex-wrap gap-x-1.5 gap-y-1.5">
+              {roles.map(role => {
+                const s = ROLE_STYLES[role]
+                if (!s) return null
+                return (
+                  <span
+                    key={role}
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
+                  >
+                    {s.label}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
         ))}
       </div>
 
