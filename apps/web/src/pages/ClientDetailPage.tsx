@@ -7644,7 +7644,7 @@ export function ClientDetailPage() {
     campaigns:     'Campaigns',
     programs:      'Programs',
     deliverables:  'Deliverables',
-    'thought-leadership': 'Corp Comms',
+    'thought-leadership': 'Thought Leadership',
     newsroom:              'Content Newsroom',
     packs:                 'Content Packs',
     'content-library':     'Content Library',
@@ -7758,7 +7758,7 @@ export function ClientDetailPage() {
             )}
           >
             <Icons.Lightbulb className="h-3 w-3" />
-            Thought Leadership
+            Corp Comms
           </button>
         )}
         {/* Research group entry point */}
