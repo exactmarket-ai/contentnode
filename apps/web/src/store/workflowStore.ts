@@ -197,6 +197,12 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     category: 'source', icon: 'CheckSquare',
     defaultConfig: { subtype: 'wrike-source', days_back: 14, synthesis: 'summary' },
   },
+  {
+    type: 'keyword_research', subtype: 'keyword-research',
+    label: 'Keyword Research', description: 'Generate a keyword map from a topic or seed keyword',
+    category: 'source', icon: 'TrendingUp',
+    defaultConfig: { subtype: 'keyword-research', seedTopic: '', targetAudience: '', funnelStages: ['all'], outputVolume: 'focused', includeIntentLabels: true },
+  },
   // Video Storyboard pipeline
   {
     type: 'source', subtype: 'docx-reader',
@@ -371,23 +377,28 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
     },
   },
   {
-    type: 'logic', subtype: 'humanizer',
-    label: 'Humanizer - Old', description: 'Rewrite content to reduce AI detection score',
-    category: 'logic', icon: 'PenLine',
-    defaultConfig: {
-      subtype: 'humanizer',
-      mode: 'executive-natural',
-      naturalness: 70,
-      energy: 60,
-      precision: 65,
-      formality: 50,
-      boldness: 55,
-      compression: 40,
-      personality: 60,
-      safety: 80,
-      model_config: null,
-      targeted_rewrite: true,
-    },
+    type: 'logic', subtype: 'schema-markup',
+    label: 'Schema Markup', description: 'Generate JSON-LD schema markup for your content',
+    category: 'logic', icon: 'Code2',
+    defaultConfig: { subtype: 'schema-markup', schemaType: 'auto', outputFormat: 'json-ld-only', includeOptional: false },
+  },
+  {
+    type: 'logic', subtype: 'repurpose',
+    label: 'Repurpose', description: 'Transform one piece of content into multiple formats',
+    category: 'logic', icon: 'RefreshCw',
+    defaultConfig: { subtype: 'repurpose', targetFormats: ['linkedin_post'], preserveBrandVoice: true, outputAs: 'combined' },
+  },
+  {
+    type: 'logic', subtype: 'fact-checker',
+    label: 'Fact Checker', description: 'Verify claims and statistics in your content',
+    category: 'logic', icon: 'ShieldCheck',
+    defaultConfig: { subtype: 'fact-checker', checkMode: 'claims_statistics', action: 'annotate', sensitivity: 'medium' },
+  },
+  {
+    type: 'logic', subtype: 'internal-link-suggester',
+    label: 'Internal Link Suggester', description: 'Identify anchor text opportunities for internal linking',
+    category: 'logic', icon: 'Link',
+    defaultConfig: { subtype: 'internal-link-suggester', maxSuggestions: 5, style: 'anchor-text-only', pageTypes: ['blog', 'product', 'landing'] },
   },
   {
     type: 'logic', subtype: 'detection',

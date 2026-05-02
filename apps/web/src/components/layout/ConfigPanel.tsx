@@ -30,6 +30,7 @@ import { AudienceSignalConfig } from './config/source/AudienceSignalConfig'
 import { WrikeSourceConfig } from './config/source/WrikeSourceConfig'
 import { VideoScriptReaderConfig } from './config/source/VideoScriptReaderConfig'
 import { DocxReaderConfig } from './config/source/DocxReaderConfig'
+import { KeywordResearchConfig } from './config/source/KeywordResearchConfig'
 
 import { AiGenerateConfig } from './config/logic/AiGenerateConfig'
 import { TransformConfig } from './config/logic/TransformConfig'
@@ -43,6 +44,10 @@ import { TranslateConfig } from './config/logic/TranslateConfig'
 import { QualityReviewConfig } from './config/logic/QualityReviewConfig'
 import { SeoReviewConfig } from './config/logic/SeoReviewConfig'
 import { GeoReviewConfig } from './config/logic/GeoReviewConfig'
+import { SchemaMarkupConfig } from './config/logic/SchemaMarkupConfig'
+import { RepurposeConfig } from './config/logic/RepurposeConfig'
+import { FactCheckerConfig } from './config/logic/FactCheckerConfig'
+import { InternalLinkSuggesterConfig } from './config/logic/InternalLinkSuggesterConfig'
 import { ImagePromptBuilderConfig } from './config/logic/ImagePromptBuilderConfig'
 import { VideoPromptBuilderConfig } from './config/logic/VideoPromptBuilderConfig'
 import { VideoTranscriptionConfig } from './config/logic/VideoTranscriptionConfig'
@@ -102,6 +107,8 @@ function NodeConfigForm({
       return <ClientBrainConfig config={config} onChange={onChange} />
     case 'wrike_source':
       return <WrikeSourceConfig config={config} onChange={onChange} />
+    case 'keyword_research':
+      return <KeywordResearchConfig config={config} onChange={onChange} />
     case 'deep_web_scrape':
       return <DeepWebScrapeConfig config={config} onChange={onChange} />
     case 'review_miner':
@@ -151,6 +158,14 @@ function NodeConfigForm({
         return <SeoReviewConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'geo-review')
         return <GeoReviewConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
+      if (subtype === 'schema-markup')
+        return <SchemaMarkupConfig config={config} onChange={onChange} />
+      if (subtype === 'repurpose')
+        return <RepurposeConfig config={config} onChange={onChange} />
+      if (subtype === 'fact-checker')
+        return <FactCheckerConfig config={config} onChange={onChange} />
+      if (subtype === 'internal-link-suggester')
+        return <InternalLinkSuggesterConfig config={config} onChange={onChange} />
       if (subtype === 'image-prompt-builder')
         return <ImagePromptBuilderConfig config={config} onChange={onChange} />
       if (subtype === 'video-prompt-builder')

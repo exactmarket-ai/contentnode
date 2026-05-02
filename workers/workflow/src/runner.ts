@@ -56,6 +56,11 @@ import { StoryboardSceneParserExecutor } from './executors/storyboardSceneParser
 import { StoryboardImagePromptBuilderExecutor } from './executors/storyboardImagePromptBuilder.js'
 import { SeoReviewNodeExecutor } from './executors/seoReview.js'
 import { GeoReviewNodeExecutor } from './executors/geoReview.js'
+import { SchemaMarkupExecutor } from './executors/schemaMarkup.js'
+import { RepurposeExecutor } from './executors/repurpose.js'
+import { FactCheckerExecutor } from './executors/factChecker.js'
+import { InternalLinkSuggesterExecutor } from './executors/internalLinkSuggester.js'
+import { KeywordResearchExecutor } from './executors/keywordResearch.js'
 import type { NodeExecutor, NodeExecutionContext } from './executors/base.js'
 import { trackInsightOutcomes } from './patternDetector.js'
 import { extractAndSaveQuality } from './qualityExtractor.js'
@@ -152,6 +157,12 @@ const EXECUTOR_REGISTRY: Record<string, new () => NodeExecutor> = {
   // SEO / GEO Review gates
   'logic:seo-review':              SeoReviewNodeExecutor,
   'logic:geo-review':              GeoReviewNodeExecutor,
+  // New utility nodes
+  'logic:schema-markup':           SchemaMarkupExecutor,
+  'logic:repurpose':               RepurposeExecutor,
+  'logic:fact-checker':            FactCheckerExecutor,
+  'logic:internal-link-suggester': InternalLinkSuggesterExecutor,
+  'keyword_research':              KeywordResearchExecutor,
   // Phase 3 — Intelligence Tools
   'deep_web_scrape':               DeepWebScrapeExecutor,
   'review_miner':                  ReviewMinerExecutor,
