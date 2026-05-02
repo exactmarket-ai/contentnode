@@ -118,8 +118,8 @@ export function ReviewMinerConfig({
         </Select>
       </FieldGroup>
 
-      <div className="rounded-md bg-amber-950/30 border border-amber-900/40 p-2.5 mt-1">
-        <p className="text-[10px] text-amber-400 leading-relaxed">
+      <div className="border-l-2 border-amber-400 bg-amber-50 pl-2.5 pr-2 py-2 mt-1">
+        <p className="text-[10px] text-amber-700 leading-relaxed">
           Review sites use heavy JS rendering — extraction works best on Trustpilot. For G2/Capterra, results may be partial. Use "Custom URL" to target any page directly.
         </p>
       </div>
