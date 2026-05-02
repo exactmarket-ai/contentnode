@@ -918,9 +918,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         {
           ...connection,
           animated: false,
-          // Preserve the source handle ID as the edge label so the runner
-          // can do port-based routing (e.g. 'pass' / 'fail' for branch nodes)
+          // Preserve sourceHandle as label so the runner can do port-based
+          // routing (e.g. 'pass' / 'fail'). sourceHandle and targetHandle are
+          // also kept as native React Flow fields so they survive serialization
+          // and are restored correctly on canvas reload.
           label: connection.sourceHandle ?? undefined,
+          sourceHandle: connection.sourceHandle ?? undefined,
+          targetHandle: connection.targetHandle ?? undefined,
         },
         get().edges,
       ),

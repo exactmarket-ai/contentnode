@@ -158,12 +158,16 @@ export async function runRoutes(app: FastifyInstance) {
             const resolvedModelCfg = nodeModelCfg ?? (Object.keys(defaultModelCfg).length > 0 ? defaultModelCfg : registryPrimary)
             const isOfflineRun = connectivityMode === 'offline'
             const resolvedProvider = (resolvedModelCfg.provider as string | undefined) ?? registryPrimary.provider
+            const resolvedModel = isOfflineRun
+              ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
+              : (resolvedModelCfg.model as string | undefined) ?? registryPrimary.model
+            const TEMPERATURE_UNSUPPORTED = new Set(['gpt-5.5', 'gpt-5.5-pro', 'o3'])
             const modelFields = n.type === 'logic' ? {
               provider: isOfflineRun ? 'ollama' : resolvedProvider,
-              model: isOfflineRun
-                ? (resolvedProvider === 'ollama' ? (resolvedModelCfg.model as string | undefined) ?? 'gemma3:12b' : 'gemma3:12b')
-                : (resolvedModelCfg.model as string | undefined) ?? registryPrimary.model,
-              temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
+              model: resolvedModel,
+              ...(!TEMPERATURE_UNSUPPORTED.has(resolvedModel) ? {
+                temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
+              } : {}),
             } : {}
 
             return {

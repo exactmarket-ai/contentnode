@@ -116,6 +116,11 @@ export function WorkflowEditor() {
           source: e.sourceNodeId as string,
           target: e.targetNodeId as string,
           label: e.label as string | undefined,
+          // Restore handle IDs so React Flow reconnects to the correct port on
+          // multi-port nodes. sourceHandle is stored in label; targetHandle is
+          // stored in condition.targetHandle.
+          sourceHandle: (e.label as string | undefined) ?? undefined,
+          targetHandle: ((e.condition as Record<string, unknown> | null)?.targetHandle as string | undefined) ?? undefined,
           animated: false,
         }))
         const defaultAssignee = data.defaultAssignee as { id: string; name: string | null } | null

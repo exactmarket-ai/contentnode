@@ -227,7 +227,7 @@ export async function workflowRoutes(app: FastifyInstance) {
         style?: { width?: number; height?: number }
         zIndex?: number
       }>
-      edges?: Array<{ id?: string; source: string; target: string; sourceHandle?: string; label?: string }>
+      edges?: Array<{ id?: string; source: string; target: string; sourceHandle?: string; targetHandle?: string; label?: string }>
       name?: string
       defaultModelConfig?: Record<string, unknown>
     }
@@ -322,6 +322,8 @@ export async function workflowRoutes(app: FastifyInstance) {
             sourceNodeId: e.source,
             targetNodeId: e.target,
             label: e.sourceHandle ?? e.label ?? null,
+            // Store targetHandle in the unused condition JSON column — no migration needed
+            condition: e.targetHandle ? { targetHandle: e.targetHandle } : undefined,
           })),
         })
       }
