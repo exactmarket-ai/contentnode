@@ -378,12 +378,9 @@ function BrainPopover({
             <Button variant="outline" size="sm" className="h-6 text-[11px] flex-1" onClick={onResynthesize}>
               <Icons.RefreshCw className="h-3 w-3 mr-1" />Re-synthesize
             </Button>
-            {(brain?.attachments?.find((a) => a.source === 'social_sync') !== undefined ||
-              (brain as BrainStatus | null)?.socialSyncLastRanAt !== undefined) && (
-              <Button variant="outline" size="sm" className="h-6 text-[11px] flex-1" onClick={onSyncNow}>
-                <Icons.RefreshCcw className="h-3 w-3 mr-1" />Sync now
-              </Button>
-            )}
+            <Button variant="outline" size="sm" className="h-6 text-[11px] flex-1" onClick={onSyncNow}>
+              <Icons.RefreshCcw className="h-3 w-3 mr-1" />Sync profiles
+            </Button>
           </div>
         </div>
       </div>
@@ -906,13 +903,15 @@ function BrainTab({
             <span className="text-[11px] text-muted-foreground">· {formatRelative(brain.lastSynthesisAt)}</span>
           )}
         </div>
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onResynthesize} disabled={resynthesizing}>
+        <div className="flex gap-1.5">
+          <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 gap-1" onClick={onResynthesize} disabled={resynthesizing}>
             {resynthesizing ? <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Icons.RefreshCw className="h-2.5 w-2.5" />}
+            Re-synthesize
           </Button>
           {hasSyncableProfiles && (
-            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onSyncNow} disabled={syncing}>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 gap-1" onClick={onSyncNow} disabled={syncing}>
               {syncing ? <Icons.Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Icons.RefreshCcw className="h-2.5 w-2.5" />}
+              Sync profiles
             </Button>
           )}
         </div>
