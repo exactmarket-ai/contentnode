@@ -2081,12 +2081,6 @@ export function SettingsPage() {
           {/* ── Document Templates ───────────────────────────────────────── */}
           <DocTemplateSection />
 
-          {/* ── Prompt Templates + Image Prompts (side by side) ──────────── */}
-          <div className="grid grid-cols-2 gap-8 items-start">
-            <PromptsSection />
-            <ImagePromptsSection />
-          </div>
-
           {/* ── External Contacts ────────────────────────────────────────── */}
           <section>
             <div className="flex items-center gap-2 mb-1">
