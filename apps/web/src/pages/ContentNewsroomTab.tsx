@@ -506,6 +506,8 @@ type ResearchPhase =
   | { kind: 'done'; elapsed: number }
   | { kind: 'error'; message: string; preservedInput: string }
 
+const RESEARCH_JOB_KEY = (clientId: string) => `newsroom-research-job:${clientId}`
+
 function ResearchTopicFlow({
   clientId,
   verticals,
@@ -521,9 +523,27 @@ function ResearchTopicFlow({
   const [userInput, setUserInput] = useState('')
   const [selectedVertical, setSelectedVertical] = useState<string | null>(null)
   const [recency, setRecency] = useState<RecencyWindow>('7d')
-  const [phase, setPhase] = useState<ResearchPhase>({ kind: 'idle' })
+  const [phase, setPhase] = useState<ResearchPhase>(() => {
+    // Resume in-progress job if one was running when user navigated away
+    try {
+      const saved = localStorage.getItem(RESEARCH_JOB_KEY(clientId))
+      if (saved) {
+        const { jobId, startMs } = JSON.parse(saved) as { jobId: string; startMs: number }
+        if (jobId && startMs) return { kind: 'polling', jobId, startMs }
+      }
+    } catch { /* ignore */ }
+    return { kind: 'idle' }
+  })
   const [currentStep, setCurrentStep] = useState<string | null>(null)
   const [elapsedSecs, setElapsedSecs] = useState(0)
+
+  // Resume polling if component mounted with a saved in-progress job
+  useEffect(() => {
+    if (phase.kind === 'polling' && phase.jobId) {
+      startPolling(phase.jobId, phase.startMs)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // only on mount
 
   // Auto-skip step 2 if only one vertical
   useEffect(() => {
@@ -566,6 +586,7 @@ function ResearchTopicFlow({
 
         if (data.status === 'complete') {
           stopPolling()
+          localStorage.removeItem(RESEARCH_JOB_KEY(clientId))
           const elapsed = Math.floor((Date.now() - startMs) / 1000)
           saveDuration(clientId, elapsed)
           setPhase({ kind: 'done', elapsed })
@@ -581,6 +602,7 @@ function ResearchTopicFlow({
           }, 4000)
         } else if (data.status === 'failed') {
           stopPolling()
+          localStorage.removeItem(RESEARCH_JOB_KEY(clientId))
           setPhase({ kind: 'error', message: data.errorMessage ?? 'Research failed', preservedInput: userInput })
         }
       } catch { /* ignore poll errors */ }
@@ -603,6 +625,7 @@ function ResearchTopicFlow({
         return
       }
       const startMs = Date.now()
+      localStorage.setItem(RESEARCH_JOB_KEY(clientId), JSON.stringify({ jobId: data.jobId, startMs }))
       setPhase({ kind: 'polling', jobId: data.jobId, startMs })
       setElapsedSecs(0)
       startPolling(data.jobId, startMs)
