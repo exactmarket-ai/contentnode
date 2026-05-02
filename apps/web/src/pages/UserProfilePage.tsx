@@ -176,7 +176,7 @@ function OllamaModelsSection() {
           No models added — pickers will show built-in suggestions only.
         </p>
       ) : (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
           {models.map((m) => (
             <div key={m} className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
               <span className="text-sm font-mono">{m}</span>
