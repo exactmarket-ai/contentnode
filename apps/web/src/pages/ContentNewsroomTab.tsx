@@ -423,7 +423,7 @@ function ResearchTasksSidebar({
       )}
 
       {!loading && tasks.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 'calc(100vh - 320px)', overflowY: 'auto', paddingRight: 2 }}>
           {Array.from(groups.entries()).map(([key, group]) => {
             const isOpen = !collapsed.has(key)
             return (
@@ -1751,7 +1751,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
       </div>
 
       {/* ── Right column — sidebar ─────────────────────────────────── */}
-      <div style={{ width: 320, flexShrink: 0, borderLeft: '0.5px solid var(--border)', paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 24, position: 'sticky', top: 0, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', paddingBottom: 24 }}>
+      <div style={{ width: 320, flexShrink: 0, borderLeft: '0.5px solid var(--border)', paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
 
         {/* Section 1: Research Topic flow */}
         <ResearchTopicFlow
