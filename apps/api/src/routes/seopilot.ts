@@ -251,6 +251,51 @@ OUTPUT FORMAT (output turn only — omit <PATHS> in this response):
 
 // ─── Routes ────────────────────────────────────────────────────────────────────
 
+// ─── Brain note builder ────────────────────────────────────────────────────────
+
+function buildSeoStrategyBrainNote(
+  strategy: Record<string, unknown>,
+  templateName: string,
+  priorities: Array<Record<string, unknown>>,
+): string {
+  const lines: string[] = [
+    `SEO STRATEGY SESSION: ${templateName}`,
+    `Date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
+    '',
+    'STRATEGIC DIRECTION:',
+    String(strategy.summary ?? ''),
+    '',
+    `PRIMARY KEYWORD: ${String(strategy.primaryKeyword ?? '')}`,
+  ]
+
+  const secondary = strategy.secondaryKeywords
+  if (Array.isArray(secondary) && secondary.length > 0) {
+    lines.push('', 'SECONDARY KEYWORDS:')
+    for (const kw of secondary) lines.push(`- ${String(kw)}`)
+  }
+
+  const clusters = strategy.topicClusters
+  if (Array.isArray(clusters) && clusters.length > 0) {
+    lines.push('', 'TOPIC CLUSTERS:')
+    for (const c of clusters as Array<Record<string, unknown>>) {
+      lines.push(`  ${String(c.pillarTopic ?? '')} (pillar keyword: ${String(c.pillarKeyword ?? '')})`)
+      const topics = c.clusterTopics
+      if (Array.isArray(topics) && topics.length > 0) {
+        lines.push(`  Cluster: ${(topics as string[]).join(', ')}`)
+      }
+    }
+  }
+
+  if (priorities.length > 0) {
+    lines.push('', `CONTENT BRIEFS (${priorities.length}):`)
+    for (const p of priorities) {
+      lines.push(`- ${String(p.topic ?? '')} — ${String(p.targetKeyword ?? '')} [${String(p.funnelStage ?? '')} / ${String(p.urgency ?? '')}]`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
 export async function seoPilotRoutes(app: FastifyInstance) {
   const roleGuard = { preHandler: requireRole(...SEO_ROLES) }
 
@@ -408,8 +453,10 @@ export async function seoPilotRoutes(app: FastifyInstance) {
     const updatedMessages = [...messages, assistantMessage]
 
     if (strategyOutput) {
-      // Session complete — save strategy, create briefs
+      // Session complete — save strategy, create briefs, write to brain
       const priorities = (strategyOutput.contentPriorities as Array<Record<string, unknown>>) ?? []
+      const templateName = SEO_TEMPLATES[templateKey]?.name ?? templateKey
+      const brainSummary = buildSeoStrategyBrainNote(strategyOutput, templateName, priorities)
 
       await prisma.$transaction(async (tx) => {
         await tx.seoStrategySession.update({
@@ -438,6 +485,22 @@ export async function seoPilotRoutes(app: FastifyInstance) {
             })),
           })
         }
+
+        // Write strategy to client brain so future sessions inherit these decisions
+        await tx.clientBrainAttachment.create({
+          data: {
+            agencyId,
+            clientId,
+            filename:         `SEO Strategy — ${templateName} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`,
+            mimeType:         'text/plain',
+            sizeBytes:        brainSummary.length,
+            extractionStatus: 'ready',
+            summaryStatus:    'ready',
+            summary:          brainSummary,
+            source:           'seo_strategy',
+            uploadMethod:     'note',
+          },
+        })
       })
     } else {
       await prisma.seoStrategySession.update({
