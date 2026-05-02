@@ -42,7 +42,7 @@ const sortedByLabel = (nodes: PaletteNodeDef[]) =>
   [...nodes].sort((a, b) => a.label.localeCompare(b.label))
 
 // Category display order — Output listed after Media
-const CATEGORY_ORDER: NodeCategory[] = ['source', 'logic', 'review', 'media', 'video', 'output']
+const CATEGORY_ORDER: NodeCategory[] = ['source', 'logic', 'review', 'media', 'output']
 
 // Number of nodes shown when a category section is collapsed
 const COLLAPSED_PREVIEW = 3
@@ -683,7 +683,7 @@ function CollapsedToolbar({ onExpand, onShowInsights }: { onExpand: () => void; 
     return () => document.removeEventListener('mousedown', handler)
   }, [openCat])
 
-  const categories: NodeCategory[] = ['source', 'logic', 'media', 'output']
+  const categories: NodeCategory[] = ['source', 'logic', 'review', 'media', 'output']
 
   return (
     <div ref={toolbarRef} className="relative flex h-full flex-col items-center py-2 gap-1">

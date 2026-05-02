@@ -207,67 +207,67 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'source', subtype: 'docx-reader',
     label: 'DOCX Reader', description: 'Upload a .docx or .txt file and extract its plain text for downstream processing',
-    category: 'video', icon: 'FileText',
+    category: 'source', icon: 'FileText',
     defaultConfig: { subtype: 'docx-reader', storageKey: '' },
   },
   {
     type: 'logic', subtype: 'storyboard-scene-parser',
     label: 'Scene Parser (AI)', description: 'Use Claude to extract structured scenes from any plain-text video script',
-    category: 'video', icon: 'ListOrdered',
+    category: 'media', icon: 'ListOrdered',
     defaultConfig: { subtype: 'storyboard-scene-parser' },
   },
   {
     type: 'logic', subtype: 'storyboard-image-prompt-builder',
     label: 'Image Prompt Builder', description: 'Generate per-scene image generation prompts tailored to your brand',
-    category: 'video', icon: 'Wand2',
+    category: 'media', icon: 'Wand2',
     defaultConfig: { subtype: 'storyboard-image-prompt-builder', clientName: '', verticalName: '', brandStyle: '' },
   },
   {
     type: 'source', subtype: 'video-script-reader',
     label: 'Video Script Reader', description: 'Load a video script from a GTM Kit session or upstream text input',
-    category: 'video', icon: 'FileVideo',
+    category: 'source', icon: 'FileVideo',
     defaultConfig: { subtype: 'video-script-reader', source: 'passthrough', kitSessionId: '', assetIndex: 5 },
   },
   {
     type: 'logic', subtype: 'scene-parser',
     label: 'Scene Parser', description: 'Parse a video script markdown table into structured scene objects',
-    category: 'video', icon: 'ListOrdered',
+    category: 'media', icon: 'ListOrdered',
     defaultConfig: { subtype: 'scene-parser' },
   },
   {
     type: 'logic', subtype: 'storyboard-frame-gen',
     label: 'Frame Generator', description: 'Generate AI images for every scene using GPT Image 2 (1–4 frames per scene)',
-    category: 'video', icon: 'Image',
+    category: 'media', icon: 'Image',
     defaultConfig: { subtype: 'storyboard-frame-gen', framesPerScene: 1, clientName: '', verticalName: '' },
   },
   {
     type: 'output', subtype: 'storyboard-pdf-builder',
     label: 'Storyboard PDF', description: 'Render all scenes to a branded PDF storyboard and upload to storage',
-    category: 'video', icon: 'BookMarked',
+    category: 'output', icon: 'BookMarked',
     defaultConfig: { subtype: 'storyboard-pdf-builder', clientName: '', verticalName: '', version: 'v1', filename: '' },
   },
   {
     type: 'logic', subtype: 'frames-config',
     label: 'Frames Config', description: 'Set how many storyboard frames to generate per scene (1–4) — legacy node',
-    category: 'video', icon: 'LayoutGrid',
+    category: 'media', icon: 'LayoutGrid',
     defaultConfig: { subtype: 'frames-config', framesPerScene: 1 },
   },
   {
     type: 'logic', subtype: 'storyboard-composer',
     label: 'Storyboard Composer', description: 'Render a single storyboard page to PDF — use Storyboard PDF for full pipelines',
-    category: 'video', icon: 'PanelLeft',
+    category: 'media', icon: 'PanelLeft',
     defaultConfig: { subtype: 'storyboard-composer', clientName: '', verticalName: '' },
   },
   {
     type: 'output', subtype: 'pdf-assembler',
     label: 'PDF Assembler', description: 'Combine individual PDF page buffers into one file — use Storyboard PDF for full pipelines',
-    category: 'video', icon: 'FileText',
+    category: 'media', icon: 'FileText',
     defaultConfig: { subtype: 'pdf-assembler', filename: '' },
   },
   {
     type: 'audio_input', subtype: 'audio-input',
     label: 'Audio Input', description: 'Upload an existing audio file to use as a source in your workflow',
-    category: 'media', icon: 'FileAudio',
+    category: 'source', icon: 'FileAudio',
     defaultConfig: { subtype: 'audio-input' },
   },
   // Logic
@@ -355,7 +355,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'quality-review',
     label: 'Quality Reviewer', description: 'Rate output and suggest prompt/content improvements',
-    category: 'logic', icon: 'BadgeCheck',
+    category: 'review', icon: 'BadgeCheck',
     defaultConfig: {
       subtype: 'quality-review',
       goal: 'Evaluate this content for a marketing director audience. It should be engaging, persuasive, and drive the reader toward a clear call-to-action. Avoid academic or overly technical language. Score based on clarity, audience fit, tone, and whether it ends with a compelling CTA.',
@@ -391,7 +391,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'fact-checker',
     label: 'Fact Checker', description: 'Verify claims and statistics in your content',
-    category: 'logic', icon: 'ShieldCheck',
+    category: 'review', icon: 'ShieldCheck',
     defaultConfig: { subtype: 'fact-checker', checkMode: 'claims_statistics', action: 'annotate', sensitivity: 'medium' },
   },
   {
@@ -403,7 +403,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'detection',
     label: 'Detection', description: 'Score content for AI detection likelihood',
-    category: 'logic', icon: 'ScanSearch',
+    category: 'review', icon: 'ScanSearch',
     defaultConfig: {
       subtype: 'detection',
       service: 'gptzero',
@@ -518,7 +518,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'output', subtype: 'media-download',
     label: 'Media Download', description: 'Preview and download an image or video from an upstream node',
-    category: 'media', icon: 'ImageDown',
+    category: 'output', icon: 'ImageDown',
     defaultConfig: { subtype: 'media-download' },
   },
   {

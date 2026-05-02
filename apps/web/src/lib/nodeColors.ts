@@ -107,18 +107,21 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
   },
 }
 
-const REVIEW_SUBTYPES = new Set(['seo-review', 'geo-review'])
+const REVIEW_SUBTYPES = new Set(['seo-review', 'geo-review', 'quality-review', 'detection', 'fact-checker'])
 
 const MEDIA_SUBTYPES = new Set([
-  'audio-input', 'voice-output', 'music-generation', 'audio-mix', 'audio-replace',
-  'video-generation', 'image-generation', 'character-animation', 'media-download',
+  'voice-output', 'music-generation', 'audio-mix', 'audio-replace',
+  'video-generation', 'image-generation', 'character-animation',
   'image-resize', 'video-composition',
   'video-frame-extractor', 'video-intelligence', 'video-prompt-builder', 'image-prompt-builder',
   'video-trimmer', 'video-resize',
+  // storyboard pipeline (moved from video category)
+  'storyboard-scene-parser', 'storyboard-image-prompt-builder', 'scene-parser',
+  'storyboard-frame-gen', 'frames-config', 'storyboard-composer', 'pdf-assembler',
 ])
 
 const MEDIA_TYPES = new Set([
-  'voice_output', 'music_generation', 'audio_mix', 'audio_input', 'audio_replace',
+  'voice_output', 'music_generation', 'audio_mix', 'audio_replace',
   'character_animation', 'video_composition',
 ])
 
@@ -133,7 +136,8 @@ export function getNodeSpec(type: string, subtype?: string): NodeSpec {
   } else if (
     type === 'source' || type === 'gtm_framework' || type === 'brand_context' ||
     type === 'client_brain' || type === 'deep_web_scrape' || type === 'review_miner' ||
-    type === 'seo_intent' || type === 'audience_signal' || type === 'wrike_source'
+    type === 'seo_intent' || type === 'audience_signal' || type === 'wrike_source' ||
+    type === 'keyword_research' || type === 'audio_input'
   ) {
     specType = 'input'
   } else if (type === 'logic') {

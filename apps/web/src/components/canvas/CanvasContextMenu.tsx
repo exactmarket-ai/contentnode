@@ -6,7 +6,7 @@ import { NODE_SPEC } from '@/lib/nodeColors'
 import { cn } from '@/lib/utils'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
-  source: 'Source', logic: 'Logic', output: 'Output', media: 'Media', insight: 'Insight', canvas: 'Canvas',
+  source: 'Source', logic: 'Logic', review: 'Review', output: 'Output', media: 'Media', video: 'Video', insight: 'Insight', canvas: 'Canvas',
 }
 
 type IconComponent = React.ComponentType<{ className?: string; style?: React.CSSProperties }>
@@ -14,6 +14,7 @@ type IconComponent = React.ComponentType<{ className?: string; style?: React.CSS
 const CATEGORY_ICONS: Record<string, IconComponent> = {
   source: Icons.Database,
   logic:  Icons.GitBranch,
+  review: Icons.CheckCircle,
   output: Icons.Share2,
   media:  Icons.Film,
   canvas: Icons.RectangleHorizontal,
@@ -22,8 +23,10 @@ const CATEGORY_ICONS: Record<string, IconComponent> = {
 const CATEGORY_SPEC: Record<NodeCategory, typeof NODE_SPEC[keyof typeof NODE_SPEC]> = {
   source:  NODE_SPEC['input'],
   logic:   NODE_SPEC['ai-model'],
+  review:  NODE_SPEC['review'],
   output:  NODE_SPEC['transform'],
   media:   NODE_SPEC['media'],
+  video:   NODE_SPEC['media'],
   insight: NODE_SPEC['ai-model'],
   canvas:  NODE_SPEC['input'],
 }
@@ -39,7 +42,7 @@ interface Props {
   onClose: () => void
 }
 
-const CATEGORIES: NodeCategory[] = ['source', 'logic', 'output', 'media']
+const CATEGORIES: NodeCategory[] = ['source', 'logic', 'review', 'media', 'output']
 
 export function CanvasContextMenu({ x, y, onClose }: Props) {
   const addNodeBySubtype = useWorkflowStore((s) => s.addNodeBySubtype)
