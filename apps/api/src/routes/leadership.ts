@@ -25,6 +25,7 @@ const memberBody = z.object({
   signatureTopics: z.array(z.string()).default([]),
   signatureStories:z.array(z.string()).default([]),
   avoidPhrases:    z.array(z.string()).default([]),
+  linkedUserId:    z.string().nullable().optional(),
 })
 
 const memberPatch = memberBody.partial().omit({ clientId: true }).extend({
@@ -187,13 +188,14 @@ export async function leadershipRoutes(app: FastifyInstance) {
         signatureTopics: parsed.data.signatureTopics,
         signatureStories:parsed.data.signatureStories,
         avoidPhrases:    parsed.data.avoidPhrases,
+        ...(parsed.data.linkedUserId ? { userId: parsed.data.linkedUserId } : {}),
       },
     })
 
     // Seed brain asynchronously — don't block the response
     seedOrUpdateBrainViaAttachment(agencyId, parsed.data.clientId, member.id, member).catch(() => {})
 
-    return reply.code(201).send({ data: { ...member, linkedUserId: null } })
+    return reply.code(201).send({ data: { ...member, linkedUserId: parsed.data.linkedUserId ?? null } })
   })
 
   // ── PATCH /:id — update member ─────────────────────────────────────────────

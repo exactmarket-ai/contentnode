@@ -61,13 +61,15 @@ async function summariseDiff(
   fastModel: string,
   userContext: { name: string; role: string } | null,
   signalType: 'save' | 'approval',
+  contentType: string,
 ): Promise<string> {
   const editorLine = userContext
-    ? `Editor: ${userContext.name} (${userContext.role})`
-    : 'Editor: unknown'
+    ? `Editor context: ${userContext.name} (${userContext.role})`
+    : 'Editor context: unknown'
 
   const prompt = `A human editor revised this content.
 ${editorLine}
+Content type: ${contentType}
 Signal type: ${signalType}
 
 BEFORE:
@@ -76,12 +78,15 @@ ${previousContent.slice(0, 800)}
 AFTER:
 ${newContent.slice(0, 800)}
 
+Analyze what changed specifically for this content type (${contentType}).
+The rules for a good X post are different from a good blog post — tailor your observations accordingly.
+
 In 3-5 bullet points, describe:
-- What structural or formatting changes were made
+- What structural or formatting changes were made (specific to this content type)
 - What phrases, transitions, or sentences were removed or replaced
 - What was added that was not in the original
 - What the opening change reveals (if any)
-- What this suggests about how this editor prefers content to read
+- What this suggests about how this editor prefers ${contentType} content to read
 
 Be specific. Use exact phrases from the text as examples.
 Return bullet points only. No preamble.`
@@ -283,7 +288,7 @@ async function processEditSignal(job: Job<ContentLibraryEditSignalJobData>): Pro
   // 2. Summarize the diff
   let editSignalSummary = ''
   try {
-    editSignalSummary = await summariseDiff(beforeContent, content, fastProv, fastModel, userCtx, signalType)
+    editSignalSummary = await summariseDiff(beforeContent, content, fastProv, fastModel, userCtx, signalType, promptName)
   } catch (err) {
     console.error(`[editSignal] diff summarization failed for item ${itemId}:`, err)
     editSignalSummary = '[Diff analysis unavailable]'

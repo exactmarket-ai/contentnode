@@ -18,66 +18,62 @@ import { Worker, type Job } from 'bullmq'
 // ── Synthesis prompt ──────────────────────────────────────────────────────────
 
 function buildSynthesisPrompt(
-  signals: Array<{ diffSummary: string | null; originalText: string; editedText: string }>,
+  signals: Array<{ diffSummary: string | null; originalText: string; editedText: string; contentType: string | null }>,
   scope: string,
   scopeLabel: string,
 ): string {
-  const summaries = signals
+  const allSummaries = signals
     .filter((s) => s.diffSummary)
-    .map((s) => s.diffSummary as string)
+    .map((s) => `[${s.contentType ?? 'unknown'}] ${s.diffSummary}`)
     .join('\n---\n')
 
   const pairs = signals
     .slice(0, 5)
-    .map((s, i) => `PAIR ${i + 1}:\nOriginal: ${s.originalText.slice(0, 300)}\nApproved: ${s.editedText.slice(0, 300)}`)
+    .map((s, i) => `PAIR ${i + 1} [${s.contentType ?? 'unknown'}]:\nOriginal: ${s.originalText.slice(0, 300)}\nApproved: ${s.editedText.slice(0, 300)}`)
     .join('\n\n')
+
+  const distinctContentTypes = [...new Set(
+    signals.map((s) => s.contentType).filter(Boolean) as string[]
+  )]
+  const contentTypeList = distinctContentTypes.length > 0
+    ? distinctContentTypes.join(', ')
+    : 'unknown'
 
   return `You are building a style intelligence profile for a content generation system.
 This profile will be injected into content generation prompts to make AI-generated
 content read more like genuine human writing from the start.
 
-The profile is based on real human editorial decisions — what human editors
+The profile is based on real human editorial decisions — what editors
 consistently changed when reviewing AI-generated content.
 
-SCOPE: ${scope} — ${scopeLabel}
-
 EDIT SIGNALS (${signals.length} total):
-${summaries}
+${allSummaries}
 
-SAMPLE ORIGINALS AND APPROVALS:
+SAMPLE BEFORE/AFTER PAIRS:
 ${pairs}
 
-Synthesize these signals into a set of specific, actionable writing instructions.
-Cover:
+Synthesize these signals into actionable writing instructions.
+Group your output by content type. Content types present in these signals:
+${contentTypeList}
 
-1. OPENING PATTERNS
-   How should content open? What do humans consistently change about AI openings?
-   Give specific rules e.g. "Never start with a question" or "First sentence must
-   be a direct statement, not a setup."
+For EACH content type present, produce a labeled section:
 
-2. SENTENCE STRUCTURE
-   What sentence rhythm do humans prefer? What do they change about AI sentence
-   length or complexity?
+[CONTENT TYPE NAME]
+1. Opening: How should this content type open? What do editors change about AI openings?
+2. Sentence rhythm: What length and complexity do editors prefer for this type?
+3. Remove these transitions: List specific phrases editors consistently delete.
+4. Structure: Prose vs formatting — what do editors add or remove?
+5. Voice: What do editors inject that AI does not generate?
+6. Never do: The most common AI patterns editors remove. Exact phrases and habits.
 
-3. TRANSITIONS AND CONNECTIVE TISSUE
-   Which transition phrases do humans remove? What do they use instead?
-   List specific words and phrases to avoid.
+After all per-type sections, add:
 
-4. STRUCTURAL PREFERENCES
-   Do humans prefer prose or structure? When do they remove headers or bullets?
-   When do they add them?
+[ALL CONTENT TYPES]
+Patterns observed across every content type regardless of format.
 
-5. VOICE MARKERS
-   What do humans inject that AI doesn't generate? First-person observations?
-   Specific stories? Direct opinions? Contrarian statements?
-
-6. WHAT TO AVOID
-   The most common AI writing patterns that humans consistently remove or replace.
-   Be specific — list exact phrases, sentence starters, and structural habits.
-
-Write this as a set of direct instructions for a content generator, not an analysis.
-Use "Do" and "Do not" framing. Be specific. Under 400 words.
-Return the instructions only. No preamble, no headers.`
+Use "Do" and "Do not" framing throughout. Be specific — use exact phrases
+from the signals as examples. Under 600 words total.
+Return instructions only. No preamble.`
 }
 
 // ── Main processor ────────────────────────────────────────────────────────────
@@ -86,7 +82,7 @@ async function processHumanizerSynthesis(job: Job<HumanizerSynthesisJobData>): P
   const { agencyId, scope, scopeId } = job.data
 
   await withAgency(agencyId, async () => {
-    let signals: Array<{ diffSummary: string | null; originalText: string; editedText: string }>
+    let signals: Array<{ diffSummary: string | null; originalText: string; editedText: string; contentType: string | null }>
     let scopeLabel: string
 
     if (scope === 'user' && scopeId) {
@@ -95,8 +91,9 @@ async function processHumanizerSynthesis(job: Job<HumanizerSynthesisJobData>): P
         diff_summary: string | null
         original_text: string
         edited_text: string
+        content_type: string | null
       }>>`
-        SELECT diff_summary, original_text, edited_text
+        SELECT diff_summary, original_text, edited_text, content_type
         FROM humanizer_signals
         WHERE agency_id = ${agencyId} AND user_id = ${scopeId}
         ORDER BY created_at ASC
@@ -105,6 +102,7 @@ async function processHumanizerSynthesis(job: Job<HumanizerSynthesisJobData>): P
         diffSummary:  r.diff_summary,
         originalText: r.original_text,
         editedText:   r.edited_text,
+        contentType:  r.content_type,
       }))
 
       // Get user name for the scope label
@@ -122,7 +120,7 @@ async function processHumanizerSynthesis(job: Job<HumanizerSynthesisJobData>): P
       signals = await prisma.humanizerSignal.findMany({
         where: where as Parameters<typeof prisma.humanizerSignal.findMany>[0]['where'],
         orderBy: { createdAt: 'asc' },
-        select: { diffSummary: true, originalText: true, editedText: true },
+        select: { diffSummary: true, originalText: true, editedText: true, contentType: true },
       })
 
       scopeLabel = scope === 'agency'
