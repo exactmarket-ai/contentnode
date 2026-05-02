@@ -66,6 +66,7 @@ import { agencyPromptTemplateRoutes }   from './routes/agencyPromptTemplates.js'
 import { contentLibraryRoutes }         from './routes/contentLibrary.js'
 import { modelRegistryRoutes }          from './routes/modelRegistry.js'
 import { cnHumanizerIntelligenceRoutes } from './routes/cnHumanizerIntelligence.js'
+import { seoPilotRoutes }               from './routes/seopilot.js'
 import { getRedis } from './lib/redis.js'
 
 const app = Fastify({
@@ -204,6 +205,7 @@ await app.register(agencyPromptTemplateRoutes,    { prefix: '/api/v1/agency/prom
 await app.register(contentLibraryRoutes,            { prefix: '/api/v1/content-library' })
 await app.register(modelRegistryRoutes,             { prefix: '/api/v1/model-registry' })
 await app.register(cnHumanizerIntelligenceRoutes,   { prefix: '/api/v1/cn-humanizer-intelligence' })
+await app.register(seoPilotRoutes,                  { prefix: '/api/v1/seo' })
 
 // ── Start ─────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT ?? 3001)

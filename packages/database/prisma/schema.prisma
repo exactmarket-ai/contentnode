@@ -96,6 +96,8 @@ model Agency {
   contentPacks             ContentPack[]
   contentPackRuns          ContentPackRun[]
   teamMemberClients        TeamMemberClient[]
+  seoStrategySessions      SeoStrategySession[]
+  seoContentBriefs         SeoContentBrief[]
 
   @@map("agencies")
 }
@@ -250,6 +252,8 @@ model Client {
   contentPacks               ContentPack[]
   contentPackRuns            ContentPackRun[]
   teamMemberClients          TeamMemberClient[]
+  seoStrategySessions        SeoStrategySession[]
+  seoContentBriefs           SeoContentBrief[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -2789,6 +2793,8 @@ model TopicQueue {
   score           Int       @default(0)
   scoreRationale  String    @default("") @map("score_rationale")
   sources         Json      @default("[]")
+  paaQuestions    Json      @default("[]") @map("paa_questions")
+  sourceTag       String?   @map("source_tag")
   status          String    @default("pending") // 'pending' | 'approved' | 'rejected'
   createdAt       DateTime  @default(now()) @map("created_at")
   reviewedAt      DateTime? @map("reviewed_at")
@@ -2961,4 +2967,53 @@ model ModelRegistry {
   updatedById  String?  @map("updated_by_id") // Clerk user ID of last editor (no DB FK — users are per-agency)
 
   @@map("model_registry")
+}
+
+// ─────────────────────────────────────────────
+// seoPILOT — strategy sessions and content briefs
+// ─────────────────────────────────────────────
+
+model SeoStrategySession {
+  id             String    @id @default(cuid())
+  agencyId       String    @map("agency_id")
+  clientId       String    @map("client_id")
+  templateKey    String    @map("template_key")
+  status         String    @default("in_progress") // 'in_progress' | 'complete' | 'abandoned'
+  messages       Json      @default("[]")
+  strategyOutput Json?     @map("strategy_output")
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  briefs SeoContentBrief[]
+
+  @@index([agencyId, clientId])
+  @@map("seo_strategy_sessions")
+}
+
+model SeoContentBrief {
+  id               String    @id @default(cuid())
+  agencyId         String    @map("agency_id")
+  clientId         String    @map("client_id")
+  sessionId        String?   @map("session_id")
+  topic            String
+  targetKeyword    String    @map("target_keyword")
+  funnelStage      String    @map("funnel_stage")
+  urgency          String
+  paaQuestions     Json      @default("[]") @map("paa_questions")
+  contentFormat    String?   @map("content_format")
+  estimatedImpact  String?   @map("estimated_impact")
+  brief            String?   @db.Text
+  pushedToNewsroom Boolean   @default(false) @map("pushed_to_newsroom")
+  newsroomTopicId  String?   @map("newsroom_topic_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  agency  Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client  Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  session SeoStrategySession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId, clientId])
+  @@map("seo_content_briefs")
 }

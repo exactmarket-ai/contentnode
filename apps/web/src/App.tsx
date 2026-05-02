@@ -31,6 +31,7 @@ import { MyWorkPage }   from '@/pages/MyWorkPage'
 import DeliverablesPage from '@/pages/DeliverablesPage'
 import { ThemePage } from '@/pages/ThemePage'
 import { PromptLibraryPage } from '@/pages/PromptLibraryPage'
+import { SeoPage } from '@/pages/SeoPage'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
@@ -131,6 +132,7 @@ const protectedChildren = [
   { path: 'reports', element: <Navigate to="/quality" replace /> },
   { path: 'usage', element: <UsagePage /> },
   { path: 'humanizer', element: <HumanizerDashboard /> },
+  { path: 'seo',      element: <SeoPage /> },
   { path: 'research',  element: <ResearchNodePage /> },
   { path: 'team', element: <TeamPage /> },
   { path: 'team/invite', element: <InvitePage /> },

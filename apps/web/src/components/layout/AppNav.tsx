@@ -371,6 +371,19 @@ export function AppNav({ onSignOut }: AppNavProps) {
         <NavItem key={item.to} {...item} collapsed={collapsed} />
       ))}
 
+      {/* SEO — Owner, Strategist, Org Admin, Admin */}
+      {(isAdmin || role === 'strategist') && (
+        <NavItem
+          to="/seo"
+          collapsed={collapsed}
+          icon={Icons.TrendingUp}
+          label="SEO"
+          activeBg="#f0fdf4"
+          activeText="#16a34a"
+          activeBorder="#bbf7d0"
+        />
+      )}
+
       {/* researchNODE — Lead, Manager, Admin, Strategist */}
       {(isLead || role === 'strategist') && (
         <NavItem
