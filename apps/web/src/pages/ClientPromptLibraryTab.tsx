@@ -105,6 +105,11 @@ function TemplateDrawer({ template, onClose, onSaved, onUse: _onUse, onFork }: D
   const [editDescription, setEditDescription] = useState(template.description ?? '')
   const [saving, setSaving] = useState(false)
   const [showPackConfirm, setShowPackConfirm] = useState(false)
+  const editBodyRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (editMode && editBodyRef.current) editBodyRef.current.scrollTop = 0
+  }, [editMode, template.id])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(template.body).catch(() => {})
@@ -227,9 +232,10 @@ function TemplateDrawer({ template, onClose, onSaved, onUse: _onUse, onFork }: D
         <div className="flex-1 overflow-auto px-5 py-4">
           {editMode ? (
             <Textarea
+              ref={editBodyRef}
               value={editBody}
               onChange={(e) => setEditBody(e.target.value)}
-              className="min-h-[280px] resize-none text-xs leading-relaxed w-full"
+              className="min-h-[60vh] resize-none text-xs leading-relaxed w-full"
             />
           ) : (
             <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-sans">{template.body}</pre>
