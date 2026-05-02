@@ -453,11 +453,14 @@ function MemberModal({ clientId, member, onClose, onSaved }: MemberModalProps) {
 
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        alert(j.error ?? 'Save failed')
+        alert(j.error ?? `Save failed (HTTP ${res.status})`)
         return
       }
       const { data } = await res.json()
       onSaved(data)
+    } catch (err) {
+      console.error('[MemberModal] handleSubmit error:', err)
+      alert(err instanceof Error ? err.message : 'An unexpected error occurred — check console for details')
     } finally {
       setSaving(false)
     }
