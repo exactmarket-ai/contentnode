@@ -296,6 +296,12 @@ Full spec is in docs/contentnode-spec-v4.md
   Add config: { rateLimit: { max: N, timeWindow: 'Xm' } } to each route that needs it.
 - Dockerfiles (Dockerfile.api/worker/web): currently run as root — no USER directive.
   See TODO for fix.
+- Run output display pattern: Logic and Source nodes that produce deliverable output
+  must include the nodeRunStatus prop and output section in their config component,
+  passed through ConfigPanel. Without this, output appears on the canvas instead of
+  the Run Output panel. Any new node that produces output must follow this pattern.
+  Fix pattern: add nodeRunStatus prop + output section to the node's config component,
+  then pass nodeRunStatus through in ConfigPanel.
 
 ## Running production database scripts
 When running any ad-hoc script against the production database, always use `railway run`
