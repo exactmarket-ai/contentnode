@@ -107,7 +107,7 @@ export const NODE_SPEC: Record<NodeSpecType, NodeSpec> = {
   },
 }
 
-const REVIEW_SUBTYPES = new Set(['seo-review', 'geo-review', 'quality-review', 'detection', 'fact-checker'])
+const REVIEW_SUBTYPES = new Set(['seo-review', 'geo-review', 'quality-review', 'detection'])
 
 const MEDIA_SUBTYPES = new Set([
   'voice-output', 'music-generation', 'audio-mix', 'audio-replace',

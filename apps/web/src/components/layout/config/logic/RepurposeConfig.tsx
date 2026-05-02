@@ -66,10 +66,10 @@ export function RepurposeConfig({
         type="button"
         onClick={() => onChange('preserveBrandVoice', !preserveBrandVoice)}
         className={cn(
-          'flex items-center gap-2 px-2.5 py-1.5 rounded text-xs border transition-colors text-left w-full',
+          'flex items-center gap-2 px-2.5 py-1.5 text-xs transition-colors text-left w-full',
           preserveBrandVoice
-            ? 'bg-yellow-900/40 border-yellow-700 text-yellow-300'
-            : 'border-border text-muted-foreground hover:text-foreground',
+            ? 'border-l-2 border-amber-400 bg-amber-50 text-amber-700'
+            : 'rounded border border-border text-muted-foreground hover:text-foreground',
         )}
       >
         <span className={cn(

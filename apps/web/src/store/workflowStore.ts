@@ -391,7 +391,7 @@ export const PALETTE_NODES: PaletteNodeDef[] = [
   {
     type: 'logic', subtype: 'fact-checker',
     label: 'Fact Checker', description: 'Verify claims and statistics in your content',
-    category: 'review', icon: 'ShieldCheck',
+    category: 'logic', icon: 'ShieldCheck',
     defaultConfig: { subtype: 'fact-checker', checkMode: 'claims_statistics', action: 'annotate', sensitivity: 'medium' },
   },
   {
