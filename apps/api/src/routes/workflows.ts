@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma, type Prisma, auditService, getModelForRole } from '@contentnode/database'
 import { requireRole } from '../plugins/auth.js'
+import { isUnrestricted, getAllowedClientIds } from '../lib/clientScope.js'
 import { randomUUID } from 'node:crypto'
 import { getWorkflowRunsQueue } from '../lib/queues.js'
 
@@ -38,15 +39,30 @@ const updateWorkflowBody = z.object({
 export async function workflowRoutes(app: FastifyInstance) {
   // ── GET / — list workflows ────────────────────────────────────────────────
   app.get('/', async (req, reply) => {
-    const { agencyId } = req.auth
+    const { agencyId, userId, role } = req.auth
     const { clientId, status } = req.query as Record<string, string>
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = { agencyId }
+    if (status) where.status = status
+
+    if (isUnrestricted(role)) {
+      if (clientId) where.clientId = clientId
+    } else {
+      const allowedIds = await getAllowedClientIds(agencyId, userId)
+      if (clientId) {
+        if (!allowedIds.includes(clientId)) {
+          return reply.send({ data: [], meta: { total: 0 } })
+        }
+        where.clientId = clientId
+      } else {
+        // Show org-level workflows (clientId IS NULL) + workflows for assigned clients
+        where.clientId = { in: [...allowedIds, null] }
+      }
+    }
+
     const workflows = await prisma.workflow.findMany({
-      where: {
-        agencyId,
-        ...(clientId ? { clientId } : {}),
-        ...(status ? { status } : {}),
-      },
+      where,
       include: {
         client: { select: { id: true, name: true, slug: true } },
         _count: { select: { runs: true } },

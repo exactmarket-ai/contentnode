@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma, auditService } from '@contentnode/database'
 import { requireRole } from '../plugins/auth.js'
+import { isUnrestricted } from '../lib/clientScope.js'
 import { sendTeamInviteEmail } from '../lib/email.js'
 import { clerkClient, getClerkUserEmails, revokeUserSessions } from '../lib/clerk.js'
 
@@ -112,7 +113,23 @@ export async function teamRoutes(app: FastifyInstance) {
       },
     })
 
-    return reply.send({ data: members.map(memberView) })
+    // Fetch per-member client assignment counts in one query
+    const clientCounts = await prisma.teamMemberClient.groupBy({
+      by: ['teamMemberId'],
+      where: { agencyId },
+      _count: { clientId: true },
+    })
+    const countByMember: Record<string, number> = Object.fromEntries(
+      clientCounts.map(c => [c.teamMemberId, c._count.clientId])
+    )
+
+    return reply.send({
+      data: members.map(m => ({
+        ...memberView(m),
+        // null = unrestricted (all clients); number = explicit assignment count
+        clientCount: isUnrestricted(m.role) ? null : (countByMember[m.id] ?? 0),
+      })),
+    })
   })
 
   // ── POST /invite ───────────────────────────────────────────────────────────
@@ -553,6 +570,84 @@ export async function teamRoutes(app: FastifyInstance) {
 
     // ── Fix #6: Revoke all active Clerk sessions immediately ─────────────────
     await revokeUserSessions(member.clerkUserId)
+
+    return reply.code(204).send()
+  })
+
+  // ── GET /:memberId/clients — list client assignments ──────────────────────
+  app.get('/:memberId/clients', {
+    preHandler: requireRole('owner', 'org_admin', 'admin'),
+  }, async (req, reply) => {
+    const { agencyId } = req.auth
+    const { memberId } = req.params as { memberId: string }
+
+    const member = await prisma.user.findFirst({ where: { id: memberId, agencyId }, select: { id: true } })
+    if (!member) return reply.code(404).send({ error: 'Member not found.' })
+
+    const rows = await prisma.teamMemberClient.findMany({
+      where: { teamMemberId: memberId, agencyId },
+      select: { client: { select: { id: true, name: true, slug: true } } },
+      orderBy: { client: { name: 'asc' } },
+    })
+
+    return reply.send({ data: rows.map(r => r.client) })
+  })
+
+  // ── POST /:memberId/clients — assign a client ──────────────────────────────
+  app.post('/:memberId/clients', {
+    preHandler: requireRole('owner', 'org_admin', 'admin'),
+  }, async (req, reply) => {
+    const { agencyId, userId } = req.auth
+    const { memberId } = req.params as { memberId: string }
+    const body = z.object({ clientId: z.string().min(1) }).safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
+
+    const member = await prisma.user.findFirst({ where: { id: memberId, agencyId }, select: { id: true, role: true } })
+    if (!member) return reply.code(404).send({ error: 'Member not found.' })
+
+    if (isUnrestricted(member.role)) {
+      return reply.code(400).send({ error: 'This role has unrestricted access — assignments are not applicable.' })
+    }
+
+    const client = await prisma.client.findFirst({ where: { id: body.data.clientId, agencyId }, select: { id: true } })
+    if (!client) return reply.code(404).send({ error: 'Client not found.' })
+
+    await prisma.teamMemberClient.upsert({
+      where: { teamMemberId_clientId: { teamMemberId: memberId, clientId: body.data.clientId } },
+      create: { teamMemberId: memberId, clientId: body.data.clientId, agencyId },
+      update: {},
+    })
+
+    await auditService.log(agencyId, {
+      actorType: 'user', actorId: userId,
+      action: 'team.client_assigned',
+      resourceType: 'user', resourceId: memberId,
+      metadata: { clientId: body.data.clientId },
+    })
+
+    return reply.code(201).send({ data: { teamMemberId: memberId, clientId: body.data.clientId } })
+  })
+
+  // ── DELETE /:memberId/clients/:clientId — remove a client assignment ───────
+  app.delete('/:memberId/clients/:clientId', {
+    preHandler: requireRole('owner', 'org_admin', 'admin'),
+  }, async (req, reply) => {
+    const { agencyId, userId } = req.auth
+    const { memberId, clientId } = req.params as { memberId: string; clientId: string }
+
+    const member = await prisma.user.findFirst({ where: { id: memberId, agencyId }, select: { id: true } })
+    if (!member) return reply.code(404).send({ error: 'Member not found.' })
+
+    await prisma.teamMemberClient.deleteMany({
+      where: { teamMemberId: memberId, clientId, agencyId },
+    })
+
+    await auditService.log(agencyId, {
+      actorType: 'user', actorId: userId,
+      action: 'team.client_unassigned',
+      resourceType: 'user', resourceId: memberId,
+      metadata: { clientId },
+    })
 
     return reply.code(204).send()
   })

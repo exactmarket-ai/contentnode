@@ -7,6 +7,7 @@ import { uploadStream, downloadBuffer, deleteObject, isS3Mode } from '@contentno
 import { callModel } from '@contentnode/ai'
 import { getFrameworkResearchQueue, getAttachmentProcessQueue, getBrandAttachmentProcessQueue, getClientBrainProcessQueue, getClientVerticalBrainProcessQueue } from '../lib/queues.js'
 import { requireRole } from '../plugins/auth.js'
+import { clientScopeWhere, isUnrestricted, hasClientAccess } from '../lib/clientScope.js'
 import { markStaleIfBrainChanged } from './templateLibrary.js'
 import { seedDefaultTasksForClient } from '../lib/defaultScheduledTasks.js'
 import { seedImagePromptsForClient } from './imagePrompts.js'
@@ -645,12 +646,28 @@ async function seedAgencyTemplatesForClient(agencyId: string, clientId: string):
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function clientRoutes(app: FastifyInstance) {
+  // ── Client-scope access guard — runs for every /:id sub-route ────────────
+  // owner / org_admin / admin always pass through.
+  // All other roles must have a row in team_member_clients for the client.
+  // Unauthenticated requests (e.g. logo served as <img src>) are skipped.
+  app.addHook('preHandler', async (req, reply) => {
+    if (!req.auth) return
+    const params = req.params as Record<string, string> | null
+    const clientId = params?.id
+    if (!clientId) return
+    if (isUnrestricted(req.auth.role)) return
+    const ok = await hasClientAccess(req, clientId)
+    if (!ok) return reply.code(404).send({ error: 'Client not found' })
+  })
+
   // ── GET / — list clients with summary stats ───────────────────────────────
   app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scopeWhere: any = await clientScopeWhere(req)
     const clients = await prisma.client.findMany({
-      where: { agencyId },
+      where: scopeWhere,
       include: {
         _count: { select: { stakeholders: true, workflows: true } },
       },
@@ -929,6 +946,20 @@ export async function clientRoutes(app: FastifyInstance) {
   // ─────────────────────────────────────────────────────────────────────────
   // Stakeholder sub-routes  /clients/:id/stakeholders
   // ─────────────────────────────────────────────────────────────────────────
+
+  // ── GET /:id/team — agency team members who have access to this client ──────
+  app.get<{ Params: { id: string } }>('/:id/team', async (req, reply) => {
+    const { agencyId } = req.auth
+    const clientId = req.params.id
+
+    const rows = await prisma.teamMemberClient.findMany({
+      where: { clientId, agencyId },
+      select: { teamMember: { select: { id: true, name: true, email: true, role: true } } },
+      orderBy: { teamMember: { name: 'asc' } },
+    })
+
+    return reply.send({ data: rows.map(r => r.teamMember) })
+  })
 
   // ── GET /:id/stakeholders ─────────────────────────────────────────────────
   app.get<{ Params: { id: string } }>('/:id/stakeholders', async (req, reply) => {

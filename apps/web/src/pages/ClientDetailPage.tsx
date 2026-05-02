@@ -7374,7 +7374,178 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
 // ── End Scheduled Tasks Tab ───────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'newsroom', 'packs', 'content-library', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
+// ── Team Access Tab ───────────────────────────────────────────────────────────
+
+interface TeamAccessMember {
+  id: string
+  name: string | null
+  email: string
+  role: string
+}
+
+const TEAM_ACCESS_ROLE_LABELS: Record<string, string> = {
+  owner: 'Owner', admin: 'Admin', org_admin: 'Org Admin', manager: 'Manager',
+  lead: 'Lead', member: 'Member', editor: 'Editor', reviewer: 'Reviewer',
+  viewer: 'Viewer', strategist: 'Strategist', campaign_manager: 'Campaign Manager',
+  copywriter: 'Copywriter', designer: 'Designer', art_director: 'Art Director',
+  brand_manager: 'Brand Manager', seo_specialist: 'SEO Specialist',
+  performance_marketer: 'Performance Marketer', project_manager: 'Project Manager',
+  account_manager: 'Account Manager', content_manager: 'Content Manager',
+  social_media_manager: 'Social Media Manager', compliance_reviewer: 'Compliance Reviewer',
+}
+
+function TeamAccessTab({ clientId }: { clientId: string }) {
+  const [members, setMembers]       = useState<TeamAccessMember[]>([])
+  const [allMembers, setAllMembers] = useState<TeamAccessMember[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [showPicker, setShowPicker] = useState(false)
+  const [saving, setSaving]         = useState<string | null>(null)
+  const [error, setError]           = useState<string | null>(null)
+
+  function load() {
+    setLoading(true)
+    Promise.all([
+      apiFetch(`/api/v1/clients/${clientId}/team`).then(r => r.json()),
+      apiFetch('/api/v1/team').then(r => r.json()),
+    ]).then(([teamRes, allRes]) => {
+      setMembers(teamRes.data ?? [])
+      setAllMembers(allRes.data ?? [])
+    }).catch(() => setError('Failed to load team members'))
+    .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [clientId])
+
+  const assignedIds = new Set(members.map(m => m.id))
+  const unassigned  = allMembers.filter(m => !assignedIds.has(m.id) && m.role !== 'owner' && m.role !== 'org_admin' && m.role !== 'admin')
+
+  async function handleRemove(memberId: string) {
+    setSaving(memberId)
+    setError(null)
+    try {
+      await apiFetch(`/api/v1/team/${memberId}/clients/${clientId}`, { method: 'DELETE' })
+      setMembers(prev => prev.filter(m => m.id !== memberId))
+    } catch {
+      setError('Failed to remove access')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  async function handleAdd(memberId: string) {
+    setSaving(memberId)
+    setError(null)
+    try {
+      await apiFetch(`/api/v1/team/${memberId}/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId }),
+      })
+      const added = allMembers.find(m => m.id === memberId)
+      if (added) setMembers(prev => [...prev, added])
+      setShowPicker(false)
+    } catch {
+      setError('Failed to add access')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
+        <Icons.Loader2 className="h-5 w-5 animate-spin mr-2" />
+        <span className="text-sm">Loading...</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-[15px] font-semibold">Assigned team</h2>
+          <p className="text-[12px] text-muted-foreground mt-0.5">
+            Members with explicit access to this client. Owner, Org Admin, and Admin always have access.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowPicker(p => !p)}
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-muted transition-colors"
+        >
+          <Icons.Plus className="h-3.5 w-3.5" />
+          Add team member
+        </button>
+      </div>
+
+      {error && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</p>
+      )}
+
+      {/* Add member picker */}
+      {showPicker && (
+        <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
+          {unassigned.length === 0 ? (
+            <p className="text-[12px] text-muted-foreground py-1">All eligible members are already assigned.</p>
+          ) : (
+            unassigned.map(m => (
+              <button
+                key={m.id}
+                disabled={saving === m.id}
+                onClick={() => handleAdd(m.id)}
+                className="w-full flex items-center justify-between rounded-md px-3 py-2 text-left hover:bg-background transition-colors disabled:opacity-50"
+              >
+                <div>
+                  <span className="text-[13px] font-medium text-foreground">{m.name ?? m.email}</span>
+                  {m.name && <span className="text-[11px] text-muted-foreground ml-2">{m.email}</span>}
+                </div>
+                <span className="text-[11px] text-muted-foreground">{TEAM_ACCESS_ROLE_LABELS[m.role] ?? m.role}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Member list */}
+      {members.length === 0 ? (
+        <div className="rounded-lg border border-border bg-transparent p-8 text-center">
+          <Icons.Users className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+          <p className="text-[13px] text-muted-foreground">No members assigned yet.</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Use the button above to give team members access.</p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border bg-transparent overflow-hidden">
+          {members.map((m, i) => (
+            <div
+              key={m.id}
+              className={`flex items-center justify-between px-4 py-3 ${i < members.length - 1 ? 'border-b border-border' : ''}`}
+            >
+              <div>
+                <p className="text-[13px] font-medium text-foreground">{m.name ?? m.email}</p>
+                <p className="text-[11px] text-muted-foreground">{m.name ? m.email : ''} · {TEAM_ACCESS_ROLE_LABELS[m.role] ?? m.role}</p>
+              </div>
+              <button
+                disabled={saving === m.id}
+                onClick={() => handleRemove(m.id)}
+                className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
+                title="Remove access"
+              >
+                {saving === m.id
+                  ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Icons.X className="h-3.5 w-3.5" />
+                }
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── End Team Access Tab ───────────────────────────────────────────────────────
+
+const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'newsroom', 'packs', 'content-library', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'team-access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 // ── Agency-level prompt library (no clientId — shows global templates) ────────
@@ -7485,6 +7656,7 @@ export function ClientDetailPage() {
     'gtm-assessment': 'Company Assessment',
     stakeholders:  'Contacts',
     access:        'Access',
+    'team-access': 'Team',
     reviews:       'Reviews',
     insights:      'Insights',
     runs:          'Runs',
@@ -7502,7 +7674,7 @@ export function ClientDetailPage() {
   // Tabs that live under the "Research" group
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment', 'scheduled-tasks']
   // Tabs that live under the "Settings" group (admin-only via Settings entry point)
-  const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'stakeholders', 'runs', 'doc-style']
+  const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'team-access', 'stakeholders', 'runs', 'doc-style']
   // Tabs that live under the "Thought Leadership" group (admin-only)
   const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library']
   // Tabs rendered before the Demand Gen group button
@@ -7803,6 +7975,7 @@ export function ClientDetailPage() {
         {activeTab === 'gtm-assessment' && <ClientGTMAssessmentTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}
         {activeTab === 'access' && <AccessTab client={client} />}
+        {activeTab === 'team-access' && <TeamAccessTab clientId={client.id} />}
         {activeTab === 'reviews' && <ReviewsTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'insights' && <InsightsTab insights={client.insights} />}
         {activeTab === 'runs' && <RunsIntelligenceTab clientId={client.id} />}

@@ -17,6 +17,7 @@ interface TeamMember {
   lastActiveAt: string | null
   pending: boolean
   inviteExpired: boolean
+  clientCount?: number | null  // null = unrestricted (all clients); undefined = not yet loaded
 }
 
 // ─── Types for history ────────────────────────────────────────────────────────
@@ -645,6 +646,143 @@ function HistoryDrawer({ member, onClose }: { member: TeamMember; onClose: () =>
   )
 }
 
+// ─── Manage client access modal ───────────────────────────────────────────────
+
+interface ClientOption { id: string; name: string; slug: string }
+
+function ManageClientAccessModal({
+  member,
+  onClose,
+  onSaved,
+}: {
+  member: TeamMember
+  onClose: () => void
+  onSaved: (clientCount: number) => void
+}) {
+  const [allClients, setAllClients]     = useState<ClientOption[]>([])
+  const [assigned, setAssigned]         = useState<Set<string>>(new Set())
+  const [selected, setSelected]         = useState<Set<string>>(new Set())
+  const [loading, setLoading]           = useState(true)
+  const [saving, setSaving]             = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch('/api/v1/clients').then(r => r.json()),
+      apiFetch(`/api/v1/team/${member.id}/clients`).then(r => r.json()),
+    ]).then(([clientsRes, assignedRes]) => {
+      setAllClients(clientsRes.data ?? [])
+      const ids = new Set<string>((assignedRes.data ?? []).map((c: ClientOption) => c.id))
+      setAssigned(ids)
+      setSelected(new Set(ids))
+    }).catch(() => setError('Failed to load clients'))
+    .finally(() => setLoading(false))
+  }, [member.id])
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      const toAdd    = [...selected].filter(id => !assigned.has(id))
+      const toRemove = [...assigned].filter(id => !selected.has(id))
+      await Promise.all([
+        ...toAdd.map(clientId =>
+          apiFetch(`/api/v1/team/${member.id}/clients`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId }),
+          })
+        ),
+        ...toRemove.map(clientId =>
+          apiFetch(`/api/v1/team/${member.id}/clients/${clientId}`, { method: 'DELETE' })
+        ),
+      ])
+      onSaved(selected.size)
+    } catch {
+      setError('Failed to save changes')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-[480px] max-h-[80vh] flex flex-col bg-white border border-border rounded-xl shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#e8e7e1]">
+          <div>
+            <h2 className="text-[15px] font-semibold text-[#1a1a14]">Client access</h2>
+            <p className="text-[12px] text-[#b4b2a9] mt-0.5">{member.name ?? member.email}</p>
+          </div>
+          <button onClick={onClose} className="text-[#b4b2a9] hover:text-[#1a1a14] transition-colors">
+            <Icons.X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Client checklist */}
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-8 text-[#b4b2a9]">
+              <Icons.Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span className="text-[13px]">Loading...</span>
+            </div>
+          ) : allClients.length === 0 ? (
+            <p className="text-[13px] text-[#b4b2a9] py-4 text-center">No clients found</p>
+          ) : (
+            <div className="space-y-1">
+              {allClients.map(client => (
+                <label
+                  key={client.id}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-[#f4f4f2] transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(client.id)}
+                    onChange={() => toggle(client.id)}
+                    className="h-4 w-4 rounded border-[#dddcd6] text-purple-600 focus:ring-purple-300"
+                  />
+                  <span className="text-[13px] text-[#1a1a14] font-medium">{client.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-[#e8e7e1] px-5 py-3 flex items-center justify-between gap-3">
+          <span className="text-[12px] text-[#b4b2a9]">{selected.size} client{selected.size !== 1 ? 's' : ''} selected</span>
+          <div className="flex gap-2">
+            {error && <span className="text-[12px] text-red-600">{error}</span>}
+            <button
+              onClick={onClose}
+              className="rounded-md border border-[#dddcd6] px-4 py-2 text-[13px] text-[#5c5b52] hover:bg-[#f4f4f2] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-colors disabled:opacity-60"
+              style={{ backgroundColor: '#a200ee' }}
+            >
+              {saving && <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function TeamPage() {
@@ -654,8 +792,9 @@ export function TeamPage() {
   const [showInvite, setShowInvite]     = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast]               = useState<{ msg: string; ok: boolean } | null>(null)
-  const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
-  const [historyMember, setHistoryMember] = useState<TeamMember | null>(null)
+  const [editingMember, setEditingMember]   = useState<TeamMember | null>(null)
+  const [historyMember, setHistoryMember]   = useState<TeamMember | null>(null)
+  const [managingMember, setManagingMember] = useState<TeamMember | null>(null)
   const canManage = isAdmin
 
   const showToast = (msg: string, ok = true) => {
@@ -854,58 +993,70 @@ export function TeamPage() {
 
                     {/* Role */}
                     <td className="px-4 py-3">
-                      {canManage && m.role !== 'owner' ? (
-                        <select
-                          value={m.role}
-                          disabled={busy}
-                          onChange={e => handleRoleChange(m.id, e.target.value as TeamMember['role'])}
-                          className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border outline-none cursor-pointer disabled:cursor-default"
-                          style={{ backgroundColor: rs.bg, borderColor: rs.border, color: rs.color }}
-                        >
-                          {isOwner && <option value="owner">Owner</option>}
-                          <optgroup label="Leadership">
-                            <option value="admin">Admin</option>
-                            <option value="strategist">Strategist</option>
-                            <option value="campaign_manager">Campaign Manager</option>
-                            <option value="project_manager">Project Manager</option>
-                            <option value="account_manager">Account Manager</option>
-                          </optgroup>
-                          <optgroup label="Creative">
-                            <option value="art_director">Art Director</option>
-                            <option value="brand_manager">Brand Manager</option>
-                            <option value="designer">Designer</option>
-                            <option value="social_media_manager">Social Media Manager</option>
-                            <option value="content_manager">Content Manager</option>
-                            <option value="copywriter">Copywriter</option>
-                          </optgroup>
-                          <optgroup label="Specialist">
-                            <option value="seo_specialist">SEO Specialist</option>
-                            <option value="performance_marketer">Performance Marketer</option>
-                            <option value="compliance_reviewer">Compliance Reviewer</option>
-                          </optgroup>
-                          <optgroup label="Access Level">
-                            <option value="manager">Manager</option>
-                            <option value="lead">Lead</option>
-                            <option value="member">Member</option>
-                          </optgroup>
-                          <optgroup label="Client-Facing">
-                            <option value="client_executive_approver">Client: Executive</option>
-                            <option value="client_legal_reviewer">Client: Legal</option>
-                            <option value="client_brand_reviewer">Client: Brand</option>
-                            <option value="client_creative_reviewer">Client: Creative</option>
-                            <option value="client_marcom_reviewer">Client: MarCom</option>
-                            <option value="client_product_reviewer">Client: Product</option>
-                            <option value="client_stakeholder">Client: Stakeholder</option>
-                          </optgroup>
-                        </select>
-                      ) : (
-                        <span
-                          className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                          style={{ backgroundColor: rs.bg, border: `1px solid ${rs.border}`, color: rs.color }}
-                        >
-                          {rs.label}
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {canManage && m.role !== 'owner' ? (
+                          <select
+                            value={m.role}
+                            disabled={busy}
+                            onChange={e => handleRoleChange(m.id, e.target.value as TeamMember['role'])}
+                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border outline-none cursor-pointer disabled:cursor-default"
+                            style={{ backgroundColor: rs.bg, borderColor: rs.border, color: rs.color }}
+                          >
+                            {isOwner && <option value="owner">Owner</option>}
+                            <optgroup label="Leadership">
+                              <option value="admin">Admin</option>
+                              <option value="strategist">Strategist</option>
+                              <option value="campaign_manager">Campaign Manager</option>
+                              <option value="project_manager">Project Manager</option>
+                              <option value="account_manager">Account Manager</option>
+                            </optgroup>
+                            <optgroup label="Creative">
+                              <option value="art_director">Art Director</option>
+                              <option value="brand_manager">Brand Manager</option>
+                              <option value="designer">Designer</option>
+                              <option value="social_media_manager">Social Media Manager</option>
+                              <option value="content_manager">Content Manager</option>
+                              <option value="copywriter">Copywriter</option>
+                            </optgroup>
+                            <optgroup label="Specialist">
+                              <option value="seo_specialist">SEO Specialist</option>
+                              <option value="performance_marketer">Performance Marketer</option>
+                              <option value="compliance_reviewer">Compliance Reviewer</option>
+                            </optgroup>
+                            <optgroup label="Access Level">
+                              <option value="manager">Manager</option>
+                              <option value="lead">Lead</option>
+                              <option value="member">Member</option>
+                            </optgroup>
+                            <optgroup label="Client-Facing">
+                              <option value="client_executive_approver">Client: Executive</option>
+                              <option value="client_legal_reviewer">Client: Legal</option>
+                              <option value="client_brand_reviewer">Client: Brand</option>
+                              <option value="client_creative_reviewer">Client: Creative</option>
+                              <option value="client_marcom_reviewer">Client: MarCom</option>
+                              <option value="client_product_reviewer">Client: Product</option>
+                              <option value="client_stakeholder">Client: Stakeholder</option>
+                            </optgroup>
+                          </select>
+                        ) : (
+                          <span
+                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                            style={{ backgroundColor: rs.bg, border: `1px solid ${rs.border}`, color: rs.color }}
+                          >
+                            {rs.label}
+                          </span>
+                        )}
+                        {/* Client scope label */}
+                        {m.clientCount !== undefined && (
+                          m.clientCount === null ? (
+                            <span className="text-[10px] text-[#b4b2a9] pl-1">All clients</span>
+                          ) : m.clientCount === 0 ? (
+                            <span className="text-[10px] font-medium text-amber-600 pl-1">No clients</span>
+                          ) : (
+                            <span className="text-[10px] text-[#b4b2a9] pl-1">{m.clientCount} client{m.clientCount !== 1 ? 's' : ''}</span>
+                          )
+                        )}
+                      </div>
                     </td>
 
                     {/* Last Active */}
@@ -961,6 +1112,17 @@ export function TeamPage() {
                             title="Edit profile"
                           >
                             <Icons.Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {/* Manage client access — admins only, not for unrestricted roles */}
+                        {canManage && m.clientCount !== null && m.clientCount !== undefined && (
+                          <button
+                            onClick={() => setManagingMember(m)}
+                            disabled={busy}
+                            className="rounded p-1.5 text-[#b4b2a9] hover:bg-violet-50 hover:text-violet-600 transition-colors disabled:opacity-40"
+                            title="Manage client access"
+                          >
+                            <Icons.Building2 className="h-3.5 w-3.5" />
                           </button>
                         )}
                         {canManage && isPending(m) && (
@@ -1046,6 +1208,19 @@ export function TeamPage() {
         <HistoryDrawer
           member={historyMember}
           onClose={() => setHistoryMember(null)}
+        />
+      )}
+
+      {/* Manage client access modal */}
+      {managingMember && (
+        <ManageClientAccessModal
+          member={managingMember}
+          onClose={() => setManagingMember(null)}
+          onSaved={(clientCount) => {
+            setMembers(prev => prev.map(m => m.id === managingMember.id ? { ...m, clientCount } : m))
+            setManagingMember(null)
+            showToast('Client access updated')
+          }}
         />
       )}
     </div>

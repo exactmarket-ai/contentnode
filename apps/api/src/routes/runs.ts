@@ -7,6 +7,7 @@ import { auditService } from '../services/audit.js'
 import { getWorkflowRunsQueue, getEditAnalysisQueue } from '../lib/queues.js'
 import { sendReviewEmail, sendAssignmentEmail, sendMentionEmail } from '../lib/email.js'
 import { getClerkUserNames } from '../lib/clerk.js'
+import { isUnrestricted, getAllowedClientIds } from '../lib/clientScope.js'
 
 // Providers that are local/offline for permission classification
 const OFFLINE_IMAGE_PROVIDERS = new Set(['comfyui', 'automatic1111'])
@@ -654,7 +655,7 @@ export async function runRoutes(app: FastifyInstance) {
 
   // ── GET / — list runs for the agency ─────────────────────────────────────
   app.get('/', async (req, reply) => {
-    const { agencyId } = req.auth
+    const { agencyId, userId } = req.auth
     const query = req.query as {
       workflowId?: string
       clientId?: string
@@ -676,11 +677,26 @@ export async function runRoutes(app: FastifyInstance) {
     const where: any = { agencyId }
     if (query.workflowId) where.workflowId = query.workflowId
     if (statusFilter) where.status = statusFilter
-    if (query.clientId) where.workflow = { clientId: query.clientId }
     if (query.divisionId) where.divisionId = query.divisionId
     if (query.jobId) where.jobId = query.jobId
     if (query.isArchived === 'true') where.isArchived = true
     else if (query.isArchived === 'false') where.isArchived = false
+
+    // Client-scope filter: restricted roles only see runs from their assigned clients
+    if (isUnrestricted(req.auth.role)) {
+      if (query.clientId) where.workflow = { clientId: query.clientId }
+    } else {
+      const allowedIds = await getAllowedClientIds(agencyId, userId)
+      if (query.clientId) {
+        if (!allowedIds.includes(query.clientId)) {
+          return reply.send({ data: [], meta: { total: 0, stats: {} } })
+        }
+        where.workflow = { clientId: query.clientId }
+      } else if (!query.workflowId) {
+        // No specific workflow or client filter — scope to allowed clients + org-level
+        where.workflow = { clientId: { in: [...allowedIds, null] } }
+      }
+    }
 
     const runs = await prisma.workflowRun.findMany({
       where,

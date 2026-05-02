@@ -95,6 +95,7 @@ model Agency {
   researchJobs             ResearchJob[]
   contentPacks             ContentPack[]
   contentPackRuns          ContentPackRun[]
+  teamMemberClients        TeamMemberClient[]
 
   @@map("agencies")
 }
@@ -248,6 +249,7 @@ model Client {
   defaultContentPack         ContentPack? @relation("ClientDefaultPack", fields: [defaultContentPackId], references: [id], onDelete: SetNull)
   contentPacks               ContentPack[]
   contentPackRuns            ContentPackRun[]
+  teamMemberClients          TeamMemberClient[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
@@ -606,9 +608,29 @@ model User {
   editedContentItems         ContentPackRunItem[]           @relation("ItemLastEditor")
   contentLibrarySignals      HumanizerSignal[]             @relation("SignalAttributedUser")
   brainAttributions          ThoughtLeaderBrainAttachment[] @relation("AttachmentAttributedUser")
+  teamMemberClients          TeamMemberClient[]
 
   @@index([agencyId])
   @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// TeamMemberClient — per-user client visibility
+// ─────────────────────────────────────────────
+model TeamMemberClient {
+  teamMemberId String   @map("team_member_id")
+  clientId     String   @map("client_id")
+  agencyId     String   @map("agency_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  teamMember User   @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  agency     Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@id([teamMemberId, clientId])
+  @@index([agencyId])
+  @@index([clientId])
+  @@map("team_member_clients")
 }
 
 // ─────────────────────────────────────────────
