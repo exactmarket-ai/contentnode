@@ -25,6 +25,7 @@ import { ContentLibraryTab } from './ContentLibraryTab'
 import { ClientBrainTab } from './ClientBrainTab'
 import { ClientGTMAssessmentTab } from './ClientGTMAssessmentTab'
 import { ProductMarketingTab } from './tabs/ProductMarketingTab'
+import { SeoTab } from './tabs/SeoTab'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useVerticalTerm, invalidateVerticalTerm } from '@/hooks/useVerticalTerm'
 import { TaskPilot } from '@/components/pilot/TaskPilot'
@@ -7545,7 +7546,7 @@ function TeamAccessTab({ clientId }: { clientId: string }) {
 
 // ── End Team Access Tab ───────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'newsroom', 'packs', 'content-library', 'framework', 'product-marketing', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'team-access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'newsroom', 'packs', 'content-library', 'framework', 'product-marketing', 'seo-pilot', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'team-access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 // ── Agency-level prompt library (no clientId — shows global templates) ────────
@@ -7649,6 +7650,7 @@ export function ClientDetailPage() {
     'content-library':     'Content Library',
     framework:     'GTM Framework',
     'product-marketing': 'productPILOT',
+    'seo-pilot':         'seoPILOT',
     demandgen:     'Demand Gen',
     branding:      'Branding',
     board:         'Board',
@@ -7678,7 +7680,8 @@ export function ClientDetailPage() {
   // Tabs that live under the "Thought Leadership" group (admin-only)
   const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library']
   // Tabs rendered before the Demand Gen group button
-  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), 'programs']
+  const canSeeSeo = isAdmin || isStrategist
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : []), 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
   const POST_RESEARCH_TABS: Tab[] = ['workflows', 'library']
   // Admin-only tabs rendered after workflows
@@ -7972,6 +7975,7 @@ export function ClientDetailPage() {
         {activeTab === 'packs' && <ContentPacksTab clientId={client.id} />}
         {activeTab === 'content-library' && <ContentLibraryTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'product-marketing' && <ProductMarketingTab clientId={client.id} clientName={client.name} />}
+        {activeTab === 'seo-pilot' && <SeoTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'brain' && <ClientBrainTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'gtm-assessment' && <ClientGTMAssessmentTab clientId={client.id} clientName={client.name} />}
         {activeTab === 'stakeholders' && <StakeholdersTab client={client} onUpdate={setClient} />}

@@ -503,7 +503,7 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
   const templateInfo = templateKey ? TEMPLATES.find((t) => t.key === templateKey) : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div
         className="flex flex-col w-full max-w-2xl rounded-xl border border-border bg-white shadow-2xl overflow-hidden"
         style={{ height: '80vh' }}
