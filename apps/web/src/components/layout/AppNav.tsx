@@ -231,8 +231,7 @@ function UserAvatar({ avatarUrl, name, email, size = 'sm' }: { avatarUrl: string
 const ACTIVE = { activeBg: '#f0f6fd', activeText: '#185fa5', activeBorder: '#b8d8f5' }
 
 const NAV_ITEMS = [
-  { to: '/workflows', icon: Icons.Workflow, label: 'Workflows', ...ACTIVE },
-  { to: '/clients',   icon: Icons.Users,    label: 'Clients',   ...ACTIVE },
+  { to: '/clients', icon: Icons.Users, label: 'Clients', ...ACTIVE },
 ]
 
 const BOTTOM_NAV_ITEMS = [
@@ -365,6 +364,9 @@ export function AppNav({ onSignOut }: AppNavProps) {
         <NavItem to="/my-work" collapsed={collapsed} icon={Icons.House} label="My Work" {...ACTIVE} />
       )}
 
+      {isOwner && (
+        <NavItem to="/workflows" collapsed={collapsed} icon={Icons.Workflow} label="Workflows" {...ACTIVE} />
+      )}
       {NAV_ITEMS.map((item) => (
         <NavItem key={item.to} {...item} collapsed={collapsed} />
       ))}
