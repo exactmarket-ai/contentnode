@@ -7671,6 +7671,9 @@ export function ClientDetailPage() {
     'doc-style':       'Doc Style',
   }
 
+  // Tabs that live under the "Strategy" group (admin/strategist only)
+  const canSeeSeo = isAdmin || isStrategist
+  const STRATEGY_TABS: Tab[] = ['framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : [])]
   // Tabs that live under the "Demand Gen" group
   const DEMAND_GEN_TABS: Tab[] = ['demandgen', 'campaigns']
   // Tabs that live under the "Research" group
@@ -7679,15 +7682,15 @@ export function ClientDetailPage() {
   const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'team-access', 'stakeholders', 'runs', 'doc-style']
   // Tabs that live under the "Marcom" group (admin/strategist only)
   const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library', 'scheduled-tasks', 'branding']
-  // Tabs rendered before the Demand Gen group button
-  const canSeeSeo = isAdmin || isStrategist
-  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : []), 'programs']
+  // Tabs rendered before the group buttons
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
   const POST_RESEARCH_TABS: Tab[] = ['workflows', 'library']
   // Admin-only tabs rendered after workflows
   const ADMIN_ONLY_TABS: Tab[] = ['reviews', 'deliverables', 'insights']
   const canSeeThoughtLeadership = isAdmin || isStrategist
   const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...(canSeeThoughtLeadership ? ['thought-leadership' as Tab] : []), ...POST_RESEARCH_TABS, ...(isAdmin ? ADMIN_ONLY_TABS : [])]
+  const inStrategy = STRATEGY_TABS.includes(activeTab)
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
@@ -7734,6 +7737,21 @@ export function ClientDetailPage() {
             {TAB_LABELS[tab]}
           </button>
         ))}
+        {/* Strategy group entry point */}
+        {canSeeSeo && (
+          <button
+            onClick={() => switchTab('framework')}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
+              inStrategy
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Icons.Target className="h-3 w-3" />
+            Strategy
+          </button>
+        )}
         {/* Demand Gen group entry point */}
         <button
           onClick={() => switchTab('demandgen')}
@@ -7818,6 +7836,28 @@ export function ClientDetailPage() {
           </button>
         )}
       </div>
+
+      {/* Strategy sub-tab row — only visible when a strategy tab is active */}
+      {inStrategy && (
+        <div className="flex items-center border-b border-border bg-muted/30 px-6 print:hidden">
+          <div className="flex gap-0">
+            {STRATEGY_TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => switchTab(tab)}
+                className={cn(
+                  'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Thought Leadership sub-tab row — only visible when a thought leadership tab is active */}
       {inThoughtLeadership && (
