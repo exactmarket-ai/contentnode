@@ -364,7 +364,7 @@ export function AppNav({ onSignOut }: AppNavProps) {
         <NavItem to="/my-work" collapsed={collapsed} icon={Icons.House} label="My Work" {...ACTIVE} />
       )}
 
-      {isOwner && (
+      {(isOwner || role === 'strategist') && (
         <NavItem to="/workflows" collapsed={collapsed} icon={Icons.Workflow} label="Workflows" {...ACTIVE} />
       )}
       {NAV_ITEMS.map((item) => (
