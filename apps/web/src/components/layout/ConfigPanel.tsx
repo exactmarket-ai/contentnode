@@ -161,7 +161,7 @@ function NodeConfigForm({
       if (subtype === 'schema-markup')
         return <SchemaMarkupConfig config={config} onChange={onChange} />
       if (subtype === 'repurpose')
-        return <RepurposeConfig config={config} onChange={onChange} />
+        return <RepurposeConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'fact-checker')
         return <FactCheckerConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'internal-link-suggester')
