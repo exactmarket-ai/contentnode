@@ -10,6 +10,7 @@ import { SpeakerAssignmentPanel } from '@/components/transcription/SpeakerAssign
 import { InsightConfirmationBanner } from '@/components/insights/InsightConfirmationBanner'
 import { HumanReviewPanel } from '@/components/review/HumanReviewPanel'
 import { RunHistoryPanel } from '@/components/layout/RunHistoryPanel'
+import { RunOutputPanel } from '@/components/layout/RunOutputPanel'
 import { AlignmentToolbar } from '@/components/canvas/AlignmentToolbar'
 import { RunNamingPanel } from '@/components/canvas/RunNamingPanel'
 import { DetectionScoreHUD } from '@/components/canvas/DetectionScoreHUD'
@@ -485,7 +486,9 @@ export function WorkflowEditor() {
               </div>
             )}
           </main>
-          {selectedNodeId && <ConfigPanel />}
+          {selectedNodeId
+            ? <ConfigPanel />
+            : (runStatus === 'completed' || runStatus === 'failed') && <RunOutputPanel />}
           {historyOpen && workflow.id && (
             <RunHistoryPanel workflowId={workflow.id} onClose={() => setHistoryOpen(false)} />
           )}
