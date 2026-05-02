@@ -7118,7 +7118,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
       <div className="min-w-0 flex-1 rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
-            <h3 className="text-xs font-semibold">Scheduled Tasks</h3>
+            <h3 className="text-xs font-semibold">Scheduled Research Topics</h3>
             <p className="mt-0.5 text-[11px] text-muted-foreground">Research tasks that run automatically and feed results into the client brain.</p>
           </div>
           <div className="flex items-center gap-2">
@@ -7644,7 +7644,7 @@ export function ClientDetailPage() {
     campaigns:     'Campaigns',
     programs:      'Programs',
     deliverables:  'Deliverables',
-    'thought-leadership': 'Thought Leadership',
+    'thought-leadership': 'Corp Comms',
     newsroom:              'Content Newsroom',
     packs:                 'Content Packs',
     'content-library':     'Content Library',
@@ -7667,18 +7667,18 @@ export function ClientDetailPage() {
     company:       'Company Research',
     structure:     'Structure',
     'agency-library': 'Prompt Library',
-    'scheduled-tasks': 'Scheduled Tasks',
+    'scheduled-tasks': 'Scheduled Research Topics',
     'doc-style':       'Doc Style',
   }
 
   // Tabs that live under the "Demand Gen" group
   const DEMAND_GEN_TABS: Tab[] = ['demandgen', 'campaigns']
   // Tabs that live under the "Research" group
-  const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment', 'scheduled-tasks']
+  const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment']
   // Tabs that live under the "Settings" group (admin-only via Settings entry point)
   const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'team-access', 'stakeholders', 'runs', 'doc-style']
-  // Tabs that live under the "Thought Leadership" group (admin-only)
-  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library']
+  // Tabs that live under the "Corp Comms" group (admin/strategist only)
+  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library', 'scheduled-tasks']
   // Tabs rendered before the Demand Gen group button
   const canSeeSeo = isAdmin || isStrategist
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : []), 'programs']
