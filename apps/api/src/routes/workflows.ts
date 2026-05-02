@@ -314,18 +314,17 @@ export async function workflowRoutes(app: FastifyInstance) {
       const validEdges = rfEdges.filter((e) => savedNodeIds.has(e.source) && savedNodeIds.has(e.target))
       await prisma.edge.deleteMany({ where: { workflowId } })
       if (validEdges.length > 0) {
-        await prisma.edge.createMany({
-          data: validEdges.map((e) => ({
-            id: e.id ?? randomUUID(),
-            agencyId,
-            workflowId,
-            sourceNodeId: e.source,
-            targetNodeId: e.target,
-            label: e.sourceHandle ?? e.label ?? null,
-            // Store targetHandle in the unused condition JSON column — no migration needed
-            condition: e.targetHandle ? { targetHandle: e.targetHandle } : undefined,
-          })),
-        })
+        const edgeRows = validEdges.map((e) => ({
+          id: e.id ?? randomUUID(),
+          agencyId,
+          workflowId,
+          sourceNodeId: e.source,
+          targetNodeId: e.target,
+          label: e.sourceHandle ?? e.label ?? null,
+          condition: e.targetHandle ? { targetHandle: e.targetHandle } : undefined,
+        }))
+        console.log('[graph save] edge rows:', JSON.stringify(edgeRows.map(r => ({ id: r.id, label: r.label, condition: r.condition }))))
+        await prisma.edge.createMany({ data: edgeRows })
       }
 
       return reply.send({ data: { workflowId, nodeCount: rfNodes.length, edgeCount: validEdges.length } })

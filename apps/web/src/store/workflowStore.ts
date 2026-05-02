@@ -912,24 +912,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ edges: applyEdgeChanges(changes, get().edges), ...(meaningful ? { graphDirty: true } : {}) })
   },
 
-  onConnect: (connection) =>
+  onConnect: (connection) => {
+    const edgeToAdd = {
+      ...connection,
+      animated: false,
+      label: connection.sourceHandle ?? undefined,
+      sourceHandle: connection.sourceHandle ?? undefined,
+      targetHandle: connection.targetHandle ?? undefined,
+    }
+    console.log('[onConnect] edge being added:', JSON.stringify(edgeToAdd))
     set({
-      edges: addEdge(
-        {
-          ...connection,
-          animated: false,
-          // Preserve sourceHandle as label so the runner can do port-based
-          // routing (e.g. 'pass' / 'fail'). sourceHandle and targetHandle are
-          // also kept as native React Flow fields so they survive serialization
-          // and are restored correctly on canvas reload.
-          label: connection.sourceHandle ?? undefined,
-          sourceHandle: connection.sourceHandle ?? undefined,
-          targetHandle: connection.targetHandle ?? undefined,
-        },
-        get().edges,
-      ),
+      edges: addEdge(edgeToAdd, get().edges),
       graphDirty: true,
-    }),
+    })
+  },
 
   setViewport: (viewport) => set({ viewport }),
 

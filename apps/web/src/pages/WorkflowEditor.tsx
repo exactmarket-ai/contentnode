@@ -111,18 +111,19 @@ export function WorkflowEditor() {
             },
           }
         })
-        const rfEdges = (data.edges ?? []).map((e: Record<string, unknown>) => ({
-          id: e.id as string,
-          source: e.sourceNodeId as string,
-          target: e.targetNodeId as string,
-          label: e.label as string | undefined,
-          // Restore handle IDs so React Flow reconnects to the correct port on
-          // multi-port nodes. sourceHandle is stored in label; targetHandle is
-          // stored in condition.targetHandle.
-          sourceHandle: (e.label as string | undefined) ?? undefined,
-          targetHandle: ((e.condition as Record<string, unknown> | null)?.targetHandle as string | undefined) ?? undefined,
-          animated: false,
-        }))
+        const rfEdges = (data.edges ?? []).map((e: Record<string, unknown>) => {
+          const rfEdge = {
+            id: e.id as string,
+            source: e.sourceNodeId as string,
+            target: e.targetNodeId as string,
+            label: e.label as string | undefined,
+            sourceHandle: (e.label as string | undefined) ?? undefined,
+            targetHandle: ((e.condition as Record<string, unknown> | null)?.targetHandle as string | undefined) ?? undefined,
+            animated: false,
+          }
+          console.log('[WorkflowEditor load] edge:', JSON.stringify({ id: rfEdge.id, rawLabel: e.label, rawCondition: e.condition, sourceHandle: rfEdge.sourceHandle, targetHandle: rfEdge.targetHandle }))
+          return rfEdge
+        })
         const defaultAssignee = data.defaultAssignee as { id: string; name: string | null } | null
         const clientData = data.client as { id?: string; name?: string; mondayBoardId?: string | null; boxFolderId?: string | null; googleDriveFolderId?: string | null } | null
         store.setWorkflow({
