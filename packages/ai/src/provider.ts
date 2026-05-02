@@ -144,6 +144,9 @@ async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelRes
     ? { max_completion_tokens: tokenLimit }
     : { max_tokens: tokenLimit }
 
+  const willSendTemperature = !TEMPERATURE_UNSUPPORTED_MODELS.includes(config.model) && config.temperature !== undefined
+  console.log('[provider] callOpenAI →', JSON.stringify({ model: config.model, cfgTemperature: config.temperature, willSendTemperature }))
+
   const response = await client.chat.completions.create({
     model: config.model,
     messages,

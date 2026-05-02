@@ -165,9 +165,12 @@ export async function runRoutes(app: FastifyInstance) {
             const modelFields = n.type === 'logic' ? {
               provider: isOfflineRun ? 'ollama' : resolvedProvider,
               model: resolvedModel,
-              ...(!TEMPERATURE_UNSUPPORTED.has(resolvedModel) ? {
-                temperature: (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
-              } : {}),
+              // Always include temperature so it overrides any stale value already in
+              // the node config from the ...config spread below. For unsupported models,
+              // undefined causes JSON.stringify to drop the key entirely from the stored config.
+              temperature: TEMPERATURE_UNSUPPORTED.has(resolvedModel)
+                ? undefined
+                : (resolvedModelCfg.temperature as number | undefined) ?? 0.7,
             } : {}
 
             return {
