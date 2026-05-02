@@ -75,7 +75,6 @@ function relativeTime(iso: string | null | undefined): string {
 const ROLE_STYLES: Record<string, { bg: string; border: string; color: string; label: string }> = {
   // System / legacy
   owner:          { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Owner' },
-  super_admin:    { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Super Admin' },
   admin:          { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Admin' },
   org_admin:      { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Org Admin' },
   manager:        { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Manager' },

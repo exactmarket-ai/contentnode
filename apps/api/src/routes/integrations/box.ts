@@ -196,7 +196,7 @@ export async function deregisterBoxWebhook(agencyId: string, boxWebhookId: strin
 export async function boxIntegrationRoutes(app: FastifyInstance) {
 
   // ── GET /connect ─────────────────────────────────────────────────────────────
-  app.get('/connect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
+  app.get('/connect', { preHandler: requireRole('owner', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
     const state = Buffer.from(JSON.stringify({ agencyId })).toString('base64url')
     const url   = new URL(BOX_AUTH_URL)
@@ -278,7 +278,7 @@ export async function boxIntegrationRoutes(app: FastifyInstance) {
   })
 
   // ── DELETE /disconnect ────────────────────────────────────────────────────────
-  app.delete('/disconnect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
+  app.delete('/disconnect', { preHandler: requireRole('owner', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
     await prisma.integration.deleteMany({ where: { agencyId, provider: 'box' } })
     return reply.send({ data: { ok: true } })

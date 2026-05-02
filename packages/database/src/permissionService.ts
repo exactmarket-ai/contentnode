@@ -2,14 +2,12 @@ import { prisma } from './client.js'
 import { Prisma } from '@prisma/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Role directory — canonical numbered reference (super_admin = #1)
-// Use the number when discussing role assignments before roles go live.
+// Role directory — canonical numbered reference
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ROLE_DIRECTORY: { num: number; slug: string; label: string }[] = [
   // ── Platform ownership ──────────────────────────────────────────────────────
-  { num: 1,  slug: 'super_admin',            label: 'Super Admin' },
-  { num: 2,  slug: 'owner',                  label: 'Owner (legacy)' },
+  { num: 1,  slug: 'owner',                  label: 'Owner' },
   // ── Org administration ──────────────────────────────────────────────────────
   { num: 3,  slug: 'org_admin',              label: 'Org Admin' },
   { num: 4,  slug: 'admin',                  label: 'Admin (legacy)' },
@@ -120,7 +118,6 @@ const FULL_ACCESS: PermissionSet = {
 
 const ROLE_DEFAULTS: Record<string, PermissionSet> = {
   // ── New role names ─────────────────────────────────────────────────────────
-  super_admin:    FULL_ACCESS,
   org_admin:      FULL_ACCESS,
   client_manager: {
     llm:      { online: true,  offline: true,  models: [] },
@@ -275,7 +272,7 @@ const ROLE_DEFAULTS: Record<string, PermissionSet> = {
     content:  { humanizer: false, style_guides: false, export_formats: [] },
   },
   // ── Legacy role names mapped to equivalents ────────────────────────────────
-  owner:  FULL_ACCESS,                              // equivalent to super_admin
+  owner:  FULL_ACCESS,
   admin:  FULL_ACCESS,                              // equivalent to org_admin
   lead: {                                           // equivalent to client_manager
     llm:      { online: true,  offline: true,  models: [] },
@@ -376,8 +373,8 @@ export const permissionService = {
 
     const role = user?.role ?? 'member'
 
-    // Super-admin and owner always get full access — agency/client overrides cannot restrict them
-    if (role === 'super_admin' || role === 'owner') return FULL_ACCESS
+    // Owner always gets full access — agency/client overrides cannot restrict them
+    if (role === 'owner') return FULL_ACCESS
 
     const roleDefaults = ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS['member']
 

@@ -8,7 +8,6 @@ import { OLLAMA_MODELS } from '@/components/layout/config/shared'
 
 const ROLE_LABELS: Record<string, string> = {
   owner:          'Owner',
-  super_admin:    'Super Admin',
   admin:          'Admin',
   org_admin:      'Org Admin',
   client_manager: 'Client Manager',

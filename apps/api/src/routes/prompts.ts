@@ -300,7 +300,7 @@ const createBody = z.object({
 
 const updateBody = createBody.partial()
 
-const ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin', 'org_admin'])
+const ADMIN_ROLES = new Set(['owner', 'admin', 'org_admin'])
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: fetch pack usageCount for a single prompt template

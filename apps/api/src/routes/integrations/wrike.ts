@@ -58,7 +58,7 @@ async function refreshWrikeToken(agencyId: string): Promise<{ accessToken: strin
 export async function wrikeIntegrationRoutes(app: FastifyInstance) {
 
   // ── GET /connect — return OAuth redirect URL ─────────────────────────────
-  app.get('/connect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
+  app.get('/connect', { preHandler: requireRole('owner', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
     const state = Buffer.from(JSON.stringify({ agencyId })).toString('base64url')
     const url = new URL(WRIKE_AUTH_URL)
@@ -149,7 +149,7 @@ export async function wrikeIntegrationRoutes(app: FastifyInstance) {
   })
 
   // ── DELETE /disconnect — remove tokens ───────────────────────────────────
-  app.delete('/disconnect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
+  app.delete('/disconnect', { preHandler: requireRole('owner', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
     await prisma.integration.deleteMany({ where: { agencyId, provider: 'wrike' } })
     return reply.send({ data: { ok: true } })

@@ -16,7 +16,7 @@ export async function permissionRoutes(app: FastifyInstance) {
   app.get('/roles', async (_req, reply) => {
     const roles = [
       // System roles
-      'super_admin', 'org_admin', 'client_manager',
+      'org_admin', 'client_manager',
       'editor', 'reviewer', 'viewer', 'api_user',
       // Legacy
       'owner', 'admin', 'manager', 'lead', 'member',
@@ -40,7 +40,7 @@ export async function permissionRoutes(app: FastifyInstance) {
   // Requires owner or admin role.
   app.get<{ Params: { clerkUserId: string } }>(
     '/users/:clerkUserId',
-    { preHandler: requireRole('owner', 'admin', 'super_admin', 'org_admin') },
+    { preHandler: requireRole('owner', 'admin', 'org_admin') },
     async (req, reply) => {
       const { agencyId } = req.auth
       const { clerkUserId } = req.params
@@ -53,7 +53,7 @@ export async function permissionRoutes(app: FastifyInstance) {
   // ── PUT /users/:clerkUserId/override — set per-user permissions override ─────
   app.put<{ Params: { clerkUserId: string } }>(
     '/users/:clerkUserId/override',
-    { preHandler: requireRole('owner', 'admin', 'super_admin', 'org_admin') },
+    { preHandler: requireRole('owner', 'admin', 'org_admin') },
     async (req, reply) => {
       const { agencyId } = req.auth
       const { clerkUserId } = req.params
@@ -68,7 +68,7 @@ export async function permissionRoutes(app: FastifyInstance) {
   // ── PUT /clients/:clientId/override — set client-level permissions override ──
   app.put<{ Params: { clientId: string } }>(
     '/clients/:clientId/override',
-    { preHandler: requireRole('owner', 'admin', 'super_admin', 'org_admin') },
+    { preHandler: requireRole('owner', 'admin', 'org_admin') },
     async (req, reply) => {
       const { agencyId } = req.auth
       const { clientId } = req.params
@@ -82,7 +82,7 @@ export async function permissionRoutes(app: FastifyInstance) {
   // ── PUT /org/override — set agency-level permissions override ────────────────
   app.put(
     '/org/override',
-    { preHandler: requireRole('owner', 'super_admin') },
+    { preHandler: requireRole('owner') },
     async (req, reply) => {
       const { agencyId } = req.auth
       const body = req.body as Record<string, unknown>

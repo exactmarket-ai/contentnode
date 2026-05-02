@@ -13,10 +13,10 @@ export interface CurrentUser {
   createdAt: string
 }
 
-const ADMIN_ROLES            = new Set(['owner', 'super_admin', 'admin', 'org_admin'])
-const OWNER_ROLES            = new Set(['owner', 'super_admin'])
+const ADMIN_ROLES            = new Set(['owner', 'admin', 'org_admin'])
+const OWNER_ROLES            = new Set(['owner'])
 const TEMPLATE_MANAGER_ROLES = new Set([
-  'owner', 'super_admin', 'admin', 'org_admin',
+  'owner', 'admin', 'org_admin',
   'manager', 'client_manager', 'editor',
   'strategist', 'campaign_manager', 'project_manager', 'account_manager',
   'content_manager', 'brand_manager',

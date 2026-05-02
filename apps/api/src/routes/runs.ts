@@ -245,8 +245,8 @@ export async function runRoutes(app: FastifyInstance) {
     // Client-side checks are UX only — this is the authoritative gate.
     const resolvedPermissions = await permissionService.resolvePermissions(agencyId, userId, workflow.clientId ?? null)
 
-    // Super-admin and owner bypass all node-level permission checks
-    const isSuperUser = req.auth.role === 'super_admin' || req.auth.role === 'owner'
+    // Owner bypasses all node-level permission checks
+    const isSuperUser = req.auth.role === 'owner'
 
     if (!isSuperUser && body.graph?.nodes) {
       for (const n of body.graph.nodes) {

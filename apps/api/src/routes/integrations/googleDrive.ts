@@ -82,7 +82,7 @@ export async function getGoogleDriveToken(agencyId: string): Promise<string> {
 export async function googleDriveIntegrationRoutes(app: FastifyInstance) {
 
   // GET /connect — returns the Google OAuth consent URL
-  app.get('/connect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
+  app.get('/connect', { preHandler: requireRole('owner', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
     const state = Buffer.from(JSON.stringify({ agencyId })).toString('base64url')
     const url   = new URL(GOOGLE_AUTH_URL)
@@ -182,7 +182,7 @@ export async function googleDriveIntegrationRoutes(app: FastifyInstance) {
   })
 
   // DELETE /disconnect — revoke + delete
-  app.delete('/disconnect', { preHandler: requireRole('owner', 'super_admin', 'org_admin', 'admin') }, async (req, reply) => {
+  app.delete('/disconnect', { preHandler: requireRole('owner', 'org_admin', 'admin') }, async (req, reply) => {
     const { agencyId } = req.auth
     const integration  = await prisma.integration.findUnique({
       where:  { agencyId_provider: { agencyId, provider: 'google_drive' } },

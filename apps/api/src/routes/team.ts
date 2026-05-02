@@ -38,7 +38,7 @@ const inviteBody = z.object({
 })
 
 const updateRoleBody = z.object({
-  role: z.enum(['owner', 'super_admin', ...INVITABLE_ROLES]),
+  role: z.enum(['owner', ...INVITABLE_ROLES]),
 })
 
 const updateProfileBody = z.object({
@@ -298,7 +298,7 @@ export async function teamRoutes(app: FastifyInstance) {
   })
 
   // ── PATCH /:memberId — update role or profile (name / title / department) ──
-  app.patch('/:memberId', { preHandler: requireRole('owner', 'super_admin', 'admin', 'org_admin') }, async (req, reply) => {
+  app.patch('/:memberId', { preHandler: requireRole('owner', 'admin', 'org_admin') }, async (req, reply) => {
     const { agencyId, userId } = req.auth
     const { memberId } = req.params as { memberId: string }
     const rawBody = req.body as Record<string, unknown>

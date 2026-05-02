@@ -47,7 +47,7 @@ const SEED_PROMPTS = [
   },
 ]
 
-const ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin', 'org_admin'])
+const ADMIN_ROLES = new Set(['owner', 'admin', 'org_admin'])
 
 export async function imagePromptRoutes(app: FastifyInstance) {
   // GET / — list image prompts (active only)

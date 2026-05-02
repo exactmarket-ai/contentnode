@@ -408,7 +408,7 @@ export async function workflowRoutes(app: FastifyInstance) {
     })
     if (!template) return reply.code(404).send({ error: 'Template not found' })
 
-    const isAdmin = ['owner', 'super_admin', 'admin', 'org_admin'].includes(role)
+    const isAdmin = ['owner', 'admin', 'org_admin'].includes(role)
     if (!isAdmin && template.templateCreatedBy !== userId) {
       return reply.code(403).send({ error: 'You can only delete templates you created' })
     }
