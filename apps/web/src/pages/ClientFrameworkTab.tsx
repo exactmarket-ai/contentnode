@@ -2543,8 +2543,13 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
               const sec: Record<string, unknown> = { ...defaultSec }
               for (const field of Object.keys(dbSec)) {
                 const val = dbSec[field]
-                // Only overwrite if the DB value is a non-null, non-empty value
-                if (val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) {
+                const defaultVal = defaultSec[field]
+                if (val === null || val === undefined) continue
+                // If the default is an array, only replace with a non-empty array — guards against
+                // DB values that were stored as objects or other non-array types (e.g. s06.differentiators)
+                if (Array.isArray(defaultVal)) {
+                  if (Array.isArray(val) && val.length > 0) sec[field] = val
+                } else if (!(Array.isArray(val) && val.length === 0)) {
                   sec[field] = val
                 }
               }
@@ -2819,7 +2824,11 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
             const sec: Record<string, unknown> = { ...defaultSec }
             for (const field of Object.keys(dbSec)) {
               const val = dbSec[field]
-              if (val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) {
+              const defaultVal = defaultSec[field]
+              if (val === null || val === undefined) continue
+              if (Array.isArray(defaultVal)) {
+                if (Array.isArray(val) && val.length > 0) sec[field] = val
+              } else if (!(Array.isArray(val) && val.length === 0)) {
                 sec[field] = val
               }
             }
@@ -2919,7 +2928,20 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
             const merged = { ...base }
             for (const key of Object.keys(base) as Array<keyof typeof base>) {
               if (data[key] && typeof data[key] === 'object' && !Array.isArray(data[key])) {
-                ;(merged as Record<string, unknown>)[key] = { ...(base[key] as Record<string, unknown>), ...(data[key] as Record<string, unknown>) }
+                const defaultSec = base[key] as Record<string, unknown>
+                const dbSec = data[key] as Record<string, unknown>
+                const sec: Record<string, unknown> = { ...defaultSec }
+                for (const field of Object.keys(dbSec)) {
+                  const val = dbSec[field]
+                  const defaultVal = defaultSec[field]
+                  if (val === null || val === undefined) continue
+                  if (Array.isArray(defaultVal)) {
+                    if (Array.isArray(val) && val.length > 0) sec[field] = val
+                  } else if (!(Array.isArray(val) && val.length === 0)) {
+                    sec[field] = val
+                  }
+                }
+                ;(merged as Record<string, unknown>)[key] = sec
               } else if (data[key] !== undefined) {
                 ;(merged as Record<string, unknown>)[key] = data[key]
               }
