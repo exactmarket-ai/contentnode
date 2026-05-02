@@ -159,7 +159,7 @@ function NodeConfigForm({
       if (subtype === 'geo-review')
         return <GeoReviewConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'schema-markup')
-        return <SchemaMarkupConfig config={config} onChange={onChange} />
+        return <SchemaMarkupConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'repurpose')
         return <RepurposeConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'fact-checker')
