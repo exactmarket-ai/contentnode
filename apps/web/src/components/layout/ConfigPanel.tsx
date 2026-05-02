@@ -163,7 +163,7 @@ function NodeConfigForm({
       if (subtype === 'repurpose')
         return <RepurposeConfig config={config} onChange={onChange} />
       if (subtype === 'fact-checker')
-        return <FactCheckerConfig config={config} onChange={onChange} />
+        return <FactCheckerConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'internal-link-suggester')
         return <InternalLinkSuggesterConfig config={config} onChange={onChange} />
       if (subtype === 'image-prompt-builder')

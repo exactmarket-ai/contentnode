@@ -25,6 +25,9 @@ interface TerminalOutput {
   error:   string | null
 }
 
+// Review nodes display results in their config panel — exclude from the right-rail output
+const REVIEW_SUBTYPES = new Set(['seo-review', 'geo-review', 'fact-checker', 'quality-review'])
+
 export function RunOutputPanel() {
   const nodes          = useWorkflowStore((s) => s.nodes)
   const edges          = useWorkflowStore((s) => s.edges)
@@ -39,6 +42,7 @@ export function RunOutputPanel() {
     const sourcedIds = new Set(edges.map((e) => e.source))
     return nodes
       .filter((n) => !sourcedIds.has(n.id))
+      .filter((n) => !REVIEW_SUBTYPES.has((n.data?.subtype as string) ?? ''))
       .map((n) => {
         const nrs = nodeRunStatuses[n.id]
         return {

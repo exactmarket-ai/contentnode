@@ -55,6 +55,11 @@
 .prose-run em,     .prose-panel em     { font-style: italic; }
 .prose-run code,   .prose-panel code   { font-family: monospace; background: hsl(var(--muted)); padding: 0 0.25em; border-radius: 3px; font-size: 0.9em; }
 .prose-run del,    .prose-panel del    { text-decoration: line-through; opacity: 0.6; }
+/* Tables */
+.prose-run table, .prose-panel table { width: 100%; border-collapse: collapse; margin: 0.5em 0; font-size: 0.9em; }
+.prose-run th, .prose-panel th { text-align: left; font-weight: 600; padding: 0.3em 0.6em; border-bottom: 2px solid hsl(var(--border)); }
+.prose-run td, .prose-panel td { padding: 0.25em 0.6em; border-bottom: 1px solid hsl(var(--border)); vertical-align: top; }
+.prose-run tr:last-child td, .prose-panel tr:last-child td { border-bottom: none; }
 /* First/last child margins collapsed */
 .prose-run > *:first-child, .prose-panel > *:first-child { margin-top: 0; }
 .prose-run > *:last-child,  .prose-panel > *:last-child  { margin-bottom: 0; }

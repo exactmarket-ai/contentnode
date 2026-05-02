@@ -50,8 +50,13 @@ SENSITIVITY: ${sensitivityInstructions[sensitivity] ?? sensitivityInstructions['
 
 ACTION: ${actionInstructions[action] ?? actionInstructions['annotate']}
 
-After processing the content, append a FACT CHECK SUMMARY section with a table listing every flag:
-| Claim | Reason flagged | Suggested action |
+After processing the content, append a ## FACT CHECK SUMMARY section. List each flagged item in this exact format:
+
+**Claim:** [the flagged claim or a short paraphrase]
+**Reason:** [why it was flagged]
+**Action:** [suggested action]
+
+Separate each item with a blank line. If no items were flagged, write "No issues found."
 
 Note: You are evaluating based on your training knowledge only — you do not have access to live search.
 

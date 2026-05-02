@@ -1,5 +1,9 @@
+import { useState } from 'react'
+import * as Icons from 'lucide-react'
 import { FieldGroup } from '../shared'
-import { cn } from '@/lib/utils'
+import { cn, stripMarkdown } from '@/lib/utils'
+import { downloadDocx } from '@/lib/downloadDocx'
+import { MarkdownContent } from '@/components/ui/markdown-content'
 
 const CHECK_MODES = [
   { value: 'claims_statistics', label: 'Claims & statistics', desc: 'Numbers, attributed quotes, specific factual assertions' },
@@ -19,16 +23,44 @@ const SENSITIVITY_OPTIONS = [
   { value: 'high',   label: 'High',   desc: 'Flags any claim without a direct citation' },
 ]
 
+function parseSummary(outputText: string): { summaryText: string; flagCount: number; isClean: boolean } {
+  const match = outputText.match(/##\s*FACT\s+CHECK\s+SUMMARY([\s\S]*)$/i)
+  const summaryText = match?.[1]?.trim() ?? ''
+  const isClean = !summaryText || summaryText.toLowerCase().includes('no issues found')
+  const flagCount = isClean ? 0 : (summaryText.match(/\*\*Claim:\*\*/gi) ?? []).length
+  return { summaryText, flagCount, isClean }
+}
+
 export function FactCheckerConfig({
   config,
   onChange,
+  nodeRunStatus,
 }: {
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
+  nodeRunStatus?: { status?: string; output?: unknown }
 }) {
-  const checkMode  = (config.checkMode  as string) ?? 'claims_statistics'
-  const action     = (config.action     as string) ?? 'annotate'
+  const [copied, setCopied] = useState(false)
+
+  const checkMode   = (config.checkMode   as string) ?? 'claims_statistics'
+  const action      = (config.action      as string) ?? 'annotate'
   const sensitivity = (config.sensitivity as string) ?? 'medium'
+
+  const outputText = typeof nodeRunStatus?.output === 'string' ? nodeRunStatus.output : ''
+  const hasSummary = nodeRunStatus?.status === 'passed' && outputText.length > 0
+  const { summaryText, flagCount, isClean } = parseSummary(outputText)
+
+  const handleCopy = () => {
+    if (!summaryText) return
+    navigator.clipboard.writeText(stripMarkdown(summaryText))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleDownload = () => {
+    if (!summaryText) return
+    downloadDocx(summaryText, 'fact-check-summary')
+  }
 
   return (
     <div className="space-y-4 p-4">
@@ -115,6 +147,55 @@ export function FactCheckerConfig({
           Evaluation is based on Claude's training knowledge — no live web search.
         </p>
       </div>
+
+      {/* ── Post-run results ── */}
+      {hasSummary && (
+        <div className="space-y-2 border-t border-border pt-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span
+                className="rounded px-2 py-0.5 text-xs font-semibold"
+                style={isClean
+                  ? { backgroundColor: '#dcfce7', color: '#166534' }
+                  : { backgroundColor: '#fef3c7', color: '#92400e' }
+                }
+              >
+                {isClean ? 'Clean' : `${flagCount} flag${flagCount === 1 ? '' : 's'}`}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {isClean ? 'No issues found' : 'flagged claims'}
+              </span>
+            </div>
+            {!isClean && summaryText && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-blue-600 hover:bg-accent hover:text-blue-700"
+                >
+                  {copied ? <Icons.Check className="h-3 w-3" /> : <Icons.Copy className="h-3 w-3" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <Icons.Download className="h-3 w-3" />
+                  .docx
+                </button>
+              </div>
+            )}
+          </div>
+
+          {!isClean && summaryText && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <MarkdownContent
+                content={summaryText}
+                className="text-xs leading-relaxed text-foreground prose-panel"
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

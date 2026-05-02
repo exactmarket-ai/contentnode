@@ -258,6 +258,29 @@ export const LogicNode = memo(({ id, data, selected }: NodeProps) => {
           )
         })()}
 
+        {/* Fact Checker: flags badge after run */}
+        {subtype === 'fact-checker' && status === 'passed' && (() => {
+          const output = nodeStatuses[id]?.output
+          const text = typeof output === 'string' ? output : ''
+          const summaryMatch = text.match(/##\s*FACT\s+CHECK\s+SUMMARY([\s\S]*)$/i)
+          const summaryText = summaryMatch?.[1] ?? ''
+          const isClean = !summaryText.trim() || summaryText.toLowerCase().includes('no issues found')
+          const flagCount = isClean ? 0 : (summaryText.match(/\*\*Claim:\*\*/gi) ?? []).length
+          return (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span
+                className="rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                style={isClean
+                  ? { backgroundColor: '#dcfce7', color: '#166534' }
+                  : { backgroundColor: '#fef3c7', color: '#92400e' }
+                }
+              >
+                {isClean ? 'Clean' : `${flagCount} flag${flagCount === 1 ? '' : 's'}`}
+              </span>
+            </div>
+          )
+        })()}
+
         {/* Conditional branch: pass/fail labels */}
         {subtype === 'conditional-branch' && data.config && (() => {
           const cfg = data.config as Record<string, unknown>
