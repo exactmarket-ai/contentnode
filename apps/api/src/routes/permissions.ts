@@ -16,10 +16,7 @@ export async function permissionRoutes(app: FastifyInstance) {
   app.get('/roles', async (_req, reply) => {
     const roles = [
       // System roles
-      'org_admin', 'client_manager',
-      'editor', 'reviewer', 'viewer', 'api_user',
-      // Legacy
-      'owner', 'admin', 'manager', 'lead', 'member',
+      'org_admin', 'admin', 'owner', 'editor',
       // Internal agency functional roles
       'strategist', 'campaign_manager',
       'art_director', 'brand_manager', 'designer', 'social_media_manager', 'content_manager',

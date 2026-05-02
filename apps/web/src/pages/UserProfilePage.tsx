@@ -7,16 +7,10 @@ import { useSettingsStore, type LocalMediaService, type LocalMediaServiceType } 
 import { OLLAMA_MODELS } from '@/components/layout/config/shared'
 
 const ROLE_LABELS: Record<string, string> = {
-  owner:          'Owner',
-  admin:          'Admin',
-  org_admin:      'Org Admin',
-  client_manager: 'Client Manager',
-  lead:           'Lead',
-  editor:         'Editor',
-  reviewer:       'Reviewer',
-  viewer:         'Viewer',
-  member:         'Member',
-  api_user:       'API User',
+  owner:    'Owner',
+  admin:    'Admin',
+  org_admin: 'Org Admin',
+  editor:   'Editor',
 }
 
 function getInitials(name: string | null, email: string): string {

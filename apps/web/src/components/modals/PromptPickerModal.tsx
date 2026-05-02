@@ -84,7 +84,7 @@ function TemplateList({
                         : { backgroundColor: 'transparent', border: '1px solid transparent' }
                     }
                   >
-                    <p className="truncate text-xs font-medium" style={{ color: isActive ? '#7a00b4' : '#1a1a14' }}>
+                    <p className="line-clamp-2 text-xs font-medium" style={{ color: isActive ? '#7a00b4' : '#1a1a14' }}>
                       {t.name}
                     </p>
                     {t.description && (

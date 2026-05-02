@@ -16,10 +16,6 @@ export const ROLE_DIRECTORY: { num: number; slug: string; label: string }[] = [
   { num: 6,  slug: 'campaign_manager',       label: 'Campaign Manager' },
   { num: 7,  slug: 'project_manager',        label: 'Project Manager' },
   { num: 8,  slug: 'account_manager',        label: 'Account Manager' },
-  // ── Client manager / lead tier ──────────────────────────────────────────────
-  { num: 9,  slug: 'client_manager',         label: 'Client Manager' },
-  { num: 10, slug: 'manager',                label: 'Manager (legacy)' },
-  { num: 11, slug: 'lead',                   label: 'Lead (legacy)' },
   // ── Creative / editor tier ──────────────────────────────────────────────────
   { num: 12, slug: 'art_director',           label: 'Art Director' },
   { num: 13, slug: 'brand_manager',          label: 'Brand Manager' },
@@ -27,17 +23,12 @@ export const ROLE_DIRECTORY: { num: number; slug: string; label: string }[] = [
   { num: 15, slug: 'social_media_manager',   label: 'Social Media Manager' },
   { num: 16, slug: 'content_manager',        label: 'Content Manager' },
   { num: 17, slug: 'editor',                 label: 'Editor' },
-  { num: 18, slug: 'member',                 label: 'Member (legacy)' },
   // ── Specialist / writer tier ────────────────────────────────────────────────
   { num: 19, slug: 'copywriter',             label: 'Copywriter' },
   { num: 20, slug: 'seo_specialist',         label: 'SEO Specialist' },
   { num: 21, slug: 'performance_marketer',   label: 'Performance Marketer' },
   // ── Internal review / compliance ────────────────────────────────────────────
   { num: 22, slug: 'compliance_reviewer',    label: 'Compliance Reviewer' },
-  { num: 23, slug: 'reviewer',               label: 'Reviewer' },
-  // ── Read-only / API access ──────────────────────────────────────────────────
-  { num: 24, slug: 'viewer',                 label: 'Viewer' },
-  { num: 25, slug: 'api_user',               label: 'API User' },
   // ── Client-facing / portal ──────────────────────────────────────────────────
   { num: 26, slug: 'client_executive_approver', label: 'Client: Executive Approver' },
   { num: 27, slug: 'client_legal_reviewer',     label: 'Client: Legal Reviewer' },
@@ -117,33 +108,8 @@ const FULL_ACCESS: PermissionSet = {
 }
 
 const ROLE_DEFAULTS: Record<string, PermissionSet> = {
-  // ── New role names ─────────────────────────────────────────────────────────
-  org_admin:      FULL_ACCESS,
-  client_manager: {
-    llm:      { online: true,  offline: true,  models: [] },
-    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
-    video:    { enabled: true,  online: true,  offline: false, providers: [] },
-    content:  { humanizer: true, style_guides: true, export_formats: [] },
-  },
+  org_admin: FULL_ACCESS,
   editor: {
-    llm:      { online: true,  offline: false, models: [] },
-    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
-    video:    { enabled: false, online: false, offline: false, providers: [] },
-    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
-  },
-  reviewer: {
-    llm:      { online: true,  offline: false, models: [] },
-    graphics: { enabled: false, online: false, offline: false, providers: [] },
-    video:    { enabled: false, online: false, offline: false, providers: [] },
-    content:  { humanizer: false, style_guides: false, export_formats: [] },
-  },
-  viewer: {
-    llm:      { online: false, offline: false, models: [] },
-    graphics: { enabled: false, online: false, offline: false, providers: [] },
-    video:    { enabled: false, online: false, offline: false, providers: [] },
-    content:  { humanizer: false, style_guides: false, export_formats: [] },
-  },
-  api_user: {
     llm:      { online: true,  offline: false, models: [] },
     graphics: { enabled: true,  online: true,  offline: false, providers: [] },
     video:    { enabled: false, online: false, offline: false, providers: [] },
@@ -272,20 +238,8 @@ const ROLE_DEFAULTS: Record<string, PermissionSet> = {
     content:  { humanizer: false, style_guides: false, export_formats: [] },
   },
   // ── Legacy role names mapped to equivalents ────────────────────────────────
-  owner:  FULL_ACCESS,
-  admin:  FULL_ACCESS,                              // equivalent to org_admin
-  lead: {                                           // equivalent to client_manager
-    llm:      { online: true,  offline: true,  models: [] },
-    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
-    video:    { enabled: true,  online: true,  offline: false, providers: [] },
-    content:  { humanizer: true, style_guides: true, export_formats: [] },
-  },
-  member: {                                         // equivalent to editor
-    llm:      { online: true,  offline: false, models: [] },
-    graphics: { enabled: true,  online: true,  offline: false, providers: [] },
-    video:    { enabled: false, online: false, offline: false, providers: [] },
-    content:  { humanizer: true, style_guides: true, export_formats: ['pdf', 'docx'] },
-  },
+  owner: FULL_ACCESS,
+  admin: FULL_ACCESS,                               // equivalent to org_admin
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,12 +325,12 @@ export const permissionService = {
       select: { role: true, permissionsOverride: true },
     })
 
-    const role = user?.role ?? 'member'
+    const role = user?.role ?? 'editor'
 
     // Owner always gets full access — agency/client overrides cannot restrict them
     if (role === 'owner') return FULL_ACCESS
 
-    const roleDefaults = ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS['member']
+    const roleDefaults = ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS['editor']
 
     // Load agency-level override
     const agency = await prisma.agency.findUnique({
@@ -497,7 +451,7 @@ export const permissionService = {
 
   /** Get the role-default permissions for a given role name without a DB lookup. */
   getRoleDefaults(role: string): PermissionSet {
-    return ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS['member']
+    return ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS['editor']
   },
 
   /** Update the permissions override for a user, client, or agency. */

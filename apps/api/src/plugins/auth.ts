@@ -73,7 +73,7 @@ async function authPluginFn(app: FastifyInstance) {
           secretKey: CLERK_SECRET_KEY,
           authorizedParties: (process.env.CORS_ORIGIN ?? '').split(',').map(o => o.trim()).filter(Boolean),
         })
-        req.auth = { agencyId: '', userId: payload.sub, role: 'member' }
+        req.auth = { agencyId: '', userId: payload.sub, role: 'editor' }
       } catch {
         return reply.code(401).send({ error: 'Invalid or expired token' })
       }
@@ -117,7 +117,7 @@ async function authPluginFn(app: FastifyInstance) {
     const meta = ((payload as Record<string, unknown>)['publicMetadata'] ?? {}) as Record<string, unknown>
 
     const agencyIdFromToken = (claims['agency_id'] ?? meta['agency_id']) as string | undefined
-    const roleFromToken = (((claims['role'] || meta['role']) as string | undefined) || 'member')
+    const roleFromToken = (((claims['role'] || meta['role']) as string | undefined) || 'editor')
     // DEFAULT_AGENCY_ID always wins in local dev — production JWT agency_id may not exist locally
     const agencyId = process.env.DEFAULT_AGENCY_ID ?? agencyIdFromToken
     // DEFAULT_ROLE env var overrides token role for local dev (when Clerk custom claims aren't configured)
@@ -182,16 +182,16 @@ async function authPluginFn(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Token is missing agency_id claim' })
     }
 
-    // When role wasn't explicitly provided by the JWT (defaults to 'member') and no
+    // When role wasn't explicitly provided by the JWT (defaults to 'editor') and no
     // DEFAULT_ROLE env override is set, look up the user's actual role from the database.
     // This handles staging/production environments where Clerk custom session claims
-    // (agency_id / role) aren't configured — without it every user gets 'member' and
+    // (agency_id / role) aren't configured — without it every user gets 'editor' and
     // admin-only routes silently return empty results.
     // When role isn't in the JWT (or Clerk renders the shortcode as empty string),
     // fall back to the DB. Use get_user_by_clerk_id() — SECURITY DEFINER bypasses
     // FORCE RLS on users table (app.current_agency_id session var not set yet).
     let resolvedRole = role
-    if (!process.env.DEFAULT_ROLE && roleFromToken === 'member') {
+    if (!process.env.DEFAULT_ROLE && roleFromToken === 'editor') {
       try {
         const rows = await prisma.$queryRaw<{ agency_id: string; role: string }[]>`
           SELECT agency_id, role FROM get_user_by_clerk_id(${payload.sub})

@@ -104,6 +104,9 @@ export function AiGenerateConfig({
   const overrideModel = (modelCfg?.model as string) ?? 'claude-sonnet-4-5'
   const temperature = (config.temperature as number) ?? workflowModel.temperature ?? 0.7
 
+  const activeModel = overrideEnabled ? overrideModel : workflowModel.model
+  const temperatureFixed = ['gpt-5.5', 'gpt-5.5-pro', 'o3'].includes(activeModel)
+
   const inheritedLabel = `${modelLabel(workflowModel.provider, workflowModel.model)} (default)`
 
   return (
@@ -229,21 +232,25 @@ export function AiGenerateConfig({
       )}
 
       {/* Temperature */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs text-muted-foreground">Temperature</Label>
-          <span className="text-xs text-muted-foreground">{temperature.toFixed(1)}</span>
+      {temperatureFixed ? (
+        <p className="text-xs text-muted-foreground">Temperature is fixed at default for this model.</p>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Temperature</Label>
+            <span className="text-xs text-muted-foreground">{temperature.toFixed(1)}</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value={temperature}
+            onChange={(e) => onChange('temperature', parseFloat(e.target.value))}
+            className="w-full accent-blue-500"
+          />
         </div>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.1"
-          value={temperature}
-          onChange={(e) => onChange('temperature', parseFloat(e.target.value))}
-          className="w-full accent-blue-500"
-        />
-      </div>
+      )}
 
       {/* Max words */}
       <FieldGroup label="Max Words" description="Caps output length — leave blank for no limit">

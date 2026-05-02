@@ -17,13 +17,12 @@ const ADMIN_ROLES            = new Set(['owner', 'admin', 'org_admin'])
 const OWNER_ROLES            = new Set(['owner'])
 const TEMPLATE_MANAGER_ROLES = new Set([
   'owner', 'admin', 'org_admin',
-  'manager', 'client_manager', 'editor',
-  'strategist', 'campaign_manager', 'project_manager', 'account_manager',
+  'editor', 'account_manager',
+  'strategist', 'campaign_manager', 'project_manager',
   'content_manager', 'brand_manager',
 ])
-// Client-facing and pure-viewer roles that should NOT see productPILOT
+// Client-facing roles that should NOT see productPILOT
 const PILOT_EXCLUDED_ROLES = new Set([
-  'viewer', 'api_user',
   'client_legal_reviewer', 'client_brand_reviewer', 'client_creative_reviewer',
   'client_marcom_reviewer', 'client_product_reviewer', 'client_executive_approver',
   'client_stakeholder',
@@ -58,8 +57,8 @@ export function useCurrentUser() {
   const isOwner            = OWNER_ROLES.has(role)
   const isAdmin            = ADMIN_ROLES.has(role)
   const isEditor           = role === 'editor' || isAdmin
-  const isManager          = role === 'manager' || isEditor
-  const isLead             = role === 'lead' || isManager
+  const isManager          = isEditor
+  const isLead             = isManager
   const isMember           = !!user
   const canManageTemplates = TEMPLATE_MANAGER_ROLES.has(role)
   const canUsePilot        = !!user && !PILOT_EXCLUDED_ROLES.has(role)

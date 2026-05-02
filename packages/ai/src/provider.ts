@@ -122,6 +122,13 @@ function usesMaxCompletionTokens(model: string): boolean {
   return /^o\d/i.test(model) || /gpt-5/i.test(model)
 }
 
+// Models that reject the temperature parameter entirely (only accept the API default)
+const TEMPERATURE_UNSUPPORTED_MODELS = [
+  'gpt-5.5',
+  'gpt-5.5-pro',
+  'o3',
+]
+
 async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelResult> {
   const apiKey = config.api_key_ref ? resolveApiKey(config.api_key_ref) : (process.env.OPENAI_API_KEY ?? '')
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
@@ -141,7 +148,7 @@ async function callOpenAI(config: ModelConfig, prompt: string): Promise<ModelRes
     model: config.model,
     messages,
     ...tokenParam,
-    ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
+    ...(!TEMPERATURE_UNSUPPORTED_MODELS.includes(config.model) && config.temperature !== undefined ? { temperature: config.temperature } : {}),
   })
 
   const text = response.choices[0]?.message?.content ?? ''

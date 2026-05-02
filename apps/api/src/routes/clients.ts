@@ -826,9 +826,9 @@ export async function clientRoutes(app: FastifyInstance) {
     if (!existing) return reply.code(404).send({ error: 'Client not found' })
 
     // requireOffline is an admin-only policy setting.
-    // Fall back to DB role if the Clerk JWT doesn't include the role claim (defaults to 'member').
+    // Fall back to DB role if the Clerk JWT doesn't include the role claim (defaults to 'editor').
     if (parsed.data.requireOffline !== undefined) {
-      let effectiveRole = req.auth.role ?? 'member'
+      let effectiveRole = req.auth.role ?? 'editor'
       if (!['owner', 'admin'].includes(effectiveRole)) {
         const dbUser = await prisma.user.findFirst({
           where: { clerkUserId: req.auth.userId, agencyId },

@@ -74,18 +74,11 @@ function relativeTime(iso: string | null | undefined): string {
 // ─── Role config ──────────────────────────────────────────────────────────────
 
 const ROLE_STYLES: Record<string, { bg: string; border: string; color: string; label: string }> = {
-  // System / legacy
+  // System
   owner:          { bg: '#fdf5ff', border: '#e9c8ff', color: '#a200ee', label: 'Owner' },
   admin:          { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Admin' },
   org_admin:      { bg: '#f0f6fd', border: '#b8d8f5', color: '#185fa5', label: 'Org Admin' },
-  manager:        { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Manager' },
-  client_manager: { bg: '#fffbeb', border: '#fde68a', color: '#b45309', label: 'Client Manager' },
-  lead:           { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Lead' },
   editor:         { bg: '#f0fdf4', border: '#86efac', color: '#166534', label: 'Editor' },
-  member:         { bg: '#f4f4f2', border: '#dddcd6', color: '#5c5b52', label: 'Member' },
-  reviewer:       { bg: '#fff7ed', border: '#fed7aa', color: '#9a3412', label: 'Reviewer' },
-  viewer:         { bg: '#f9f9f7', border: '#dddcd6', color: '#6b7280', label: 'Viewer' },
-  api_user:       { bg: '#f0f9ff', border: '#7dd3fc', color: '#0369a1', label: 'API User' },
   // Internal agency functional roles
   strategist:           { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8', label: 'Strategist' },
   campaign_manager:     { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8', label: 'Campaign Manager' },
@@ -120,7 +113,7 @@ interface InviteModalProps {
 function InviteModal({ onClose, onInvited }: InviteModalProps) {
   const [name, setName]     = useState('')
   const [email, setEmail]   = useState('')
-  const [role, setRole]     = useState('member')
+  const [role, setRole]     = useState('editor')
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
@@ -209,10 +202,8 @@ function InviteModal({ onClose, onInvited }: InviteModalProps) {
                 <option value="performance_marketer">Performance Marketer — LLM only</option>
                 <option value="compliance_reviewer">Compliance Reviewer — read + review only</option>
               </optgroup>
-              <optgroup label="Agency — Access Level">
-                <option value="manager">Manager — manages clients, workflows, and leads/members</option>
-                <option value="lead">Lead — manages client-level external access</option>
-                <option value="member">Member — can view and run workflows</option>
+              <optgroup label="Agency — General">
+                <option value="editor">Editor — can view and run workflows</option>
               </optgroup>
               <optgroup label="Client-Facing">
                 <option value="client_executive_approver">Client: Executive Approver</option>
@@ -418,7 +409,7 @@ function HistoryDrawer({ member, onClose }: { member: TeamMember; onClose: () =>
       .finally(() => setLoading(false))
   }, [member.id])
 
-  const rs = ROLE_STYLES[member.role] ?? ROLE_STYLES.member
+  const rs = ROLE_STYLES[member.role] ?? ROLE_STYLES.editor
 
   return (
     <>
@@ -961,7 +952,7 @@ export function TeamPage() {
             </thead>
             <tbody>
               {members.map((m, i) => {
-                const rs = ROLE_STYLES[m.role] ?? ROLE_STYLES.member
+                const rs = ROLE_STYLES[m.role] ?? ROLE_STYLES.editor
                 const busy = actionLoading === m.id
                 return (
                   <tr
@@ -1023,10 +1014,8 @@ export function TeamPage() {
                               <option value="performance_marketer">Performance Marketer</option>
                               <option value="compliance_reviewer">Compliance Reviewer</option>
                             </optgroup>
-                            <optgroup label="Access Level">
-                              <option value="manager">Manager</option>
-                              <option value="lead">Lead</option>
-                              <option value="member">Member</option>
+                            <optgroup label="General">
+                              <option value="editor">Editor</option>
                             </optgroup>
                             <optgroup label="Client-Facing">
                               <option value="client_executive_approver">Client: Executive</option>

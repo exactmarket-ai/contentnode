@@ -360,8 +360,8 @@ export function AppNav({ onSignOut }: AppNavProps) {
 
       <div className="my-1 h-px w-full bg-border" />
 
-      {/* My Work — Manager and above, plus Client Manager */}
-      {(isLead || role === 'client_manager') && (
+      {/* My Work — Editor and above, plus Account Manager */}
+      {(isLead || role === 'account_manager') && (
         <NavItem to="/my-work" collapsed={collapsed} icon={Icons.House} label="My Work" {...ACTIVE} />
       )}
 

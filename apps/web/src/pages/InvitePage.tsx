@@ -8,27 +8,22 @@ interface PendingMember {
   id: string
   email: string
   name: string | null
-  role: 'admin' | 'manager' | 'lead' | 'member'
+  role: string
   createdAt: string
   inviteExpiresAt?: string | null
   inviteExpired: boolean
 }
 
 const ROLE_INFO: Record<string, { label: string; description: string; color: string; bg: string; border: string }> = {
-  member: {
-    label: 'Member',
+  editor: {
+    label: 'Editor',
     description: 'Can view and run workflows. No admin or access management.',
-    color: '#5c5b52', bg: '#f4f4f2', border: '#dddcd6',
-  },
-  lead: {
-    label: 'Lead',
-    description: 'All Member permissions plus client-level access management and external portal grants.',
     color: '#166534', bg: '#f0fdf4', border: '#86efac',
   },
-  manager: {
-    label: 'Manager',
-    description: 'Manages client workflows and team members. Can invite leads and members. Cannot change org settings.',
-    color: '#b45309', bg: '#fffbeb', border: '#fde68a',
+  org_admin: {
+    label: 'Org Admin',
+    description: 'Manages team members, clients, and workflows. Cannot change billing or owner settings.',
+    color: '#185fa5', bg: '#f0f6fd', border: '#b8d8f5',
   },
   admin: {
     label: 'Admin',
@@ -63,7 +58,7 @@ export function InvitePage() {
 
   const [name, setName]         = useState('')
   const [email, setEmail]       = useState('')
-  const [role, setRole]         = useState<'admin' | 'manager' | 'lead' | 'member'>('member')
+  const [role, setRole]         = useState<'admin' | 'org_admin' | 'editor'>('editor')
   const [sending, setSending]   = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sent, setSent]         = useState<string | null>(null)
@@ -239,7 +234,7 @@ export function InvitePage() {
                   Role
                 </label>
                 <div className="space-y-2">
-                  {(['member', 'lead', 'manager', 'admin'] as const).map((r) => {
+                  {(['editor', 'org_admin', 'admin'] as const).map((r) => {
                     const info = ROLE_INFO[r]
                     const selected = role === r
                     return (
@@ -346,7 +341,7 @@ export function InvitePage() {
               <div className="divide-y" style={{ borderColor: '#f4f4f2' }}>
                 {pending.map((m) => {
                   const expiry = expiryLabel(m.inviteExpiresAt, m.inviteExpired)
-                  const roleInfo = ROLE_INFO[m.role] ?? ROLE_INFO.member
+                  const roleInfo = ROLE_INFO[m.role] ?? ROLE_INFO.editor
                   const initials = (m.name ?? m.email).split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
                   return (
                     <div

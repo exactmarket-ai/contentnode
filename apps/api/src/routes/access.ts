@@ -2,7 +2,6 @@
  * External Access Management — /api/v1/access
  *
  * Agency-side routes for managing DeliverableAccess grants.
- * Owners, Admins, and Leads can manage access; Leads are restricted to their clients.
  */
 import crypto from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
@@ -20,21 +19,10 @@ export async function accessRoutes(app: FastifyInstance) {
 
   // ── GET / — list all access grants (Admin/Owner: all org, Lead: their clients) ──
   app.get('/', { preHandler: requireRole('owner', 'admin') }, async (req, reply) => {
-    const { agencyId, userId, role } = req.auth
-
-    // Leads only see their clients — find which clients they manage
-    let clientIds: string[] | undefined
-    if (role === 'lead') {
-      // For now: Leads see all clients (client assignment to be built later)
-      // When client-lead assignments are added, filter here
-      clientIds = undefined
-    }
+    const { agencyId, userId } = req.auth
 
     const grants = await prisma.deliverableAccess.findMany({
-      where: {
-        agencyId,
-        ...(clientIds ? { stakeholder: { clientId: { in: clientIds } } } : {}),
-      },
+      where: { agencyId },
       include: {
         stakeholder: { select: { id: true, name: true, email: true, role: true, clientId: true } },
         run: {

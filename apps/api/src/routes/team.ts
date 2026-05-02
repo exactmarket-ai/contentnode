@@ -19,8 +19,7 @@ function generateInviteToken() {
 
 const INVITABLE_ROLES = [
   // System roles
-  'admin', 'manager', 'lead', 'member',
-  'org_admin', 'client_manager', 'editor', 'reviewer', 'viewer', 'api_user',
+  'admin', 'org_admin', 'editor',
   // Internal agency functional roles
   'strategist', 'campaign_manager',
   'art_director', 'brand_manager', 'designer', 'social_media_manager', 'content_manager',
@@ -35,7 +34,7 @@ const INVITABLE_ROLES = [
 const inviteBody = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
-  role: z.enum(INVITABLE_ROLES).default('member'),
+  role: z.enum(INVITABLE_ROLES).default('editor'),
 })
 
 const updateRoleBody = z.object({

@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { prisma } from '@contentnode/database'
 import { requireRole } from '../plugins/auth.js'
 
-const MANAGER_PLUS = ['owner', 'admin', 'editor', 'manager', 'org_admin']
+const MANAGER_PLUS = ['owner', 'admin', 'editor', 'org_admin']
 
 const updateBody = z.object({
   priority:           z.string().nullable().optional(),
