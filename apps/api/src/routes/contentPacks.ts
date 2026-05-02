@@ -11,12 +11,12 @@ import { callModel } from '@contentnode/ai'
 const createPackBody = z.object({
   clientId:    z.string().min(1),
   name:        z.string().min(1).max(200),
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).nullish(),
 })
 
 const updatePackBody = z.object({
   name:        z.string().min(1).max(200).optional(),
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).nullish(),
 })
 
 const addItemBody = z.object({
