@@ -1,6 +1,10 @@
+import { useState } from 'react'
+import * as Icons from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { FieldGroup } from '../shared'
-import { cn } from '@/lib/utils'
+import { cn, stripMarkdown } from '@/lib/utils'
+import { downloadDocx } from '@/lib/downloadDocx'
+import { MarkdownContent } from '@/components/ui/markdown-content'
 
 const PAGE_TYPE_OPTIONS = [
   { value: 'blog',     label: 'Blog posts / articles' },
@@ -14,10 +18,13 @@ const PAGE_TYPE_OPTIONS = [
 export function InternalLinkSuggesterConfig({
   config,
   onChange,
+  nodeRunStatus,
 }: {
   config: Record<string, unknown>
   onChange: (k: string, v: unknown) => void
+  nodeRunStatus?: { status?: string; output?: unknown }
 }) {
+  const [copied, setCopied] = useState(false)
   const maxSuggestions = (config.maxSuggestions as number) ?? 5
   const style          = (config.style          as string) ?? 'anchor-text-only'
   const pageTypes      = ((config.pageTypes     as string[]) ?? ['blog', 'product', 'landing'])
@@ -100,6 +107,43 @@ export function InternalLinkSuggesterConfig({
           })}
         </div>
       </FieldGroup>
+      {/* Output — shown after a successful run */}
+      {nodeRunStatus?.status === 'passed' && nodeRunStatus.output != null && (() => {
+        const outputText = typeof nodeRunStatus.output === 'string'
+          ? nodeRunStatus.output
+          : JSON.stringify(nodeRunStatus.output, null, 2)
+        if (!outputText) return null
+        return (
+          <div className="space-y-2 border-t border-border pt-3">
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(stripMarkdown(outputText))
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-blue-600 hover:bg-accent hover:text-blue-700"
+              >
+                {copied ? <Icons.Check className="h-3 w-3" /> : <Icons.Copy className="h-3 w-3" />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                onClick={() => downloadDocx(outputText, 'internal-link-suggestions')}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Icons.Download className="h-3 w-3" />
+                .docx
+              </button>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <MarkdownContent
+                content={outputText}
+                className="text-xs leading-relaxed text-foreground prose-panel"
+              />
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

@@ -108,7 +108,7 @@ function NodeConfigForm({
     case 'wrike_source':
       return <WrikeSourceConfig config={config} onChange={onChange} />
     case 'keyword_research':
-      return <KeywordResearchConfig config={config} onChange={onChange} />
+      return <KeywordResearchConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
     case 'deep_web_scrape':
       return <DeepWebScrapeConfig config={config} onChange={onChange} />
     case 'review_miner':
@@ -165,7 +165,7 @@ function NodeConfigForm({
       if (subtype === 'fact-checker')
         return <FactCheckerConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'internal-link-suggester')
-        return <InternalLinkSuggesterConfig config={config} onChange={onChange} />
+        return <InternalLinkSuggesterConfig config={config} onChange={onChange} nodeRunStatus={nodeRunStatus} />
       if (subtype === 'image-prompt-builder')
         return <ImagePromptBuilderConfig config={config} onChange={onChange} />
       if (subtype === 'video-prompt-builder')
