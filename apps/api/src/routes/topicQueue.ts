@@ -325,22 +325,25 @@ Use EXACTLY this format with these delimiter lines:
         recencyWindow,
       })
 
-      // Create pending notification (if userId is known)
+      // Create pending notification — resolve internal user ID from Clerk ID first
       if (userId) {
-        await prisma.notification.create({
-          data: {
-            agencyId, userId,
-            type: 'newsroom_research',
-            title: `Researching topics for ${client.name}…`,
-            body: userInput.slice(0, 120),
-            clientId,
-            resourceId: job.id,
-            resourceType: 'newsroom_research',
-            referenceId: job.id,
-            referenceStatus: 'pending',
-            read: false,
-          },
-        }).catch(() => {}) // non-blocking
+        const dbUser = await prisma.user.findFirst({ where: { clerkUserId: userId, agencyId }, select: { id: true } })
+        if (dbUser) {
+          prisma.notification.create({
+            data: {
+              agencyId, userId: dbUser.id,
+              type: 'newsroom_research',
+              title: `Researching topics for ${client.name}…`,
+              body: userInput.slice(0, 120),
+              clientId,
+              resourceId: job.id,
+              resourceType: 'newsroom_research',
+              referenceId: job.id,
+              referenceStatus: 'pending',
+              read: false,
+            },
+          }).catch(() => {})
+        }
       }
 
       return reply.code(202).send({ data: { jobId: job.id } })
