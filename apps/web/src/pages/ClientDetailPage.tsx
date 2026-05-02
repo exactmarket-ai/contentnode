@@ -7581,7 +7581,7 @@ export function ClientDetailPage() {
   }, [setSearchParams])
   const [showEditClient, setShowEditClient] = useState(false)
   const [archivingClient, setArchivingClient] = useState(false)
-  const { isAdmin, canUsePilot } = useCurrentUser()
+  const { isAdmin, canUsePilot, isStrategist } = useCurrentUser()
 
   const loadClient = useCallback(() => {
     if (!id) return
@@ -7683,7 +7683,8 @@ export function ClientDetailPage() {
   const POST_RESEARCH_TABS: Tab[] = ['workflows', 'library']
   // Admin-only tabs rendered after workflows
   const ADMIN_ONLY_TABS: Tab[] = ['reviews', 'deliverables', 'insights']
-  const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...(isAdmin ? ['thought-leadership' as Tab] : []), ...POST_RESEARCH_TABS, ...(isAdmin ? ADMIN_ONLY_TABS : [])]
+  const canSeeThoughtLeadership = isAdmin || isStrategist
+  const MAIN_TABS: Tab[] = [...PRE_DEMAND_GEN_TABS, ...(canSeeThoughtLeadership ? ['thought-leadership' as Tab] : []), ...POST_RESEARCH_TABS, ...(isAdmin ? ADMIN_ONLY_TABS : [])]
   const inDemandGen = DEMAND_GEN_TABS.includes(activeTab)
   const inResearch = RESEARCH_TABS.includes(activeTab)
   const inSettings = SETTINGS_TABS.includes(activeTab)
@@ -7743,7 +7744,7 @@ export function ClientDetailPage() {
           <Icons.TrendingUp className="h-3 w-3" />
           Demand Gen
         </button>
-        {isAdmin && (
+        {canSeeThoughtLeadership && (
           <button
             onClick={() => switchTab('thought-leadership')}
             className={cn(

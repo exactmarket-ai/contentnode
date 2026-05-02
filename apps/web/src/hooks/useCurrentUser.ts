@@ -60,8 +60,9 @@ export function useCurrentUser() {
   const isManager          = isEditor
   const isLead             = isManager
   const isMember           = !!user
-  const canManageTemplates = TEMPLATE_MANAGER_ROLES.has(role)
-  const canUsePilot        = !!user && !PILOT_EXCLUDED_ROLES.has(role)
+  const canManageTemplates  = TEMPLATE_MANAGER_ROLES.has(role)
+  const canUsePilot         = !!user && !PILOT_EXCLUDED_ROLES.has(role)
+  const isStrategist        = role === 'strategist'
 
-  return { user, loading, isOwner, isAdmin, isEditor, isManager, isLead, isMember, canManageTemplates, canUsePilot, setUser }
+  return { user, loading, isOwner, isAdmin, isEditor, isManager, isLead, isMember, canManageTemplates, canUsePilot, isStrategist, setUser }
 }
