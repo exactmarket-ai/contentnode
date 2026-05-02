@@ -40,6 +40,7 @@ const nodeTypes = {
   seo_intent: SourceNode,
   audience_signal: SourceNode,
   wrike_source: SourceNode,
+  keyword_research: SourceNode,
   group: GroupNode,
   voice_output: VoiceOutputNode,
   music_generation: MusicGenerationNode,
@@ -265,7 +266,7 @@ export function WorkflowCanvas() {
             if (node.type === 'logic') return 'rgba(59,130,246,0.4)'
             if (node.type === 'output') return 'rgba(168,85,247,0.4)'
             if (node.type === 'insight') return 'rgba(234,179,8,0.5)'
-            if (['gtm_framework', 'brand_context', 'client_brain', 'deep_web_scrape', 'review_miner', 'seo_intent', 'audience_signal', 'wrike_source'].includes(node.type ?? '')) return 'rgba(24,95,165,0.4)'
+            if (['gtm_framework', 'brand_context', 'client_brain', 'deep_web_scrape', 'review_miner', 'seo_intent', 'audience_signal', 'wrike_source', 'keyword_research'].includes(node.type ?? '')) return 'rgba(24,95,165,0.4)'
             if (node.type === 'group') return 'rgba(59,130,246,0.15)'
             return 'rgba(255,255,255,0.1)'
           }}
