@@ -370,7 +370,7 @@ export async function seoPilotRoutes(app: FastifyInstance) {
 
     const response = await anthropic.messages.create({
       model:      chatModel,
-      max_tokens: 2500,
+      max_tokens: 4096,
       system:     systemPrompt,
       messages:   anthropicMessages,
     })
@@ -380,8 +380,10 @@ export async function seoPilotRoutes(app: FastifyInstance) {
       .map((b) => b.text)
       .join('')
 
-    // Extract <SEOPILOT_STRATEGY> block
-    const strategyMatch = fullText.match(/<SEOPILOT_STRATEGY>([\s\S]+?)<\/SEOPILOT_STRATEGY>/i)
+    // Extract <SEOPILOT_STRATEGY> block — try closed tag first, fall back to open-ended match
+    const strategyMatch =
+      fullText.match(/<SEOPILOT_STRATEGY>([\s\S]+?)<\/SEOPILOT_STRATEGY>/i) ??
+      fullText.match(/<SEOPILOT_STRATEGY>([\s\S]+)$/i)
     let strategyOutput: Record<string, unknown> | null = null
     let replyText = fullText
 
