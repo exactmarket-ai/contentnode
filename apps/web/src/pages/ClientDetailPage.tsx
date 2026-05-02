@@ -7677,11 +7677,11 @@ export function ClientDetailPage() {
   const RESEARCH_TABS: Tab[] = ['company', 'profile', 'gtm-assessment']
   // Tabs that live under the "Settings" group (admin-only via Settings entry point)
   const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'team-access', 'stakeholders', 'runs', 'doc-style']
-  // Tabs that live under the "Corp Comms" group (admin/strategist only)
-  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library', 'scheduled-tasks']
+  // Tabs that live under the "Marcom" group (admin/strategist only)
+  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library', 'scheduled-tasks', 'branding']
   // Tabs rendered before the Demand Gen group button
   const canSeeSeo = isAdmin || isStrategist
-  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'branding', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : []), 'programs']
+  const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : []), 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
   const POST_RESEARCH_TABS: Tab[] = ['workflows', 'library']
   // Admin-only tabs rendered after workflows
@@ -7758,7 +7758,7 @@ export function ClientDetailPage() {
             )}
           >
             <Icons.Lightbulb className="h-3 w-3" />
-            Corp Comms
+            Marcom
           </button>
         )}
         {/* Research group entry point */}
