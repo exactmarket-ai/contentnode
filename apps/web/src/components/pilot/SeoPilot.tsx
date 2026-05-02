@@ -48,6 +48,7 @@ export interface SeoPilotProps {
   onClose: () => void
   onViewBriefs: () => void
   onStrategyComplete?: () => void
+  resumeSessionId?: string
 }
 
 // ─── Template registry ─────────────────────────────────────────────────────────
@@ -393,9 +394,9 @@ function CompletionView({
 
 type ModalScreen = 'picker' | 'chat' | 'complete'
 
-export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrategyComplete }: SeoPilotProps) {
-  const [screen, setScreen]           = useState<ModalScreen>('picker')
-  const [sessionId, setSessionId]     = useState<string | null>(null)
+export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrategyComplete, resumeSessionId }: SeoPilotProps) {
+  const [screen, setScreen]           = useState<ModalScreen>(resumeSessionId ? 'chat' : 'picker')
+  const [sessionId, setSessionId]     = useState<string | null>(resumeSessionId ?? null)
   const [templateKey, setTemplateKey] = useState<string | null>(null)
   const [messages, setMessages]       = useState<SeoPilotMessage[]>([])
   const [loading, setLoading]         = useState(false)
@@ -404,6 +405,27 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
 
   const lastMsgRef = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
+
+  // Load existing session when resuming
+  useEffect(() => {
+    if (!resumeSessionId) return
+    apiFetch(`/api/v1/seo/sessions/${resumeSessionId}`)
+      .then((r) => r.json())
+      .then(({ data }: { data: { templateKey: string; messages: SeoPilotMessage[] } }) => {
+        setTemplateKey(data.templateKey)
+        const saved = Array.isArray(data.messages) ? data.messages as SeoPilotMessage[] : []
+        if (saved.length === 0) {
+          const opening = SEOPILOT_OPENINGS[data.templateKey]
+          if (opening) {
+            setMessages([{ role: 'assistant', content: opening.message.replace(/\[CLIENT\]/g, clientName), paths: opening.paths }])
+          }
+        } else {
+          setMessages(saved)
+        }
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeSessionId])
 
   // Scroll on messages change
   useEffect(() => {

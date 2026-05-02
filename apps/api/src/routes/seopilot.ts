@@ -454,6 +454,20 @@ export async function seoPilotRoutes(app: FastifyInstance) {
   })
 
   // ── GET /briefs ──────────────────────────────────────────────────────────────
+  // ── DELETE /sessions/:id ────────────────────────────────────────────────────
+  app.delete<{ Params: { id: string } }>('/sessions/:id', roleGuard, async (req, reply) => {
+    const { agencyId } = req.auth
+    const { id } = req.params
+
+    const session = await prisma.seoStrategySession.findFirst({ where: { id, agencyId } })
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+    if (session.status === 'complete') return reply.code(409).send({ error: 'Cannot delete a completed session' })
+
+    await prisma.seoStrategySession.delete({ where: { id } })
+    return reply.code(204).send()
+  })
+
+  // ── GET /briefs ──────────────────────────────────────────────────────────────
   app.get('/briefs', roleGuard, async (req, reply) => {
     const { agencyId } = req.auth
     const { clientId } = req.query as { clientId?: string }

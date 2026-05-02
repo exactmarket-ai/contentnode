@@ -149,9 +149,20 @@ function BriefCard({
 
 // ─── Session card ──────────────────────────────────────────────────────────────
 
-function SessionCard({ session }: { session: SeoSession }) {
+function SessionCard({ session, onDelete, onResume }: {
+  session: SeoSession
+  onDelete: (id: string) => void
+  onResume: (id: string) => void
+}) {
   const isComplete = session.status === 'complete'
   const templateName = TEMPLATE_NAMES[session.templateKey] ?? session.templateKey
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this in-progress session?')) return
+    setDeleting(true)
+    onDelete(session.id)
+  }
 
   return (
     <div className="rounded-xl border border-border bg-transparent p-3 space-y-1.5">
@@ -162,14 +173,37 @@ function SessionCard({ session }: { session: SeoSession }) {
             {new Date(session.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
-        <span className={cn(
-          'rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0',
-          isComplete
-            ? 'bg-emerald-100 text-emerald-700'
-            : 'bg-amber-100 text-amber-700',
-        )}>
-          {isComplete ? 'Complete' : 'In Progress'}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={cn(
+            'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+            isComplete
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'bg-amber-100 text-amber-700',
+          )}>
+            {isComplete ? 'Complete' : 'In Progress'}
+          </span>
+          {!isComplete && (
+            <>
+              <button
+                onClick={() => onResume(session.id)}
+                className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                title="Resume session"
+              >
+                <Icons.Play className="h-3 w-3" />
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                title="Delete session"
+              >
+                {deleting
+                  ? <Icons.Loader2 className="h-3 w-3 animate-spin" />
+                  : <Icons.Trash2 className="h-3 w-3" />}
+              </button>
+            </>
+          )}
+        </div>
       </div>
       {isComplete && session.strategyOutput?.summary && (
         <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
@@ -192,6 +226,7 @@ export function SeoTab({ clientId, clientName }: { clientId: string; clientName:
   const [briefs, setBriefs]     = useState<SeoBrief[]>([])
   const [loading, setLoading]   = useState(false)
   const [showPilot, setShowPilot] = useState(false)
+  const [resumeSessionId, setResumeSessionId] = useState<string | undefined>(undefined)
   const [pushingId, setPushingId] = useState<string | null>(null)
 
   const loadData = useCallback(() => {
@@ -222,8 +257,24 @@ export function SeoTab({ clientId, clientName }: { clientId: string; clientName:
     }
   }
 
+  const handleDeleteSession = async (id: string) => {
+    await apiFetch(`/api/v1/seo/sessions/${id}`, { method: 'DELETE' })
+    setSessions((prev) => prev.filter((s) => s.id !== id))
+  }
+
+  const handleResumeSession = (id: string) => {
+    setResumeSessionId(id)
+    setShowPilot(true)
+  }
+
+  const handleClosePilot = () => {
+    setShowPilot(false)
+    setResumeSessionId(undefined)
+  }
+
   const handleViewBriefs = () => {
     setShowPilot(false)
+    setResumeSessionId(undefined)
     setTimeout(() => {
       document.getElementById('seo-briefs-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 100)
@@ -264,7 +315,7 @@ export function SeoTab({ clientId, clientName }: { clientId: string; clientName:
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {sessions.map((s) => (
-              <SessionCard key={s.id} session={s} />
+              <SessionCard key={s.id} session={s} onDelete={handleDeleteSession} onResume={handleResumeSession} />
             ))}
           </div>
         )}
@@ -310,9 +361,10 @@ export function SeoTab({ clientId, clientName }: { clientId: string; clientName:
         <SeoPilot
           clientId={clientId}
           clientName={clientName}
-          onClose={() => setShowPilot(false)}
+          onClose={handleClosePilot}
           onViewBriefs={handleViewBriefs}
           onStrategyComplete={loadData}
+          resumeSessionId={resumeSessionId}
         />
       )}
     </div>
