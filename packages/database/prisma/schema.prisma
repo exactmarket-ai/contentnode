@@ -602,6 +602,10 @@ model User {
   comments             Comment[]
   notifications        Notification[]
   assignedScheduledTasks ScheduledTask[] @relation("ScheduledTaskAssignee")
+  linkedLeadershipMembers    LeadershipMember[]            @relation("MemberLinkedUser")
+  editedContentItems         ContentPackRunItem[]           @relation("ItemLastEditor")
+  contentLibrarySignals      HumanizerSignal[]             @relation("SignalAttributedUser")
+  brainAttributions          ThoughtLeaderBrainAttachment[] @relation("AttachmentAttributedUser")
 
   @@index([agencyId])
   @@map("users")
@@ -2234,17 +2238,20 @@ model LeadershipMember {
   mondayBoardId        String?  @map("monday_board_id")
   mondayColumnMapping  Json?    @map("monday_column_mapping")
   boxFolderId          String?  @map("box_folder_id")
+  userId               String?  @map("user_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   defaultContentPack   ContentPack? @relation("MemberDefaultPack", fields: [defaultContentPackId], references: [id], onDelete: SetNull)
+  linkedUser       User?    @relation("MemberLinkedUser", fields: [userId], references: [id], onDelete: SetNull)
   brain            ThoughtLeaderBrain?
   brainAttachments ThoughtLeaderBrainAttachment[]
 
   @@index([agencyId])
   @@index([clientId])
+  @@index([userId])
   @@map("leadership_members")
 }
 
@@ -2279,9 +2286,11 @@ model ThoughtLeaderBrainAttachment {
   source             String   // profile | content_run | edit_signal | social_sync
   content            String   @db.Text
   metadata           Json?
+  userId             String?  @map("user_id")
   createdAt          DateTime @default(now()) @map("created_at")
 
-  member LeadershipMember @relation(fields: [leadershipMemberId], references: [id], onDelete: Cascade)
+  member      LeadershipMember @relation(fields: [leadershipMemberId], references: [id], onDelete: Cascade)
+  editingUser User?            @relation("AttachmentAttributedUser", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([agencyId])
   @@index([leadershipMemberId])
@@ -2522,6 +2531,7 @@ model HumanizerSignal {
   documentType    String?  @map("document_type")       // inferred from filename: blog | email | social | ad_copy | landing_page | executive_brief | video_script
   contentType     String?  @map("content_type")        // prompt name e.g. "Blog — Contrarian Take" (set for content_library_approval source)
   assignmentType  String?  @map("assignment_type")     // leadership_member | vertical | company (set for content_library_approval source)
+  userId          String?  @map("user_id")             // ContentNode User who made the edit (for content_library_save/approval)
   embedding       Unsupported("vector(1536)")? @map("embedding")  // pgvector embedding of originalText — used for few-shot retrieval
   createdAt       DateTime @default(now()) @map("created_at")
 
@@ -2529,11 +2539,13 @@ model HumanizerSignal {
   client      Client       @relation(fields: [clientId],      references: [id], onDelete: Cascade)
   stakeholder Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
   run         WorkflowRun? @relation(fields: [runId],         references: [id], onDelete: SetNull)
+  user        User?        @relation("SignalAttributedUser", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([agencyId])
   @@index([clientId])
   @@index([stakeholderId])
   @@index([runId])
+  @@index([userId])
   @@map("humanizer_signals")
 }
 
@@ -2545,8 +2557,8 @@ model HumanizerSignal {
 model HumanizerProfile {
   id              String    @id @default(cuid())
   agencyId        String    @map("agency_id")
-  scope           String    // agency | client | content_type
-  scopeId         String?   @map("scope_id")   // clientId or contentType depending on scope; null for agency scope
+  scope           String    // agency | client | content_type | user
+  scopeId         String?   @map("scope_id")   // clientId, contentType, or userId depending on scope; null for agency scope
   profile         String?   @db.Text           // compiled style instructions injected into generation prompts
   signalCount     Int       @default(0) @map("signal_count")
   lastSynthesisAt DateTime? @map("last_synthesis_at")
@@ -2896,13 +2908,16 @@ model ContentPackRunItem {
   editSignalSummary String?   @db.Text @map("edit_signal_summary")
   wordCount         Int?      @map("word_count")
   errorMessage      String?   @db.Text @map("error_message")
-  mondaySubItemId   String?   @map("monday_sub_item_id")
-  boxFileId         String?   @map("box_file_id")
-  completedAt       DateTime? @map("completed_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
+  mondaySubItemId      String?   @map("monday_sub_item_id")
+  boxFileId            String?   @map("box_file_id")
+  lastEditedByUserId   String?   @map("last_edited_by_user_id")
+  lastEditedAt         DateTime? @map("last_edited_at")
+  completedAt          DateTime? @map("completed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
-  run            ContentPackRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  promptTemplate PromptTemplate @relation(fields: [promptTemplateId], references: [id], onDelete: Cascade)
+  run              ContentPackRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  promptTemplate   PromptTemplate @relation(fields: [promptTemplateId], references: [id], onDelete: Cascade)
+  lastEditedByUser User?          @relation("ItemLastEditor", fields: [lastEditedByUserId], references: [id], onDelete: SetNull)
 
   @@index([runId])
   @@map("content_pack_run_items")

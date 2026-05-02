@@ -165,7 +165,18 @@ export async function runContentPackGeneration(job: Job<ContentPackGenJobData>):
       const sourcesText = sources.slice(0, 5).map((s) => `- ${s.title} (${s.publication})`).join('\n')
 
       // ── Load humanizer profile for style injection ────────────────────────
-      const humanizerProfile = await loadHumanizerProfiles(agencyId, clientId, promptName).catch(() => null)
+      // When the target is a leadership member with a linked ContentNode user,
+      // inject that user's style profile as an additional reviewer hint layer.
+      let reviewerUserId: string | null = null
+      if (targetType === 'member' && targetId) {
+        try {
+          const memberRows = await prisma.$queryRaw<Array<{ user_id: string | null }>>`
+            SELECT user_id FROM leadership_members WHERE id = ${targetId} AND agency_id = ${agencyId} LIMIT 1
+          `
+          reviewerUserId = memberRows[0]?.user_id ?? null
+        } catch { /* non-fatal */ }
+      }
+      const humanizerProfile = await loadHumanizerProfiles(agencyId, clientId, promptName, reviewerUserId).catch((): null => null)
       const humanizerBlock = humanizerProfile
         ? `WRITING STYLE INSTRUCTIONS (apply throughout — these override default style choices):\n${humanizerProfile}\n`
         : ''

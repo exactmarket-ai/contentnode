@@ -32,6 +32,7 @@ const memberPatch = memberBody.partial().omit({ clientId: true }).extend({
   mondayBoardId:        z.string().nullable().optional(),
   mondayColumnMapping:  z.record(z.unknown()).nullable().optional(),
   boxFolderId:          z.string().nullable().optional(),
+  linkedUserId:         z.string().nullable().optional(),
 })
 
 const CONTENT_TYPES = [
@@ -85,6 +86,17 @@ function emptyMemberExtended(): MemberExtended {
   return { defaultContentPackId: null, mondayBoardId: null, mondayColumnMapping: null, boxFolderId: null }
 }
 
+async function getLinkedUserId(memberId: string): Promise<string | null> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ user_id: string | null }>>`
+      SELECT user_id FROM leadership_members WHERE id = ${memberId} LIMIT 1
+    `
+    return rows[0]?.user_id ?? null
+  } catch {
+    return null
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Brain seed helper — builds initial profile attachment text
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,6 +136,17 @@ function buildProfileSeedText(member: {
 
 
 export async function leadershipRoutes(app: FastifyInstance) {
+  // ── GET /agency-users — list agency users for the user-linking dropdown ────
+  app.get('/agency-users', async (req, reply) => {
+    const { agencyId } = req.auth
+    const rows = await prisma.$queryRaw<Array<{ id: string; name: string | null; email: string; role: string }>>`
+      SELECT id, name, email, role FROM users WHERE agency_id = ${agencyId} ORDER BY name ASC NULLS LAST
+    `
+    return reply.send({
+      data: rows.map((u) => ({ id: u.id, name: u.name ?? u.email, email: u.email, role: u.role })),
+    })
+  })
+
   // ── GET / — list members for a client ─────────────────────────────────────
   app.get('/', async (req, reply) => {
     const { agencyId } = req.auth
@@ -137,6 +160,7 @@ export async function leadershipRoutes(app: FastifyInstance) {
     const withExtended = await Promise.all(members.map(async (m) => ({
       ...m,
       ...await getMemberExtended(m.id),
+      linkedUserId: await getLinkedUserId(m.id),
     })))
     return reply.send({ data: withExtended })
   })
@@ -169,7 +193,7 @@ export async function leadershipRoutes(app: FastifyInstance) {
     // Seed brain asynchronously — don't block the response
     seedOrUpdateBrainViaAttachment(agencyId, parsed.data.clientId, member.id, member).catch(() => {})
 
-    return reply.code(201).send({ data: member })
+    return reply.code(201).send({ data: { ...member, linkedUserId: null } })
   })
 
   // ── PATCH /:id — update member ─────────────────────────────────────────────
@@ -182,7 +206,7 @@ export async function leadershipRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
 
     const {
-      defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId,
+      defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId, linkedUserId,
       ...coreData
     } = parsed.data
 
@@ -195,8 +219,8 @@ export async function leadershipRoutes(app: FastifyInstance) {
       },
     })
 
-    // Update integration fields via raw SQL
-    const hasExtended = [defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId]
+    // Update integration and linking fields via raw SQL
+    const hasExtended = [defaultContentPackId, mondayBoardId, mondayColumnMapping, boxFolderId, linkedUserId]
       .some((v) => v !== undefined)
 
     if (hasExtended) {
@@ -213,6 +237,12 @@ export async function leadershipRoutes(app: FastifyInstance) {
         if (boxFolderId !== undefined) {
           await prisma.$executeRaw`UPDATE leadership_members SET box_folder_id = ${boxFolderId} WHERE id = ${req.params.id}`
         }
+        if (linkedUserId !== undefined) {
+          await prisma.leadershipMember.update({
+            where: { id: req.params.id },
+            data: { userId: linkedUserId },
+          })
+        }
       } catch {
         // Columns not yet created — ignore
       }
@@ -227,7 +257,8 @@ export async function leadershipRoutes(app: FastifyInstance) {
     }
 
     const extended = await getMemberExtended(req.params.id)
-    return reply.send({ data: { ...updated, ...extended } })
+    const linkedUserIdResult = await getLinkedUserId(req.params.id)
+    return reply.send({ data: { ...updated, ...extended, linkedUserId: linkedUserIdResult } })
   })
 
   // ── DELETE /:id — delete member ────────────────────────────────────────────

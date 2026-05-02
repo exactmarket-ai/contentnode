@@ -31,7 +31,15 @@ interface LeadershipMember {
   signatureTopics: string[]
   signatureStories: string[]
   avoidPhrases: string[]
+  linkedUserId: string | null
   createdAt: string
+}
+
+interface AgencyUser {
+  id: string
+  name: string
+  email: string
+  role: string
 }
 
 interface BrainStatus {
@@ -404,7 +412,16 @@ function MemberModal({ clientId, member, onClose, onSaved }: MemberModalProps) {
   const [signatureTopics, setSignatureTopics]    = useState<string[]>(member?.signatureTopics ?? [])
   const [signatureStories, setSignatureStories]  = useState<string[]>(member?.signatureStories ?? [])
   const [avoidPhrases, setAvoidPhrases]          = useState<string[]>(member?.avoidPhrases ?? [])
+  const [linkedUserId, setLinkedUserId]          = useState<string | null>(member?.linkedUserId ?? null)
+  const [agencyUsers, setAgencyUsers]            = useState<AgencyUser[]>([])
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/v1/leadership/agency-users')
+      .then((r) => r.json())
+      .then((data) => setAgencyUsers(data.data ?? []))
+      .catch(() => {})
+  }, [])
 
   const handleSubmit = async () => {
     if (!name.trim() || !role.trim()) return
@@ -420,6 +437,7 @@ function MemberModal({ clientId, member, onClose, onSaved }: MemberModalProps) {
         signatureTopics,
         signatureStories,
         avoidPhrases,
+        ...(isEdit ? { linkedUserId } : {}),
       }
       const res = isEdit
         ? await apiFetch(`/api/v1/leadership/${member!.id}`, {
@@ -513,6 +531,26 @@ function MemberModal({ clientId, member, onClose, onSaved }: MemberModalProps) {
             value={avoidPhrases}
             onChange={setAvoidPhrases}
           />
+
+          {/* Link to ContentNode user (edit mode only) */}
+          {isEdit && (
+            <div>
+              <label className="block text-xs font-medium mb-1">Link to ContentNode user</label>
+              <p className="text-[11px] text-muted-foreground mb-1.5">
+                When linked, edits by this user automatically write to this thought leader's brain.
+              </p>
+              <select
+                value={linkedUserId ?? ''}
+                onChange={(e) => setLinkedUserId(e.target.value || null)}
+                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+              >
+                <option value="">— Not linked —</option>
+                {agencyUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

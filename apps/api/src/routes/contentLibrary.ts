@@ -218,7 +218,7 @@ export async function contentLibraryRoutes(app: FastifyInstance) {
 
   // ── PATCH /:clientId/:id/content — save edited content before approval ──────
   app.patch<{ Params: { clientId: string; id: string }; Body: { content: string } }>('/:clientId/:id/content', async (req, reply) => {
-    const { agencyId } = req.auth
+    const { agencyId, userId: clerkUserId } = req.auth
     const { clientId, id } = req.params
     const { content } = req.body
 
@@ -226,27 +226,80 @@ export async function contentLibraryRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'content must be a string' })
     }
 
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT i.id FROM content_pack_run_items i
+    type ItemRow = {
+      id: string
+      current_content: string | null
+      original_content: string | null
+      prompt_name: string
+      target_type: string
+      target_id: string | null
+    }
+    const rows = await prisma.$queryRaw<ItemRow[]>`
+      SELECT i.id, i.content AS current_content, i.original_content, i.prompt_name,
+             r.target_type, r.target_id
+      FROM content_pack_run_items i
       JOIN content_pack_runs r ON r.id = i.run_id
       WHERE i.id = ${id} AND r.agency_id = ${agencyId} AND r.client_id = ${clientId}
       LIMIT 1
     `
     if (!rows[0]) return reply.code(404).send({ error: 'Item not found' })
+    const item = rows[0]
+
+    // Look up internal DB user id (non-blocking — save proceeds even if lookup fails)
+    let dbUserId: string | null = null
+    try {
+      const userRows = await prisma.user.findFirst({
+        where: { clerkUserId, agencyId },
+        select: { id: true },
+      })
+      dbUserId = userRows?.id ?? null
+    } catch { /* non-fatal */ }
 
     const wordCount = content.trim().split(/\s+/).filter(Boolean).length
-    await prisma.$executeRaw`
-      UPDATE content_pack_run_items
-      SET content = ${content}, word_count = ${wordCount}
-      WHERE id = ${id}
-    `
+    await prisma.contentPackRunItem.update({
+      where: { id },
+      data: {
+        content,
+        wordCount,
+        lastEditedByUserId: dbUserId ?? undefined,
+        lastEditedAt:       new Date(),
+      },
+    })
+
+    // Enqueue save-signal if content actually changed
+    const previousContent = item.current_content
+    const hasChanged = previousContent !== null && previousContent.trim() !== content.trim()
+    if (hasChanged && item.original_content) {
+      try {
+        const queue = getContentLibraryEditSignalQueue()
+        await queue.add(
+          `edit-signal-save-${id}-${Date.now()}`,
+          {
+            agencyId,
+            clientId,
+            itemId:          id,
+            promptName:      item.prompt_name,
+            targetType:      item.target_type,
+            targetId:        item.target_id,
+            content,
+            originalContent: item.original_content,
+            signalType:      'save',
+            userId:          dbUserId,
+            previousContent,
+          },
+          { removeOnComplete: { count: 20 }, removeOnFail: { count: 20 } },
+        )
+      } catch (err) {
+        req.log.warn({ err, itemId: id }, 'save edit signal enqueue failed')
+      }
+    }
 
     return reply.send({ data: { ok: true } })
   })
 
   // ── PATCH /:clientId/:id/status — update publish status ───────────────────
   app.patch<{ Params: { clientId: string; id: string }; Body: { publishStatus: string } }>('/:clientId/:id/status', async (req, reply) => {
-    const { agencyId } = req.auth
+    const { agencyId, userId: clerkUserId } = req.auth
     const { clientId, id } = req.params
     const { publishStatus } = req.body
 
@@ -286,6 +339,16 @@ export async function contentLibraryRoutes(app: FastifyInstance) {
       item.original_content &&
       item.content.trim() !== item.original_content.trim()
     ) {
+      // Look up DB user id for attribution (non-blocking)
+      let dbUserId: string | null = null
+      try {
+        const userRows = await prisma.user.findFirst({
+          where: { clerkUserId, agencyId },
+          select: { id: true },
+        })
+        dbUserId = userRows?.id ?? null
+      } catch { /* non-fatal */ }
+
       try {
         const queue = getContentLibraryEditSignalQueue()
         await queue.add(
@@ -299,6 +362,9 @@ export async function contentLibraryRoutes(app: FastifyInstance) {
             targetId:        item.target_id,
             content:         item.content,
             originalContent: item.original_content,
+            signalType:      'approval',
+            userId:          dbUserId,
+            previousContent: null,
           },
           { removeOnComplete: { count: 20 }, removeOnFail: { count: 20 } },
         )

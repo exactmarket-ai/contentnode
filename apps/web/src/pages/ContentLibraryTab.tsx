@@ -248,6 +248,11 @@ function PreviewDrawer({
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingEdits, setSavingEdits] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [confirmClose, setConfirmClose] = useState(false)
+  const [closingSaving, setClosingSaving] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -277,7 +282,7 @@ function PreviewDrawer({
   }, [editedContent, isEditing])
 
   const startEditing = () => { if (!loadingFull) setIsEditing(true) }
-  const cancelEditing = () => { setEditedContent(fullContent ?? ''); setIsEditing(false) }
+  const cancelEditing = () => { setEditedContent(fullContent ?? ''); setIsEditing(false); setSaveError(null) }
 
   const copy = async () => {
     const text = isEditing ? editedContent : (fullContent ?? '')
@@ -293,6 +298,43 @@ function PreviewDrawer({
   const nextStatus = item.publishStatus === 'draft' ? 'approved' : item.publishStatus === 'approved' ? 'archived' : 'draft'
   const nextLabel  = item.publishStatus === 'draft' ? 'Approve' : item.publishStatus === 'approved' ? 'Archive' : 'Restore to draft'
 
+  const persistEdits = async (): Promise<boolean> => {
+    const res = await apiFetch(`/api/v1/content-library/${clientId}/${item.id}/content`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: editedContent }),
+    })
+    return res.ok
+  }
+
+  const handleSaveEdits = async () => {
+    if (savingEdits || !hasEdits) return
+    setSavingEdits(true)
+    setSaveError(null)
+    try {
+      const ok = await persistEdits()
+      if (!ok) {
+        setSaveError('Save failed — please try again.')
+        return
+      }
+      setFullContent(editedContent)
+      setSavedFlash(true)
+      setTimeout(() => setSavedFlash(false), 2000)
+    } catch {
+      setSaveError('Save failed — please try again.')
+    } finally {
+      setSavingEdits(false)
+    }
+  }
+
+  const handleClose = () => {
+    if (hasEdits) {
+      setConfirmClose(true)
+    } else {
+      onClose()
+    }
+  }
+
   const handleStatusAction = async () => {
     if (saving) return
     setSaving(true)
@@ -300,11 +342,7 @@ function PreviewDrawer({
       // When approving with edits, persist the edited content first so the
       // status PATCH can diff it against original_content for the edit signal.
       if (nextStatus === 'approved' && hasEdits) {
-        await apiFetch(`/api/v1/content-library/${clientId}/${item.id}/content`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: editedContent }),
-        })
+        await persistEdits()
         setFullContent(editedContent)
       }
       onStatusChange(item.id, nextStatus)
@@ -320,14 +358,14 @@ function PreviewDrawer({
       <div className="flex-1 bg-black/30" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="w-full max-w-xl bg-white border-l border-border flex flex-col overflow-hidden shadow-2xl">
+      <div className="relative w-full max-w-xl bg-white border-l border-border flex flex-col overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border">
           <div className="min-w-0">
             <p className="text-[11px] text-muted-foreground mb-0.5">{item.assignedTo}</p>
             <h2 className="text-sm font-semibold text-foreground leading-snug">{item.topicTitle}</h2>
           </div>
-          <button type="button" onClick={onClose} className="shrink-0 p-1 rounded hover:bg-muted transition-colors">
+          <button type="button" onClick={handleClose} className="shrink-0 p-1 rounded hover:bg-muted transition-colors">
             <Icons.X className="h-4 w-4 text-muted-foreground" />
           </button>
         </div>
@@ -401,36 +439,111 @@ function PreviewDrawer({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 px-5 py-3.5 border-t border-border bg-background">
-          <Button
-            variant="default"
-            size="sm"
-            className="text-xs h-7"
-            onClick={() => onDownload(item)}
-          >
-            <Icons.Download className="h-3 w-3 mr-1.5" />
-            Download DOCX
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-7"
-            onClick={copy}
-          >
-            {copied ? <Icons.Check className="h-3 w-3 mr-1.5 text-green-500" /> : <Icons.Copy className="h-3 w-3 mr-1.5" />}
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-7 ml-auto"
-            disabled={saving}
-            onClick={handleStatusAction}
-          >
-            {saving && <Icons.Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
-            {nextLabel}
-          </Button>
+        <div className="flex flex-col px-5 py-3.5 border-t border-border bg-background gap-1.5">
+          {saveError && (
+            <p className="text-[11px] text-red-600">{saveError}</p>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => onDownload(item)}
+            >
+              <Icons.Download className="h-3 w-3 mr-1.5" />
+              Download DOCX
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7"
+              onClick={copy}
+            >
+              {copied ? <Icons.Check className="h-3 w-3 mr-1.5 text-green-500" /> : <Icons.Copy className="h-3 w-3 mr-1.5" />}
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+            {isEditing && hasEdits && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                disabled={savingEdits}
+                onClick={handleSaveEdits}
+              >
+                {savingEdits ? (
+                  <Icons.Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                ) : savedFlash ? (
+                  <Icons.Check className="h-3 w-3 mr-1.5 text-green-500" />
+                ) : null}
+                {savingEdits ? 'Saving…' : savedFlash ? 'Saved' : 'Save edits'}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 ml-auto"
+              disabled={saving}
+              onClick={handleStatusAction}
+            >
+              {saving && <Icons.Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
+              {nextLabel}
+            </Button>
+          </div>
         </div>
+
+        {/* Unsaved edits confirmation */}
+        {confirmClose && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40">
+            <div className="bg-white border border-border rounded-xl shadow-2xl p-5 w-72 flex flex-col gap-3">
+              <p className="text-sm font-semibold text-foreground">You have unsaved edits</p>
+              <p className="text-xs text-muted-foreground">Save before closing, or discard your changes.</p>
+              <div className="flex flex-col gap-2">
+                <Button
+                  size="sm"
+                  className="text-xs h-7 w-full"
+                  disabled={closingSaving}
+                  onClick={async () => {
+                    setClosingSaving(true)
+                    try {
+                      const ok = await persistEdits()
+                      if (ok) {
+                        setFullContent(editedContent)
+                        onClose()
+                      } else {
+                        setConfirmClose(false)
+                        setSaveError('Save failed — please try again.')
+                      }
+                    } catch {
+                      setConfirmClose(false)
+                      setSaveError('Save failed — please try again.')
+                    } finally {
+                      setClosingSaving(false)
+                    }
+                  }}
+                >
+                  {closingSaving && <Icons.Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
+                  Save edits
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7 w-full"
+                  onClick={() => { setConfirmClose(false); onClose() }}
+                >
+                  Discard
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7 w-full"
+                  onClick={() => setConfirmClose(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

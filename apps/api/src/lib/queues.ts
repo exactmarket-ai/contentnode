@@ -446,19 +446,22 @@ export const QUEUE_CONTENT_LIBRARY_EDIT_SIGNAL = 'content-library-edit-signal'
 export const QUEUE_HUMANIZER_SYNTHESIS          = 'humanizer-synthesis'
 
 export interface ContentLibraryEditSignalJobData {
-  agencyId:       string
-  clientId:       string
-  itemId:         string
-  promptName:     string
-  targetType:     string   // 'member' | 'vertical' | 'company'
-  targetId:       string | null
-  content:        string
+  agencyId:        string
+  clientId:        string
+  itemId:          string
+  promptName:      string
+  targetType:      string   // 'member' | 'vertical' | 'company'
+  targetId:        string | null
+  content:         string
   originalContent: string
+  signalType:      'save' | 'approval'
+  userId:          string | null  // internal DB User.id (not Clerk sub)
+  previousContent: string | null  // content before this save (for save signals)
 }
 
 export interface HumanizerSynthesisJobData {
   agencyId:  string
-  scope:     'agency' | 'client' | 'content_type'
+  scope:     'agency' | 'client' | 'content_type' | 'user'
   scopeId:   string | null
 }
 

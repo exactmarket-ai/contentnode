@@ -86,27 +86,53 @@ async function processHumanizerSynthesis(job: Job<HumanizerSynthesisJobData>): P
   const { agencyId, scope, scopeId } = job.data
 
   await withAgency(agencyId, async () => {
-    // Fetch all signals for this scope
-    const where: Record<string, unknown> = {
-      agencyId,
-      source: 'content_library_approval',
-    }
-    if (scope === 'client' && scopeId)       where['clientId'] = scopeId
-    if (scope === 'content_type' && scopeId) where['contentType'] = scopeId
+    let signals: Array<{ diffSummary: string | null; originalText: string; editedText: string }>
+    let scopeLabel: string
 
-    const signals = await prisma.humanizerSignal.findMany({
-      where: where as Parameters<typeof prisma.humanizerSignal.findMany>[0]['where'],
-      orderBy: { createdAt: 'asc' },
-      select: { diffSummary: true, originalText: true, editedText: true },
-    })
+    if (scope === 'user' && scopeId) {
+      // User-scoped synthesis: fetch signals attributed to this specific user
+      const rows = await prisma.$queryRaw<Array<{
+        diff_summary: string | null
+        original_text: string
+        edited_text: string
+      }>>`
+        SELECT diff_summary, original_text, edited_text
+        FROM humanizer_signals
+        WHERE agency_id = ${agencyId} AND user_id = ${scopeId}
+        ORDER BY created_at ASC
+      `
+      signals = rows.map((r) => ({
+        diffSummary:  r.diff_summary,
+        originalText: r.original_text,
+        editedText:   r.edited_text,
+      }))
+
+      // Get user name for the scope label
+      const userRows = await prisma.$queryRaw<Array<{ name: string | null }>>`
+        SELECT name FROM users WHERE id = ${scopeId} LIMIT 1
+      `
+      const userName = userRows[0]?.name ?? scopeId
+      scopeLabel = `user "${userName}" (${signals.length} signals)`
+    } else {
+      // Fetch all signals for standard scopes
+      const where: Record<string, unknown> = { agencyId }
+      if (scope === 'client' && scopeId)       where['clientId'] = scopeId
+      if (scope === 'content_type' && scopeId) where['contentType'] = scopeId
+
+      signals = await prisma.humanizerSignal.findMany({
+        where: where as Parameters<typeof prisma.humanizerSignal.findMany>[0]['where'],
+        orderBy: { createdAt: 'asc' },
+        select: { diffSummary: true, originalText: true, editedText: true },
+      })
+
+      scopeLabel = scope === 'agency'
+        ? `agency-wide (${signals.length} signals)`
+        : scope === 'client'
+          ? `client ${scopeId}`
+          : `content type "${scopeId}"`
+    }
 
     if (signals.length === 0) return
-
-    const scopeLabel = scope === 'agency'
-      ? `agency-wide (${signals.length} signals)`
-      : scope === 'client'
-        ? `client ${scopeId}`
-        : `content type "${scopeId}"`
 
     const { provider: rProv, model: rModel } = await getModelForRole('brain_processing')
     const result = await callModel(
@@ -170,26 +196,46 @@ export async function loadHumanizerProfiles(
   agencyId: string,
   clientId: string,
   contentType: string,
+  reviewerUserId?: string | null,
 ): Promise<string | null> {
+  const orClauses: Array<{ scope: string; scopeId: string | null }> = [
+    { scope: 'agency',       scopeId: null },
+    { scope: 'client',       scopeId: clientId },
+    { scope: 'content_type', scopeId: contentType },
+  ]
+  if (reviewerUserId) {
+    orClauses.push({ scope: 'user', scopeId: reviewerUserId })
+  }
+
   const profiles = await prisma.humanizerProfile.findMany({
     where: {
       agencyId,
-      OR: [
-        { scope: 'agency',       scopeId: null },
-        { scope: 'client',       scopeId: clientId },
-        { scope: 'content_type', scopeId: contentType },
-      ],
+      OR: orClauses as never,
     },
     select: { scope: true, profile: true },
-    orderBy: { scope: 'asc' }, // agency first
+    orderBy: { scope: 'asc' }, // agency first, then client, content_type, user
   })
 
-  const parts = profiles
-    .filter((p) => p.profile && p.profile.trim())
-    .map((p) => p.profile as string)
+  // Separate reviewer/user profile from the base layers
+  const baseParts: string[] = []
+  let reviewerPart: string | null = null
 
-  if (parts.length === 0) return null
+  for (const p of profiles) {
+    if (!p.profile?.trim()) continue
+    if (p.scope === 'user') {
+      reviewerPart = p.profile
+    } else {
+      baseParts.push(p.profile)
+    }
+  }
 
-  // Merge: agency broadest, then client-specific, then content-type-specific
+  if (baseParts.length === 0 && !reviewerPart) return null
+
+  // Base layers first, then reviewer style hint as the lowest-priority layer
+  const parts = [...baseParts]
+  if (reviewerPart) {
+    parts.push(`REVIEWER STYLE PROFILE (apply if it helps match this reviewer's preferences):\n${reviewerPart}`)
+  }
+
   return parts.join('\n\n')
 }
