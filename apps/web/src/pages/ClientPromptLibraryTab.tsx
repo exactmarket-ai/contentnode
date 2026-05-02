@@ -152,9 +152,9 @@ function TemplateDrawer({ template, onClose, onSaved, onUse: _onUse, onFork }: D
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-transparent" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-end bg-transparent" onClick={onClose}>
       <div
-        className="relative flex w-full max-w-xl flex-col bg-white border-l border-border shadow-2xl overflow-hidden"
+        className="relative flex w-full max-w-xl flex-col bg-white border-l border-border shadow-2xl overflow-hidden h-[95vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -229,13 +229,13 @@ function TemplateDrawer({ template, onClose, onSaved, onUse: _onUse, onFork }: D
         )}
 
         {/* Body */}
-        <div className="flex-1 overflow-auto px-5 py-4">
+        <div className="flex flex-col flex-1 overflow-auto px-5 py-4">
           {editMode ? (
             <Textarea
               ref={editBodyRef}
               value={editBody}
               onChange={(e) => setEditBody(e.target.value)}
-              className="min-h-[60vh] resize-none text-xs leading-relaxed w-full"
+              className="flex-1 h-0 resize-none text-xs leading-relaxed w-full"
             />
           ) : (
             <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-sans">{template.body}</pre>
