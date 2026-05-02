@@ -733,8 +733,8 @@ function ResearchTopicFlow({
                 <button
                   type="button"
                   onClick={() => { if (verticals.length <= 1) { setSelectedVertical(verticals[0]?.id ?? null); setStep(3) } else { setStep(2) } }}
-                  disabled={userInput.trim().length < 10}
-                  style={{ alignSelf: 'flex-end', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '7px 16px', border: 'none', backgroundColor: userInput.trim().length < 10 ? '#e5e7eb' : '#534AB7', color: userInput.trim().length < 10 ? '#9ca3af' : '#ffffff', cursor: userInput.trim().length < 10 ? 'not-allowed' : 'pointer' }}
+                  disabled={userInput.trim().length < 3}
+                  style={{ alignSelf: 'flex-end', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '7px 16px', border: 'none', backgroundColor: userInput.trim().length < 3 ? '#e5e7eb' : '#534AB7', color: userInput.trim().length < 3 ? '#9ca3af' : '#ffffff', cursor: userInput.trim().length < 3 ? 'not-allowed' : 'pointer' }}
                 >
                   Continue →
                 </button>
