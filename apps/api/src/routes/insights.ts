@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma, auditService } from '@contentnode/database'
+import { getInsightSynthesisQueue } from '../lib/queues.js'
 
 export async function insightRoutes(app: FastifyInstance) {
   // ── GET /pending/count — count of pending insights (sidebar badge) ─────────
@@ -92,6 +93,16 @@ export async function insightRoutes(app: FastifyInstance) {
       resourceId: req.params.id,
       metadata: { status: updates.status, action: body.action },
     })
+
+    // Fire-and-forget synthesis when insight is confirmed or set to high-confidence
+    if (body.action === 'bake_in' || (body.status && body.status !== 'dismissed')) {
+      const shouldSynthesize = body.action === 'bake_in' || (updated.confidence != null && updated.confidence >= 0.7)
+      if (shouldSynthesize && updated.clientId) {
+        getInsightSynthesisQueue()
+          .add('synthesize', { insightId: updated.id, agencyId, clientId: updated.clientId })
+          .catch((e) => console.error('[insights] failed to enqueue synthesis:', e))
+      }
+    }
 
     return reply.send({ data: updated })
   })

@@ -88,6 +88,11 @@ import {
 } from './queues.js'
 import { startEditSignalWorker } from './editSignalProcessor.js'
 import { startHumanizerSynthesisWorker } from './humanizerSynthesis.js'
+import { synthesizeInsightToBrain } from './insightBrainSynthesizer.js'
+import {
+  QUEUE_INSIGHT_SYNTHESIS,
+  type InsightSynthesisJobData,
+} from './queues.js'
 import { prisma, withAgency } from '@contentnode/database'
 
 // ── Env diagnostics (printed once at startup) ─────────────────────────────────
@@ -666,6 +671,18 @@ const thoughtLeaderSocialSyncWorker = createWorker<ThoughtLeaderSocialSyncJobDat
 const editSignalWorker          = startEditSignalWorker()
 const humanizerSynthesisWorker  = startHumanizerSynthesisWorker()
 
+// ── insight-synthesis ─────────────────────────────────────────────────────────
+const insightSynthesisWorker = createWorker<InsightSynthesisJobData>(
+  QUEUE_INSIGHT_SYNTHESIS,
+  async (job: Job<InsightSynthesisJobData>) => {
+    const { insightId, agencyId, clientId } = job.data
+    console.log(`[insight-synthesis] synthesizing insight ${insightId} for client ${clientId}`)
+    await synthesizeInsightToBrain(insightId, agencyId, clientId)
+    console.log(`[insight-synthesis] done for insight ${insightId}`)
+  },
+  3,
+)
+
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 async function shutdown() {
   console.log('[worker] shutting down gracefully...')
@@ -704,6 +721,7 @@ async function shutdown() {
     thoughtLeaderSocialSyncWorker.close(),
     editSignalWorker.close(),
     humanizerSynthesisWorker.close(),
+    insightSynthesisWorker.close(),
   ])
   process.exit(0)
 }

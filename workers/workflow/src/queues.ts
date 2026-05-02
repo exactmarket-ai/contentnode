@@ -43,6 +43,7 @@ export const QUEUE_PROMPT_PROPAGATION             = `${_p}prompt-propagation`
 export const QUEUE_THOUGHT_LEADER_SOCIAL_SYNC     = `${_p}thought-leader-social-sync`
 export const QUEUE_CONTENT_LIBRARY_EDIT_SIGNAL    = `${_p}content-library-edit-signal`
 export const QUEUE_HUMANIZER_SYNTHESIS            = `${_p}humanizer-synthesis`
+export const QUEUE_INSIGHT_SYNTHESIS              = `${_p}insight-synthesis`
 
 export interface ContentPackGenJobData {
   agencyId:         string
@@ -298,6 +299,12 @@ export interface HumanizerSynthesisJobData {
   agencyId:  string
   scope:     'agency' | 'client' | 'content_type' | 'user'
   scopeId:   string | null
+}
+
+export interface InsightSynthesisJobData {
+  insightId: string
+  agencyId:  string
+  clientId:  string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { callModel } from '@contentnode/ai'
 import { prisma, withAgency, type Prisma, getModelForRole, defaultApiKeyRefForProvider } from '@contentnode/database'
+import { synthesizeInsightToBrain } from './insightBrainSynthesizer.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Seniority weights — used in collective confidence scoring
@@ -90,11 +91,12 @@ export async function detectPatterns(
     ]
 
     // Create insights for new candidates that pass thresholds
+    const highConfidenceInsightIds: string[] = []
     for (const candidate of candidates) {
       const key = `${candidate.type}:${candidate.title.toLowerCase()}`
       if (existingKeys.has(key)) continue
 
-      await prisma.insight.create({
+      const created = await prisma.insight.create({
         data: {
           agencyId,
           clientId,
@@ -111,6 +113,34 @@ export async function detectPatterns(
           suggestedConfigChange: candidate.suggestedConfigChange as Prisma.InputJsonValue,
         },
       })
+
+      if (candidate.confidence >= 0.7) {
+        highConfidenceInsightIds.push(created.id)
+      }
+    }
+
+    // Synthesize high-confidence new insights to brain (fire-and-forget)
+    for (const id of highConfidenceInsightIds) {
+      synthesizeInsightToBrain(id, agencyId, clientId).catch((e) =>
+        console.error(`[patternDetector] synthesis failed for insight ${id}:`, e)
+      )
+    }
+
+    // Re-synthesize existing confirmed insights for stakeholders involved in this feedback batch
+    const involvedStakeholderIds = [...new Set(allFeedback.map((f) => f.stakeholderId))]
+    if (involvedStakeholderIds.length > 0) {
+      const confirmedInsights = await prisma.insight.findMany({
+        where: { agencyId, clientId, status: 'confirmed' },
+        select: { id: true, stakeholderIds: true },
+      })
+      for (const ci of confirmedInsights) {
+        const ids = ci.stakeholderIds as string[]
+        if (Array.isArray(ids) && ids.some((id) => involvedStakeholderIds.includes(id))) {
+          synthesizeInsightToBrain(ci.id, agencyId, clientId).catch((e) =>
+            console.error(`[patternDetector] re-synthesis failed for confirmed insight ${ci.id}:`, e)
+          )
+        }
+      }
     }
   })
 }

@@ -33,6 +33,13 @@ export const QUEUE_NEWSROOM_RESEARCH      = 'newsroom-research'
 export const QUEUE_CONTENT_PACK_GENERATION        = 'content-pack-generation'
 export const QUEUE_PROMPT_PROPAGATION             = 'prompt-propagation'
 export const QUEUE_THOUGHT_LEADER_SOCIAL_SYNC     = 'thought-leader-social-sync'
+export const QUEUE_INSIGHT_SYNTHESIS              = 'insight-synthesis'
+
+export interface InsightSynthesisJobData {
+  insightId: string
+  agencyId:  string
+  clientId:  string
+}
 
 export interface WorkflowRunJobData {
   workflowRunId: string
@@ -485,4 +492,15 @@ export function getHumanizerSynthesisQueue(): Queue<HumanizerSynthesisJobData> {
     )
   }
   return humanizerSynthesisQueue
+}
+
+let insightSynthesisQueue: Queue<InsightSynthesisJobData> | null = null
+export function getInsightSynthesisQueue(): Queue<InsightSynthesisJobData> {
+  if (!insightSynthesisQueue) {
+    insightSynthesisQueue = new Queue<InsightSynthesisJobData>(
+      QUEUE_INSIGHT_SYNTHESIS,
+      { connection: getBullMQConnection() },
+    )
+  }
+  return insightSynthesisQueue
 }
