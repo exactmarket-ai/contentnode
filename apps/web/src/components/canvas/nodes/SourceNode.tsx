@@ -56,6 +56,7 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
         subtype === 'deep_web_scrape' || subtype === 'review_miner' ||
         subtype === 'seo_intent' || subtype === 'audience_signal') return true
     const cfg = (data.config as Record<string, unknown>) ?? {}
+    if (cfg.seedTopic) return true  // keyword-research
     if (cfg.text || cfg.inlineText || cfg.pasted_text) return true
     if (Array.isArray(cfg.uploaded_files) && (cfg.uploaded_files as unknown[]).length > 0) return true
     if (Array.isArray(cfg.audio_files) && (cfg.audio_files as unknown[]).length > 0) return true
@@ -271,7 +272,9 @@ export const SourceNode = memo(({ id, data, selected }: NodeProps) => {
           ) : (
             <>
               <p className="text-[10px] leading-[1.4] line-clamp-2" style={{ color: '#6b6a62' }}>
-                {data.description as string}
+                {subtype === 'keyword-research' && existingConfig.seedTopic
+                  ? existingConfig.seedTopic as string
+                  : data.description as string}
               </p>
               {(existingConfig.prompt_template_name as string | undefined) && (
                 <p className="mt-1 flex items-center gap-1 text-[10px] truncate" style={{ color: '#a200ee' }}>

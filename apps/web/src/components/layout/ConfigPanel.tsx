@@ -314,7 +314,15 @@ export function ConfigPanel() {
     seo_intent:       'text-violet-400',
     audience_signal:  'text-teal-400',
     wrike_source:     'text-blue-500',
+    keyword_research: 'text-blue-500',
   }
+  // Special node types that are functionally source nodes — display as "source"
+  const SOURCE_TYPE_ALIASES = new Set([
+    'gtm_framework', 'brand_context', 'client_brain',
+    'deep_web_scrape', 'review_miner', 'seo_intent',
+    'audience_signal', 'wrike_source', 'keyword_research', 'audio_input',
+  ])
+  const displayNodeType = SOURCE_TYPE_ALIASES.has(nodeType) ? 'source' : nodeType
   const colorClass = CATEGORY_COLOR[nodeType] ?? 'text-foreground'
 
   return (
@@ -361,7 +369,7 @@ export function ConfigPanel() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Type:</span>
               <span className={cn('text-xs font-medium capitalize', colorClass)}>
-                {node.type} / {subtype}
+                {displayNodeType} / {subtype}
               </span>
             </div>
           </div>
