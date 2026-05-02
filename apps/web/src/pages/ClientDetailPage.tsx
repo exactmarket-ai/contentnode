@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -2861,6 +2861,11 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
   const [trash, setTrash] = useState<TrashedPromptTemplate[]>([])
   const [trashLoading, setTrashLoading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const editBodyRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (editingId && editBodyRef.current) editBodyRef.current.scrollTop = 0
+  }, [editingId])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -3026,7 +3031,7 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
                     </select>
                     <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" className="w-full rounded border px-2 py-1 text-xs outline-none" style={{ borderColor: '#e8e7e1' }} />
                   </div>
-                  <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1', minHeight: '500px', maxHeight: '80vh', overflowY: 'auto' }} />
+                  <textarea ref={editBodyRef} value={editBody} onChange={(e) => setEditBody(e.target.value)} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1', minHeight: '60vh', maxHeight: '80vh', overflowY: 'auto' }} />
                   <div className="flex justify-end gap-2">
                     <button onClick={() => setEditingId(null)} className="px-2.5 py-1 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
                     <button onClick={saveEdit} disabled={savingEdit} className="px-2.5 py-1 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>{savingEdit ? 'Saving…' : 'Save'}</button>
