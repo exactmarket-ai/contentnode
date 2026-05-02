@@ -176,7 +176,7 @@ function OllamaModelsSection() {
           No models added — pickers will show built-in suggestions only.
         </p>
       ) : (
-        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+        <div className="space-y-1.5">
           {models.map((m) => (
             <div key={m} className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
               <span className="text-sm font-mono">{m}</span>
@@ -605,7 +605,8 @@ export function UserProfilePage() {
   const initials = getInitials(user.name, user.email)
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-10 space-y-8">
+    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="mx-auto max-w-2xl w-full px-6 py-10 space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">Your Profile</h1>
@@ -767,6 +768,7 @@ export function UserProfilePage() {
       {/* Local AI sections — separate saves, outside the main form */}
       <OllamaModelsSection />
       <LocalMediaServicesSection />
+    </div>
     </div>
   )
 }
