@@ -119,6 +119,12 @@ export async function agencyPromptTemplateRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
     const data = parsed.data
 
+    const duplicate = await prisma.promptTemplate.findFirst({
+      where: { agencyId, clientId: null, name: data.name, deletedAt: null },
+      select: { id: true },
+    })
+    if (duplicate) return reply.code(409).send({ error: 'An agency template with this name already exists' })
+
     const template = await prisma.promptTemplate.create({
       data: {
         agencyId,

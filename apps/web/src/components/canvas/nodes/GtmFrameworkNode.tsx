@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
+import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { NODE_SPEC } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
@@ -46,6 +47,7 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
   const verticalName = (config.verticalName as string) || null
   const [resolvedClientName, setResolvedClientName] = useState<string | null>((config.clientName as string) || null)
   const [verticals, setVerticals] = useState<{ id: string; name: string }[]>([])
+  const [gtmReady, setGtmReady] = useState<boolean | null>(null)
 
   // Fetch client name + verticals
   useEffect(() => {
@@ -59,6 +61,14 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
       setVerticals(verts)
     }).catch(() => {})
   }, [workflowClientId, config.clientName])
+
+  useEffect(() => {
+    if (!workflowClientId || !verticalId) { setGtmReady(null); return }
+    apiFetch(`/api/v1/clients/${workflowClientId}/framework/${verticalId}`)
+      .then((r) => r.json())
+      .then(({ data: d }) => setGtmReady(d !== null && d !== undefined && Object.keys(d as object).length > 0))
+      .catch(() => setGtmReady(null))
+  }, [workflowClientId, verticalId])
 
   const handleVerticalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation()
@@ -80,8 +90,12 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
     ? { backgroundColor: spec.accent, borderColor: spec.accent }
     : { backgroundColor: spec.headerBg, borderColor: spec.headerBorder }
 
+  const isWarn = gtmReady === false && !isRunning && !isPassed && !isFailed
+
   const cardStyle = selected
     ? { boxShadow: `0 0 0 2px ${spec.activeRing}`, border: `1.5px solid ${spec.accent}` }
+    : isWarn
+    ? { border: '1.5px dashed #f59e0b' }
     : { border: `1px solid ${spec.headerBorder}` }
 
   const toggleSection = (e: React.MouseEvent, num: string) => {
@@ -202,6 +216,24 @@ export const GtmFrameworkNode = memo(function GtmFrameworkNode({ id, data, selec
           </div>
         </div>
       </div>
+
+      {/* GTM data status */}
+      {workflowClientId && verticalId && gtmReady === false && (
+        <div className="border-t px-2.5 py-1.5" style={{ borderColor: spec.headerBorder }}>
+          <p className="flex items-center gap-1 text-[10px] text-amber-600">
+            <Icons.AlertTriangle className="h-3 w-3 shrink-0" />
+            No GTM framework — complete it in Client → GTM Framework
+          </p>
+        </div>
+      )}
+      {workflowClientId && verticalId && gtmReady === true && (
+        <div className="border-t px-2.5 py-1.5" style={{ borderColor: spec.headerBorder }}>
+          <p className="flex items-center gap-1 text-[10px]" style={{ color: '#16a34a' }}>
+            <Icons.CheckCircle2 className="h-3 w-3 shrink-0" />
+            GTM data ready
+          </p>
+        </div>
+      )}
 
       {/* Vertical dropdown */}
       <div

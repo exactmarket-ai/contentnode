@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
+import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
 import { apiFetch } from '@/lib/api'
@@ -23,6 +24,7 @@ export const BrandContextNode = memo(function BrandContextNode({ id, data, selec
 
   const [verticals, setVerticals] = useState<BrandVertical[]>([])
   const [resolvedClientName, setResolvedClientName] = useState<string>(clientName)
+  const [brandReady, setBrandReady] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (!clientId) return
@@ -36,6 +38,15 @@ export const BrandContextNode = memo(function BrandContextNode({ id, data, selec
       setVerticals(verts as BrandVertical[])
     }).catch(() => {})
   }, [clientId, clientName])
+
+  useEffect(() => {
+    if (!clientId) { setBrandReady(false); return }
+    const url = `/api/v1/clients/${clientId}/brand${verticalId ? `?verticalId=${verticalId}` : ''}`
+    apiFetch(url)
+      .then((r) => r.json())
+      .then(({ data: d }) => setBrandReady(d?.brand !== null && d?.brand !== undefined))
+      .catch(() => setBrandReady(null))
+  }, [clientId, verticalId])
 
   const handleVerticalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation()
@@ -54,8 +65,12 @@ export const BrandContextNode = memo(function BrandContextNode({ id, data, selec
     ? { backgroundColor: spec.accent, borderColor: spec.accent }
     : { backgroundColor: spec.headerBg, borderColor: spec.headerBorder }
 
+  const isWarn = brandReady === false && !isRunning && !isPassed && !isFailed
+
   const cardStyle = selected
     ? { boxShadow: `0 0 0 2px ${spec.activeRing}`, border: `1.5px solid ${spec.accent}` }
+    : isWarn
+    ? { border: '1.5px dashed #f59e0b' }
     : { border: `1px solid ${spec.headerBorder}` }
 
   const sourceLabel = dataSource === 'profile' ? 'Brand Profile'
@@ -124,6 +139,20 @@ export const BrandContextNode = memo(function BrandContextNode({ id, data, selec
           <span className="w-14 shrink-0 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">Source</span>
           <span className="flex-1 truncate text-[11px] text-muted-foreground">{sourceLabel}</span>
         </div>
+
+        {/* Brand data status */}
+        {clientId && brandReady === false && (
+          <p className="flex items-center gap-1 text-[10px] text-amber-600">
+            <Icons.AlertTriangle className="h-3 w-3 shrink-0" />
+            No brand data — add it in Client → Branding
+          </p>
+        )}
+        {clientId && brandReady === true && (
+          <p className="flex items-center gap-1 text-[10px]" style={{ color: '#16a34a' }}>
+            <Icons.CheckCircle2 className="h-3 w-3 shrink-0" />
+            Brand data ready
+          </p>
+        )}
       </div>
 
       {/* Output handle */}

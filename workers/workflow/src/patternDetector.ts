@@ -749,11 +749,18 @@ Return only the prompt instruction text, nothing else.`
     if (!instruction || instruction.length < 20) return
 
     await withAgency(agencyId, async () => {
+      const templateName = `Auto: ${patterns[0]?.title ?? 'Content improvement'} (${new Date().toLocaleDateString()})`
+      const exists = await prisma.promptTemplate.findFirst({
+        where: { agencyId, clientId, name: templateName },
+        select: { id: true },
+      })
+      if (exists) return
+
       await prisma.promptTemplate.create({
         data: {
           agencyId,
           clientId,
-          name: `Auto: ${patterns[0]?.title ?? 'Content improvement'} (${new Date().toLocaleDateString()})`,
+          name: templateName,
           body: instruction,
           category: 'general',
           description: `Generated from ${diffs.length} edit diffs. Patterns: ${patterns.map((p) => p.title).join('; ')}`,

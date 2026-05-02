@@ -1,25 +1,41 @@
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
+import * as Icons from 'lucide-react'
 import { useWorkflowStore } from '@/store/workflowStore'
 import { getNodeSpec } from '@/lib/nodeColors'
+import { apiFetch } from '@/lib/api'
 
 export const ClientBrainNode = memo(function ClientBrainNode({ id, data, selected }: NodeProps) {
   const nodeRunStatuses = useWorkflowStore((s) => s.nodeRunStatuses)
   const workflowClientName = useWorkflowStore((s) => s.workflow.clientName)
+  const workflowClientId = useWorkflowStore((s) => s.workflow.clientId)
 
   const spec = getNodeSpec('client_brain')
   const config = (data.config as Record<string, unknown>) ?? {}
 
   const clientName = (config.clientName as string) || workflowClientName || ''
+  const clientId = (config.clientId as string) || workflowClientId || ''
   const gtmSections = (config.gtmSections as string[]) ?? []
   const dgBase = (config.dgBaseSections as string[]) ?? []
   const dgVert = (config.dgVertSections as string[]) ?? []
   const includeBrand = (config.includeBrand as boolean) ?? false
 
+  const [brainReady, setBrainReady] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!clientId) { setBrainReady(false); return }
+    apiFetch(`/api/v1/clients/${clientId}/brain/context`)
+      .then((r) => r.json())
+      .then(({ data: d }) => setBrainReady(typeof d?.context === 'string' && d.context.trim().length > 0))
+      .catch(() => setBrainReady(null))
+  }, [clientId])
+
   const runStatus = nodeRunStatuses[id]
   const isRunning = runStatus?.status === 'running'
   const isPassed  = runStatus?.status === 'passed'
   const isFailed  = runStatus?.status === 'failed'
+
+  const isWarn = brainReady === false && !isRunning && !isPassed && !isFailed
 
   const headerStyle = selected
     ? { backgroundColor: spec.accent, borderColor: spec.accent }
@@ -27,6 +43,8 @@ export const ClientBrainNode = memo(function ClientBrainNode({ id, data, selecte
 
   const cardStyle = selected
     ? { boxShadow: `0 0 0 2px ${spec.activeRing}`, border: `1.5px solid ${spec.accent}` }
+    : isWarn
+    ? { border: '1.5px dashed #f59e0b' }
     : { border: `1px solid ${spec.headerBorder}` }
 
   const allSections = [
@@ -89,6 +107,20 @@ export const ClientBrainNode = memo(function ClientBrainNode({ id, data, selecte
           </div>
         ) : (
           <p className="text-[10px] text-muted-foreground italic">No sections selected</p>
+        )}
+
+        {/* Brain data status */}
+        {clientId && brainReady === false && (
+          <p className="flex items-center gap-1 text-[10px] text-amber-600">
+            <Icons.AlertTriangle className="h-3 w-3 shrink-0" />
+            No brain data — add documents or run the brain builder
+          </p>
+        )}
+        {clientId && brainReady === true && (
+          <p className="flex items-center gap-1 text-[10px]" style={{ color: '#16a34a' }}>
+            <Icons.CheckCircle2 className="h-3 w-3 shrink-0" />
+            Brain data ready
+          </p>
         )}
       </div>
 

@@ -425,6 +425,12 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Only admins can create global templates' })
     }
 
+    const duplicate = await prisma.promptTemplate.findFirst({
+      where: { agencyId, clientId: data.clientId ?? null, name: data.name, deletedAt: null },
+      select: { id: true },
+    })
+    if (duplicate) return reply.code(409).send({ error: 'A template with this name already exists' })
+
     const template = await prisma.promptTemplate.create({
       data: {
         agencyId,
@@ -682,6 +688,12 @@ export async function templateLibraryRoutes(app: FastifyInstance) {
         generated.push({ name: `[AI] ${client.name} — ${spec.name}`, category: spec.category, description: spec.description, body })
       }
     }
+
+    // Delete existing AI templates for this client before inserting fresh ones.
+    // This makes the endpoint idempotent — repeated calls never accumulate duplicates.
+    await prisma.promptTemplate.deleteMany({
+      where: { agencyId, clientId: client.id, source: 'ai' },
+    })
 
     // Write all to DB
     const records = await Promise.all(

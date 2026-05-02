@@ -3026,7 +3026,7 @@ function ClientPromptsSection({ clientId }: { clientId?: string }) {
                     </select>
                     <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" className="w-full rounded border px-2 py-1 text-xs outline-none" style={{ borderColor: '#e8e7e1' }} />
                   </div>
-                  <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={5} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1' }} />
+                  <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} className="w-full rounded border px-2 py-1 text-xs font-mono outline-none resize-y" style={{ borderColor: '#e8e7e1', minHeight: '500px', maxHeight: '80vh', overflowY: 'auto' }} />
                   <div className="flex justify-end gap-2">
                     <button onClick={() => setEditingId(null)} className="px-2.5 py-1 text-xs rounded border hover:bg-gray-50" style={{ borderColor: '#e8e7e1' }}>Cancel</button>
                     <button onClick={saveEdit} disabled={savingEdit} className="px-2.5 py-1 text-xs font-semibold rounded text-white disabled:opacity-50" style={{ backgroundColor: '#a200ee' }}>{savingEdit ? 'Saving…' : 'Save'}</button>

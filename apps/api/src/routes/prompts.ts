@@ -392,6 +392,12 @@ export async function promptRoutes(app: FastifyInstance) {
     const parsed = createBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues })
 
+    const duplicate = await prisma.promptTemplate.findFirst({
+      where: { agencyId, clientId: parsed.data.clientId ?? null, name: parsed.data.name, deletedAt: null },
+      select: { id: true },
+    })
+    if (duplicate) return reply.code(409).send({ error: 'A template with this name already exists' })
+
     const template = await prisma.promptTemplate.create({
       data: { agencyId, createdBy: userId, ...parsed.data } as any,
     })
@@ -544,6 +550,7 @@ export async function promptRoutes(app: FastifyInstance) {
     }
     await prisma.promptTemplate.createMany({
       data: toInsert.map((t) => ({ agencyId, clientId: null, source: 'global', ...t, createdBy: null })),
+      skipDuplicates: true,
     })
     return reply.send({ data: { seeded: toInsert.length } })
   })

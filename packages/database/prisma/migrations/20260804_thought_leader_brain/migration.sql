@@ -11,16 +11,24 @@ ALTER TABLE leadership_members
   ADD COLUMN IF NOT EXISTS social_profiles         jsonb NOT NULL DEFAULT '[]',
   ADD COLUMN IF NOT EXISTS social_sync_last_ran_at timestamptz;
 
--- Migrate any existing linkedin_url values into social_profiles
-UPDATE leadership_members
-SET social_profiles = jsonb_build_array(
-  jsonb_build_object(
-    'platform',    'linkedin',
-    'url',         linkedin_url,
-    'syncEnabled', true
-  )
-)
-WHERE linkedin_url IS NOT NULL AND linkedin_url <> '';
+-- Migrate any existing linkedin_url values into social_profiles (only if column exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leadership_members' AND column_name = 'linkedin_url'
+  ) THEN
+    UPDATE leadership_members
+    SET social_profiles = jsonb_build_array(
+      jsonb_build_object(
+        'platform',    'linkedin',
+        'url',         linkedin_url,
+        'syncEnabled', true
+      )
+    )
+    WHERE linkedin_url IS NOT NULL AND linkedin_url <> '';
+  END IF;
+END $$;
 
 ALTER TABLE leadership_members DROP COLUMN IF EXISTS linkedin_url;
 
