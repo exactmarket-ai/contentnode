@@ -18,6 +18,8 @@ export function SeoIntentConfig({
   onChange: (k: string, v: unknown) => void
 }) {
   const dataSource = (config.dataSource as string) ?? 'claude'
+  const funnelOn = (config.funnelMapping as boolean) ?? true
+  const trendingOn = (config.includeTrendingSignals as boolean) ?? false
 
   return (
     <>
@@ -85,21 +87,40 @@ export function SeoIntentConfig({
 
       <button
         type="button"
-        onClick={() => onChange('funnelMapping', !((config.funnelMapping as boolean) ?? true))}
+        onClick={() => onChange('funnelMapping', !funnelOn)}
         className={cn(
           'flex items-center gap-2 px-2.5 py-1.5 rounded text-xs border transition-colors text-left w-full',
-          (config.funnelMapping as boolean) ?? true
+          funnelOn
             ? 'bg-violet-900/40 border-violet-700 text-violet-300'
             : 'border-border text-muted-foreground hover:text-foreground'
         )}
       >
         <span className={cn(
           'w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0',
-          (config.funnelMapping as boolean) ?? true ? 'bg-violet-500 border-violet-500' : 'border-muted-foreground'
+          funnelOn ? 'bg-violet-500 border-violet-500' : 'border-muted-foreground'
         )}>
-          {((config.funnelMapping as boolean) ?? true) && <span className="text-[8px] font-bold text-white">✓</span>}
+          {funnelOn && <span className="text-[8px] font-bold text-white">✓</span>}
         </span>
         Map to funnel stages (Awareness / Consideration / Decision)
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onChange('includeTrendingSignals', !trendingOn)}
+        className={cn(
+          'flex items-center gap-2 px-2.5 py-1.5 rounded text-xs border transition-colors text-left w-full',
+          trendingOn
+            ? 'bg-teal-900/40 border-teal-700 text-teal-300'
+            : 'border-border text-muted-foreground hover:text-foreground'
+        )}
+      >
+        <span className={cn(
+          'w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0',
+          trendingOn ? 'bg-teal-500 border-teal-500' : 'border-muted-foreground'
+        )}>
+          {trendingOn && <span className="text-[8px] font-bold text-white">✓</span>}
+        </span>
+        Include trending signals (Google Trends + People Also Ask)
       </button>
     </>
   )
