@@ -7096,7 +7096,7 @@ function ScheduledTasksTab({ clientId, clientName, sourceTag: defaultSourceTag }
                             <Icon className={cn('h-3 w-3', meta.color)} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-xs font-medium leading-tight truncate">{tmpl.name}</p>
+                            <p className="text-xs font-medium leading-tight">{tmpl.name}</p>
                             {tmpl.summary && <p className="mt-0.5 text-[10px] text-muted-foreground leading-tight line-clamp-2">{tmpl.summary}</p>}
                           </div>
                         </button>
