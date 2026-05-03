@@ -5993,43 +5993,43 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             <p className="text-[11px]" style={{ color: '#9ca3af' }}>Research reports and generated blogs will be assigned to this person in the Pipeline.</p>
           </div>
 
-          {showTemplateWarning && (
-            <div style={{ borderRadius: 8, border: '1px solid #fde68a', backgroundColor: '#fffbeb', padding: '12px 14px' }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '0 0 6px' }}>Before saving as a template</p>
-              <p style={{ fontSize: 12, color: '#b45309', margin: '0 0 10px', lineHeight: 1.5 }}>
-                Make sure the label, summary, and config above use <span style={{ fontFamily: 'monospace', backgroundColor: '#fef3c7', padding: '0 3px', borderRadius: 3 }}>[bracketed placeholders]</span> instead of client-specific competitors, verticals, segments, or solutions.
-              </p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => setShowTemplateWarning(false)} style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #d97706', backgroundColor: '#ffffff', fontSize: 11, color: '#92400e', cursor: 'pointer' }}>Go back and edit</button>
-                <button type="button" onClick={confirmSaveAsTemplate} disabled={savingAsTemplate} style={{ height: 28, padding: '0 12px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 11, fontWeight: 600, color: '#ffffff', cursor: savingAsTemplate ? 'not-allowed' : 'pointer', opacity: savingAsTemplate ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {savingAsTemplate ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : <Icons.BookTemplate className="h-3 w-3" />}
-                  Looks good — save template
-                </button>
-              </div>
-            </div>
-          )}
-
           {error && <p className="text-xs" style={{ color: '#dc2626' }}>{error}</p>}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-6 py-4" style={{ borderTop: '1px solid #e5e7eb', backgroundColor: '#ffffff' }}>
-          <button onClick={onClose} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer' }}>Cancel</button>
+        {showTemplateWarning && (
+          <div style={{ borderTop: '1px solid #fde68a', borderBottom: '1px solid #fde68a', backgroundColor: '#fffbeb', padding: '12px 24px' }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '0 0 3px' }}>Before saving as a template</p>
+            <p style={{ fontSize: 12, color: '#b45309', margin: '0 0 8px', lineHeight: 1.5 }}>
+              Make sure the label, summary, and config use <span style={{ fontFamily: 'monospace', backgroundColor: '#fef3c7', padding: '0 3px', borderRadius: 3 }}>[bracketed placeholders]</span> instead of client-specific names, competitors, or solutions.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowTemplateWarning(false)}>Dismiss</Button>
+              <Button size="sm" className="h-7 text-xs" onClick={confirmSaveAsTemplate} disabled={savingAsTemplate}>
+                {savingAsTemplate ? <Icons.Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Icons.BookTemplate className="mr-1.5 h-3 w-3" />}
+                Looks good — save template
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 px-6 py-4" style={{ borderTop: '1px solid #e5e7eb' }}>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>Cancel</Button>
           {isEdit && canManageTemplates && (
-            <button onClick={() => setShowTemplateWarning(true)} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #8b5cf6', backgroundColor: '#ffffff', fontSize: 12, fontWeight: 600, color: '#7c3aed', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Icons.BookTemplate className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowTemplateWarning(true)}>
+              <Icons.BookTemplate className="mr-1.5 h-3.5 w-3.5" />
               Save as Template
-            </button>
+            </Button>
           )}
           {isEdit && (
-            <button onClick={saveAs} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #a200ee', backgroundColor: '#ffffff', fontSize: 12, fontWeight: 600, color: '#a200ee', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-              {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Copy className="h-3.5 w-3.5" />}
-              Save As New
-            </button>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={saveAs} disabled={saving}>
+              {saving ? <Icons.Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Icons.Copy className="mr-1.5 h-3.5 w-3.5" />}
+              Save as New
+            </Button>
           )}
-          <button onClick={save} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 12, fontWeight: 600, color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="h-3.5 w-3.5" />}
+          <Button size="sm" className="h-8 text-xs" onClick={save} disabled={saving}>
+            {saving ? <Icons.Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="mr-1.5 h-3.5 w-3.5" />}
             {isEdit ? 'Save Changes' : 'Create Task'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
