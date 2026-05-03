@@ -36,8 +36,10 @@ export async function scheduledTaskTemplateRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
     const { name, summary, type, frequency, config } = parsed.data
 
+    const dbUser = userId ? await prisma.user.findFirst({ where: { clerkUserId: userId, agencyId }, select: { id: true } }) : null
+
     const template = await prisma.scheduledTaskTemplate.create({
-      data: { agencyId, name, summary: summary ?? null, type, frequency, config: config as object, createdById: userId ?? null },
+      data: { agencyId, name, summary: summary ?? null, type, frequency, config: config as object, createdById: dbUser?.id ?? null },
       include: { createdBy: { select: { id: true, name: true } } },
     })
     return reply.code(201).send({ data: template })
