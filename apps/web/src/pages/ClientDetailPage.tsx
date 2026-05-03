@@ -7722,117 +7722,45 @@ export function ClientDetailPage() {
       </header>
 
       {/* Tabs — primary row */}
-      <div className="flex gap-0 border-b border-border bg-background px-6 print:hidden">
-        {PRE_DEMAND_GEN_TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => switchTab(tab)}
-            className={cn(
-              'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              activeTab === tab
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {TAB_LABELS[tab]}
-          </button>
-        ))}
-        {/* Strategy group entry point */}
+      <div className="flex gap-0 border-b border-border bg-background px-6 print:hidden overflow-x-auto">
+        {/* Overview */}
+        <button onClick={() => switchTab('overview')} className={cn('px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', activeTab === 'overview' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>Overview</button>
+        {/* Strategy group */}
         {canSeeSeo && (
-          <button
-            onClick={() => switchTab('framework')}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              inStrategy
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Icons.Target className="h-3 w-3" />
-            Strategy
+          <button onClick={() => switchTab('framework')} className={cn('flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', inStrategy ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+            <Icons.Target className="h-3 w-3" />Strategy
           </button>
         )}
-        {/* Demand Gen group entry point */}
-        <button
-          onClick={() => switchTab('demandgen')}
-          className={cn(
-            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-            inDemandGen
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Icons.TrendingUp className="h-3 w-3" />
-          Demand Gen
-        </button>
+        {/* Marcom group */}
         {canSeeThoughtLeadership && (
-          <button
-            onClick={() => switchTab('branding')}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              inThoughtLeadership
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Icons.Lightbulb className="h-3 w-3" />
-            Marcom
+          <button onClick={() => switchTab('branding')} className={cn('flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', inThoughtLeadership ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+            <Icons.Lightbulb className="h-3 w-3" />Marcom
           </button>
         )}
-        {/* Research group entry point */}
-        <button
-          onClick={() => switchTab('company')}
-          className={cn(
-            'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-            inResearch
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Icons.Search className="h-3 w-3" />
-          Research
+        {/* Demand Gen group */}
+        <button onClick={() => switchTab('demandgen')} className={cn('flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', inDemandGen ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+          <Icons.TrendingUp className="h-3 w-3" />Demand Gen
         </button>
-        {POST_RESEARCH_TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => switchTab(tab)}
-            className={cn(
-              'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              activeTab === tab
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {TAB_LABELS[tab]}
-          </button>
-        ))}
-        {isAdmin && ADMIN_ONLY_TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => switchTab(tab)}
-            className={cn(
-              'px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              activeTab === tab
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {TAB_LABELS[tab]}
-          </button>
-        ))}
-        {/* Settings group entry point — admin only */}
+        {/* Programs */}
+        <button onClick={() => switchTab('programs')} className={cn('px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', activeTab === 'programs' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>Programs</button>
+        {/* Research group */}
+        <button onClick={() => switchTab('company')} className={cn('flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', inResearch ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+          <Icons.Search className="h-3 w-3" />Research
+        </button>
+        {/* Workflows */}
+        <button onClick={() => switchTab('workflows')} className={cn('px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', activeTab === 'workflows' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>Workflows</button>
+        {/* Prompt Library */}
+        <button onClick={() => switchTab('library')} className={cn('px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', activeTab === 'library' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>Prompt Library</button>
+        {/* Deliverables — admin only */}
+        {isAdmin && <button onClick={() => switchTab('deliverables')} className={cn('px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', activeTab === 'deliverables' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>Deliverables</button>}
+        {/* Insights — admin only */}
+        {isAdmin && <button onClick={() => switchTab('insights')} className={cn('px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', activeTab === 'insights' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>Insights</button>}
+        {/* Reviews — admin only */}
+        {isAdmin && <button onClick={() => switchTab('reviews')} className={cn('px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', activeTab === 'reviews' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>Reviews</button>}
+        {/* Settings group — admin only */}
         {isAdmin && (
-          <button
-            onClick={() => switchTab('structure')}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
-              inSettings
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Icons.Settings className="h-3 w-3" />
-            Settings
+          <button onClick={() => switchTab('structure')} className={cn('flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap', inSettings ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+            <Icons.Settings className="h-3 w-3" />Settings
           </button>
         )}
       </div>
