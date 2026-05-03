@@ -11,7 +11,7 @@ import { downloadBrandProfileDocx, downloadCompanyProfileDocx } from '@/lib/down
 import { ClientBillingReportsTab } from './ClientBillingReportsTab'
 import { ClientDemandGenTab } from './ClientDemandGenTab'
 import { ClientFrameworkTab } from './ClientFrameworkTab'
-import { ClientBrandingTab } from './ClientBrandingTab'
+import { ClientBrandingTab, type BrandingSubTab } from './ClientBrandingTab'
 import { ClientPromptLibraryTab } from './ClientPromptLibraryTab'
 import { ClientDocStyleTab } from './ClientDocStyleTab'
 import { ClientDeliverablesTab } from './ClientDeliverablesTab'
@@ -7583,6 +7583,7 @@ export function ClientDetailPage() {
   const [showEditClient, setShowEditClient] = useState(false)
   const [archivingClient, setArchivingClient] = useState(false)
   const { isAdmin, canUsePilot, isStrategist } = useCurrentUser()
+  const [brandingSubTab, setBrandingSubTab] = useState<BrandingSubTab>('profile')
 
   const loadClient = useCallback(() => {
     if (!id) return
@@ -7903,13 +7904,35 @@ export function ClientDetailPage() {
         </div>
       )}
 
+      {/* Branding sub-tab row — only visible when branding tab is active */}
+      {activeTab === 'branding' && (
+        <div className="flex items-center border-b border-border bg-muted/30 px-6 print:hidden">
+          <div className="flex gap-0">
+            {(['profile', 'builder', 'image-prompts'] as BrandingSubTab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setBrandingSubTab(t)}
+                className={cn(
+                  'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                  brandingSubTab === t
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t === 'profile' ? 'Brand Profile' : t === 'builder' ? 'Brand Builder' : 'Image Prompts'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Tab content */}
       {activeTab === 'framework'
         ? <div className="flex-1 overflow-hidden"><ClientFrameworkTab clientId={client.id} clientName={client.name} initialVerticalId={searchParams.get('verticalId') ?? undefined} /></div>
         : activeTab === 'demandgen'
         ? <div className="flex-1 overflow-hidden"><ClientDemandGenTab clientId={client.id} /></div>
         : activeTab === 'branding'
-        ? <div className="flex-1 overflow-hidden"><ClientBrandingTab clientId={client.id} clientName={client.name} /></div>
+        ? <div className="flex-1 overflow-hidden"><ClientBrandingTab clientId={client.id} clientName={client.name} subTab={brandingSubTab} onSubTabChange={setBrandingSubTab} /></div>
         : activeTab === 'scheduled-tasks'
         ? <div className="flex-1 overflow-hidden"><ScheduledTasksTab clientId={client.id} clientName={client.name} /></div>
         : activeTab === 'board'

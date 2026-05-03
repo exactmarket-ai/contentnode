@@ -1828,19 +1828,22 @@ function ClientImagePromptsSection({ clientId, clientName }: { clientId: string;
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SubTab = 'profile' | 'builder' | 'image-prompts'
+export type BrandingSubTab = 'profile' | 'builder' | 'image-prompts'
 
 export function ClientBrandingTab({
   clientId,
   clientName,
+  subTab = 'profile',
+  onSubTabChange,
 }: {
   clientId: string
   clientName: string
+  subTab?: BrandingSubTab
+  onSubTabChange?: (tab: BrandingSubTab) => void
 }) {
   const [verticals, setVerticals] = useState<BrandVertical[]>([])
   const [loadingVerticals, setLoadingVerticals] = useState(true)
   const [activeVerticalId, setActiveVerticalId] = useState<string | null>(null) // null = General
-  const [subTab, setSubTab] = useState<SubTab>('profile')
 
   const fetchVerticals = useCallback(async () => {
     const res = await apiFetch(`/api/v1/clients/${clientId}/brand-verticals`)
@@ -1948,26 +1951,6 @@ export function ClientBrandingTab({
               </p>
             </>
           )}
-        </div>
-
-        {/* Sub-tabs */}
-        <div className="shrink-0 border-b border-border px-6">
-          <div className="flex gap-4">
-            {(['profile', 'builder', 'image-prompts'] as SubTab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => setSubTab(t)}
-                className={cn(
-                  'border-b-2 py-2 text-sm font-medium transition-colors',
-                  subTab === t
-                    ? 'border-foreground text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {t === 'profile' ? 'Brand Profile' : t === 'builder' ? 'Brand Builder' : 'Image Prompts'}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Content */}
