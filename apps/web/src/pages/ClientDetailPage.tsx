@@ -5828,8 +5828,8 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
       const { data, error: err } = await res.json()
       if (!res.ok) { setError(err ?? 'Failed to save template'); setSavingAsTemplate(false); return }
       onTemplateSaved?.(data)
-      setShowTemplateWarning(false)
       setSavingAsTemplate(false)
+      onClose()
     } catch { setError('Network error'); setSavingAsTemplate(false) }
   }
 
