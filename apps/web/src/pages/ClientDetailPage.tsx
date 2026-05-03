@@ -6014,7 +6014,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
 
         <div className="flex items-center justify-end gap-2 px-6 py-4" style={{ borderTop: '1px solid #e5e7eb', backgroundColor: '#ffffff' }}>
           <button onClick={onClose} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer' }}>Cancel</button>
-          {isEdit && canManageTemplates && !showTemplateWarning && (
+          {isEdit && canManageTemplates && (
             <button onClick={() => setShowTemplateWarning(true)} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #8b5cf6', backgroundColor: '#ffffff', fontSize: 12, fontWeight: 600, color: '#7c3aed', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Icons.BookTemplate className="h-3.5 w-3.5" />
               Save as Template
