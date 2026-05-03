@@ -3919,7 +3919,7 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
 
       {/* Right column — GTM Verticals */}
       <div className="w-[28%] shrink-0 overflow-y-auto pt-6 px-4 pb-16 border-l border-border">
-        <GtmVerticalsCard clientId={clientId} />
+        <GtmVerticalsCard clientId={clientId} hideUnassigned />
       </div>
 
       </div>{/* /Body */}

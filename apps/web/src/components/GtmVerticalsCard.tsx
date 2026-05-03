@@ -7,7 +7,7 @@ import { useVerticalTerm, invalidateVerticalTerm } from '@/hooks/useVerticalTerm
 
 interface VerticalItem { id: string; name: string; dimensionType: string }
 
-export function GtmVerticalsCard({ clientId }: { clientId: string }) {
+export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientId: string; hideUnassigned?: boolean }) {
   const verticalTerm = useVerticalTerm()
   const [allVerticals, setAllVerticals] = useState<VerticalItem[]>([])
   const [clientVerticals, setClientVerticals] = useState<VerticalItem[]>([])
@@ -21,16 +21,23 @@ export function GtmVerticalsCard({ clientId }: { clientId: string }) {
   const [savingVerticalTerm, setSavingVerticalTerm] = useState(false)
 
   useEffect(() => {
-    Promise.all([
-      apiFetch('/api/v1/verticals').then((r) => r.json()),
-      apiFetch(`/api/v1/clients/${clientId}/verticals`).then((r) => r.json()),
-    ])
-      .then(([allV, clientV]) => {
-        setAllVerticals(allV.data ?? [])
-        setClientVerticals(clientV.data ?? [])
+    const fetches = hideUnassigned
+      ? [apiFetch(`/api/v1/clients/${clientId}/verticals`).then((r) => r.json())]
+      : [
+          apiFetch('/api/v1/verticals').then((r) => r.json()),
+          apiFetch(`/api/v1/clients/${clientId}/verticals`).then((r) => r.json()),
+        ]
+    Promise.all(fetches)
+      .then((results) => {
+        if (hideUnassigned) {
+          setClientVerticals(results[0].data ?? [])
+        } else {
+          setAllVerticals(results[0].data ?? [])
+          setClientVerticals(results[1].data ?? [])
+        }
       })
       .catch(() => {})
-  }, [clientId])
+  }, [clientId, hideUnassigned])
 
   const saveVerticalTerm = async () => {
     const trimmed = verticalTermDraft.trim()
@@ -244,7 +251,7 @@ export function GtmVerticalsCard({ clientId }: { clientId: string }) {
       </div>
 
       {/* Other available verticals to assign */}
-      {allVerticals.filter((v) => !clientVerticals.find((cv) => cv.id === v.id)).length > 0 && (
+      {!hideUnassigned && allVerticals.filter((v) => !clientVerticals.find((cv) => cv.id === v.id)).length > 0 && (
         <div className="mt-3">
           <p className="mb-1.5 text-[11px] text-muted-foreground">Other verticals — click to assign:</p>
           <div className="flex flex-wrap gap-1.5">
