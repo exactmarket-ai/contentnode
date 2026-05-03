@@ -7681,7 +7681,7 @@ export function ClientDetailPage() {
   // Tabs that live under the "Settings" group (admin-only via Settings entry point)
   const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'team-access', 'stakeholders', 'runs', 'doc-style']
   // Tabs that live under the "Marcom" group (admin/strategist only)
-  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['thought-leadership', 'newsroom', 'packs', 'content-library', 'scheduled-tasks', 'branding']
+  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['branding', 'newsroom', 'scheduled-tasks', 'thought-leadership', 'content-library', 'packs']
   // Tabs rendered before the group buttons
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
@@ -7767,7 +7767,7 @@ export function ClientDetailPage() {
         </button>
         {canSeeThoughtLeadership && (
           <button
-            onClick={() => switchTab('thought-leadership')}
+            onClick={() => switchTab('branding')}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px',
               inThoughtLeadership
