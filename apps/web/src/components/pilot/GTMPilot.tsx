@@ -300,20 +300,20 @@ function SuggestionCard({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-background hover:border-blue-300 p-3 flex flex-col gap-1.5 transition-colors">
+    <div className="rounded-xl border border-border bg-background hover:border-primary/30 p-3 flex flex-col gap-1.5 transition-colors">
       <div className="flex items-start justify-between gap-1">
         <span className="text-[11px] font-semibold text-foreground leading-snug">
-          <span className="mr-1.5 inline-flex items-center justify-center rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold text-blue-600">
+          <span className="mr-1.5 inline-flex items-center justify-center rounded bg-primary/10 px-1 py-0.5 text-[9px] font-bold text-primary">
             {suggestion.sectionNum}
           </span>
           {suggestion.title}
         </span>
-        <Icons.Compass className="h-3 w-3 text-blue-400 shrink-0 mt-0.5" />
+        <Icons.Compass className="h-3 w-3 text-primary/40 shrink-0 mt-0.5" />
       </div>
       <p className="text-[10px] text-muted-foreground leading-snug">{renderInline(suggestion.description)}</p>
       <button
         onClick={handleNavigate}
-        className="w-full rounded-md bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
+        className="w-full rounded-md bg-primary hover:bg-primary/90 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
       >
         Go to section <Icons.ArrowRight className="h-3 w-3" />
       </button>
@@ -336,7 +336,7 @@ function MessageBubble({
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {!isUser && (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 mt-0.5">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
           <Icons.Compass className="h-3.5 w-3.5 text-white" />
         </div>
       )}
@@ -344,7 +344,7 @@ function MessageBubble({
         <div
           className={`rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
             isUser
-              ? 'bg-blue-500 text-white rounded-tr-sm'
+              ? 'bg-primary text-white rounded-tr-sm'
               : 'bg-muted text-foreground rounded-tl-sm'
           }`}
         >
@@ -693,12 +693,12 @@ export function GTMPilot({
 
         {/* Mini header */}
         <div className="flex items-center gap-2 px-4 pt-3 pb-1 shrink-0">
-          <div className="flex items-center gap-1.5 text-blue-600">
+          <div className="flex items-center gap-1.5 text-primary">
             <Icons.Compass className="h-3.5 w-3.5" />
             <span className="text-[11px] font-bold tracking-wide">gtmPILOT</span>
           </div>
           {verticalName && (
-            <span className="rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{verticalName}</span>
+            <span className="rounded-full bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[9px] font-medium text-primary">{verticalName}</span>
           )}
           {conflictCount > 0 && (
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">{conflictCount} conflict{conflictCount !== 1 ? 's' : ''}</span>
@@ -740,13 +740,13 @@ export function GTMPilot({
 
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 shrink-0">
-        <div className="flex items-center gap-1.5 text-blue-600">
+        <div className="flex items-center gap-1.5 text-primary">
           <Icons.Compass className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">gtmPILOT</span>
         </div>
         <span className="text-[10px] text-muted-foreground ml-0.5">AI GTM Framework strategist</span>
         {verticalName && (
-          <span className="ml-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[9px] font-medium text-blue-700">
+          <span className="ml-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[9px] font-medium text-primary">
             {verticalName}
           </span>
         )}
@@ -780,7 +780,7 @@ export function GTMPilot({
               className={cn(
                 'flex h-6 items-center gap-1 rounded-md px-1.5 text-[10px] font-medium transition-colors',
                 historyOpen
-                  ? 'bg-blue-100 text-blue-700'
+                  ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
@@ -858,21 +858,21 @@ export function GTMPilot({
 
       {/* Research context banner — active section findings */}
       {activeSectionResearch && (
-        <div className="border-b border-blue-100 bg-blue-50/60 shrink-0">
+        <div className="border-b border-primary/20 bg-primary/5 shrink-0">
           <button
             onClick={() => setResearchPanelOpen((v) => !v)}
             className="flex w-full items-center gap-2 px-4 py-1.5 text-left"
           >
-            <Icons.BookOpen className="h-3 w-3 text-blue-500 shrink-0" />
-            <span className="flex-1 text-[10px] font-semibold text-blue-700">Research findings — Section {activeSection}</span>
+            <Icons.BookOpen className="h-3 w-3 text-primary shrink-0" />
+            <span className="flex-1 text-[10px] font-semibold text-primary">Research findings — Section {activeSection}</span>
             {researchPanelOpen
-              ? <Icons.ChevronUp className="h-3 w-3 text-blue-400 shrink-0" />
-              : <Icons.ChevronDown className="h-3 w-3 text-blue-400 shrink-0" />
+              ? <Icons.ChevronUp className="h-3 w-3 text-primary/60 shrink-0" />
+              : <Icons.ChevronDown className="h-3 w-3 text-primary/60 shrink-0" />
             }
           </button>
           {researchPanelOpen && (
             <div className="max-h-20 overflow-y-auto px-4 pb-2">
-              <p className="text-[10px] text-blue-800 leading-relaxed whitespace-pre-wrap">{formatResearchForDisplay(activeSectionResearch)}</p>
+              <p className="text-[10px] text-primary/80 leading-relaxed whitespace-pre-wrap">{formatResearchForDisplay(activeSectionResearch)}</p>
             </div>
           )}
         </div>
@@ -921,7 +921,7 @@ export function GTMPilot({
       <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
-              <Icons.Compass className="h-6 w-6 text-blue-300" />
+              <Icons.Compass className="h-6 w-6 text-primary/30" />
               <p className="text-xs font-medium text-muted-foreground">I'm your GTM Framework strategist.</p>
               <p className="text-[10px] text-muted-foreground/60 max-w-[240px]">
                 {activeSection
@@ -935,7 +935,7 @@ export function GTMPilot({
                     ? `Help me fill in Section ${activeSection} — ${SECTION_LABELS[activeSection] ?? ''}`
                     : "Which sections should we focus on first?"
                 )}
-                className="mt-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-medium text-blue-600 hover:bg-blue-100 transition-colors"
+                className="mt-1 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15 transition-colors"
               >
                 {activeSection ? `Help me with Section ${activeSection}` : 'Which sections should we focus on first?'}
               </button>
@@ -952,13 +952,13 @@ export function GTMPilot({
           ))}
           {loading && (
             <div className="flex gap-2 items-start">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
                 <Icons.Compass className="h-3.5 w-3.5 text-white" />
               </div>
               <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:0ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
               </div>
             </div>
           )}
@@ -1029,7 +1029,7 @@ export function GTMPilot({
             onKeyDown={handleKeyDown}
             placeholder="Ask me anything about this GTM Framework… (Shift+Enter for new line)"
             rows={1}
-            className={`w-full resize-none rounded-lg border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 min-h-[32px] max-h-[80px] overflow-y-auto ${inputTooLong ? 'border-amber-400 focus:ring-amber-400' : 'border-border focus:ring-blue-400'}`}
+            className={`w-full resize-none rounded-lg border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 min-h-[32px] max-h-[80px] overflow-y-auto ${inputTooLong ? 'border-amber-400 focus:ring-amber-400' : 'border-border focus:ring-primary/50'}`}
             style={{ lineHeight: '1.4' }}
           />
           {inputTooLong && (
@@ -1041,7 +1041,7 @@ export function GTMPilot({
         <button
           onClick={() => void sendMessage()}
           disabled={!input.trim() || loading || inputTooLong}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
         >
           <Icons.SendHorizontal className="h-4 w-4" />
         </button>

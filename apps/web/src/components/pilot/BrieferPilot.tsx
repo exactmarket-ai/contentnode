@@ -196,8 +196,8 @@ export function BrieferPilot({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-full bg-violet-100 flex items-center justify-center">
-              <Icons.Sparkles className="w-4 h-4 text-violet-600" />
+            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+              <Icons.Sparkles className="w-4 h-4 text-primary" />
             </div>
             <div>
               <p className="text-sm font-semibold text-foreground">Brief Builder</p>
@@ -231,14 +231,14 @@ export function BrieferPilot({
           {messages.map((msg, i) => (
             <div key={i} className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
               {msg.role === 'assistant' && (
-                <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center mr-2 mt-0.5 shrink-0">
-                  <Icons.Sparkles className="w-3.5 h-3.5 text-violet-600" />
+                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mr-2 mt-0.5 shrink-0">
+                  <Icons.Sparkles className="w-3.5 h-3.5 text-primary" />
                 </div>
               )}
               <div className={cn(
                 'max-w-[85%] rounded-xl px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap',
                 msg.role === 'user'
-                  ? 'bg-violet-600 text-white rounded-br-sm'
+                  ? 'bg-primary text-white rounded-br-sm'
                   : 'bg-muted text-foreground rounded-bl-sm',
               )}>
                 {msg.content}
@@ -247,8 +247,8 @@ export function BrieferPilot({
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center mr-2 mt-0.5 shrink-0">
-                <Icons.Sparkles className="w-3.5 h-3.5 text-violet-600" />
+              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mr-2 mt-0.5 shrink-0">
+                <Icons.Sparkles className="w-3.5 h-3.5 text-primary" />
               </div>
               <div className="bg-muted rounded-xl rounded-bl-sm px-4 py-3">
                 <div className="flex gap-1">
@@ -264,13 +264,13 @@ export function BrieferPilot({
 
         {/* Section 01 offer (shown after brief saved) */}
         {showSection01Offer && onGoToSection01 && (
-          <div className="mx-5 mb-3 bg-violet-50 border border-violet-200 rounded-xl p-4 shrink-0">
-            <p className="text-[13px] text-violet-900 font-medium mb-2">Brief saved — ready to start your framework?</p>
-            <p className="text-[12px] text-violet-700 mb-3">Your positioning statement is implied by what we just built. Want to go straight into Section 01?</p>
+          <div className="mx-5 mb-3 bg-primary/10 border border-primary/20 rounded-xl p-4 shrink-0">
+            <p className="text-[13px] text-foreground font-medium mb-2">Brief saved — ready to start your framework?</p>
+            <p className="text-[12px] text-primary/70 mb-3">Your positioning statement is implied by what we just built. Want to go straight into Section 01?</p>
             <div className="flex gap-2">
               <button
                 onClick={() => { onGoToSection01(); onClose() }}
-                className="text-[12px] font-medium bg-violet-600 text-white rounded-lg px-3 py-1.5 hover:bg-violet-700 transition-colors"
+                className="text-[12px] font-medium bg-primary text-white rounded-lg px-3 py-1.5 hover:bg-primary/90 transition-colors"
               >
                 Go to Section 01
               </button>
@@ -301,7 +301,7 @@ export function BrieferPilot({
               <button
                 onClick={() => void sendMessage()}
                 disabled={!input.trim() || loading}
-                className="p-2 rounded-lg bg-violet-600 text-white disabled:opacity-40 hover:bg-violet-700 transition-colors shrink-0"
+                className="p-2 rounded-lg bg-primary text-white disabled:opacity-40 hover:bg-primary/90 transition-colors shrink-0"
               >
                 <Icons.Send className="w-3.5 h-3.5" />
               </button>

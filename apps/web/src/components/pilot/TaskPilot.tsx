@@ -77,7 +77,7 @@ function renderBold(text: string): React.ReactNode {
 const ACTION_META: Record<TaskSuggestion['action'], { icon: keyof typeof Icons; color: string; label: string }> = {
   add_task:      { icon: 'Plus',        color: 'text-green-500',  label: 'Add task' },
   run_task:      { icon: 'Play',        color: 'text-blue-500',   label: 'Run now' },
-  view_output:   { icon: 'FileText',    color: 'text-violet-500', label: 'View output' },
+  view_output:   { icon: 'FileText',    color: 'text-primary/60', label: 'View output' },
   schedule_task: { icon: 'CalendarClock', color: 'text-amber-500', label: 'Set schedule' },
 }
 
@@ -121,7 +121,7 @@ function SuggestionCard({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-background hover:border-violet-300 p-3 flex flex-col gap-1.5 transition-colors">
+    <div className="rounded-xl border border-border bg-background hover:border-primary/30 p-3 flex flex-col gap-1.5 transition-colors">
       <div className="flex items-start justify-between gap-1">
         <span className="text-[11px] font-semibold text-foreground leading-snug">
           <span className={cn('mr-1.5 inline-flex items-center justify-center rounded px-1 py-0.5', meta.color)}>
@@ -133,7 +133,7 @@ function SuggestionCard({
       <p className="text-[10px] text-muted-foreground leading-snug">{suggestion.description}</p>
       <button
         onClick={handleAction}
-        className="w-full rounded-md bg-violet-500 hover:bg-violet-600 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
+        className="w-full rounded-md bg-primary hover:bg-primary/90 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
       >
         {meta.label} <Icons.ArrowRight className="h-3 w-3" />
       </button>
@@ -162,7 +162,7 @@ function MessageBubble({
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {!isUser && (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500 mt-0.5">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
           <Icons.Radar className="h-3.5 w-3.5 text-white" />
         </div>
       )}
@@ -170,7 +170,7 @@ function MessageBubble({
         <div
           className={`rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
             isUser
-              ? 'bg-blue-500 text-white rounded-tr-sm'
+              ? 'bg-primary text-white rounded-tr-sm'
               : 'bg-muted text-foreground rounded-tl-sm'
           }`}
         >
@@ -322,7 +322,7 @@ export function TaskPilot({
           <Icons.ChevronUp className="h-2 w-2 text-muted-foreground" />
         </button>
 
-        <div className="flex items-center gap-1.5 text-violet-600 shrink-0">
+        <div className="flex items-center gap-1.5 text-primary shrink-0">
           <Icons.Radar className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">taskPILOT</span>
         </div>
@@ -339,7 +339,7 @@ export function TaskPilot({
             : `Ask me how to optimise research for ${clientName}…`}
         </span>
 
-        <span className="text-[10px] text-violet-500 font-medium shrink-0 select-none">
+        <span className="text-[10px] text-primary/60 font-medium shrink-0 select-none">
           Click to open ↑
         </span>
       </div>
@@ -362,12 +362,12 @@ export function TaskPilot({
 
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 shrink-0">
-        <div className="flex items-center gap-1.5 text-violet-600">
+        <div className="flex items-center gap-1.5 text-primary">
           <Icons.Radar className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">taskPILOT</span>
         </div>
         <span className="text-[10px] text-muted-foreground ml-0.5">AI research task strategist</span>
-        <span className="ml-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5 text-[9px] font-medium text-violet-700">
+        <span className="ml-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[9px] font-medium text-primary">
           {tasks.length} task{tasks.length !== 1 ? 's' : ''}
         </span>
         {changedTasks.length > 0 && (
@@ -392,7 +392,7 @@ export function TaskPilot({
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
-            <Icons.Radar className="h-6 w-6 text-violet-300" />
+            <Icons.Radar className="h-6 w-6 text-primary/30" />
             <p className="text-xs font-medium text-muted-foreground">I'm your research task strategist.</p>
             <p className="text-[10px] text-muted-foreground/60 max-w-[260px]">
               I'll help you plan the right research cadence, interpret results, and fill gaps in your intelligence stack.
@@ -400,7 +400,7 @@ export function TaskPilot({
             <div className="flex flex-col gap-1.5 mt-1 w-full max-w-[280px]">
               <button
                 onClick={() => void sendMessage("What research am I missing for this client?")}
-                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-[11px] font-medium text-violet-600 hover:bg-violet-100 transition-colors"
+                className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15 transition-colors"
               >
                 What research am I missing?
               </button>
@@ -415,7 +415,7 @@ export function TaskPilot({
               {tasks.length === 0 && (
                 <button
                   onClick={() => void sendMessage("I haven't set up any tasks yet. Where should I start?")}
-                  className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-[11px] font-medium text-violet-600 hover:bg-violet-100 transition-colors"
+                  className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15 transition-colors"
                 >
                   Where should I start?
                 </button>
@@ -437,13 +437,13 @@ export function TaskPilot({
         ))}
         {loading && (
           <div className="flex gap-2 items-start">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
               <Icons.Radar className="h-3.5 w-3.5 text-white" />
             </div>
             <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:300ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
@@ -458,13 +458,13 @@ export function TaskPilot({
           onKeyDown={handleKeyDown}
           placeholder="Ask about your research strategy… (Shift+Enter for new line)"
           rows={1}
-          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-violet-400 min-h-[32px] max-h-[80px] overflow-y-auto"
+          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50 min-h-[32px] max-h-[80px] overflow-y-auto"
           style={{ lineHeight: '1.4' }}
         />
         <button
           onClick={() => void sendMessage()}
           disabled={!input.trim() || loading}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500 hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
         >
           <Icons.SendHorizontal className="h-4 w-4" />
         </button>

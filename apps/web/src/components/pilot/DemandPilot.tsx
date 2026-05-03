@@ -117,18 +117,18 @@ function SuggestionCard({
       'rounded-xl border p-3 flex flex-col gap-1.5 transition-colors',
       filled
         ? 'border-green-200 bg-green-50/50'
-        : 'border-border bg-background hover:border-orange-300',
+        : 'border-border bg-background hover:border-primary/30',
     )}>
       <div className="flex items-start justify-between gap-1">
         <span className="text-[11px] font-semibold text-foreground leading-snug">
-          <span className="mr-1.5 inline-flex items-center justify-center rounded bg-orange-100 px-1 py-0.5 text-[9px] font-bold text-orange-600">
+          <span className="mr-1.5 inline-flex items-center justify-center rounded bg-primary/10 px-1 py-0.5 text-[9px] font-bold text-primary">
             {suggestion.sectionNum}
           </span>
           {suggestion.title}
         </span>
         {filled
           ? <Icons.CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
-          : <Icons.Sparkles className="h-3 w-3 text-orange-400 shrink-0 mt-0.5" />
+          : <Icons.Sparkles className="h-3 w-3 text-primary/40 shrink-0 mt-0.5" />
         }
       </div>
       <p className="text-[10px] text-muted-foreground leading-snug">{suggestion.description}</p>
@@ -138,7 +138,7 @@ function SuggestionCard({
             <button
               onClick={handleFill}
               disabled={filling}
-              className="flex-1 rounded-md bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+              className="flex-1 rounded-md bg-primary hover:bg-primary/90 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
             >
               {filling
                 ? <><Icons.Loader2 className="h-3 w-3 animate-spin" /> Filling…</>
@@ -184,7 +184,7 @@ function MessageBubble({
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {!isUser && (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 mt-0.5">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
           <Icons.TrendingUp className="h-3.5 w-3.5 text-white" />
         </div>
       )}
@@ -192,7 +192,7 @@ function MessageBubble({
         <div
           className={`rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
             isUser
-              ? 'bg-orange-500 text-white rounded-tr-sm'
+              ? 'bg-primary text-white rounded-tr-sm'
               : 'bg-muted text-foreground rounded-tl-sm'
           }`}
         >
@@ -325,7 +325,7 @@ export function DemandPilot({
           <Icons.ChevronUp className="h-2 w-2 text-muted-foreground" />
         </button>
 
-        <div className="flex items-center gap-1.5 text-orange-600 shrink-0">
+        <div className="flex items-center gap-1.5 text-primary shrink-0">
           <Icons.TrendingUp className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">demandPILOT</span>
         </div>
@@ -337,7 +337,7 @@ export function DemandPilot({
           }
         </span>
 
-        <span className="text-[10px] text-orange-500 font-medium shrink-0 select-none">
+        <span className="text-[10px] text-primary font-medium shrink-0 select-none">
           Click to open ↑
         </span>
       </div>
@@ -360,13 +360,13 @@ export function DemandPilot({
 
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 shrink-0">
-        <div className="flex items-center gap-1.5 text-orange-600">
+        <div className="flex items-center gap-1.5 text-primary">
           <Icons.TrendingUp className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">demandPILOT</span>
         </div>
         <span className="text-[10px] text-muted-foreground ml-0.5">AI demand gen strategist</span>
         {selectedVertical && (
-          <span className="ml-1 rounded-full bg-orange-50 border border-orange-200 px-2 py-0.5 text-[9px] font-medium text-orange-700">
+          <span className="ml-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[9px] font-medium text-primary">
             {selectedVertical.name}
           </span>
         )}
@@ -392,14 +392,14 @@ export function DemandPilot({
       <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
-            <Icons.TrendingUp className="h-6 w-6 text-orange-300" />
+            <Icons.TrendingUp className="h-6 w-6 text-primary/30" />
             <p className="text-xs font-medium text-muted-foreground">I'm your demand gen strategist.</p>
             <p className="text-[10px] text-muted-foreground/60 max-w-[240px]">
               I'll access your client brain, vertical knowledge, and industry standards to help you complete every section.
             </p>
             <button
               onClick={() => void sendMessage("What should we fill in first?")}
-              className="mt-1 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-[11px] font-medium text-orange-600 hover:bg-orange-100 transition-colors"
+              className="mt-1 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
             >
               What should we fill in first?
             </button>
@@ -420,13 +420,13 @@ export function DemandPilot({
         ))}
         {loading && (
           <div className="flex gap-2 items-start">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
               <Icons.TrendingUp className="h-3.5 w-3.5 text-white" />
             </div>
             <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-bounce [animation-delay:300ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
             </div>
           </div>
         )}
@@ -441,13 +441,13 @@ export function DemandPilot({
           onKeyDown={handleKeyDown}
           placeholder="Ask me anything about this client's demand gen… (Shift+Enter for new line)"
           rows={1}
-          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-orange-400 min-h-[32px] max-h-[80px] overflow-y-auto"
+          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50 min-h-[32px] max-h-[80px] overflow-y-auto"
           style={{ lineHeight: '1.4' }}
         />
         <button
           onClick={() => void sendMessage()}
           disabled={!input.trim() || loading}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
         >
           <Icons.SendHorizontal className="h-4 w-4" />
         </button>

@@ -232,7 +232,7 @@ function MessageBubble({
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {!isUser && (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full mt-0.5 bg-emerald-600">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full mt-0.5 bg-primary">
           <Icons.TrendingUp className="h-3 w-3 text-white" />
         </div>
       )}
@@ -242,7 +242,7 @@ function MessageBubble({
             className={cn(
               'rounded-xl px-3 py-2 text-[12px] leading-relaxed',
               isUser
-                ? 'bg-emerald-600 text-white rounded-tr-sm'
+                ? 'bg-primary text-white rounded-tr-sm'
                 : 'bg-zinc-100 text-foreground rounded-tl-sm',
             )}
           >
@@ -255,7 +255,7 @@ function MessageBubble({
               <button
                 key={i}
                 onClick={() => onPathClick(path)}
-                className="rounded-full border border-border bg-white px-3 py-1 text-[11px] font-medium text-foreground hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-900 transition-colors"
+                className="rounded-full border border-border bg-white px-3 py-1 text-[11px] font-medium text-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-foreground transition-colors"
               >
                 {path}
               </button>
@@ -305,15 +305,15 @@ function TemplatePicker({
               className={cn(
                 'rounded-xl border px-3 py-2.5 text-left transition-colors',
                 selected === t.key
-                  ? 'border-emerald-400 bg-emerald-50'
-                  : 'border-border bg-white hover:border-emerald-300 hover:bg-emerald-50/40',
+                  ? 'border-primary/40 bg-primary/10'
+                  : 'border-border bg-white hover:border-primary/30 hover:bg-primary/5',
               )}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className={cn(
                     'text-[12px] font-semibold leading-snug',
-                    selected === t.key ? 'text-emerald-900' : 'text-foreground',
+                    selected === t.key ? 'text-foreground' : 'text-foreground',
                   )}>
                     {t.name}
                   </p>
@@ -321,7 +321,7 @@ function TemplatePicker({
                   <p className="text-[10px] text-muted-foreground/70 mt-1 italic leading-snug">{t.openingPreview}</p>
                 </div>
                 {selected === t.key && (
-                  <Icons.CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <Icons.CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                 )}
               </div>
             </button>
@@ -332,7 +332,7 @@ function TemplatePicker({
         <button
           onClick={() => { void handleStart() }}
           disabled={!selected || starting}
-          className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-[12px] font-semibold text-white disabled:opacity-40 hover:bg-emerald-700 transition-colors"
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[12px] font-semibold text-white disabled:opacity-40 hover:bg-primary/90 transition-colors"
         >
           {starting
             ? <><Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</>
@@ -356,8 +356,8 @@ function CompletionView({
 }) {
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 gap-5 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-        <Icons.CheckCircle2 className="h-6 w-6 text-emerald-600" />
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+        <Icons.CheckCircle2 className="h-6 w-6 text-primary" />
       </div>
       <div className="space-y-1.5">
         <p className="text-sm font-semibold text-foreground">Strategy complete</p>
@@ -365,17 +365,17 @@ function CompletionView({
           {strategy.summary}
         </p>
       </div>
-      <div className="w-full max-w-[360px] rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left space-y-1">
-        <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Primary keyword</p>
-        <p className="text-[12px] font-medium text-emerald-900">{strategy.primaryKeyword}</p>
-        <p className="text-[10px] text-emerald-700 mt-1">
+      <div className="w-full max-w-[360px] rounded-xl border border-primary/20 bg-primary/10 p-3 text-left space-y-1">
+        <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">Primary keyword</p>
+        <p className="text-[12px] font-medium text-foreground">{strategy.primaryKeyword}</p>
+        <p className="text-[10px] text-primary/70 mt-1">
           {strategy.contentPriorities.length} content brief{strategy.contentPriorities.length !== 1 ? 's' : ''} generated
         </p>
       </div>
       <div className="flex flex-col gap-2 w-full max-w-[360px]">
         <button
           onClick={onViewBriefs}
-          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-emerald-700 transition-colors"
+          className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-primary/90 transition-colors"
         >
           <Icons.FileText className="h-3.5 w-3.5" /> View Content Briefs
         </button>
@@ -573,12 +573,12 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
       >
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-3 shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary shrink-0">
             <Icons.TrendingUp className="h-4 w-4 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold tracking-wide text-emerald-600">seoPILOT</span>
+              <span className="text-xs font-bold tracking-wide text-primary">seoPILOT</span>
               {templateInfo && (
                 <>
                   <span className="text-[10px] text-muted-foreground">·</span>
@@ -617,13 +617,13 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
 
               {loading && (
                 <div className="flex gap-2 items-start">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
                     <Icons.TrendingUp className="h-3 w-3 text-white" />
                   </div>
                   <div className="flex items-center gap-1 rounded-xl bg-zinc-100 px-3 py-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:0ms]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:150ms]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:300ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
                   </div>
                 </div>
               )}
@@ -637,13 +637,13 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
                 onKeyDown={handleKeyDown}
                 placeholder="Reply to seoPILOT… (Shift+Enter for new line)"
                 rows={1}
-                className="flex-1 resize-none rounded-xl border border-border bg-white px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-[34px] max-h-[80px] overflow-y-auto"
+                className="flex-1 resize-none rounded-xl border border-border bg-white px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50 min-h-[34px] max-h-[80px] overflow-y-auto"
                 style={{ lineHeight: '1.4' }}
               />
               <button
                 onClick={() => void sendMessage()}
                 disabled={!input.trim() || loading || streaming}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
               >
                 <Icons.SendHorizontal className="h-4 w-4" />
               </button>

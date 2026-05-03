@@ -66,7 +66,7 @@ function renderContentWithHtmlBlocks(
           {onApplyHtml && (
             <button
               onClick={() => onApplyHtml(html)}
-              className="flex items-center gap-1 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-[9px] font-semibold px-2 py-0.5 transition-colors"
+              className="flex items-center gap-1 rounded-md bg-primary hover:bg-primary/90 text-white text-[9px] font-semibold px-2 py-0.5 transition-colors"
             >
               <Icons.Check className="h-2.5 w-2.5" />
               Apply to page
@@ -121,7 +121,7 @@ function MessageBubble({
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {!isUser && (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 mt-0.5">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
           <Icons.Compass className="h-3.5 w-3.5 text-white" />
         </div>
       )}
@@ -129,13 +129,13 @@ function MessageBubble({
         {/* Attached image thumbnail (user messages only) */}
         {imagePreview && (
           <div className="self-end">
-            <img src={imagePreview} alt="Attached" className="rounded-lg max-h-[80px] max-w-[140px] object-cover border border-violet-300" />
+            <img src={imagePreview} alt="Attached" className="rounded-lg max-h-[80px] max-w-[140px] object-cover border border-primary/30" />
           </div>
         )}
         <div
           className={`rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
             isUser
-              ? 'bg-violet-600 text-white rounded-tr-sm'
+              ? 'bg-primary text-white rounded-tr-sm'
               : 'bg-muted text-foreground rounded-tl-sm'
           }`}
         >
@@ -152,20 +152,20 @@ function MessageBubble({
             {suggestions.map((s, idx) => (
               <div
                 key={s.id}
-                className="rounded-xl border border-border bg-background p-3 flex flex-col gap-1.5 hover:border-violet-400 transition-colors"
+                className="rounded-xl border border-border bg-background p-3 flex flex-col gap-1.5 hover:border-primary/30 transition-colors"
               >
                 <div className="flex items-start justify-between gap-1">
                   <span className="text-[11px] font-semibold text-foreground leading-snug">
-                    <span className="mr-1.5 text-violet-500">{idx + 1}.</span>{s.title}
+                    <span className="mr-1.5 text-primary/60">{idx + 1}.</span>{s.title}
                   </span>
-                  <Icons.Workflow className="h-3 w-3 text-violet-400 shrink-0 mt-0.5" />
+                  <Icons.Workflow className="h-3 w-3 text-primary/40 shrink-0 mt-0.5" />
                 </div>
                 <p className="text-[10px] text-muted-foreground leading-snug">{s.description}</p>
                 <div className="flex items-center gap-1 flex-wrap">
                   {s.nodes.slice(0, 5).map((n) => (
                     <span
                       key={n.id}
-                      className="rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700"
+                      className="rounded-full bg-primary/10 border border-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary"
                     >
                       {n.label}
                     </span>
@@ -177,7 +177,7 @@ function MessageBubble({
                 <div className="flex items-center gap-2 mt-0.5">
                   <button
                     onClick={() => onChoose?.(s)}
-                    className="flex-1 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
+                    className="flex-1 rounded-md bg-primary hover:bg-primary/90 text-white text-[10px] font-semibold py-1.5 transition-colors flex items-center justify-center gap-1"
                   >
                     Choose this <Icons.ArrowRight className="h-3 w-3" />
                   </button>
@@ -384,7 +384,7 @@ export function NodePilot() {
           <Icons.ChevronUp className="h-2 w-2 text-muted-foreground" />
         </button>
 
-        <div className="flex items-center gap-1.5 text-violet-700 shrink-0">
+        <div className="flex items-center gap-1.5 text-primary shrink-0">
           <Icons.Compass className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">nodePILOT</span>
         </div>
@@ -393,7 +393,7 @@ export function NodePilot() {
           {lastMsg ? lastMsg.content.replace(/\n/g, ' ').slice(0, 90) : 'Ask me to build a workflow…'}
         </span>
 
-        <span className="text-[10px] text-violet-500 font-medium shrink-0 select-none">
+        <span className="text-[10px] text-primary/60 font-medium shrink-0 select-none">
           Click to open ↑
         </span>
       </div>
@@ -417,13 +417,13 @@ export function NodePilot() {
 
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 shrink-0">
-        <div className="flex items-center gap-1.5 text-violet-700">
+        <div className="flex items-center gap-1.5 text-primary">
           <Icons.Compass className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">nodePILOT</span>
         </div>
         <span className="text-[10px] text-muted-foreground ml-0.5">AI workflow co-pilot</span>
         {workflow.clientName && (
-          <span className="ml-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5 text-[9px] font-medium text-violet-700">
+          <span className="ml-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[9px] font-medium text-primary">
             {workflow.clientName}
           </span>
         )}
@@ -442,7 +442,7 @@ export function NodePilot() {
       <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
         {pilotMessages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
-            <Icons.Compass className="h-6 w-6 text-violet-300" />
+            <Icons.Compass className="h-6 w-6 text-primary/30" />
             <p className="text-xs font-medium text-muted-foreground">Tell me what you want to build.</p>
             <p className="text-[10px] text-muted-foreground/60">
               I'll suggest 2–3 workflow options and add nodes for you.
@@ -464,13 +464,13 @@ export function NodePilot() {
         ))}
         {pilotLoading && (
           <div className="flex gap-2 items-start">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
               <Icons.Compass className="h-3.5 w-3.5 text-white" />
             </div>
             <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:300ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
             </div>
           </div>
         )}
@@ -506,8 +506,8 @@ export function NodePilot() {
           title="Attach image for visual reference"
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
             attachment
-              ? 'border-violet-400 bg-violet-50 text-violet-600'
-              : 'border-border text-muted-foreground hover:border-violet-400 hover:text-violet-600'
+              ? 'border-primary/40 bg-primary/10 text-primary'
+              : 'border-border text-muted-foreground hover:border-primary/30 hover:text-primary'
           }`}
         >
           <Icons.Paperclip className="h-4 w-4" />
@@ -519,13 +519,13 @@ export function NodePilot() {
           onKeyDown={handleKeyDown}
           placeholder={attachment ? 'Describe the style changes…' : 'What do you want to build? (Shift+Enter for new line)'}
           rows={1}
-          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-violet-500 min-h-[32px] max-h-[80px] overflow-y-auto"
+          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50 min-h-[32px] max-h-[80px] overflow-y-auto"
           style={{ lineHeight: '1.4' }}
         />
         <button
           onClick={() => void sendMessage()}
           disabled={(!inputValue.trim() && !attachment) || pilotLoading}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
         >
           <Icons.SendHorizontal className="h-4 w-4" />
         </button>

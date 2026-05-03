@@ -61,22 +61,22 @@ function MessageBubble({ msg }: { msg: ResearchMessage }) {
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {!isUser && (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 mt-0.5">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
           <Icons.Radar className="h-3.5 w-3.5 text-white" />
         </div>
       )}
       <div className={cn('max-w-[80%] space-y-1.5', isUser ? 'items-end flex flex-col' : '')}>
         {attachedName && (
-          <div className="flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-2.5 py-1.5 self-end">
-            <Icons.FileText className="h-3 w-3 text-violet-600 shrink-0" />
-            <span className="text-[10px] font-medium text-violet-700 max-w-[180px] truncate">{attachedName}</span>
+          <div className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 self-end">
+            <Icons.FileText className="h-3 w-3 text-primary shrink-0" />
+            <span className="text-[10px] font-medium text-primary max-w-[180px] truncate">{attachedName}</span>
           </div>
         )}
         <div
           className={cn(
             'rounded-xl px-3 py-2 text-[12px] leading-relaxed',
             isUser
-              ? 'bg-violet-600 text-white rounded-tr-sm'
+              ? 'bg-primary text-white rounded-tr-sm'
               : 'bg-muted text-foreground rounded-tl-sm',
           )}
         >
@@ -243,7 +243,7 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
           <Icons.ChevronUp className="h-2 w-2 text-muted-foreground" />
         </button>
 
-        <div className="flex items-center gap-1.5 text-violet-600 shrink-0">
+        <div className="flex items-center gap-1.5 text-primary shrink-0">
           <Icons.Radar className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">researchPILOT</span>
         </div>
@@ -257,7 +257,7 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
           }
         </span>
 
-        <span className="text-[10px] text-violet-500 font-medium shrink-0 select-none">
+        <span className="text-[10px] text-primary/60 font-medium shrink-0 select-none">
           Click to open ↑
         </span>
       </div>
@@ -281,13 +281,13 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
 
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 shrink-0">
-        <div className="flex items-center gap-1.5 text-violet-600">
+        <div className="flex items-center gap-1.5 text-primary">
           <Icons.Radar className="h-4 w-4" />
           <span className="text-xs font-bold tracking-wide">researchPILOT</span>
         </div>
         <span className="text-[10px] text-muted-foreground ml-0.5">AI research strategist</span>
         {prospectName && (
-          <span className="ml-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5 text-[9px] font-medium text-violet-700">
+          <span className="ml-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[9px] font-medium text-primary">
             {prospectName}
           </span>
         )}
@@ -308,14 +308,14 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
       <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 min-h-0">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center select-none">
-            <Icons.Radar className="h-6 w-6 text-violet-300" />
+            <Icons.Radar className="h-6 w-6 text-primary/30" />
             <p className="text-xs font-medium text-muted-foreground">I'm your research strategist.</p>
             <p className="text-[10px] text-muted-foreground/60 max-w-[260px]">
               Ask me how to score any dimension, interpret findings, or attach a document for analysis.
             </p>
             <button
               onClick={() => void sendMessage('How do I get started with a prospect assessment?')}
-              className="mt-1 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-[11px] font-medium text-violet-600 hover:bg-violet-100 transition-colors"
+              className="mt-1 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15 transition-colors"
             >
               How do I get started with a prospect assessment?
             </button>
@@ -331,13 +331,13 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
         })}
         {loading && (
           <div className="flex gap-2 items-start">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
               <Icons.Radar className="h-3.5 w-3.5 text-white" />
             </div>
             <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:300ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
             </div>
           </div>
         )}
@@ -348,15 +348,15 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
 
         {/* Attachment chip */}
         {attachment && (
-          <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5">
-            <Icons.FileText className="h-3.5 w-3.5 text-violet-600 shrink-0" />
-            <span className="text-[11px] font-medium text-violet-700 flex-1 truncate">{attachment.filename}</span>
-            <span className="text-[10px] text-violet-500 shrink-0">
+          <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5">
+            <Icons.FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="text-[11px] font-medium text-primary flex-1 truncate">{attachment.filename}</span>
+            <span className="text-[10px] text-primary/60 shrink-0">
               {(attachment.charCount / 1000).toFixed(1)}k chars{attachment.truncated ? ' (truncated)' : ''}
             </span>
             <button
               onClick={() => setAttachment(null)}
-              className="text-violet-400 hover:text-violet-700 transition-colors shrink-0"
+              className="text-primary/40 hover:text-primary transition-colors shrink-0"
               title="Remove attachment"
             >
               <Icons.X className="h-3.5 w-3.5" />
@@ -376,7 +376,7 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
         )}
 
         {/* Input row */}
-        <div className="flex items-end gap-2 rounded-xl border border-border bg-background px-3 py-2 focus-within:border-violet-400 transition-colors">
+        <div className="flex items-end gap-2 rounded-xl border border-border bg-background px-3 py-2 focus-within:border-primary/40 transition-colors">
           {/* Hidden file input */}
           <input
             ref={fileInputRef}
@@ -394,8 +394,8 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
             className={cn(
               'flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
               uploading
-                ? 'text-violet-400 cursor-wait'
-                : 'text-muted-foreground hover:text-violet-600 hover:bg-violet-50',
+                ? 'text-primary/40 cursor-wait'
+                : 'text-muted-foreground hover:text-primary hover:bg-primary/10',
             )}
           >
             {uploading
@@ -418,7 +418,7 @@ export function ResearchPilot({ prospectName, prospectUrl }: ResearchPilotProps)
           <button
             onClick={() => void sendMessage()}
             disabled={!canSend}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white transition-colors hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary text-white transition-colors hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Icons.ArrowUp className="h-3.5 w-3.5" />
           </button>
