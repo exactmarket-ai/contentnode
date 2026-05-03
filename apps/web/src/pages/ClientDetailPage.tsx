@@ -5502,6 +5502,16 @@ interface ScheduledTask {
   scheduledDay: number | null
   assigneeId: string | null
   sourceTag: string | null
+  summary: string | null
+}
+
+interface ScheduledTaskTemplate {
+  id: string
+  name: string
+  summary: string | null
+  type: ScheduledTaskType
+  frequency: ScheduledTaskFrequency
+  config: Record<string, unknown>
 }
 
 const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
@@ -5670,6 +5680,7 @@ interface TaskDraft {
   label?: string
   frequency?: ScheduledTaskFrequency
   config?: Record<string, unknown>
+  summary?: string
 }
 
 function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initialType, initialDraft, sourceTag }: {
@@ -5695,6 +5706,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
   const [autoGenerateBlogCount, setAutoGenerateBlogCount] = useState(editTask?.autoGenerateBlogCount ?? 2)
   const [assigneeId, setAssigneeId] = useState<string>(editTask?.assigneeId ?? '')
   const [members, setMembers] = useState<{ id: string; name: string | null; email: string; avatarStorageKey?: string | null }[]>([])
+  const [summary, setSummary] = useState(editTask?.summary ?? initialDraft?.summary ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -5727,6 +5739,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             contentMode,
             autoGenerateBlogCount,
             assigneeId: assigneeId || null,
+            summary: summary.trim() || null,
           }),
         })
         const { data, error: err } = await res.json()
@@ -5749,6 +5762,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             autoGenerateBlogCount,
             assigneeId: assigneeId || null,
             ...(sourceTag ? { sourceTag } : {}),
+            summary: summary.trim() || null,
           }),
         })
         const { data, error: err } = await res.json()
@@ -5780,6 +5794,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
           contentMode,
           autoGenerateBlogCount,
           assigneeId: assigneeId || null,
+          summary: summary.trim() || null,
         }),
       })
       const { data, error: err } = await res.json()
@@ -5874,6 +5889,19 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             </div>
           </div>
 
+          {/* Summary */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Summary <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optional)</span></p>
+            <textarea
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="Brief description of what this task researches and why..."
+              maxLength={300}
+              rows={2}
+              style={{ width: '100%', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '8px 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit' }}
+            />
+          </div>
+
           {/* Type-specific config */}
           <div className="space-y-1.5">
             <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Configuration</p>
@@ -5951,6 +5979,119 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
           <button onClick={save} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 12, fontWeight: 600, color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="h-3.5 w-3.5" />}
             {isEdit ? 'Save Changes' : 'Create Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SaveAsTemplateModal({ task, onClose, onSaved }: { task: ScheduledTask; onClose: () => void; onSaved: (t: ScheduledTaskTemplate) => void }) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+
+  const confirm = async () => {
+    setSaving(true); setError(null)
+    try {
+      const res = await apiFetch('/api/v1/scheduled-task-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: task.label,
+          summary: task.summary ?? undefined,
+          type: task.type,
+          frequency: task.frequency,
+          config: task.config,
+        }),
+      })
+      const { data, error: err } = await res.json()
+      if (!res.ok) { setError(err ?? 'Failed to save template'); return }
+      onSaved(data)
+      onClose()
+    } catch { setError('Network error') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[460px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Icons.BookTemplate className="h-4 w-4 text-violet-500" />
+            <h2 className="text-sm font-semibold">Save as Global Template</h2>
+          </div>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <p className="text-xs font-semibold text-amber-800 mb-1.5">Before saving, check for client-specific information</p>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              Replace any client-specific details — competitors, verticals, segments, solutions, company names — with bracketed placeholders such as <span className="font-mono bg-amber-100 px-1 rounded">[Competitor]</span>, <span className="font-mono bg-amber-100 px-1 rounded">[Vertical]</span>, or <span className="font-mono bg-amber-100 px-1 rounded">[Solution]</span> before saving. Templates are shared across all clients.
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This will save <span className="font-medium text-foreground">"{task.label}"</span> as a Global Template visible to all clients in your agency.
+          </p>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+          <button onClick={onClose} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={confirm} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 12, fontWeight: 600, color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.BookTemplate className="h-3.5 w-3.5" />}
+            Save as Template
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditTemplateModal({ template, onClose, onUpdated }: { template: ScheduledTaskTemplate; onClose: () => void; onUpdated: (t: ScheduledTaskTemplate) => void }) {
+  const [name, setName]       = useState(template.name)
+  const [summary, setSummary] = useState(template.summary ?? '')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+
+  const save = async () => {
+    if (!name.trim()) { setError('Name is required'); return }
+    setSaving(true); setError(null)
+    try {
+      const res = await apiFetch(`/api/v1/scheduled-task-templates/${template.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), summary: summary.trim() || null }),
+      })
+      const { data, error: err } = await res.json()
+      if (!res.ok) { setError(err ?? 'Failed to update'); return }
+      onUpdated(data)
+    } catch { setError('Network error') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[420px] rounded-xl border border-border bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+          <Icons.BookTemplate className="h-4 w-4 text-violet-500" />
+          <h2 className="text-sm font-semibold flex-1">Edit Global Template</h2>
+          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground"><Icons.X className="h-4 w-4" /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Name</p>
+            <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Summary</p>
+            <textarea value={summary} onChange={(e) => setSummary(e.target.value)} maxLength={300} rows={3}
+              style={{ width: '100%', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '8px 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit' }} />
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+          <button onClick={onClose} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#ffffff', fontSize: 12, color: '#374151', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{ height: 32, padding: '0 14px', borderRadius: 6, border: 'none', backgroundColor: '#a200ee', fontSize: 12, fontWeight: 600, color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {saving ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Check className="h-3.5 w-3.5" />}
+            Save
           </button>
         </div>
       </div>
@@ -6721,8 +6862,21 @@ function ScheduledTasksTab({ clientId, clientName, sourceTag: defaultSourceTag }
   const [search, setSearch]                   = useState('')
   const [verticals, setVerticals]             = useState<{ id: string; name: string }[]>([])
   const [programs, setPrograms]               = useState<{ id: string; name: string; type: string; scheduledTaskId: string | null }[]>([])
-  const [linkingTask, setLinkingTask]         = useState<string | null>(null) // taskId being linked
+  const [linkingTask, setLinkingTask]         = useState<string | null>(null)
   const [sourceFilter, setSourceFilter]       = useState<string | null>(defaultSourceTag ?? null)
+  const [templates, setTemplates]             = useState<ScheduledTaskTemplate[]>([])
+  const [templatesOpen, setTemplatesOpen]     = useState(true)
+  const [savingTemplate, setSavingTemplate]   = useState<ScheduledTask | null>(null)
+  const [editingTemplate, setEditingTemplate] = useState<ScheduledTaskTemplate | null>(null)
+  const { isAdmin, isStrategist }             = useCurrentUser()
+  const canManageTemplates                    = isAdmin || isStrategist
+
+  useEffect(() => {
+    apiFetch('/api/v1/scheduled-task-templates')
+      .then((r) => r.json())
+      .then(({ data }) => setTemplates(data ?? []))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`)
@@ -6861,6 +7015,66 @@ function ScheduledTasksTab({ clientId, clientName, sourceTag: defaultSourceTag }
             )
           })}
         </div>
+
+        {/* ── Global Templates section ─────────────────────────── */}
+        <div className="border-t border-border">
+          <button
+            type="button"
+            onClick={() => setTemplatesOpen((v) => !v)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+          >
+            <Icons.BookTemplate className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+            <span className="flex-1 text-xs font-semibold">Global Templates</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{templates.length}</span>
+            <Icons.ChevronRight className={cn('h-3 w-3 text-muted-foreground transition-transform', templatesOpen && 'rotate-90')} />
+          </button>
+          {templatesOpen && (
+            <div className="pb-2">
+              {templates.length === 0 ? (
+                <p className="px-4 pb-3 text-[11px] text-muted-foreground">No global templates yet. Save a task as a template to share it across clients.</p>
+              ) : (
+                <div className="px-2 space-y-1">
+                  {templates.map((tmpl) => {
+                    const meta = TASK_TYPE_META[tmpl.type] ?? { label: tmpl.type, icon: 'FileText' as keyof typeof Icons, color: 'text-gray-500' }
+                    const Icon = Icons[meta.icon] as React.ComponentType<{ className?: string }>
+                    return (
+                      <div key={tmpl.id} className="group flex items-start gap-2.5 rounded-lg p-2.5 hover:bg-muted/40 transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => { setAddTaskDraft({ label: tmpl.name, frequency: tmpl.frequency, config: tmpl.config, summary: tmpl.summary ?? undefined }); setAddTaskType(tmpl.type); setShowAdd(true) }}
+                          className="flex flex-1 items-start gap-2.5 text-left min-w-0"
+                        >
+                          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30">
+                            <Icon className={cn('h-3 w-3', meta.color)} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium leading-tight truncate">{tmpl.name}</p>
+                            {tmpl.summary && <p className="mt-0.5 text-[10px] text-muted-foreground leading-tight line-clamp-2">{tmpl.summary}</p>}
+                          </div>
+                        </button>
+                        {canManageTemplates && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5">
+                            <button onClick={() => setEditingTemplate(tmpl)} className="rounded p-1 text-muted-foreground hover:text-foreground" title="Edit template">
+                              <Icons.Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                await apiFetch(`/api/v1/scheduled-task-templates/${tmpl.id}`, { method: 'DELETE' }).catch(() => {})
+                                setTemplates((prev) => prev.filter((t) => t.id !== tmpl.id))
+                              }}
+                              className="rounded p-1 text-muted-foreground hover:text-red-500" title="Delete template">
+                              <Icons.Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Right: Scheduled Tasks ──────────────────────────────── */}
@@ -6989,6 +7203,9 @@ function ScheduledTasksTab({ clientId, clientName, sourceTag: defaultSourceTag }
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{task.label}</span>
+                          {task.summary && (
+                            <span className="w-full text-[11px] text-muted-foreground leading-snug -mt-0.5">{task.summary}</span>
+                          )}
                           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{meta.label}</span>
                           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground capitalize">{task.frequency}</span>
                           {task.vertical && (
@@ -7074,6 +7291,11 @@ function ScheduledTasksTab({ clientId, clientName, sourceTag: defaultSourceTag }
                           title="Run now">
                           {running.has(task.id) ? '…' : '▶'}
                         </button>
+                        {canManageTemplates && (
+                          <button onClick={() => setSavingTemplate(task)} className="rounded p-1 text-muted-foreground hover:text-violet-500" title="Save as Template">
+                            <Icons.BookTemplate className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button onClick={() => setEditingTask(task)} className="rounded p-1 text-muted-foreground hover:text-foreground" title="Edit">
                           <Icons.Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -7137,6 +7359,22 @@ function ScheduledTasksTab({ clientId, clientName, sourceTag: defaultSourceTag }
             setTasks((prev) => prev.map((x) => x.id === t.id ? t : x))
             setEditingTask(null)
           }}
+        />
+      )}
+
+      {savingTemplate && (
+        <SaveAsTemplateModal
+          task={savingTemplate}
+          onClose={() => setSavingTemplate(null)}
+          onSaved={(t) => { setTemplates((prev) => [...prev, t]); setSavingTemplate(null) }}
+        />
+      )}
+
+      {editingTemplate && (
+        <EditTemplateModal
+          template={editingTemplate}
+          onClose={() => setEditingTemplate(null)}
+          onUpdated={(t) => { setTemplates((prev) => prev.map((x) => x.id === t.id ? t : x)); setEditingTemplate(null) }}
         />
       )}
     </div>

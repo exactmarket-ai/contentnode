@@ -45,7 +45,8 @@ import { taskPilotRoutes }      from './routes/taskpilot.js'
 import { prospectAssessmentRoutes }   from './routes/prospectAssessments.js'
 import { campaignRoutes }       from './routes/campaigns.js'
 import { programRoutes }        from './routes/programs.js'
-import { scheduledTaskRoutes }  from './routes/scheduledTasks.js'
+import { scheduledTaskRoutes }          from './routes/scheduledTasks.js'
+import { scheduledTaskTemplateRoutes }  from './routes/scheduledTaskTemplates.js'
 import { topicQueueRoutes }     from './routes/topicQueue.js'
 import { docTemplateRoutes }    from './routes/docTemplates.js'
 import { leadershipRoutes }     from './routes/leadership.js'
@@ -182,7 +183,8 @@ await app.register(taskPilotRoutes,        { prefix: '/api/v1/task-pilot' })
 await app.register(prospectAssessmentRoutes,   { prefix: '/api/v1/prospect-assessments' })
 await app.register(campaignRoutes,         { prefix: '/api/v1/campaigns' })
 await app.register(programRoutes,          { prefix: '/api/v1/programs' })
-await app.register(scheduledTaskRoutes,    { prefix: '/api/v1/scheduled-tasks' })
+await app.register(scheduledTaskRoutes,         { prefix: '/api/v1/scheduled-tasks' })
+await app.register(scheduledTaskTemplateRoutes, { prefix: '/api/v1/scheduled-task-templates' })
 await app.register(topicQueueRoutes,       { prefix: '/api/v1/topic-queue' })
 await app.register(docTemplateRoutes,      { prefix: '/api/v1/doc-templates' })
 await app.register(leadershipRoutes,         { prefix: '/api/v1/leadership' })

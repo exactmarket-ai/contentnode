@@ -58,9 +58,10 @@ model Agency {
   brandAttachments   ClientBrandAttachment[]
   manualUsageEntries ManualUsageEntry[]
   campaigns          Campaign[]
-  scheduledTasks     ScheduledTask[]
-  clientDocStyles    ClientDocStyle[]
-  docTemplates       DocTemplate[]
+  scheduledTasks          ScheduledTask[]
+  scheduledTaskTemplates  ScheduledTaskTemplate[]
+  clientDocStyles         ClientDocStyle[]
+  docTemplates            DocTemplate[]
   docTemplateAssignments DocTemplateAssignment[]
   prospectAssessments    ProspectAssessment[]
   assessmentSnapshots    AssessmentSnapshot[]
@@ -607,7 +608,8 @@ model User {
   defaultAssigneeOf    Workflow[]    @relation("WorkflowDefaultAssignee")
   comments             Comment[]
   notifications        Notification[]
-  assignedScheduledTasks ScheduledTask[] @relation("ScheduledTaskAssignee")
+  assignedScheduledTasks      ScheduledTask[]         @relation("ScheduledTaskAssignee")
+  createdTaskTemplates        ScheduledTaskTemplate[] @relation("ScheduledTaskTemplateCreator")
   linkedLeadershipMembers    LeadershipMember[]            @relation("MemberLinkedUser")
   editedContentItems         ContentPackRunItem[]           @relation("ItemLastEditor")
   contentLibrarySignals      HumanizerSignal[]             @relation("SignalAttributedUser")
@@ -2127,6 +2129,7 @@ model ScheduledTask {
   scheduledDay           Int?                     @map("scheduled_day")
   assigneeId             String?                  @map("assignee_id")
   sourceTag              String?                  @map("source_tag")
+  summary                String?                  @db.Text
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
@@ -2143,6 +2146,29 @@ model ScheduledTask {
   @@index([clientId])
   @@index([agencyId, enabled, nextRunAt])
   @@map("scheduled_tasks")
+}
+
+// ─────────────────────────────────────────────
+// ScheduledTaskTemplate — agency-level reusable task blueprints
+// ─────────────────────────────────────────────
+model ScheduledTaskTemplate {
+  id          String   @id @default(cuid())
+  agencyId    String   @map("agency_id")
+  name        String
+  summary     String?  @db.Text
+  type        String   // mirrors ScheduledTask.type
+  frequency   String   @default("weekly")
+  config      Json     @default("{}")
+  createdById String?  @map("created_by_id")
+
+  agency      Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation("ScheduledTaskTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt       @map("updated_at")
+
+  @@index([agencyId])
+  @@map("scheduled_task_templates")
 }
 
 // ─────────────────────────────────────────────
