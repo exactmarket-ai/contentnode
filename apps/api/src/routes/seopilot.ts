@@ -409,16 +409,26 @@ export async function seoPilotRoutes(app: FastifyInstance) {
     const { model: chatModel } = await getModelForRole('generation_primary')
     const anthropic = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
 
-    const anthropicMessages: Anthropic.MessageParam[] = messages.map((m) => ({
+    const MAX_CLAUDE_MSGS = 39
+    const cappedMessages = messages.length > MAX_CLAUDE_MSGS
+      ? [messages[0], ...messages.slice(-(MAX_CLAUDE_MSGS - 1))]
+      : messages
+    const anthropicMessages: Anthropic.MessageParam[] = cappedMessages.map((m) => ({
       role: m.role, content: m.content,
     }))
 
-    const response = await anthropic.messages.create({
-      model:      chatModel,
-      max_tokens: 4096,
-      system:     systemPrompt,
-      messages:   anthropicMessages,
-    })
+    let response: Anthropic.Message
+    try {
+      response = await anthropic.messages.create({
+        model:      chatModel,
+        max_tokens: 4096,
+        system:     systemPrompt,
+        messages:   anthropicMessages,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return reply.code(500).send({ error: `AI call failed: ${msg.slice(0, 200)}` })
+    }
 
     const fullText = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
