@@ -5712,6 +5712,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
   const [error, setError]                   = useState<string | null>(null)
   const [showTemplateWarning, setShowTemplateWarning] = useState(false)
   const [savingAsTemplate, setSavingAsTemplate]       = useState(false)
+  const [templateError, setTemplateError]             = useState<string | null>(null)
   const { isAdmin, isStrategist }           = useCurrentUser()
   const canManageTemplates                  = isAdmin || isStrategist
 
@@ -5811,26 +5812,23 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
   }
 
   const confirmSaveAsTemplate = async () => {
-    setSavingAsTemplate(true); setError(null)
+    setSavingAsTemplate(true); setTemplateError(null)
     const effectiveType = editTask?.type ?? type
     try {
+      const payload = { name: label.trim(), summary: summary.trim() || null, type: effectiveType, frequency, config }
+      console.log('[SaveTemplate] POST payload:', payload)
       const res = await apiFetch('/api/v1/scheduled-task-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: label.trim(),
-          summary: summary.trim() || null,
-          type: effectiveType,
-          frequency,
-          config,
-        }),
+        body: JSON.stringify(payload),
       })
-      const { data, error: err } = await res.json()
-      if (!res.ok) { setError(err ?? 'Failed to save template'); setSavingAsTemplate(false); return }
-      onTemplateSaved?.(data)
+      const body = await res.json()
+      console.log('[SaveTemplate] response', res.status, body)
+      if (!res.ok) { setTemplateError(body.error ?? `Error ${res.status}`); setSavingAsTemplate(false); return }
+      onTemplateSaved?.(body.data)
       setSavingAsTemplate(false)
       onClose()
-    } catch { setError('Network error'); setSavingAsTemplate(false) }
+    } catch (e) { console.error('[SaveTemplate] network error', e); setTemplateError('Network error'); setSavingAsTemplate(false) }
   }
 
   return (
@@ -6002,8 +6000,9 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             <p style={{ fontSize: 12, color: '#b45309', margin: '0 0 8px', lineHeight: 1.5 }}>
               Make sure the label, summary, and config use <span style={{ fontFamily: 'monospace', backgroundColor: '#fef3c7', padding: '0 3px', borderRadius: 3 }}>[bracketed placeholders]</span> instead of client-specific names, competitors, or solutions.
             </p>
+            {templateError && <p style={{ fontSize: 12, color: '#dc2626', margin: '0 0 8px' }}>{templateError}</p>}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowTemplateWarning(false)}>Dismiss</Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setShowTemplateWarning(false); setTemplateError(null) }}>Dismiss</Button>
               <Button size="sm" className="h-7 text-xs" onClick={confirmSaveAsTemplate} disabled={savingAsTemplate}>
                 {savingAsTemplate ? <Icons.Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Icons.BookTemplate className="mr-1.5 h-3 w-3" />}
                 Looks good — save template
