@@ -10,6 +10,7 @@ import { downloadGTMFrameworkDocx, DEFAULT_DOC_STYLE, type DocStyleConfig } from
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useVerticalTerm } from '@/hooks/useVerticalTerm'
 import { KitGeneratorSession } from '@/components/kit/KitGeneratorSession'
+import { GtmVerticalsCard } from '@/components/GtmVerticalsCard'
 
 // ── Reimport types ────────────────────────────────────────────────────────────
 interface ReimportField { id: string; label: string; oldValue: string; newValue: string }
@@ -3914,6 +3915,11 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
             {renderSection()}
           </div>
         )}
+      </div>
+
+      {/* Right column — GTM Verticals */}
+      <div className="w-[28%] shrink-0 overflow-y-auto pt-6 px-4 pb-16 border-l border-border">
+        <GtmVerticalsCard clientId={clientId} />
       </div>
 
       </div>{/* /Body */}
