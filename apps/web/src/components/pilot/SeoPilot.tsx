@@ -400,6 +400,7 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
   const [templateKey, setTemplateKey] = useState<string | null>(null)
   const [messages, setMessages]       = useState<SeoPilotMessage[]>([])
   const [loading, setLoading]         = useState(false)
+  const [streaming, setStreaming]     = useState(false)
   const [input, setInput]             = useState('')
   const [strategy, setStrategy]       = useState<SeoStrategy | null>(null)
 
@@ -467,7 +468,7 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
 
   const sendMessage = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim()
-    if (!text || loading || !sessionId || !templateKey) return
+    if (!text || loading || streaming || !sessionId || !templateKey) return
     if (!overrideText) setInput('')
 
     const userMsg: SeoPilotMessage = { role: 'user', content: text }
@@ -489,34 +490,74 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
           role: 'assistant',
           content: `Error: ${(err as { error?: string }).error ?? res.status}`,
         }])
+        setLoading(false)
         return
       }
 
-      const { data } = await res.json() as {
-        data: { message: string; paths: string[]; strategy?: SeoStrategy }
-      }
+      // Add placeholder assistant message and switch to streaming mode
+      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+      setLoading(false)
+      setStreaming(true)
 
-      const assistantMsg: SeoPilotMessage = {
-        role:    'assistant',
-        content: data.message ?? '',
-        paths:   Array.isArray(data.paths) ? data.paths : [],
-      }
-      setMessages((prev) => [...prev, assistantMsg])
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-      if (data.strategy) {
-        setStrategy(data.strategy)
-        setScreen('complete')
-        onStrategyComplete?.()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+          try {
+            const event = JSON.parse(raw) as { type: string; text?: string; message?: string; paths?: string[]; strategy?: SeoStrategy | null }
+            if (event.type === 'delta' && event.text) {
+              setMessages((prev) => {
+                const next = [...prev]
+                const last = next[next.length - 1]
+                next[next.length - 1] = { ...last, content: last.content + event.text! }
+                return next
+              })
+            } else if (event.type === 'done') {
+              const finalMsg: SeoPilotMessage = {
+                role:    'assistant',
+                content: event.message ?? '',
+                paths:   Array.isArray(event.paths) ? event.paths : [],
+              }
+              setMessages((prev) => [...prev.slice(0, -1), finalMsg])
+              if (event.strategy) {
+                setStrategy(event.strategy)
+                setScreen('complete')
+                onStrategyComplete?.()
+              }
+            } else if (event.type === 'error') {
+              setMessages((prev) => [...prev.slice(0, -1), {
+                role: 'assistant',
+                content: `Error: ${event.message ?? 'Unknown error'}`,
+              }])
+            }
+          } catch { /* malformed SSE line */ }
+        }
       }
     } catch {
-      setMessages((prev) => [...prev, {
-        role: 'assistant',
-        content: 'Network error — check your connection.',
-      }])
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (last?.role === 'assistant' && last.content === '') {
+          return [...prev.slice(0, -1), { role: 'assistant', content: 'Network error — check your connection.' }]
+        }
+        return [...prev, { role: 'assistant', content: 'Network error — check your connection.' }]
+      })
     } finally {
       setLoading(false)
+      setStreaming(false)
     }
-  }, [input, loading, messages, sessionId, templateKey, clientId, onStrategyComplete])
+  }, [input, loading, streaming, messages, sessionId, templateKey, clientId, onStrategyComplete])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() }
@@ -568,7 +609,7 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
                 <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined}>
                   <MessageBubble
                     msg={msg}
-                    isLast={i === messages.length - 1 && !loading}
+                    isLast={i === messages.length - 1 && !loading && !streaming}
                     onPathClick={(path) => void sendMessage(path)}
                   />
                 </div>
@@ -601,7 +642,7 @@ export function SeoPilot({ clientId, clientName, onClose, onViewBriefs, onStrate
               />
               <button
                 onClick={() => void sendMessage()}
-                disabled={!input.trim() || loading}
+                disabled={!input.trim() || loading || streaming}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors"
               >
                 <Icons.SendHorizontal className="h-4 w-4" />

@@ -9,6 +9,7 @@
  * POST /api/v1/seo/briefs/:id/push-to-newsroom — push brief to Newsroom
  */
 
+import { PassThrough } from 'stream'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
@@ -407,9 +408,9 @@ export async function seoPilotRoutes(app: FastifyInstance) {
     const systemPrompt = buildSeoPilotSystemPrompt(contextParts, templateKey, client.name)
 
     const { model: chatModel } = await getModelForRole('generation_primary')
-    const anthropic = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
+    const anthropic = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 0 })
 
-    const MAX_CLAUDE_MSGS = 39
+    const MAX_CLAUDE_MSGS = 20
     const cappedMessages = messages.length > MAX_CLAUDE_MSGS
       ? [messages[0], ...messages.slice(-(MAX_CLAUDE_MSGS - 1))]
       : messages
@@ -417,115 +418,127 @@ export async function seoPilotRoutes(app: FastifyInstance) {
       role: m.role, content: m.content,
     }))
 
-    let response: Anthropic.Message
-    try {
-      response = await anthropic.messages.create({
-        model:      chatModel,
-        max_tokens: 4096,
-        system:     systemPrompt,
-        messages:   anthropicMessages,
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return reply.code(500).send({ error: `AI call failed: ${msg.slice(0, 200)}` })
-    }
+    // ── SSE streaming response ──────────────────────────────────────────────────
+    const sse = new PassThrough()
+    const emit = (data: unknown) => sse.write(`data: ${JSON.stringify(data)}\n\n`)
 
-    const fullText = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-
-    // Extract <SEOPILOT_STRATEGY> block — try closed tag first, fall back to open-ended match
-    const strategyMatch =
-      fullText.match(/<SEOPILOT_STRATEGY>([\s\S]+?)<\/SEOPILOT_STRATEGY>/i) ??
-      fullText.match(/<SEOPILOT_STRATEGY>([\s\S]+)$/i)
-    let strategyOutput: Record<string, unknown> | null = null
-    let replyText = fullText
-
-    if (strategyMatch) {
-      replyText = fullText.replace(strategyMatch[0], '').trim()
+    // Fire-and-forget async — Fastify streams the PassThrough while this runs
+    ;(async () => {
+      let fullText = ''
       try {
-        strategyOutput = JSON.parse(strategyMatch[1].trim())
-      } catch {
-        return reply.code(500).send({ error: 'Strategy output could not be parsed — session not saved' })
-      }
-    }
-
-    // Extract <PATHS> block
-    const pathsMatch = replyText.match(/<PATHS>([\s\S]+?)<\/PATHS>/i)
-    let paths: string[] = []
-    if (pathsMatch) {
-      replyText = replyText.replace(pathsMatch[0], '').trim()
-      try { paths = JSON.parse(pathsMatch[1].trim()) } catch { /* malformed */ }
-    }
-
-    const assistantMessage = { role: 'assistant' as const, content: replyText.trim() }
-    const updatedMessages = [...messages, assistantMessage]
-
-    if (strategyOutput) {
-      // Session complete — save strategy, create briefs, write to brain
-      const priorities = (strategyOutput.contentPriorities as Array<Record<string, unknown>>) ?? []
-      const templateName = SEO_TEMPLATES[templateKey]?.name ?? templateKey
-      const brainSummary = buildSeoStrategyBrainNote(strategyOutput, templateName, priorities)
-
-      await prisma.$transaction(async (tx) => {
-        await tx.seoStrategySession.update({
-          where: { id },
-          data: {
-            status: 'complete',
-            strategyOutput: JSON.parse(JSON.stringify(strategyOutput)),
-            messages: JSON.parse(JSON.stringify(updatedMessages)),
-          },
+        const stream = anthropic.messages.stream({
+          model:      chatModel,
+          max_tokens: 4096,
+          system:     systemPrompt,
+          messages:   anthropicMessages,
         })
 
-        if (priorities.length > 0) {
-          await tx.seoContentBrief.createMany({
-            data: priorities.map((p) => ({
-              agencyId,
-              clientId,
-              sessionId: id,
-              topic:          String(p.topic ?? ''),
-              targetKeyword:  String(p.targetKeyword ?? ''),
-              funnelStage:    String(p.funnelStage ?? 'awareness'),
-              urgency:        String(p.urgency ?? 'next'),
-              paaQuestions:   Array.isArray(p.paaQuestions) ? p.paaQuestions : [],
-              contentFormat:  p.contentFormat ? String(p.contentFormat) : null,
-              estimatedImpact: p.estimatedImpact ? String(p.estimatedImpact) : null,
-              brief:           p.brief ? String(p.brief) : null,
-            })),
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            fullText += event.delta.text
+            emit({ type: 'delta', text: event.delta.text })
+          }
+        }
+
+        // Extract <SEOPILOT_STRATEGY> block
+        const strategyMatch =
+          fullText.match(/<SEOPILOT_STRATEGY>([\s\S]+?)<\/SEOPILOT_STRATEGY>/i) ??
+          fullText.match(/<SEOPILOT_STRATEGY>([\s\S]+)$/i)
+        let strategyOutput: Record<string, unknown> | null = null
+        let replyText = fullText
+
+        if (strategyMatch) {
+          replyText = fullText.replace(strategyMatch[0], '').trim()
+          try {
+            strategyOutput = JSON.parse(strategyMatch[1].trim())
+          } catch {
+            emit({ type: 'error', message: 'Strategy output could not be parsed — session not saved' })
+            sse.end()
+            return
+          }
+        }
+
+        // Extract <PATHS> block
+        const pathsMatch = replyText.match(/<PATHS>([\s\S]+?)<\/PATHS>/i)
+        let paths: string[] = []
+        if (pathsMatch) {
+          replyText = replyText.replace(pathsMatch[0], '').trim()
+          try { paths = JSON.parse(pathsMatch[1].trim()) } catch { /* malformed */ }
+        }
+
+        const assistantMessage = { role: 'assistant' as const, content: replyText.trim() }
+        const updatedMessages = [...messages, assistantMessage]
+
+        if (strategyOutput) {
+          const priorities = (strategyOutput.contentPriorities as Array<Record<string, unknown>>) ?? []
+          const templateName = SEO_TEMPLATES[templateKey]?.name ?? templateKey
+          const brainSummary = buildSeoStrategyBrainNote(strategyOutput, templateName, priorities)
+
+          await prisma.$transaction(async (tx) => {
+            await tx.seoStrategySession.update({
+              where: { id },
+              data: {
+                status: 'complete',
+                strategyOutput: JSON.parse(JSON.stringify(strategyOutput)),
+                messages: JSON.parse(JSON.stringify(updatedMessages)),
+              },
+            })
+
+            if (priorities.length > 0) {
+              await tx.seoContentBrief.createMany({
+                data: priorities.map((p) => ({
+                  agencyId,
+                  clientId,
+                  sessionId: id,
+                  topic:           String(p.topic ?? ''),
+                  targetKeyword:   String(p.targetKeyword ?? ''),
+                  funnelStage:     String(p.funnelStage ?? 'awareness'),
+                  urgency:         String(p.urgency ?? 'next'),
+                  paaQuestions:    Array.isArray(p.paaQuestions) ? p.paaQuestions : [],
+                  contentFormat:   p.contentFormat ? String(p.contentFormat) : null,
+                  estimatedImpact: p.estimatedImpact ? String(p.estimatedImpact) : null,
+                  brief:           p.brief ? String(p.brief) : null,
+                })),
+              })
+            }
+
+            await tx.clientBrainAttachment.create({
+              data: {
+                agencyId,
+                clientId,
+                filename:         `SEO Strategy — ${templateName} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`,
+                mimeType:         'text/plain',
+                sizeBytes:        brainSummary.length,
+                extractionStatus: 'ready',
+                summaryStatus:    'ready',
+                summary:          brainSummary,
+                source:           'seo_strategy',
+                uploadMethod:     'note',
+              },
+            })
+          })
+        } else {
+          await prisma.seoStrategySession.update({
+            where: { id },
+            data: { messages: JSON.parse(JSON.stringify(updatedMessages)) },
           })
         }
 
-        // Write strategy to client brain so future sessions inherit these decisions
-        await tx.clientBrainAttachment.create({
-          data: {
-            agencyId,
-            clientId,
-            filename:         `SEO Strategy — ${templateName} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`,
-            mimeType:         'text/plain',
-            sizeBytes:        brainSummary.length,
-            extractionStatus: 'ready',
-            summaryStatus:    'ready',
-            summary:          brainSummary,
-            source:           'seo_strategy',
-            uploadMethod:     'note',
-          },
-        })
-      })
-    } else {
-      await prisma.seoStrategySession.update({
-        where: { id },
-        data: { messages: JSON.parse(JSON.stringify(updatedMessages)) },
-      })
-    }
+        emit({ type: 'done', message: replyText.trim(), paths, strategy: strategyOutput ?? null })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        emit({ type: 'error', message: msg.slice(0, 200) })
+      } finally {
+        sse.end()
+      }
+    })()
 
-    return reply.send({
-      data: {
-        message:  replyText.trim(),
-        paths,
-        strategy: strategyOutput ?? undefined,
-      },
-    })
+    return reply
+      .header('Content-Type', 'text/event-stream')
+      .header('Cache-Control', 'no-cache')
+      .header('Connection', 'keep-alive')
+      .header('X-Accel-Buffering', 'no')
+      .send(sse)
   })
 
   // ── GET /briefs ──────────────────────────────────────────────────────────────
