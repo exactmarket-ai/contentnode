@@ -428,12 +428,12 @@ function ResearchTasksSidebar({
           {Array.from(groups.entries()).map(([key, group]) => {
             const isOpen = !collapsed.has(key)
             return (
-              <div key={key} style={{ borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div key={key} style={{ borderRadius: 8, border: '1px solid #e5e7eb' }}>
                 {/* Group header */}
                 <button
                   type="button"
                   onClick={() => toggleCollapse(key)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: '#f9fafb', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: '#f9fafb', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: isOpen ? '8px 8px 0 0' : 8 }}
                 >
                   <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: group.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', flex: 1 }}>{group.label}</span>
