@@ -21,6 +21,7 @@ const createBody = z.object({
   contentMode:          z.enum(['off', 'auto_generate', 'evaluate_and_queue']).optional(),
   scheduledDay:         z.number().int().min(0).max(27).nullish(),
   assigneeId:           z.string().nullish(),
+  sourceTag:            z.string().nullish(),
 })
 
 const updateBody = createBody
@@ -61,14 +62,15 @@ function computeNextRunAt(frequency: string, scheduledDay?: number | null): Date
 export async function scheduledTaskRoutes(app: FastifyInstance) {
 
   // ── GET /api/v1/scheduled-tasks ───────────────────────────────────────────
-  app.get<{ Querystring: { clientId?: string } }>('/', async (req, reply) => {
+  app.get<{ Querystring: { clientId?: string; sourceTag?: string } }>('/', async (req, reply) => {
     const { agencyId } = req.auth
-    const { clientId } = req.query
+    const { clientId, sourceTag } = req.query
 
     const tasks = await prisma.scheduledTask.findMany({
       where: {
         agencyId,
         ...(clientId ? { clientId } : {}),
+        ...(sourceTag ? { sourceTag } : {}),
       },
       orderBy: { createdAt: 'desc' },
       include: { vertical: { select: { id: true, name: true } } },
@@ -81,7 +83,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const parsed = createBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message })
-    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount, contentMode, scheduledDay, assigneeId } = parsed.data
+    const { label, scope, type, frequency, clientId, verticalId, config, autoGenerate, autoGenerateBlogCount, contentMode, scheduledDay, assigneeId, sourceTag } = parsed.data
 
     if (scope === 'client' && !clientId) {
       return reply.code(400).send({ error: 'clientId required for client-scoped tasks' })
@@ -109,6 +111,7 @@ export async function scheduledTaskRoutes(app: FastifyInstance) {
         ...(autoGenerateBlogCount !== undefined ? { autoGenerateBlogCount } : {}),
         ...(scheduledDay !== undefined ? { scheduledDay: scheduledDay ?? null } : {}),
         ...(assigneeId !== undefined ? { assigneeId: assigneeId ?? null } : {}),
+        ...(sourceTag !== undefined ? { sourceTag: sourceTag ?? null } : {}),
       },
     })
     return reply.code(201).send({ data: task })

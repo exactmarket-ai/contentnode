@@ -66,6 +66,7 @@ interface TopicItem {
   sources: TopicSource[]
   status: 'pending' | 'approved' | 'rejected'
   createdAt: string
+  sourceTag: string | null
   vertical: { id: string; name: string; color: string | null } | null
 }
 
@@ -1531,6 +1532,7 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
   const [showAssignmentPanel, setShowAssignmentPanel] = useState(false)
   const [panelTopics, setPanelTopics] = useState<TopicItem[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null)
 
   const pilotRef = useRef<HTMLDivElement>(null)
 
@@ -1632,8 +1634,9 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
     pilotRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const pendingTopics  = topics.filter((t) => t.status === 'pending')
-  const approvedTopics = topics.filter((t) => t.status === 'approved')
+  const sourceFiltered = sourceFilter ? topics.filter((t) => t.sourceTag === sourceFilter) : topics
+  const pendingTopics  = sourceFiltered.filter((t) => t.status === 'pending')
+  const approvedTopics = sourceFiltered.filter((t) => t.status === 'approved')
   const selectedApproved = approvedTopics.filter((t) => selected.has(t.id))
 
   return (
@@ -1694,6 +1697,27 @@ export function ContentNewsroomTab({ clientId, onAddTask }: { clientId: string; 
             })}
           </div>
         )}
+
+        {/* Source filter pills */}
+        <div className="flex items-center gap-1.5">
+          {([null, 'strategy', 'marcom'] as const).map((tag) => (
+            <button key={tag ?? 'all'} type="button" onClick={() => setSourceFilter(tag)}
+              style={{
+                fontSize: 11, fontWeight: 500, borderRadius: 20, padding: '4px 12px', cursor: 'pointer',
+                border: sourceFilter === tag
+                  ? tag === 'strategy' ? '1.5px solid #3b82f6' : tag === 'marcom' ? '1.5px solid #8b5cf6' : '1.5px solid #a200ee'
+                  : '1px solid #e5e7eb',
+                backgroundColor: sourceFilter === tag
+                  ? tag === 'strategy' ? '#eff6ff' : tag === 'marcom' ? '#f5f3ff' : '#fdf5ff'
+                  : '#f9fafb',
+                color: sourceFilter === tag
+                  ? tag === 'strategy' ? '#2563eb' : tag === 'marcom' ? '#7c3aed' : '#7c00cc'
+                  : '#6b7280',
+              }}>
+              {tag === null ? 'All' : tag === 'strategy' ? 'Strategy' : 'Marcom'}
+            </button>
+          ))}
+        </div>
 
         {/* Selection bar */}
         {selected.size > 0 && (

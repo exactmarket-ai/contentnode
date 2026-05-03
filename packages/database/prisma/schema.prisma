@@ -2126,6 +2126,7 @@ model ScheduledTask {
   contentMode            String   @default("off") @map("content_mode") // 'off' | 'auto_generate' | 'evaluate_and_queue'
   scheduledDay           Int?                     @map("scheduled_day")
   assigneeId             String?                  @map("assignee_id")
+  sourceTag              String?                  @map("source_tag")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 

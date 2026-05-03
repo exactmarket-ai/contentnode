@@ -5501,6 +5501,7 @@ interface ScheduledTask {
   contentMode: string
   scheduledDay: number | null
   assigneeId: string | null
+  sourceTag: string | null
 }
 
 const TASK_TYPE_META: Record<ScheduledTaskType, { label: string; icon: keyof typeof Icons; color: string }> = {
@@ -5671,7 +5672,7 @@ interface TaskDraft {
   config?: Record<string, unknown>
 }
 
-function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initialType, initialDraft }: {
+function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initialType, initialDraft, sourceTag }: {
   clientId: string
   onClose: () => void
   onCreated?: (t: ScheduledTask) => void
@@ -5679,6 +5680,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
   editTask?: ScheduledTask
   initialType?: ScheduledTaskType
   initialDraft?: TaskDraft
+  sourceTag?: string
 }) {
   const isEdit = !!editTask
   const [type, setType] = useState<ScheduledTaskType>(editTask?.type ?? initialType ?? 'web_scrape')
@@ -5746,6 +5748,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
             contentMode,
             autoGenerateBlogCount,
             assigneeId: assigneeId || null,
+            ...(sourceTag ? { sourceTag } : {}),
           }),
         })
         const { data, error: err } = await res.json()
@@ -6703,7 +6706,7 @@ function QuickScheduleModal({ task, onClose, onUpdated, onGenerate }: {
   )
 }
 
-function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientName: string }) {
+function ScheduledTasksTab({ clientId, clientName, sourceTag: defaultSourceTag }: { clientId: string; clientName: string; sourceTag?: string }) {
   const [tasks, setTasks]                     = useState<ScheduledTask[]>([])
   const [loading, setLoading]                 = useState(true)
   const [showAdd, setShowAdd]                 = useState(false)
@@ -6719,6 +6722,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
   const [verticals, setVerticals]             = useState<{ id: string; name: string }[]>([])
   const [programs, setPrograms]               = useState<{ id: string; name: string; type: string; scheduledTaskId: string | null }[]>([])
   const [linkingTask, setLinkingTask]         = useState<string | null>(null) // taskId being linked
+  const [sourceFilter, setSourceFilter]       = useState<string | null>(defaultSourceTag ?? null)
 
   useEffect(() => {
     apiFetch(`/api/v1/scheduled-tasks?clientId=${clientId}`)
@@ -6816,6 +6820,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
 
   const filteredTasks = tasks
     .filter((t) => t.label.toLowerCase().includes(search.toLowerCase()) || (t.vertical?.name ?? '').toLowerCase().includes(search.toLowerCase()))
+    .filter((t) => !sourceFilter || t.sourceTag === sourceFilter)
     .sort((a, b) => a.label.localeCompare(b.label))
 
   const TEMPLATE_DESCRIPTIONS: Record<ScheduledTaskType, string> = {
@@ -6922,14 +6927,34 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
         </div>
 
         <div className="p-4 space-y-3">
-          <div className="relative">
-            <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search tasks..."
-              className="w-full rounded-lg border border-border bg-muted/30 py-1.5 pl-8 pr-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-0">
+              <Icons.Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search tasks..."
+                className="w-full rounded-lg border border-border bg-muted/30 py-1.5 pl-8 pr-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {([null, 'strategy', 'marcom'] as const).map((tag) => (
+                <button
+                  key={tag ?? 'all'}
+                  onClick={() => setSourceFilter(tag)}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+                    sourceFilter === tag
+                      ? tag === 'strategy' ? 'bg-blue-500/15 text-blue-600 border border-blue-300'
+                        : tag === 'marcom' ? 'bg-violet-500/15 text-violet-600 border border-violet-300'
+                        : 'bg-muted text-foreground border border-border'
+                      : 'text-muted-foreground hover:text-foreground border border-transparent hover:border-border',
+                  )}
+                >
+                  {tag === null ? 'All' : tag === 'strategy' ? 'Strategy' : 'Marcom'}
+                </button>
+              ))}
+            </div>
           </div>
 
           {loading ? (
@@ -7082,6 +7107,7 @@ function ScheduledTasksTab({ clientId, clientName }: { clientId: string; clientN
           clientId={clientId}
           initialType={addTaskType}
           initialDraft={addTaskDraft}
+          sourceTag={defaultSourceTag}
           onClose={() => { setShowAdd(false); setAddTaskType(undefined); setAddTaskDraft(undefined) }}
           onCreated={(t) => { setTasks((prev) => [t, ...prev]); setAddTaskType(undefined); setAddTaskDraft(undefined) }}
         />
@@ -7290,7 +7316,7 @@ function TeamAccessTab({ clientId }: { clientId: string }) {
 
 // ── End Team Access Tab ───────────────────────────────────────────────────────
 
-const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'newsroom', 'packs', 'content-library', 'framework', 'product-marketing', 'seo-pilot', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'team-access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
+const TABS = ['overview', 'workflows', 'library', 'campaigns', 'programs', 'board', 'deliverables', 'thought-leadership', 'newsroom', 'packs', 'content-library', 'framework', 'product-marketing', 'seo-pilot', 'strategy-research', 'demandgen', 'branding', 'brain', 'gtm-assessment', 'stakeholders', 'access', 'team-access', 'reviews', 'insights', 'runs', 'reports', 'profile', 'company', 'structure', 'agency-library', 'scheduled-tasks', 'doc-style'] as const
 type Tab = (typeof TABS)[number]
 
 // ── Agency-level prompt library (no clientId — shows global templates) ────────
@@ -7396,6 +7422,7 @@ export function ClientDetailPage() {
     framework:     'GTM Framework',
     'product-marketing': 'productPILOT',
     'seo-pilot':         'seoPILOT',
+    'strategy-research': 'Scheduled Research Topics',
     demandgen:     'Demand Gen',
     branding:      'Branding',
     board:         'Board',
@@ -7418,7 +7445,7 @@ export function ClientDetailPage() {
 
   // Tabs that live under the "Strategy" group (admin/strategist only)
   const canSeeSeo = isAdmin || isStrategist
-  const STRATEGY_TABS: Tab[] = ['framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : [])]
+  const STRATEGY_TABS: Tab[] = ['framework', ...(canUsePilot ? ['product-marketing' as Tab] : []), ...(canSeeSeo ? ['seo-pilot' as Tab] : []), 'strategy-research']
   // Tabs that live under the "Demand Gen" group
   const DEMAND_GEN_TABS: Tab[] = ['demandgen', 'campaigns']
   // Tabs that live under the "Research" group
@@ -7673,6 +7700,8 @@ export function ClientDetailPage() {
       {/* Tab content */}
       {activeTab === 'framework'
         ? <div className="flex-1 overflow-hidden"><ClientFrameworkTab clientId={client.id} clientName={client.name} initialVerticalId={searchParams.get('verticalId') ?? undefined} /></div>
+        : activeTab === 'strategy-research'
+        ? <div className="flex-1 overflow-hidden"><ScheduledTasksTab clientId={client.id} clientName={client.name} sourceTag="strategy" /></div>
         : activeTab === 'demandgen'
         ? <div className="flex-1 overflow-hidden"><ClientDemandGenTab clientId={client.id} /></div>
         : activeTab === 'branding'
