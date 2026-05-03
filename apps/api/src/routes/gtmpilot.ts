@@ -361,6 +361,23 @@ async function buildContext(
 ): Promise<{ parts: string[]; meta: BrainMeta }> {
   const parts: string[] = []
 
+  // ── Authoritative corrections (pilot_correction source — highest priority) ──
+  const pilotCorrections = await prisma.clientBrainAttachment.findMany({
+    where: { clientId, agencyId, source: 'pilot_correction', summaryStatus: 'ready' },
+    select: { summary: true, verticalId: true },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  })
+
+  if (pilotCorrections.length > 0) {
+    parts.push(`=== AUTHORITATIVE CORRECTIONS — USER-CONFIRMED FACTS (highest priority — override all other sources) ===`)
+    parts.push(`The following corrections were made by the user during previous gtmPILOT sessions. They are factually confirmed by the client and take strict precedence over any conflicting information in brand profiles, documents, or brain context below.`)
+    for (const c of pilotCorrections) {
+      if (c.summary?.trim()) parts.push(c.summary.trim())
+    }
+    parts.push(`=== END AUTHORITATIVE CORRECTIONS ===\n`)
+  }
+
   // ── Layer 1: Client Brain ─────────────────────────────────────────────────
   const [client, clientAttachments, frameworkAttachments, verticalScopedAttachments] = await Promise.all([
     prisma.client.findFirst({
@@ -2156,7 +2173,21 @@ Rules:
 - Table value must be a JSON array — include only the rows the user confirmed; write all row keys
 - When the user approves a set of table rows (e.g. "those 5 quotes look good"), write the full approved set
 - Omit this block entirely if no fields were confirmed in this turn
-- Place this block AFTER the suggestion block at the very end of your response`
+- Place this block AFTER the suggestion block at the very end of your response
+
+BRAIN CORRECTION BLOCK — writes authoritative factual corrections to the client brain:
+This is a machine-read output block stripped before display. It never appears in your conversational response.
+
+Use it ONLY when the user explicitly corrects a factual error about this client — for example: "they're national, not New York", "they serve enterprise not SMB", "they dropped that product", "the CEO changed", "that number is wrong". Correction signals: "actually", "that's wrong", "not [X]", "they are [Y] not [X]", "you have that wrong", "I need to correct you", or any direct factual override.
+
+Do NOT use this block for strategy opinions, preferences, or section edits — only for facts about the client's business reality.
+
+<BRAIN_CORRECTION>
+{"fact": "Client serves nationally across all US states, not only New York", "supersedes": "geographic territory limited to New York", "category": "geography"}
+</BRAIN_CORRECTION>
+
+Categories: geography | company_size | service | market | personnel | product | pricing | other
+Place this block AFTER the field update block at the very end of your response. Omit entirely if no factual correction was made in this turn.`
 }
 
 // ─── Briefer PILOT system prompt ──────────────────────────────────────────────
@@ -2469,6 +2500,30 @@ export async function gtmPilotRoutes(app: FastifyInstance) {
         const parsed = JSON.parse(fuMatch[1].trim()) as unknown
         if (Array.isArray(parsed)) fieldUpdates = parsed as FieldUpdate[]
       } catch { /* malformed — return empty */ }
+    }
+
+    // Extract <BRAIN_CORRECTION> blocks and write to client brain as authoritative corrections
+    const bcMatches = [...replyText.matchAll(/<BRAIN_CORRECTION>([\s\S]+?)<\/BRAIN_CORRECTION>/gi)]
+    for (const bcMatch of bcMatches) {
+      replyText = replyText.replace(bcMatch[0], '').trim()
+      try {
+        const correction = JSON.parse(bcMatch[1].trim()) as { fact?: string; supersedes?: string; category?: string }
+        if (correction.fact?.trim()) {
+          const summaryText = `[AUTHORITATIVE CORRECTION — overrides conflicting sources]: ${correction.fact.trim()}${correction.supersedes?.trim() ? ` (supersedes: ${correction.supersedes.trim()})` : ''}`
+          await prisma.clientBrainAttachment.create({
+            data: {
+              agencyId,
+              clientId,
+              filename: `pilot_correction_${Date.now()}`,
+              source: 'pilot_correction',
+              summaryStatus: 'ready',
+              extractionStatus: 'ready',
+              summary: summaryText,
+              verticalId: verticalId ?? null,
+            },
+          })
+        }
+      } catch { /* malformed block — skip */ }
     }
 
     // ── Persist session transcript ────────────────────────────────────────────
