@@ -2107,6 +2107,8 @@ This is a machine-read output block stripped before display. Like the suggestion
 
 Emit this block ONLY when the user explicitly confirms or approves specific text. Confirmation signals: "yes", "that works", "perfect", "let's go with that", "approved", "looks right", or any clear acceptance. Do NOT emit on your first draft, while in discussion, when suggesting options, or when asking a follow-up question. Wait for the user to accept before writing to their fields.
 
+COMPLETION FLUSH RULE — MANDATORY: Any time you declare a section complete, say the section is done, or include a navigation suggestion to move to another section, you MUST include a GTMPILOT_FIELD_UPDATES block in that same message containing every field from the current section that has confirmed content. Do not declare completion and leave fields empty. If you are about to say "great, we're done with Section X" or suggest moving on, check your conversation history for every field that was agreed upon during this section and write them all in that message's field update block. A section is not complete if its fields are empty.
+
 <GTMPILOT_FIELD_UPDATES>
 [
   {"s": "01", "f": "positioningStatement", "v": "The exact confirmed text the user approved"},
