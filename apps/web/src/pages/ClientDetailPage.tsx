@@ -7722,7 +7722,7 @@ export function ClientDetailPage() {
   // Tabs that live under the "Settings" group (admin-only via Settings entry point)
   const SETTINGS_TABS: Tab[] = ['brain', 'agency-library', 'structure', 'reports', 'access', 'team-access', 'stakeholders', 'runs', 'doc-style']
   // Tabs that live under the "Marcom" group (admin/strategist only)
-  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['branding', 'newsroom', 'scheduled-tasks', 'thought-leadership', 'content-library', 'packs']
+  const THOUGHT_LEADERSHIP_TABS: Tab[] = ['branding', 'newsroom', 'content-library', 'scheduled-tasks', 'thought-leadership', 'packs']
   // Tabs rendered before the group buttons
   const PRE_DEMAND_GEN_TABS: Tab[] = ['overview', 'programs']
   // Tabs rendered between Research group button and remaining admin-only tabs
