@@ -36,6 +36,7 @@ function deriveColor(id: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type VerticalExtended = {
+  parentVerticalId:     string | null
   targetAudience:       string | null
   toneDescriptors:      string[]
   keyMessages:          string[]
@@ -49,6 +50,7 @@ type VerticalExtended = {
 async function getVerticalExtended(verticalId: string): Promise<VerticalExtended> {
   try {
     const rows = await prisma.$queryRaw<Array<{
+      parent_vertical_id:     string | null
       target_audience:        string | null
       tone_descriptors:       unknown
       key_messages:           unknown
@@ -58,13 +60,15 @@ async function getVerticalExtended(verticalId: string): Promise<VerticalExtended
       monday_column_mapping:  unknown
       box_folder_id:          string | null
     }>>`
-      SELECT target_audience, tone_descriptors, key_messages, voice_avoid_phrases,
+      SELECT COALESCE(parent_vertical_id::text, NULL) as parent_vertical_id,
+             target_audience, tone_descriptors, key_messages, voice_avoid_phrases,
              default_content_pack_id, monday_board_id, monday_column_mapping, box_folder_id
       FROM verticals WHERE id = ${verticalId}
     `
     const row = rows[0]
     if (!row) return emptyExtended()
     return {
+      parentVerticalId:     row.parent_vertical_id ?? null,
       targetAudience:       row.target_audience,
       toneDescriptors:      Array.isArray(row.tone_descriptors) ? (row.tone_descriptors as string[]) : [],
       keyMessages:          Array.isArray(row.key_messages) ? (row.key_messages as string[]) : [],
@@ -83,6 +87,7 @@ async function getVerticalExtended(verticalId: string): Promise<VerticalExtended
 
 function emptyExtended(): VerticalExtended {
   return {
+    parentVerticalId:     null,
     targetAudience:       null,
     toneDescriptors:      [],
     keyMessages:          [],
@@ -102,7 +107,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     const verticals = await prisma.vertical.findMany({
       where: { agencyId },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, dimensionType: true, color: true, parentVerticalId: true, createdAt: true },
+      select: { id: true, name: true, dimensionType: true, color: true, createdAt: true },
     })
     // Lazy-assign colors for any vertical created before this migration
     const needsColor = verticals.filter((v) => !v.color)
@@ -125,7 +130,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const vertical = await prisma.vertical.findFirst({
       where: { id: req.params.id, agencyId },
-      select: { id: true, name: true, dimensionType: true, color: true, parentVerticalId: true, brainContext: true, createdAt: true, updatedAt: true },
+      select: { id: true, name: true, dimensionType: true, color: true, brainContext: true, createdAt: true, updatedAt: true },
     })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
     const extended = await getVerticalExtended(vertical.id)
@@ -145,17 +150,18 @@ export async function verticalRoutes(app: FastifyInstance) {
     if (exists) return reply.code(409).send({ error: 'A vertical with that name already exists' })
 
     const vertical = await prisma.vertical.create({
-      data: {
-        agencyId,
-        name: parsed.data.name,
-        dimensionType: parsed.data.dimensionType ?? 'vertical',
-        ...(parsed.data.parentVerticalId ? { parentVerticalId: parsed.data.parentVerticalId } : {}),
-      },
+      data: { agencyId, name: parsed.data.name, dimensionType: parsed.data.dimensionType ?? 'vertical' },
     })
     // Assign deterministic color based on ID (stable across reloads)
     const color = deriveColor(vertical.id)
     const verticalWithColor = await prisma.vertical.update({ where: { id: vertical.id }, data: { color } })
-    return reply.code(201).send({ data: { ...verticalWithColor, ...emptyExtended() } })
+    // Set parentVerticalId via raw SQL so it gracefully no-ops if migration not yet applied
+    const parentVerticalId = parsed.data.parentVerticalId ?? null
+    if (parentVerticalId) {
+      await prisma.$executeRaw`UPDATE verticals SET parent_vertical_id = ${parentVerticalId} WHERE id = ${vertical.id}`.catch(() => {})
+    }
+    const extended = await getVerticalExtended(vertical.id)
+    return reply.code(201).send({ data: { ...verticalWithColor, ...extended } })
   })
 
   // ── PATCH /api/v1/verticals/:id ───────────────────────────────────────────
@@ -173,9 +179,12 @@ export async function verticalRoutes(app: FastifyInstance) {
       data: {
         ...(parsed.data.name ? { name: parsed.data.name } : {}),
         ...(parsed.data.dimensionType ? { dimensionType: parsed.data.dimensionType } : {}),
-        ...(parsed.data.parentVerticalId !== undefined ? { parentVerticalId: parsed.data.parentVerticalId } : {}),
       },
     })
+    // parentVerticalId via raw SQL — gracefully skips if migration not yet applied
+    if (parsed.data.parentVerticalId !== undefined) {
+      await prisma.$executeRaw`UPDATE verticals SET parent_vertical_id = ${parsed.data.parentVerticalId} WHERE id = ${req.params.id}`.catch(() => {})
+    }
 
     // Update extended fields via raw SQL (gracefully skip if columns don't exist yet)
     const {
