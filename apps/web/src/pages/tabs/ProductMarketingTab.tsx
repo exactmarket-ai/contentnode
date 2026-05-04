@@ -720,7 +720,11 @@ export function ProductMarketingTab({
       <DimensionBar
         items={verticals}
         selected={selectedDimensions}
-        onChange={(type, id) => setSelectedDimensions(id ? { [type]: id } : {})}
+        onChange={(type, id) => setSelectedDimensions((prev) => {
+          if (!id) { const next = { ...prev }; delete next[type]; return next }
+          if (type === 'vertical') return { vertical: id }
+          return { ...prev, [type]: id }
+        })}
         loading={verticalsLoading}
         verticalTerm={verticalTerm}
       />

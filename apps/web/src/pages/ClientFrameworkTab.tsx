@@ -3376,7 +3376,14 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
       <DimensionBar
         items={verticals}
         selected={selectedDimensions}
-        onChange={(type, id) => { setSelectedDimensions(id ? { [type]: id } : {}); setActiveSection('brain') }}
+        onChange={(type, id) => {
+          setSelectedDimensions((prev) => {
+            if (!id) { const next = { ...prev }; delete next[type]; return next }
+            if (type === 'vertical') return { vertical: id }
+            return { ...prev, [type]: id }
+          })
+          setActiveSection('brain')
+        }}
         loading={verticalsLoading}
         verticalTerm={verticalTerm}
       >
