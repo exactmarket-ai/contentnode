@@ -4,6 +4,7 @@ export interface DimensionItem {
   id: string
   name: string
   dimensionType: string
+  parentVerticalId?: string | null
 }
 
 interface DimensionBarProps {
@@ -86,8 +87,18 @@ function TypeDropdown({ label, items, selectedId, onChange }: {
 }
 
 export function DimensionBar({ items, selected, onChange, loading, verticalTerm, children }: DimensionBarProps) {
+  const selectedVerticalId = selected['vertical'] ?? null
+
+  // For non-vertical dimensions, only show items that are children of the selected
+  // vertical (or have no parent — backwards compatible with unscoped items)
+  const visibleItems = items.filter((item) => {
+    if (item.dimensionType === 'vertical') return true
+    if (!item.parentVerticalId) return true
+    return item.parentVerticalId === selectedVerticalId
+  })
+
   const byType = new Map<string, DimensionItem[]>()
-  for (const item of items) {
+  for (const item of visibleItems) {
     if (!byType.has(item.dimensionType)) byType.set(item.dimensionType, [])
     byType.get(item.dimensionType)!.push(item)
   }

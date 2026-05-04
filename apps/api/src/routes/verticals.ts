@@ -5,10 +5,11 @@ import { prisma } from '@contentnode/database'
 import { uploadStream, deleteObject } from '@contentnode/storage'
 import { getVerticalBrainProcessQueue } from '../lib/queues.js'
 
-const createBody = z.object({ name: z.string().min(1).max(100), dimensionType: z.string().min(1).max(50).optional() })
+const createBody = z.object({ name: z.string().min(1).max(100), dimensionType: z.string().min(1).max(50).optional(), parentVerticalId: z.string().nullable().optional() })
 const updateBody = z.object({
   name:                  z.string().min(1).max(100).optional(),
   dimensionType:         z.string().min(1).max(50).optional(),
+  parentVerticalId:      z.string().nullable().optional(),
   // Voice / tone fields — stored via raw SQL (new columns added by migration)
   targetAudience:        z.string().max(500).optional(),
   toneDescriptors:       z.array(z.string()).optional(),
@@ -101,7 +102,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     const verticals = await prisma.vertical.findMany({
       where: { agencyId },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, dimensionType: true, color: true, createdAt: true },
+      select: { id: true, name: true, dimensionType: true, color: true, parentVerticalId: true, createdAt: true },
     })
     // Lazy-assign colors for any vertical created before this migration
     const needsColor = verticals.filter((v) => !v.color)
@@ -124,7 +125,7 @@ export async function verticalRoutes(app: FastifyInstance) {
     const { agencyId } = req.auth
     const vertical = await prisma.vertical.findFirst({
       where: { id: req.params.id, agencyId },
-      select: { id: true, name: true, dimensionType: true, color: true, brainContext: true, createdAt: true, updatedAt: true },
+      select: { id: true, name: true, dimensionType: true, color: true, parentVerticalId: true, brainContext: true, createdAt: true, updatedAt: true },
     })
     if (!vertical) return reply.code(404).send({ error: 'Vertical not found' })
     const extended = await getVerticalExtended(vertical.id)
@@ -144,7 +145,12 @@ export async function verticalRoutes(app: FastifyInstance) {
     if (exists) return reply.code(409).send({ error: 'A vertical with that name already exists' })
 
     const vertical = await prisma.vertical.create({
-      data: { agencyId, name: parsed.data.name, dimensionType: parsed.data.dimensionType ?? 'vertical' },
+      data: {
+        agencyId,
+        name: parsed.data.name,
+        dimensionType: parsed.data.dimensionType ?? 'vertical',
+        ...(parsed.data.parentVerticalId ? { parentVerticalId: parsed.data.parentVerticalId } : {}),
+      },
     })
     // Assign deterministic color based on ID (stable across reloads)
     const color = deriveColor(vertical.id)
@@ -167,6 +173,7 @@ export async function verticalRoutes(app: FastifyInstance) {
       data: {
         ...(parsed.data.name ? { name: parsed.data.name } : {}),
         ...(parsed.data.dimensionType ? { dimensionType: parsed.data.dimensionType } : {}),
+        ...(parsed.data.parentVerticalId !== undefined ? { parentVerticalId: parsed.data.parentVerticalId } : {}),
       },
     })
 

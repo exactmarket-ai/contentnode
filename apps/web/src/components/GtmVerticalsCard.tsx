@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { apiFetch } from '@/lib/api'
 import { useVerticalTerm, invalidateVerticalTerm } from '@/hooks/useVerticalTerm'
 
-interface VerticalItem { id: string; name: string; dimensionType: string }
+interface VerticalItem { id: string; name: string; dimensionType: string; parentVerticalId?: string | null }
 
 export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientId: string; hideUnassigned?: boolean }) {
   const verticalTerm = useVerticalTerm()
@@ -13,6 +13,7 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
   const [clientVerticals, setClientVerticals] = useState<VerticalItem[]>([])
   const [newVerticalName, setNewVerticalName] = useState('')
   const [newVerticalDimType, setNewVerticalDimType] = useState('vertical')
+  const [newVerticalParentId, setNewVerticalParentId] = useState('')
   const [addingVertical, setAddingVertical] = useState(false)
   const [renamingVerticalId, setRenamingVerticalId] = useState<string | null>(null)
   const [renamingVerticalName, setRenamingVerticalName] = useState('')
@@ -62,7 +63,11 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
     const res = await apiFetch('/api/v1/verticals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, dimensionType: newVerticalDimType }),
+      body: JSON.stringify({
+        name,
+        dimensionType: newVerticalDimType,
+        ...(newVerticalDimType !== 'vertical' && newVerticalParentId ? { parentVerticalId: newVerticalParentId } : {}),
+      }),
     })
     if (!res.ok) return
     const { data } = await res.json()
@@ -75,6 +80,7 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
     setClientVerticals((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     setNewVerticalName('')
     setNewVerticalDimType('vertical')
+    setNewVerticalParentId('')
     setAddingVertical(false)
   }
 
@@ -172,7 +178,7 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
           <div className="flex items-center gap-2">
             <select
               value={newVerticalDimType}
-              onChange={(e) => setNewVerticalDimType(e.target.value)}
+              onChange={(e) => { setNewVerticalDimType(e.target.value); setNewVerticalParentId('') }}
               className="h-7 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:border-blue-400"
             >
               <option value="vertical">{verticalTerm}</option>
@@ -184,13 +190,28 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
               autoFocus
               value={newVerticalName}
               onChange={(e) => setNewVerticalName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void handleCreateVertical(); if (e.key === 'Escape') { setAddingVertical(false); setNewVerticalName(''); setNewVerticalDimType('vertical') } }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleCreateVertical(); if (e.key === 'Escape') { setAddingVertical(false); setNewVerticalName(''); setNewVerticalDimType('vertical'); setNewVerticalParentId('') } }}
               placeholder={`${newVerticalDimType === 'vertical' ? verticalTerm : newVerticalDimType.charAt(0).toUpperCase() + newVerticalDimType.slice(1)} name`}
               className="h-7 flex-1 text-xs"
             />
             <Button size="sm" className="h-7 text-xs px-3" onClick={() => void handleCreateVertical()}>Add</Button>
-            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => { setAddingVertical(false); setNewVerticalName(''); setNewVerticalDimType('vertical') }}>Cancel</Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => { setAddingVertical(false); setNewVerticalName(''); setNewVerticalDimType('vertical'); setNewVerticalParentId('') }}>Cancel</Button>
           </div>
+          {newVerticalDimType !== 'vertical' && allVerticals.filter((v) => v.dimensionType === 'vertical').length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground whitespace-nowrap">Belongs to {verticalTerm}:</span>
+              <select
+                value={newVerticalParentId}
+                onChange={(e) => setNewVerticalParentId(e.target.value)}
+                className="h-7 flex-1 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:border-blue-400"
+              >
+                <option value="">— None (show in all contexts) —</option>
+                {allVerticals.filter((v) => v.dimensionType === 'vertical').map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -223,6 +244,11 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
                 <span className="mr-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {v.dimensionType === 'vertical' ? verticalTerm : v.dimensionType.charAt(0).toUpperCase() + v.dimensionType.slice(1)}
                 </span>
+                {v.parentVerticalId && (
+                  <span className="mr-1 text-[10px] text-muted-foreground">
+                    {allVerticals.find((p) => p.id === v.parentVerticalId)?.name ?? ''}
+                  </span>
+                )}
                 <Button
                   variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                   onClick={() => { setRenamingVerticalId(v.id); setRenamingVerticalName(v.name) }}

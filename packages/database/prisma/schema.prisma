@@ -265,15 +265,18 @@ model Client {
 // Vertical — agency-level GTM verticals
 // ─────────────────────────────────────────────
 model Vertical {
-  id            String   @id @default(cuid())
-  agencyId      String   @map("agency_id")
-  name          String
-  dimensionType String   @default("vertical") @map("dimension_type")
-  color         String?  @db.VarChar(7)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  agencyId        String   @map("agency_id")
+  name            String
+  dimensionType   String   @default("vertical") @map("dimension_type")
+  color           String?  @db.VarChar(7)
+  parentVerticalId String? @map("parent_vertical_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  agency     Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  agency           Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  parentVertical   Vertical? @relation("VerticalChildren", fields: [parentVerticalId], references: [id], onDelete: SetNull)
+  childVerticals   Vertical[] @relation("VerticalChildren")
   demandGen            ClientDemandGen[]
   frameworks           ClientFramework[]
   kitSessions          KitSession[]
