@@ -157,7 +157,7 @@ export function PMRoutingSection({
   const boardId = workflow.mondaySubItemBoardId ?? workflow.clientMondayBoardId
 
   const [open, setOpen] = useState(
-    !!(config.delivery_box_subfolder || config.delivery_monday_column || config.delivery_monday_status)
+    !!(config.delivery_box_subfolder || config.delivery_monday_column || config.delivery_monday_status_column || config.create_next_subitem)
   )
   const [columns, setColumns] = useState<MondayColumn[]>([])
 
@@ -234,15 +234,12 @@ export function PMRoutingSection({
 
           <FieldGroup
             label="Monday Status Column"
-            description="Which status column to update on delivery."
+            description="Sets this column to CNDELIVERED when the file lands in Box."
           >
             {statusColumns.length > 0 ? (
               <Select
                 value={(config.delivery_monday_status_column as string) || '__none__'}
-                onValueChange={(v) => {
-                  onChange('delivery_monday_status_column', v === '__none__' ? '' : v)
-                  onChange('delivery_monday_status', '')
-                }}
+                onValueChange={(v) => onChange('delivery_monday_status_column', v === '__none__' ? '' : v)}
               >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select column…" />
@@ -259,41 +256,24 @@ export function PMRoutingSection({
                 placeholder="e.g. Stage"
                 className="text-xs"
                 value={(config.delivery_monday_status_column as string) ?? ''}
-                onChange={(e) => {
-                  onChange('delivery_monday_status_column', e.target.value)
-                  if (!e.target.value.trim()) onChange('delivery_monday_status', '')
-                }}
+                onChange={(e) => onChange('delivery_monday_status_column', e.target.value)}
               />
             )}
           </FieldGroup>
 
           <FieldGroup
-            label="Status Label on Delivery"
-            description="Sets the status column to this label when the file lands in Box."
+            label="Create next subitem on delivery"
+            description="When delivery is complete, automatically creates a new subitem on the same Monday parent item named with next week's date. Use this for recurring weekly programs."
           >
-            {statusLabels.length > 0 ? (
-              <Select
-                value={(config.delivery_monday_status as string) || '__none__'}
-                onValueChange={(v) => onChange('delivery_monday_status', v === '__none__' ? '' : v)}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select label…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__" className="text-xs text-muted-foreground">— None —</SelectItem>
-                  {statusLabels.map((label) => (
-                    <SelectItem key={label} value={label} className="text-xs">{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                placeholder="e.g. Ready for Review"
-                className="text-xs"
-                value={(config.delivery_monday_status as string) ?? ''}
-                onChange={(e) => onChange('delivery_monday_status', e.target.value)}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!(config.create_next_subitem)}
+                onChange={(e) => onChange('create_next_subitem', e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-border accent-violet-600"
               />
-            )}
+              <span className="text-xs text-muted-foreground">Enable for weekly recurring programs</span>
+            </label>
           </FieldGroup>
         </div>
       )}

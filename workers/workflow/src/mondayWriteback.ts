@@ -124,3 +124,31 @@ export async function setMondayStatus(params: {
 export function clearMondayCache(): void {
   boardColumnCache.clear()
 }
+
+function nextMondayLabel(): string {
+  const today = new Date()
+  const day = today.getDay()
+  // days until next Monday (if today is Monday, go to next week)
+  const daysUntil = ((1 - day + 7) % 7) || 7
+  const next = new Date(today)
+  next.setDate(today.getDate() + daysUntil)
+  return next.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+export async function createNextWeekSubitem(params: {
+  agencyId:     string
+  parentItemId: string
+}): Promise<void> {
+  const { agencyId, parentItemId } = params
+  const token = await getMondayToken(agencyId)
+  if (!token) return
+
+  const itemName = `Week of ${nextMondayLabel()}`
+  await mondayGql(token, `
+    mutation($parentItemId: ID!, $itemName: String!) {
+      create_subitem(parent_item_id: $parentItemId, item_name: $itemName) { id }
+    }
+  `, { parentItemId, itemName })
+
+  console.log(`[mondayWriteback] created next-week subitem "${itemName}" under parent ${parentItemId}`)
+}

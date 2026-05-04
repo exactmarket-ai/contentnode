@@ -67,7 +67,7 @@ import { extractAndSaveQuality } from './qualityExtractor.js'
 import { enqueuePMAgentJob } from './pmAgent.js'
 import { deliverRunToBox, deliverImageToBox, ensureBoxSubfolder } from './boxDelivery.js'
 import { deliverRunToGoogleDrive, deliverImageToGoogleDrive, ensureGoogleDriveSubfolder } from './googleDriveDelivery.js'
-import { writeFileUrlToMonday, setMondayStatus, clearMondayCache } from './mondayWriteback.js'
+import { writeFileUrlToMonday, setMondayStatus, clearMondayCache, createNextWeekSubitem } from './mondayWriteback.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-node status stored inside WorkflowRun.output
@@ -1399,7 +1399,8 @@ export class WorkflowRunner {
         // Deliver each output node independently so each can use its own
         // routing config (subfolder, Monday column, Monday status)
         const outputNodes   = workflow.nodes.filter((n) => n.type === 'output')
-        let anyTextDelivered = false
+        let anyTextDelivered   = false
+        let nextSubitemCreated = false
 
         const deliverNode = async (node: (typeof outputNodes)[number]) => {
           const nodeOutput = runOutput.nodeStatuses[node.id]?.output as Record<string, unknown> | undefined
@@ -1412,8 +1413,8 @@ export class WorkflowRunner {
           // Per-node PM routing config (set from output node config panel)
           const subfolder          = (cfg.delivery_box_subfolder as string | undefined)?.trim() || null
           const mondayColumn       = (cfg.delivery_monday_column as string | undefined)?.trim() || null
-          const mondayStatusCol    = (cfg.delivery_monday_status_column as string | undefined)?.trim() || 'Status'
-          const mondayStatus       = (cfg.delivery_monday_status as string | undefined)?.trim() || null
+          const mondayStatusCol    = (cfg.delivery_monday_status_column as string | undefined)?.trim() || null
+          const mondayStatus       = mondayStatusCol ? 'CNDELIVERED' : null
 
           // Resolve the target Box folder (create subfolder on demand if configured)
           const targetFolderId = subfolder
@@ -1441,6 +1442,12 @@ export class WorkflowRunner {
                 columnTitle: mondayStatusCol,
                 label:       mondayStatus,
               }).catch((err) => console.error('[runner] Monday status writeback failed:', err))
+            }
+
+            if (cfg.create_next_subitem && mondayItemId && !nextSubitemCreated) {
+              nextSubitemCreated = true
+              await createNextWeekSubitem({ agencyId: this.agencyId, parentItemId: mondayItemId })
+                .catch((err) => console.error('[runner] Failed to create next-week subitem:', err))
             }
           }
 
@@ -1525,19 +1532,26 @@ export class WorkflowRunner {
                 mimeType:      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 mondayItemId,
               })
-              // No per-node Monday column for the fallback — just the status if any
+              // No per-node Monday column for the fallback — write CNDELIVERED if any node has a status column configured
               if (mondayWriteItemId && mondayWriteBoardId) {
-                const anyStatus = outputNodes
-                  .map((n) => ((n.config ?? {}) as Record<string, unknown>).delivery_monday_status as string | undefined)
+                const anyStatusCol = outputNodes
+                  .map((n) => ((n.config ?? {}) as Record<string, unknown>).delivery_monday_status_column as string | undefined)
                   .find((s) => s?.trim())
-                if (anyStatus) {
+                if (anyStatusCol) {
                   await setMondayStatus({
                     agencyId:    this.agencyId,
                     boardId:     mondayWriteBoardId,
                     itemId:      mondayWriteItemId,
-                    columnTitle: 'Status',
-                    label:       anyStatus,
+                    columnTitle: anyStatusCol,
+                    label:       'CNDELIVERED',
                   }).catch(() => {})
+
+                  const fallbackNode = outputNodes.find((n) => ((n.config ?? {}) as Record<string, unknown>).create_next_subitem)
+                  if (fallbackNode && mondayItemId && !nextSubitemCreated) {
+                    nextSubitemCreated = true
+                    await createNextWeekSubitem({ agencyId: this.agencyId, parentItemId: mondayItemId })
+                      .catch((err) => console.error('[runner] Failed to create next-week subitem:', err))
+                  }
                 }
               }
               void boxUrl // suppress unused-variable warning

@@ -80,6 +80,7 @@ interface Client {
   createdAt: string
   requireOffline: boolean
   isOrgClient: boolean
+  mondayBoardId: string | null
   stakeholders: Stakeholder[]
   workflows: Workflow[]
   insights: Insight[]
@@ -4943,7 +4944,98 @@ interface DivisionData {
   createdAt: string
 }
 
+function MondayBoardCard({ client, onUpdate }: { client: Client; onUpdate: (updated: Partial<Client>) => void }) {
+  const [boards, setBoards]       = useState<{ id: string; name: string }[]>([])
+  const [selected, setSelected]   = useState(client.mondayBoardId ?? '')
+  const [loadingBoards, setLoadingBoards] = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState('')
+  const [notConnected, setNotConnected] = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/v1/integrations/monday/boards')
+      .then((r) => r.json())
+      .then((json) => {
+        if (Array.isArray(json.data)) setBoards(json.data)
+        else setNotConnected(true)
+      })
+      .catch(() => setNotConnected(true))
+      .finally(() => setLoadingBoards(false))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await apiFetch(`/api/v1/clients/${client.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mondayBoardId: selected || null }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error ?? 'Failed to save')
+      onUpdate({ mondayBoardId: body.data.mondayBoardId ?? null })
+    } catch (err) {
+      setError((err as Error).message || 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const currentName = boards.find((b) => b.id === (client.mondayBoardId ?? ''))?.name
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex items-start gap-2.5">
+        <Icons.LayoutGrid className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Monday.com Board</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Link this client to their Monday.com board so workflows can read items and write back statuses.
+          </p>
+          {notConnected ? (
+            <p className="text-xs text-amber-600 mt-2">Monday.com is not connected. Go to Settings → Integrations to connect.</p>
+          ) : loadingBoards ? (
+            <div className="flex items-center gap-1.5 mt-3">
+              <Icons.Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Loading boards…</span>
+            </div>
+          ) : (
+            <div className="mt-3 flex items-center gap-2">
+              <select
+                value={selected}
+                onChange={(e) => setSelected(e.target.value)}
+                className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">— No board assigned —</option>
+                {boards.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                className="h-8 text-xs shrink-0"
+                onClick={save}
+                disabled={saving || selected === (client.mondayBoardId ?? '')}
+              >
+                {saving ? <Icons.Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+              </Button>
+            </div>
+          )}
+          {currentName && !notConnected && !loadingBoards && (
+            <p className="text-[11px] text-muted-foreground mt-1.5">Currently linked: <span className="font-medium text-foreground">{currentName}</span></p>
+          )}
+          {error && <p className="text-[11px] text-red-600 mt-1">{error}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated: Partial<Client>) => void }) {
+  const { user } = useCurrentUser()
+  const canAssignMondayBoard = user?.role === 'owner' || user?.role === 'org_admin'
+
   const [divisions, setDivisions] = useState<DivisionData[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -5201,6 +5293,11 @@ function StructureTab({ client, onUpdate }: { client: Client; onUpdate: (updated
           </button>
         </div>
       </div>
+
+      {/* ── Monday.com Board (owner / org_admin only) ── */}
+      {canAssignMondayBoard && (
+        <MondayBoardCard client={client} onUpdate={onUpdate} />
+      )}
 
     <div className="grid grid-cols-2 gap-4 items-start">
 
