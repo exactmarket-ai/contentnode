@@ -27,7 +27,7 @@
     "overrides": {
       "axios": ">=1.15.1",
       "follow-redirects": ">=1.16.0",
-      "@clerk/shared": "3.47.4"
+      "@clerk/shared": "3.47.5"
     }
   }
 }
