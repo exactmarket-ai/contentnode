@@ -2535,10 +2535,23 @@ Rules:
 
     const assignments = await prisma.clientVertical.findMany({
       where: { clientId: req.params.id, agencyId },
-      include: { vertical: { select: { id: true, name: true, dimensionType: true, color: true, parentVerticalId: true, mondayBoardId: true, boxFolderId: true } } },
+      include: { vertical: { select: { id: true, name: true, dimensionType: true, color: true, mondayBoardId: true, boxFolderId: true } } },
       orderBy: { vertical: { name: 'asc' } },
     })
-    return reply.send({ data: assignments.map((a) => a.vertical) })
+    const verticals = assignments.map((a) => a.vertical)
+    // Fetch parentVerticalId via raw SQL — gracefully skips if migration not yet applied
+    let parentMap: Record<string, string | null> = {}
+    if (verticals.length > 0) {
+      try {
+        const ids = verticals.map((v) => v.id)
+        const rows = await prisma.$queryRaw<{ id: string; parent_vertical_id: string | null }[]>`
+          SELECT id, COALESCE(parent_vertical_id::text, NULL) as parent_vertical_id
+          FROM verticals WHERE id = ANY(${ids}::text[])
+        `
+        for (const r of rows) parentMap[r.id] = r.parent_vertical_id ?? null
+      } catch { /* column not yet added */ }
+    }
+    return reply.send({ data: verticals.map((v) => ({ ...v, parentVerticalId: parentMap[v.id] ?? null })) })
   })
 
   // ── POST /:id/verticals — assign a vertical to a client

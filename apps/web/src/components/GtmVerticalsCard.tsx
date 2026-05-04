@@ -251,7 +251,7 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
                 </span>
                 {v.parentVerticalId && (
                   <span className="mr-1 text-[10px] text-muted-foreground">
-                    {allVerticals.find((p) => p.id === v.parentVerticalId)?.name ?? ''}
+                    {[...allVerticals, ...clientVerticals].find((p) => p.id === v.parentVerticalId)?.name ?? ''}
                   </span>
                 )}
                 <Button
