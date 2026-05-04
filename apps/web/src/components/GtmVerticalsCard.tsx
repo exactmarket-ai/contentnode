@@ -263,13 +263,6 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
                 </Button>
                 <Button
                   variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-600"
-                  onClick={() => void handleUnassignVertical(v)}
-                  title="Remove from this client"
-                >
-                  <Icons.X className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-600"
                   onClick={() => void handleDeleteVertical(v)}
                   title="Delete vertical entirely"
                 >
