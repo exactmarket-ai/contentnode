@@ -15,6 +15,7 @@ interface TeamMember {
   role: string
   createdAt: string
   lastActiveAt: string | null
+  avatarUrl: string | null
   pending: boolean
   inviteExpired: boolean
   clientCount?: number | null  // null = unrestricted (all clients); undefined = not yet loaded
@@ -979,12 +980,20 @@ export function TeamPage() {
                     {/* Name */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
-                        <div
-                          className="h-7 w-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0"
-                          style={{ backgroundColor: rs.bg, color: rs.color, border: `1px solid ${rs.border}` }}
-                        >
-                          {(m.name ?? m.email)[0].toUpperCase()}
-                        </div>
+                        {m.avatarUrl ? (
+                          <img
+                            src={m.avatarUrl}
+                            alt={m.name ?? m.email}
+                            className="h-7 w-7 rounded-full object-cover border border-border shrink-0"
+                          />
+                        ) : (
+                          <div
+                            className="h-7 w-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0"
+                            style={{ backgroundColor: rs.bg, color: rs.color, border: `1px solid ${rs.border}` }}
+                          >
+                            {(m.name ?? m.email).slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
                         <div>
                           <p className="font-medium text-[#1a1a14]">{m.name ?? '—'}</p>
                           {(m.title || m.department) && (
@@ -1189,7 +1198,7 @@ export function TeamPage() {
         <InviteModal
           onClose={() => setShowInvite(false)}
           onInvited={(member) => {
-            setMembers(prev => [...prev, { ...member, clientCount: 0 }])
+            setMembers(prev => [...prev, { ...member, avatarUrl: null, clientCount: 0 }])
             setShowInvite(false)
             showToast(`Invite sent to ${member.email}`)
           }}

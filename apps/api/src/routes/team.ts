@@ -75,7 +75,7 @@ function memberView(m: {
   id: string; clerkUserId: string; email: string; name: string | null
   title?: string | null; department?: string | null
   role: string; createdAt: Date; inviteToken: string | null; inviteExpiresAt: Date | null
-  lastActiveAt?: Date | null
+  lastActiveAt?: Date | null; avatarStorageKey?: string | null
 }) {
   return {
     id: m.id,
@@ -86,6 +86,7 @@ function memberView(m: {
     role: m.role,
     createdAt: m.createdAt,
     lastActiveAt: m.lastActiveAt ?? null,
+    avatarUrl: m.avatarStorageKey ?? null,
     pending: !!m.inviteToken,
     inviteExpired: m.inviteExpiresAt ? m.inviteExpiresAt < new Date() : false,
   }
@@ -109,6 +110,7 @@ export async function teamRoutes(app: FastifyInstance) {
       select: {
         id: true, clerkUserId: true, email: true, name: true, title: true, department: true,
         role: true, createdAt: true, inviteToken: true, inviteExpiresAt: true, lastActiveAt: true,
+        avatarStorageKey: true,
       },
     })
 
