@@ -1189,7 +1189,7 @@ export function TeamPage() {
         <InviteModal
           onClose={() => setShowInvite(false)}
           onInvited={(member) => {
-            setMembers(prev => [...prev, member])
+            setMembers(prev => [...prev, { ...member, clientCount: 0 }])
             setShowInvite(false)
             showToast(`Invite sent to ${member.email}`)
           }}
