@@ -10,7 +10,7 @@
     "start": "node --import tsx/esm src/index.ts"
   },
   "dependencies": {
-    "@clerk/backend": "^2.33.2",
+    "@clerk/backend": "^3.4.4",
     "@contentnode/ai": "workspace:*",
     "@contentnode/database": "workspace:*",
     "@contentnode/storage": "workspace:*",
