@@ -2383,7 +2383,13 @@ export function ClientFrameworkTab({ clientId, clientName, initialVerticalId }: 
   const verticalTerm = useVerticalTerm()
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [selectedDimensions, setSelectedDimensions] = useState<Record<string, string>>({})
-  const selectedVertical = verticals.find((v) => Object.values(selectedDimensions).includes(v.id)) ?? null
+  const selectedVertical = (() => {
+    // Prefer most-specific selected dimension (solution/partner/country) over vertical
+    const nonVertical = verticals.find((v) => v.dimensionType !== 'vertical' && selectedDimensions[v.dimensionType] === v.id)
+    if (nonVertical) return nonVertical
+    const vid = selectedDimensions['vertical']
+    return (vid ? verticals.find((v) => v.id === vid) : null) ?? null
+  })()
   const setSelectedVertical = (v: Vertical | null) => setSelectedDimensions(v ? { [v.dimensionType]: v.id } : {})
   const [fw, setFwRaw] = useState<FrameworkData | null>(null)
   const [activeSection, setActiveSection] = useState<string>('brain')
