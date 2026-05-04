@@ -197,21 +197,26 @@ export function GtmVerticalsCard({ clientId, hideUnassigned = false }: { clientI
             <Button size="sm" className="h-7 text-xs px-3" onClick={() => void handleCreateVertical()}>Add</Button>
             <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => { setAddingVertical(false); setNewVerticalName(''); setNewVerticalDimType('vertical'); setNewVerticalParentId('') }}>Cancel</Button>
           </div>
-          {newVerticalDimType !== 'vertical' && allVerticals.filter((v) => v.dimensionType === 'vertical').length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground whitespace-nowrap">Belongs to {verticalTerm}:</span>
-              <select
-                value={newVerticalParentId}
-                onChange={(e) => setNewVerticalParentId(e.target.value)}
-                className="h-7 flex-1 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:border-blue-400"
-              >
-                <option value="">— None (show in all contexts) —</option>
-                {allVerticals.filter((v) => v.dimensionType === 'vertical').map((v) => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          {newVerticalDimType !== 'vertical' && (() => {
+            const parentCandidates = [...allVerticals, ...clientVerticals]
+              .filter((v, i, arr) => v.dimensionType === 'vertical' && arr.findIndex((x) => x.id === v.id) === i)
+            if (parentCandidates.length === 0) return null
+            return (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">Belongs to {verticalTerm}:</span>
+                <select
+                  value={newVerticalParentId}
+                  onChange={(e) => setNewVerticalParentId(e.target.value)}
+                  className="h-7 flex-1 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:border-blue-400"
+                >
+                  <option value="">— None (show in all contexts) —</option>
+                  {parentCandidates.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+              </div>
+            )
+          })()}
         </div>
       )}
 
