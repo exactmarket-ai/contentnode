@@ -523,6 +523,40 @@ COMPANY-WIDE content provides portfolio-level awareness only: product/solution n
     }),
   ])
 
+  // If this vertical is a Solution/Partner/Country scoped to a parent Vertical,
+  // inject the parent vertical's brain as the market context layer first
+  let parentVerticalId: string | null = null
+  try {
+    const rows = await prisma.$queryRaw<{ parent_vertical_id: string | null }[]>`
+      SELECT parent_vertical_id FROM verticals WHERE id = ${verticalId}
+    `
+    parentVerticalId = rows[0]?.parent_vertical_id ?? null
+  } catch { /* migration not yet applied */ }
+
+  if (parentVerticalId) {
+    const [parentVertical, parentAttachments] = await Promise.all([
+      prisma.vertical.findFirst({
+        where: { id: parentVerticalId, agencyId },
+        select: { name: true, brainContext: true },
+      }),
+      prisma.verticalBrainAttachment.findMany({
+        where: { verticalId: parentVerticalId, agencyId, summaryStatus: 'ready' },
+        select: { filename: true, summary: true },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+      }),
+    ])
+    if (parentVertical) {
+      orgParts.push(`PARENT VERTICAL (Market Context): ${parentVertical.name}`)
+      if (parentVertical.brainContext?.trim()) {
+        orgParts.push(`PARENT VERTICAL BRAIN (market research, industry context for ${parentVertical.name}):\n${parentVertical.brainContext.trim()}`)
+      }
+      for (const doc of parentAttachments.filter((d) => d.summary?.trim())) {
+        orgParts.push(`[${parentVertical.name} vertical doc] ${doc.filename}:\n${doc.summary!.trim()}`)
+      }
+    }
+  }
+
   if (vertical) {
     orgParts.push(`VERTICAL: ${vertical.name}`)
     if (vertical.brainContext?.trim()) {
