@@ -112,7 +112,8 @@ export async function generatePromptSuggestions(clientId: string, agencyId: stri
   // Strip any accidental markdown fences and parse
   let suggestions: Array<{ name: string; category: string; description: string; body: string }>
   try {
-    const raw = response.text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+    const fenceMatch = response.text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    const raw = (fenceMatch ? fenceMatch[1] : response.text).trim()
     suggestions = JSON.parse(raw)
     if (!Array.isArray(suggestions)) throw new Error('not an array')
   } catch {
