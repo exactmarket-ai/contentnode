@@ -5995,6 +5995,7 @@ function AddTaskModal({ clientId, onClose, onCreated, onUpdated, editTask, initi
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="e.g. Weekly competitor reviews"
+                maxLength={300}
                 style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb', padding: '0 12px', fontSize: 13, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>

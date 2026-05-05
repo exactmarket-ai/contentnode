@@ -9,7 +9,7 @@ import {
 import { seedDefaultTasksForAllClients } from '../lib/defaultScheduledTasks.js'
 
 const createBody = z.object({
-  label:                z.string().min(1).max(120),
+  label:                z.string().min(1).max(300),
   scope:                z.enum(['company', 'client', 'vertical']),
   type:                 z.enum(['web_scrape', 'review_miner', 'audience_signal', 'seo_intent', 'research_brief']),
   frequency:            z.enum(['daily', 'weekly', 'monthly']),
