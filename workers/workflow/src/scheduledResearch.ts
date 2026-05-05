@@ -952,7 +952,8 @@ Return format:
   // Parse JSON response
   let topics: TopicCandidate[] = []
   try {
-    const text = responseText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim()
+    const fenceMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/)
+    const text = (fenceMatch ? fenceMatch[1] : responseText).trim()
     const start = text.indexOf('{')
     if (start === -1) throw new Error('no opening brace')
     let depth = 0, inStr = false, esc = false, end = -1
